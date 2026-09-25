@@ -30,7 +30,7 @@ passes; nothing moves to a later milestone without the owner saying so.
 `cargo test --workspace` and `cargo gates` all pass; `tbd-subtitles gui` opens a window on the
 host.
 
-## M0.5 — Stack spike on Dressrosa 08
+## M0.5 — Stack spike on Dressrosa 11
 
 Prove each piece of the [Rust ML stack](/documentation/research/rust_ml_stack.md) on real audio
 before building the pipeline around it. Record speed, VRAM, RAM and quality notes in a new research
@@ -46,7 +46,7 @@ snapshot, and settle the matching open questions in [decisions](/documentation/d
 - [ ] CUDA libraries for `ort` on Bazzite (shipped beside the binary) — working recipe written
       into the [development environment](/documentation/runbooks/development_environment.md) runbook.
 
-**Acceptance:** every item runs on Dressrosa 08 from Rust with measured numbers, and the projected
+**Acceptance:** every item runs on Dressrosa 11 from Rust with measured numbers, and the projected
 total for a 120-minute video is within the [performance budget](/documentation/vision_and_goals.md#performance-budget).
 
 ## M1 — Pipeline and the Dressrosa pilot
@@ -54,12 +54,12 @@ total for a 120-minute video is within the [performance budget](/documentation/v
 - [ ] Every stage of the [pipeline](/documentation/architecture/pipeline.md) as a resumable stage
       with typed JSON output; `tbd-subtitles process <video>` runs them in order.
 - [ ] QC report per job (layout checks, uncovered speech, flagged lines with timestamps).
-- [ ] Pilot: Dressrosa 08 → subtitle file installed next to the video → **stop; the owner watches
+- [ ] Pilot: Dressrosa 11 → subtitle file installed next to the video → **stop; the owner watches
       it in VLC and reports problems** → fixes.
-- [ ] Batch: Dressrosa 09–48 after the owner approves the pilot.
+- [ ] Batch: Dressrosa 12–48 after the owner approves the pilot.
 - [ ] Log the run in the media folder's README.md.
 
-**Acceptance:** the owner accepts the pilot; all 41 episodes have subtitles that pass QC; a
+**Acceptance:** the owner accepts the pilot; episodes 11–48 have subtitles that pass QC; a
 120-minute test file meets the speed and memory budget.
 
 ## M2 — Desktop GUI

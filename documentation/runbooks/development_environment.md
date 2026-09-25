@@ -69,7 +69,7 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
 4. Probe a test video.
 
    ```bash
-   distrobox-host-exec ffprobe -v error -show_entries stream=codec_type,codec_name,r_frame_rate,start_time -of compact "/run/media/system/Main_storage/Media/one_pace/done/[Muhn Pace] Dressrosa 08.mp4"
+   distrobox-host-exec ffprobe -v error -show_entries stream=codec_type,codec_name,r_frame_rate,start_time -of compact "/run/media/system/Main_storage/Media/one_pace/[Muhn Pace] Dressrosa 11.mp4"
    ```
 
    **Expected:** an `h264` video stream at `24/1` and an `aac` audio stream, both `start_time=0.000000`.

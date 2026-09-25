@@ -51,7 +51,7 @@ version do not match the dub's words or cut.
 
 | Area | Measure |
 |---|---|
-| Accuracy | The owner watches the pilot episode (Dressrosa 08) and accepts it; flagged-unsure lines are few and listed with timestamps |
+| Accuracy | The owner watches the pilot episode (Dressrosa 11) and accepts it; flagged-unsure lines are few and listed with timestamps |
 | Timing | Aligner-to-engine word timing median difference under 30 ms; no speech longer than 1 s left without a cue |
 | Layout | QC finds no overlaps, no cue over 42 characters per line or two lines, no cue under 5/6 s; at least 95 % of cues at or under 20 characters per second |
 | Speed | 120-minute video in 30 minutes or less; each stage's time recorded in the job report |

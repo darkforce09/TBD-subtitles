@@ -155,3 +155,17 @@ the `claude` CLI.
 nearly as they are. A gate run needs `git` on the `PATH`; the app does not.
 
 **Supersedes:** none.
+
+### 2026-09-25 — Dressrosa 11 is the pilot; 12–48 are the first batch
+
+**Context:** The owner has watched Dressrosa 08–10 and moved them to `one_pace/done/`, so a
+subtitle file for them would not be watched.
+
+**Decision:** The stack spike and the pilot run on `[Muhn Pace] Dressrosa 11.mp4`. After the owner
+accepts the pilot in VLC, episodes 12–48 are processed as the first batch.
+
+**Consequences:** The spike's measurements, the pilot subtitle file and the batch all use episodes
+still in the main media folder. Episodes 08–10 get no subtitles unless the owner asks.
+
+**Supersedes:** 2026-09-25 — Build a reusable local app, not a one-off script (its choice of pilot
+and batch only).
