@@ -1,0 +1,35 @@
+# Cargo build output. The workspace root owns /target for every member crate; per-task
+# target dirs (target-*/) keep parallel builds from sharing stale binaries.
+/target/
+target-*/
+
+# Downloaded model files (ONNX, GGUF, safetensors). Fetched on first use, never committed.
+/models/
+*.onnx
+*.gguf
+*.safetensors
+
+# Job work directories: extracted audio, separated stems, per-stage JSON, reports.
+/work/
+
+# Media never belongs in the repository; test clips are generated or fetched by the tests.
+*.mp4
+*.mkv
+*.wav
+*.flac
+*.srt
+*.ass
+*.vtt
+!**/tests/fixtures/**/*.srt
+!**/tests/fixtures/**/*.ass
+!**/tests/fixtures/**/*.vtt
+
+# Machine-local tool config — absolute paths, per developer.
+.mcp.json
+.claude/settings.local.json
+
+# Editor and OS clutter.
+.idea/
+.vscode/
+*.swp
+.directory

@@ -1,0 +1,7 @@
+[toolchain]
+# One pin for the whole workspace, matching the owner's other Rust projects. A per-crate pin or
+# the floating rustup default would let a gate pass on a different compiler than the one used to
+# build releases.
+channel = "1.95.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
