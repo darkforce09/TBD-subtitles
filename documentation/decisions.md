@@ -124,3 +124,34 @@ the video's folder, UTF-8, one subtitle file per video. Source videos are never 
 the job's work directory, never into the media folder.
 
 **Supersedes:** none.
+
+### 2026-09-25 — Native inference runtimes allowed where no pure-Rust engine competes
+
+**Context:** The earlier entry allowed ONNX Runtime (through `ort`) and ggml (through whisper-rs,
+transcribe-cpp or crispasr) pending the owner's confirmation. The owner confirmed it.
+
+**Decision:** Inference uses pure-Rust engines (candle, burn, mistral.rs, earshot) first. Rust
+crates that bind ONNX Runtime or ggml are used where no pure-Rust option is competitive in speed or
+accuracy. All project code stays Rust.
+
+**Consequences:** Parakeet ONNX, MDX-Net and Mel-Band RoFormer separation on CUDA, CED sound events
+and the Qwen3 aligner through crispasr are all open to the M0.5 spike. CUDA 13 runtime libraries
+ship beside the app, and each GPU stage keeps its own worker process so native libraries never
+share a binary.
+
+**Supersedes:** 2026-09-25 — Native inference runtimes through Rust crates are allowed (to confirm).
+
+### 2026-09-25 — Repository tooling may run git and cargo
+
+**Context:** The repository gates copied from TBD-Reforger list tracked files with `git ls-files`,
+ask `git check-ignore` about ignored paths, and build temporary git checkouts in their tests. The
+language law names FFmpeg and ffprobe as the only external programs.
+
+**Decision:** Programs under `tools/` may run `git` and `cargo` as child processes. The app
+(`apps/` and `crates/`) still runs only FFmpeg, ffprobe and, as an optional language-model backend,
+the `claude` CLI.
+
+**Consequences:** The gates judge exactly the tracked files, as in TBD-Reforger, and are copied
+nearly as they are. A gate run needs `git` on the `PATH`; the app does not.
+
+**Supersedes:** none.

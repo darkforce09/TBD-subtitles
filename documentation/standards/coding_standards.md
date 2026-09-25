@@ -11,7 +11,8 @@ by `tools/repo_gates`; rules marked *(test)* by an architecture test; the rest i
   purpose. *(gate)*
 - Repository chores are Rust programs under `tools/`, run with `cargo run -p <tool>`.
 - External programs: FFmpeg and ffprobe, run as child processes; the `claude` CLI as an optional
-  language-model backend. Nothing else is shelled out to.
+  language-model backend. Nothing else is run by the app. Repository tooling under `tools/` may
+  also run `git` and `cargo`.
 - Models are downloaded already exported (ONNX, GGUF, safetensors) from pinned URLs with
   checksums; no code converts or exports models.
 

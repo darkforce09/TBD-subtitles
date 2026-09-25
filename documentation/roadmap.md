@@ -92,7 +92,6 @@ Details: [Japanese on-screen text](/documentation/features/japanese_onscreen_tex
 
 | Question | Settle by |
 |---|---|
-| Does "pure Rust" allow Rust crates that bind ONNX Runtime or ggml? | Owner, before M0.5 |
 | Second speech engine: Whisper large-v3 (whisper-rs), Canary or Granite (transcribe-cpp/crispasr), or Kyutai 1B (candle)? | M0.5 measurements |
 | Default language-model backend: `claude -p` (owner's subscription) or local mistral.rs? | M0.5 quality check |
 | Output format when sign subtitles exist: always `.ass`, or `.srt` until signs appear? | M4 |

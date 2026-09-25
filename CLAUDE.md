@@ -20,13 +20,14 @@ text that appears on screen. The first job is the Muhn Pace Dressrosa English du
 2. **Rust only.** Every tracked source file is Rust; the rest is Markdown, TOML or JSON. No
    Python, shell scripts, Makefiles or Node — not for tooling, not for model conversion, not once.
    A repository task is a Rust program (`cargo run -p <tool> -- …`), never a script.
-3. **External programs:** FFmpeg and ffprobe only, run as child processes (no custom decoder, no
-   linking libav). The headless `claude` CLI is an optional language-model backend.
+3. **External programs:** the app runs FFmpeg and ffprobe only, as child processes (no custom
+   decoder, no linking libav); the headless `claude` CLI is an optional language-model backend.
+   Repository tooling under `tools/` may also run `git` and `cargo`.
 4. **Inference runtimes:** pure-Rust engines (candle, burn, mistral.rs, earshot) come first. Rust
    crates that bind a native runtime (ONNX Runtime through `ort`, ggml through whisper-rs or
-   transcribe-cpp) are used only where no pure-Rust option is competitive — this reading of
-   "pure Rust" awaits the owner's confirmation ([decisions](/documentation/decisions.md)). Models
-   are downloaded already exported (ONNX, GGUF, safetensors); we never convert models.
+   transcribe-cpp) are used only where no pure-Rust option is competitive
+   ([decisions](/documentation/decisions.md)). Models are downloaded already exported (ONNX, GGUF,
+   safetensors); we never convert models.
 5. **Fast and bounded.** A 120-minute video processes end to end in 30 minutes or less on the
    RTX 3070, in bounded memory: audio is streamed and chunked, never held whole at 44.1 kHz.
 6. **Resumable stages.** Each pipeline stage writes its output to the job's work directory and is
