@@ -12,5 +12,6 @@ members = [
     "crates/stages",
     "crates/subtitle_formats",
     "tools/repo_gates",
+    "tools/stack_spike",
     "tools/verification_core",
 ]

@@ -16,18 +16,22 @@ crates/child_process/
 ## How it works
 
 A caller builds a `Run` with `Run::new(program)` and the builder methods `arg`, `args`, `cwd`,
-`env`, `env_remove`, `timeout` and `stdin`, then finishes it with one of three calls:
+`env`, `env_remove`, `timeout` and `stdin`, then finishes it with one of four calls:
 
 | Call | Pipes | Answer |
 |---|---|---|
 | `output` | stdout and stderr on two pipes | `Output`: `code`, `stdout`, `stderr`, `duration` |
 | `merged_output` | both streams on one shared pipe, as a shell's `2>&1` | `Merged`: `code`, `text`, `duration` |
 | `status` | as `output` | the raw exit code alone |
+| `spawn` | stdout handed to the caller as a stream, stderr drained on a thread | `Running`: `pid`, `take_stdout`, `kill`, `wait` → `Finished`: `code`, `stderr`, `duration` |
 
 Every call either returns the child's real exit code, never folded to 0 or 1, or a `RunError`
 saying why there is none: `ProgramAbsent` (the program is on no `PATH` entry), `Failed` (spawning,
 waiting or piping broke), `Signalled` (the child died on a signal, which is never turned into a
-`128+n` code) or `Timeout` (the deadline passed and the child's process group was killed).
+`128+n` code) or `Timeout` (the deadline passed and the child's process group was killed). A
+`Running` child has a watchdog thread that kills its group at the deadline even while the caller
+is blocked reading its stdout, and a handle dropped without `wait` kills its group too, so an
+abandoned FFmpeg stream never keeps running.
 
 `libc` is there for three calls: `setsid`, with `setpgid(0, 0)` as the fallback, puts the child in
 a process group of its own between fork and exec, and `killpg` with `SIGKILL` kills that whole group
@@ -41,7 +45,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p child_process   # the library alone
-cargo test -p child_process    # 20 unit tests; they run sh, cat, sleep and seq, about 3 s
+cargo test -p child_process    # 24 unit tests; they run sh, cat, sleep and seq, about 3 s
 ```
 
 The tests need a Unix shell on the `PATH`. The group-kill test sleeps 2.5 s after its timeout to
@@ -55,9 +59,9 @@ pairs and minus the `env_remove` names of its `Run`. Nothing else is read.
 
 ## Public surface
 
-- The library `child_process`: `Run`, `Output`, `Merged` and `RunError`, and the functions
-  `which`, `retry` and `wait_for`, all at the crate root. The runner and the pipe drains are
-  private.
+- The library `child_process`: `Run`, `Output`, `Merged` and `RunError`, the streamed child
+  `Running` with its result `Finished` (from `Run::spawn`), and the functions `which`, `retry`
+  and `wait_for`, all at the crate root. The runner and the pipe drains are private.
 - No binary.
 
 ## Boundaries
@@ -70,15 +74,18 @@ pairs and minus the `env_remove` names of its `Run`. Nothing else is read.
   - `crates/media_io/`, `crates/inference/` and `crates/pipeline/`, which declare it as a
     dependency and call nothing from it yet.
 - Rules:
-  - the crate sits in layer 0 and depends on no workspace crate, and it is the only product crate a
-    repository tool may depend on (`cargo gates crate-layering`, layer and tool tables in
+  - the crate sits in layer 0 and depends on no workspace crate, and the repository tools may
+    depend on it (`cargo gates crate-layering`, layer and tool tables in
     `tools/repo_gates/src/layout.rs`);
   - a signal is never an exit code (`signal_death_is_signalled_not_an_exit_code` in
     `crates/child_process/src/tests/runner.rs`), and a raw exit code passes through unchanged
     (`captures_stdout_and_raw_code`, same file);
   - a timeout kills the whole process group (`timeout_kills_the_whole_process_group`), and a full
     pipe never deadlocks a run (`large_output_does_not_deadlock`,
-    `merged_output_times_out_without_deadlocking_on_a_full_pipe`).
+    `merged_output_times_out_without_deadlocking_on_a_full_pipe`), and a streamed child is killed
+    at its deadline even while its reader blocks (`a_deadline_kills_a_reader_blocked_child` in
+    `crates/child_process/src/tests/running.rs`) and when its handle is dropped unwaited
+    (`dropping_an_unwaited_handle_kills_the_child`).
 
 ## Related documentation
 

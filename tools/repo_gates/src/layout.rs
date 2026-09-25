@@ -30,4 +30,14 @@ pub(crate) const PRODUCT_LAYERS: &[(&str, u8)] = &[
 pub(crate) const TOOL_DEPENDENCIES: &[(&str, &[&str])] = &[
     ("verification_core", &["child_process"]),
     ("repo_gates", &["verification_core"]),
+    (
+        "stack_spike",
+        &[
+            "child_process",
+            "job_model",
+            "media_io",
+            "inference",
+            "stages",
+        ],
+    ),
 ];

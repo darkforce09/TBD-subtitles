@@ -141,7 +141,7 @@ impl Run {
     ///
     /// Stdin is a pipe only when this run carries a body to write; otherwise it is `/dev/null`,
     /// so a child that reads stdin sees EOF rather than inheriting this process's terminal.
-    fn command(&self, stdout: Stdio, stderr: Stdio) -> Command {
+    pub(crate) fn command(&self, stdout: Stdio, stderr: Stdio) -> Command {
         let mut cmd = Command::new(&self.program);
         cmd.args(&self.args)
             .stdout(stdout)
@@ -182,7 +182,7 @@ impl Run {
 }
 
 /// Start the child, telling "the program is not installed" apart from every other spawn failure.
-fn spawn(cmd: &mut Command, program: &str, label: &str) -> Result<Child, RunError> {
+pub(crate) fn spawn(cmd: &mut Command, program: &str, label: &str) -> Result<Child, RunError> {
     match cmd.spawn() {
         Ok(child) => Ok(child),
         // The honest form of exit 127. Distinguished from every other spawn failure because
@@ -200,7 +200,7 @@ fn spawn(cmd: &mut Command, program: &str, label: &str) -> Result<Child, RunErro
 /// Write `body` to the child's stdin and close it.
 ///
 /// A closed stdin (the child exited early) is the child's business, not an error here.
-fn feed_stdin(child: &mut Child, body: Option<&str>) {
+pub(crate) fn feed_stdin(child: &mut Child, body: Option<&str>) {
     if let Some(body) = body
         && let Some(mut sink) = child.stdin.take()
     {

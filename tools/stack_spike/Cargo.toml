@@ -1,0 +1,21 @@
+# The stack spike measuring harness: runs each piece of the ML stack on one video from Rust, each in a
+# worker process of its own, and records wall time, speed, peak VRAM, peak RAM and quality notes.
+[package]
+name = "stack_spike"
+description = "Measures each ML stack piece on one video: time, speed, VRAM, RAM, quality"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[[bin]]
+name = "stack-spike"
+path = "src/main.rs"
+
+[dependencies]
+# Model downloads, the CUDA runtime locator and the model backends under test.
+inference = { path = "../../crates/inference" }
+# Error context at the top of the binary.
+anyhow = "1"
+# The subcommands `fetch`, `run`, `worker` and `report`.
+clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }

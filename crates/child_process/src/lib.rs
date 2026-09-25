@@ -21,14 +21,17 @@
 //!    for the child's whole life.
 //!
 //! Exit codes pass through raw: [`Run::status`] hands back the real code, because a caller may
-//! need an exact non-zero code. `runner.rs` spawns, isolates and reaps; `stream.rs` drains the
+//! need an exact non-zero code. `runner.rs` spawns, isolates and reaps; `running.rs` hands a
+//! streamed stdout to the caller under a watchdog deadline; `stream.rs` drains the
 //! pipes; `lookup.rs` resolves programs on `PATH` and waits on conditions.
 
 mod lookup;
 mod runner;
+mod running;
 mod stream;
 
 pub use lookup::{retry, wait_for, which};
+pub use running::{Finished, Running};
 
 use std::ffi::OsStr;
 use std::fmt;

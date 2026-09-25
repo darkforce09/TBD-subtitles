@@ -1,14 +1,16 @@
 # Repository tools
 
 The Rust programs that look after this repository rather than the subtitles: the gate runner that
-checks the project laws a program can check, and the fail-closed check library it is built on.
-Nothing here ships with the app.
+checks the project laws a program can check, the fail-closed check library it is built on, and
+the stack spike harness that measures the ML stack on a real video. Nothing here ships with the
+app.
 
 ## Contents
 
 ```text
 tools/
 ├── repo_gates/         the `cargo gates` runner: one gate per checkable repository law
+├── stack_spike/        the measuring harness: each ML stack piece on one video, and the model downloads
 └── verification_core/  the fail-closed verdict library every gate reports through
 ```
 
@@ -30,8 +32,11 @@ cargo gates [<gate>] ──> repo_gates ──> verification_core ──> crates
                              └── reads the tracked files and judges them
 ```
 
-Both crates are members of the one Cargo workspace. They may run `git` and `cargo` as child
-processes; the app never runs either.
+`stack_spike` is a binary crate for measuring, not checking: it downloads the pinned models and
+the CUDA 13 runtime through `crates/inference`, and runs the stack under test on one video.
+
+All three crates are members of the one Cargo workspace. The gate crates may run `git` and
+`cargo` as child processes; the app never runs either.
 
 ## Getting started
 
@@ -49,10 +54,11 @@ tests need `git` on the `PATH`: some build a temporary git checkout, and some ju
 
 ## Boundaries
 
-- Depends on: `crates/child_process` (through `verification_core`); the crates.io crates `clap`,
-  `regex`, `syn`, `proc-macro2` and `toml`; the `git` program.
-- Used by: people and agents before a commit, through `cargo gates`; no product crate depends on
-  anything here.
+- Depends on: `crates/child_process` (through `verification_core`) and `crates/inference` (in
+  `stack_spike`); the crates.io crates `clap`, `anyhow`, `regex`, `syn`, `proc-macro2` and `toml`;
+  the `git` program.
+- Used by: people and agents before a commit, through `cargo gates`, and a developer measuring the
+  stack, through `stack-spike`; no product crate depends on anything here.
 - Rules:
   - a tool depends only on the workspace crates the tool table in
     `tools/repo_gates/src/layout.rs` lists for it (`cargo gates crate-layering`, and the

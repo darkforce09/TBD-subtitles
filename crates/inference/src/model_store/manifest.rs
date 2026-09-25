@@ -1,0 +1,312 @@
+//! Every model file and runtime archive the app downloads, pinned by URL, size and SHA-256.
+//!
+//! **Role:** the one list of downloads. A file whose size or hash differs from its entry is never
+//! used. Model hashes are the Hugging Face LFS object ids (SHA-256 of the file); archive hashes
+//! come from NVIDIA's `redistrib_*.json` manifests (CUDA 13.4.2, cuDNN 9.26.0).
+//!
+//! **Position:** read by `download.rs`, `archive.rs` and the callers that name a model by id.
+//!
+//! **Signals and state:** constants only.
+//!
+//! **Invariants:** every URL is https; every hash is 64 lowercase hex digits; the files of one
+//! model share its folder, because ONNX external data is found beside its graph by name.
+
+/// One model file: `models/<model>/<file>`.
+#[derive(Debug, Clone, Copy)]
+pub struct PinnedFile {
+    /// The model's folder name and id.
+    pub model: &'static str,
+    /// The file name inside the model's folder.
+    pub file: &'static str,
+    pub url: &'static str,
+    pub size: u64,
+    pub sha256: &'static str,
+}
+
+/// One tar.xz archive unpacked into `runtime/<unpack_to>/` with its top folder stripped.
+#[derive(Debug, Clone, Copy)]
+pub struct PinnedArchive {
+    pub id: &'static str,
+    pub unpack_to: &'static str,
+    pub url: &'static str,
+    pub size: u64,
+    pub sha256: &'static str,
+}
+
+const HF: &str = "https://huggingface.co";
+
+macro_rules! hf {
+    ($model:literal, $repo:literal, $path:literal, $file:literal, $size:literal, $sha:literal) => {
+        PinnedFile {
+            model: $model,
+            file: $file,
+            url: concat!("https://huggingface.co/", $repo, "/resolve/main/", $path),
+            size: $size,
+            sha256: $sha,
+        }
+    };
+}
+
+/// Every model file, grouped by model.
+pub const MODEL_FILES: &[PinnedFile] = &[
+    hf!(
+        "parakeet-tdt-0.6b-v2",
+        "istupakov/parakeet-tdt-0.6b-v2-onnx",
+        "encoder-model.onnx",
+        "encoder-model.onnx",
+        41_770_866,
+        "3987bcd28175d829d12888a996a84e8f62a0e374d9ffd640662c1515adc679d3"
+    ),
+    hf!(
+        "parakeet-tdt-0.6b-v2",
+        "istupakov/parakeet-tdt-0.6b-v2-onnx",
+        "encoder-model.onnx.data",
+        "encoder-model.onnx.data",
+        2_435_420_160,
+        "4dab7362d4874d85965045b1e41b2d61dd2cc0fb25671a7f6b3dc47bf120cc41"
+    ),
+    hf!(
+        "parakeet-tdt-0.6b-v2",
+        "istupakov/parakeet-tdt-0.6b-v2-onnx",
+        "decoder_joint-model.onnx",
+        "decoder_joint-model.onnx",
+        35_792_059,
+        "cbb52a07bd70ab5b67f8439d4b3cd8704b18467b4430bcacb5adabe154b8d191"
+    ),
+    hf!(
+        "parakeet-tdt-0.6b-v2",
+        "istupakov/parakeet-tdt-0.6b-v2-onnx",
+        "vocab.txt",
+        "vocab.txt",
+        9_384,
+        "ec182b70dd42113aff6c5372c75cac58c952443eb22322f57bbd7f53977d497d"
+    ),
+    hf!(
+        "parakeet-ctc-0.6b",
+        "onnx-community/parakeet-ctc-0.6b-ONNX",
+        "onnx/model_fp16.onnx",
+        "model_fp16.onnx",
+        895_299,
+        "c9def1f936aee2e5e8403954a76e5bed5bc6ba6c6b69c470d0d23bf1035c0a78"
+    ),
+    hf!(
+        "parakeet-ctc-0.6b",
+        "onnx-community/parakeet-ctc-0.6b-ONNX",
+        "onnx/model_fp16.onnx_data",
+        "model_fp16.onnx_data",
+        1_217_499_650,
+        "969e56486047ea605ccd43023fcdee1a7d67854ce541002f5d5e535da930d43b"
+    ),
+    hf!(
+        "parakeet-ctc-0.6b",
+        "onnx-community/parakeet-ctc-0.6b-ONNX",
+        "tokenizer.json",
+        "tokenizer.json",
+        412_363,
+        "f3f1dd45c3889ed2b5bf67180caf05f51d7d7e4948c20e5f24d8c24df9cc47aa"
+    ),
+    hf!(
+        "parakeet-ctc-0.6b",
+        "onnx-community/parakeet-ctc-0.6b-ONNX",
+        "config.json",
+        "config.json",
+        1_033,
+        "ca081bf2d5eb6c769dccf3c9594ac7cb35f0457a7d836cf63bb49cd36851e399"
+    ),
+    hf!(
+        "mel-band-roformer-vocals",
+        "silverdaw/mel-band-roformer-vocals-onnx",
+        "syhft_core_folded_fp16_webgpu.onnx",
+        "syhft_core_folded_fp16_webgpu.onnx",
+        5_308_300,
+        "dde2bfe8f85d2c12efa24ce4d45cc13e8709b8a72e277a93f130d496d948e918"
+    ),
+    hf!(
+        "mel-band-roformer-vocals",
+        "silverdaw/mel-band-roformer-vocals-onnx",
+        "syhft_core_folded_fp16_webgpu.onnx.data",
+        "syhft_core_folded_fp16_webgpu.onnx.data",
+        741_190_540,
+        "b08cfc80905e3560a4dd5d30f641299a47dd96d309ebbe9524d9d6c9d2a0356f"
+    ),
+    hf!(
+        "mdx-net-voc-ft",
+        "Politrees/UVR_resources",
+        "models/MDXNet/UVR-MDX-NET-Voc_FT.onnx",
+        "UVR-MDX-NET-Voc_FT.onnx",
+        66_762_490,
+        "534b2070fcc7df514b13ef660dc8cbb328679c2374d04354a5c42bb14ecce111"
+    ),
+    hf!(
+        "whisper-large-v3",
+        "ggerganov/whisper.cpp",
+        "ggml-large-v3.bin",
+        "ggml-large-v3.bin",
+        3_095_033_483,
+        "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2"
+    ),
+    hf!(
+        "whisper-large-v3-turbo",
+        "ggerganov/whisper.cpp",
+        "ggml-large-v3-turbo-q8_0.bin",
+        "ggml-large-v3-turbo-q8_0.bin",
+        874_188_075,
+        "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1"
+    ),
+    hf!(
+        "qwen3-forced-aligner-0.6b",
+        "cstr/qwen3-forced-aligner-0.6b-GGUF",
+        "qwen3-forced-aligner-0.6b-q8_0.gguf",
+        "qwen3-forced-aligner-0.6b-q8_0.gguf",
+        985_594_624,
+        "539df5dd0fe1721e378ac13bfac9a26b1260dafb62d892c518c1f21244762636"
+    ),
+    hf!(
+        "ced-base",
+        "mispeech/ced-base",
+        "model.onnx",
+        "model.onnx",
+        86_870_208,
+        "1cb33c4300b6c52ae099a5af72058982e673ec79862855961b8b8c10eeaba74c"
+    ),
+    hf!(
+        "qwen3.5-4b",
+        "unsloth/Qwen3.5-4B-GGUF",
+        "Qwen3.5-4B-Q4_K_M.gguf",
+        "Qwen3.5-4B-Q4_K_M.gguf",
+        2_740_937_888,
+        "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4"
+    ),
+];
+
+/// The CUDA toolkit folder name under `runtime/`.
+pub const CUDA_FOLDER: &str = "cuda-13.4";
+/// The cuDNN folder name under `runtime/`.
+pub const CUDNN_FOLDER: &str = "cudnn-9.26";
+
+macro_rules! nv {
+    ($id:literal, $to:expr, $path:literal, $size:literal, $sha:literal) => {
+        PinnedArchive {
+            id: $id,
+            unpack_to: $to,
+            url: concat!("https://developer.download.nvidia.com/compute/", $path),
+            size: $size,
+            sha256: $sha,
+        }
+    };
+}
+
+/// The CUDA 13 runtime libraries ONNX Runtime, ggml and candle load, and the compiler pieces the
+/// ggml and candle kernels are built with.
+pub const CUDA_ARCHIVES: &[PinnedArchive] = &[
+    nv!(
+        "cuda_cudart",
+        CUDA_FOLDER,
+        "cuda/redist/cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-13.4.92-archive.tar.xz",
+        1_704_640,
+        "0ac5dbc538d04e9983bc493b410cce4b459e1ee9f5f6654b6464ef7b3e14a8b5"
+    ),
+    nv!(
+        "libcublas",
+        CUDA_FOLDER,
+        "cuda/redist/libcublas/linux-x86_64/libcublas-linux-x86_64-13.8.0.4-archive.tar.xz",
+        877_123_136,
+        "bd6ffcce561672da6abb928214a6694f392741e7d1e2d7dfde0da4bd651706b6"
+    ),
+    nv!(
+        "libcufft",
+        CUDA_FOLDER,
+        "cuda/redist/libcufft/linux-x86_64/libcufft-linux-x86_64-12.4.0.43-archive.tar.xz",
+        249_327_988,
+        "f7f8ac2cc67714989a3c8140cda39b1b7ed7d462a491e1ad3f53adb777f5070f"
+    ),
+    nv!(
+        "libcurand",
+        CUDA_FOLDER,
+        "cuda/redist/libcurand/linux-x86_64/libcurand-linux-x86_64-10.4.4.72-archive.tar.xz",
+        86_992_868,
+        "6f725f9187dc5f675308b830f786c163f5b1b499d86986f94fb60aa701c13c0b"
+    ),
+    nv!(
+        "cuda_nvrtc",
+        CUDA_FOLDER,
+        "cuda/redist/cuda_nvrtc/linux-x86_64/cuda_nvrtc-linux-x86_64-13.4.92-archive.tar.xz",
+        72_311_456,
+        "defc747cfa5953b86f4c67414fc349d21149e9d513c096cb89c64b8ec4c0c932"
+    ),
+    nv!(
+        "libnvjitlink",
+        CUDA_FOLDER,
+        "cuda/redist/libnvjitlink/linux-x86_64/libnvjitlink-linux-x86_64-13.4.92-archive.tar.xz",
+        58_209_588,
+        "e24557473e5e2e1dc591209558523deaca48b32123fe2b822f994b8e691c8ae3"
+    ),
+    nv!(
+        "cuda_nvcc",
+        CUDA_FOLDER,
+        "cuda/redist/cuda_nvcc/linux-x86_64/cuda_nvcc-linux-x86_64-13.4.92-archive.tar.xz",
+        33_304_524,
+        "60998f40cc9df5826b2a846e2dcc328133fbc5ef539398ce0a21cf5dcac7193d"
+    ),
+    nv!(
+        "cuda_crt",
+        CUDA_FOLDER,
+        "cuda/redist/cuda_crt/linux-x86_64/cuda_crt-linux-x86_64-13.4.92-archive.tar.xz",
+        101_980,
+        "c969e61ded12dbf0cf20ace72867f1622ec0e8ea1e1d305e27761012025f7aaa"
+    ),
+    nv!(
+        "libnvvm",
+        CUDA_FOLDER,
+        "cuda/redist/libnvvm/linux-x86_64/libnvvm-linux-x86_64-13.4.92-archive.tar.xz",
+        51_321_404,
+        "0e619cf3d5b27f7c812665599ca9761fc296e56129b24a85d822a5d8a1a3bd75"
+    ),
+    nv!(
+        "cccl",
+        CUDA_FOLDER,
+        "cuda/redist/cccl/linux-x86_64/cccl-linux-x86_64-13.3.4.3.1-archive.tar.xz",
+        1_404_324,
+        "6b7516074f42f80dd3feb9c11318c8e1c5ab56cdd9f18fff4c5ace2e7e0a8209"
+    ),
+    nv!(
+        "cuda_culibos",
+        CUDA_FOLDER,
+        "cuda/redist/cuda_culibos/linux-x86_64/cuda_culibos-linux-x86_64-13.4.92-archive.tar.xz",
+        21_440,
+        "241c618719e0613ce73b781c4e84b5eccf04e5baa3bae57de07980edb68a0e55"
+    ),
+    nv!(
+        "cuda_profiler_api",
+        CUDA_FOLDER,
+        "cuda/redist/cuda_profiler_api/linux-x86_64/cuda_profiler_api-linux-x86_64-13.4.92-archive.tar.xz",
+        17_112,
+        "9d405e9b0fd9a5c29e680d6f6750b9ca79b7df91e253d4dffea3495057a75f08"
+    ),
+    nv!(
+        "cudnn",
+        CUDNN_FOLDER,
+        "cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.26.0.51_cuda13-archive.tar.xz",
+        909_961_620,
+        "e62c9b4af62ea130765ea5b13244c05c9452edf1690072373d193d19766d9850"
+    ),
+];
+
+/// The files of one model, in manifest order.
+pub fn files_of(model: &str) -> impl Iterator<Item = &'static PinnedFile> + '_ {
+    MODEL_FILES.iter().filter(move |f| f.model == model)
+}
+
+/// Every model id, once each, in manifest order.
+pub fn model_ids() -> Vec<&'static str> {
+    let mut ids: Vec<&'static str> = Vec::new();
+    for file in MODEL_FILES {
+        if !ids.contains(&file.model) {
+            ids.push(file.model);
+        }
+    }
+    ids
+}
+
+/// The Hugging Face host, for tests that check every model URL points there.
+pub const HUGGING_FACE: &str = HF;

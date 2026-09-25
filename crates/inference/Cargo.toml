@@ -1,8 +1,8 @@
 # The inference backends behind traits: ONNX Runtime, ggml and candle models, the language-model
-# backends, and the model store.
+# backends, the model store and the CUDA runtime locator.
 [package]
 name = "inference"
-description = "Inference backends and the model store"
+description = "Inference backends, the model store and the CUDA runtime locator"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
@@ -13,3 +13,11 @@ publish = false
 child_process = { path = "../child_process" }
 # Stage names and the contract types.
 job_model = { path = "../job_model" }
+# Unpacks NVIDIA's .tar.xz runtime archives without an xz program or a C library.
+lzma-rs = { version = "0.3", default-features = false }
+# Checks every downloaded file against its pinned SHA-256.
+sha2 = { version = "0.11", default-features = false }
+# Reads the runtime archives once lzma-rs has decompressed them.
+tar = { version = "0.4", default-features = false }
+# Downloads model files and runtime archives over https, with resumable ranges.
+ureq = { version = "3", default-features = false, features = ["rustls"] }

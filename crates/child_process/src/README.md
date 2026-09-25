@@ -8,11 +8,12 @@ pipes, and the helpers that find a program, retry an operation and wait on a con
 
 ```text
 crates/child_process/src/
-├── lib.rs     the crate root: `Run` and its builder, `Output`, `Merged`, `RunError`, the re-exports
-├── lookup.rs  the helpers `which`, `retry` and `wait_for`: a PATH lookup, a retry, a deadline poll
-├── runner.rs  the calls `output`, `merged_output` and `status`: spawn in a new session, feed, reap
-├── stream.rs  the drain threads: one per pipe for separate capture, one for the shared pipe
-└── tests/     unit tests for the three calls, the error variants and the lookup helpers
+├── lib.rs      the crate root: `Run` and its builder, `Output`, `Merged`, `RunError`, the re-exports
+├── lookup.rs   the helpers `which`, `retry` and `wait_for`: a PATH lookup, a retry, a deadline poll
+├── runner.rs   the calls `output`, `merged_output` and `status`: spawn in a new session, feed, reap
+├── running.rs  the call `spawn`: a streamed stdout for the caller, a watchdog deadline, kill on drop
+├── stream.rs   the drain threads: one per pipe for separate capture, one for the shared pipe
+└── tests/      unit tests for the four calls, the error variants and the lookup helpers
 ```
 
 ## How it works
@@ -21,7 +22,8 @@ crates/child_process/src/
 Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
   ├─ output()         two pipes ──▶ SeparateDrains: a thread per pipe ──▶ Output
   ├─ merged_output()  one std::io::pipe for both ──▶ one drain thread ──▶ Merged
-  └─ status()         output(), then the code alone
+  ├─ status()         output(), then the code alone
+  └─ spawn()          stdout to the caller, stderr drain thread, watchdog ──▶ Running ──wait──▶ Finished
         │
         ├─ command()      pre_exec: setsid, or setpgid(0, 0) when that fails
         ├─ spawn()        NotFound ──▶ ProgramAbsent; any other error ──▶ Failed
@@ -47,6 +49,10 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
 - `merged_output` passes both write ends of one pipe to the child and then drops its own copies;
   otherwise the reader would never see EOF. The interleaving is the child's own, never a join of
   two strings.
+- `running.rs` hands the child's stdout to the caller (FFmpeg's PCM pipe) and drains stderr on a
+  thread. With a deadline, a watchdog thread polls every 50 ms and kills the group when it passes,
+  so a caller blocked on a read sees EOF; `wait` then reports `Timeout`. `wait` closes an unread
+  stdout before reaping, and dropping a `Running` that was never waited on kills its group.
 - `lookup.rs`: `which` returns the first `PATH` entry holding a file of that name. `retry` makes at
   least one attempt, sleeps a fixed backoff between attempts, returns the last error when all fail,
   and never retries `ProgramAbsent`. `wait_for` returns `Ok` only when its condition holds;
@@ -55,9 +61,11 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
 ## Public surface
 
 - `Run`, with `new`, `arg`, `args`, `cwd`, `env`, `env_remove`, `timeout`, `stdin`, `display`,
-  `output`, `merged_output` and `status`: used by `tools/verification_core/src/proc.rs`, which
+  `output`, `merged_output`, `status` and `spawn`: used by `tools/verification_core/src/proc.rs`, which
   re-exports it for the repository gates.
 - `Output`, `Merged` and `RunError`: the answers, re-exported by the same file.
+- `Running` and `Finished`: the streamed child and its result, for FFmpeg streams and worker
+  processes.
 - `which`, `retry` and `wait_for`: re-exported from `lookup.rs` at the crate root; the gates call
   `which` through `tools/verification_core/src/proc.rs`.
 
@@ -74,6 +82,9 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
     `merged_output_keeps_the_raw_exit_code`);
   - a timeout kills the whole group and returns `Timeout` (`timeout_kills_the_whole_process_group`,
     `timeout_reports_timeout`);
+  - a streamed child dies at its deadline and on drop
+    (`a_deadline_kills_a_reader_blocked_child`, `dropping_an_unwaited_handle_kills_the_child` in
+    `tests/running.rs`);
   - no pipe deadlocks a run (`large_output_does_not_deadlock`,
     `merged_output_times_out_without_deadlocking_on_a_full_pipe`), and the shared pipe keeps the
     child's order (`merged_output_preserves_interleaving`);
