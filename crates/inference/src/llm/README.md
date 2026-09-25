@@ -1,40 +1,33 @@
 # Language-model backends
 
-The language-model backends behind one trait: each takes the
-[diff sheet](/documentation/glossary.md#diff-sheet) and returns the adjudicated utterances as JSON.
-The trait and both backends are not written yet.
+The language-model backends behind one trait: a system prompt, a user message and a JSON Schema
+in, a JSON value out. The adjudication stage uses them to settle the
+[diff sheet](/documentation/glossary.md#diff-sheet). The `claude -p` backend is written; the local
+mistral.rs backend is not.
 
 ## Contents
 
 ```text
 crates/inference/src/llm/
 ├── claude_cli/  the headless `claude -p` CLI: a JSON schema in, the structured answer out, no tools
-├── mistral_rs/  a local model through mistral.rs on the GPU
-└── mod.rs       the module header and the two backend declarations
+├── mistral_rs/  a local model through mistral.rs on the GPU; not written
+└── mod.rs       the `LanguageModel` trait, `Completion` with tokens and cost, and `LlmError`
 ```
 
 ## How it works
 
-The [adjudication](/documentation/glossary.md#adjudication) stage is the one caller: it hands a
-backend the diff sheet and takes back one JSON object per utterance. `claude_cli/` is for the
-`claude` program, started as a child process; `mistral_rs/` is for a local model loaded inside the
-worker process. `mod.rs` declares both; each holds only its header.
-
-## Public surface
-
-- `llm::claude_cli` and `llm::mistral_rs`: public modules with no items yet, for
-  `crates/stages/src/adjudication/`.
+`LanguageModel::complete_json` returns a `Completion`: the JSON answer, the input and output
+tokens, and the provider's cost figure when it gives one. A backend that cannot produce JSON
+matching the schema returns `LlmError`, never an empty answer.
 
 ## Boundaries
 
-- Depends on: nothing yet; the module holds no code beyond its declarations.
-- Used by: nothing; `crates/inference/src/lib.rs` declares it as a public module.
-- Rules: every backend takes the diff sheet and answers with the adjudicated utterances as JSON,
-  behind the one trait (the header in `mod.rs`).
+- Depends on: `serde_json`; `child_process` in `claude_cli/`.
+- Used by: `crates/stages/src/adjudication/` and `tools/stack_spike/`.
+- Rules: a backend never sees timings (the adjudication prompt carries none; the header in
+  `crates/stages/src/adjudication/mod.rs`).
 
 ## Related documentation
 
-- [Pipeline](/documentation/architecture/pipeline.md#6-adjudication) — the adjudication input,
-  answer and automatic checks.
-- [Rust ML stack](/documentation/research/rust_ml_stack.md#6-language-models) — the local models
-  and the `claude` flags.
+- [Rust ML stack](/documentation/research/rust_ml_stack.md#6-language-models) — the backends and
+  the Claude CLI flags.

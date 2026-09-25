@@ -12,6 +12,7 @@ tools/stack_spike/src/items/
 ├── asr.rs           Parakeet-TDT over the shared chunk plan on the mix or a stem, and its transcript
 ├── compare.rs       the transcripts' disagreement with Parakeet on the mix, opening words, name counts
 ├── decode.rs        ffprobe, 16 kHz mono decoded to `mix_16k.f32`, and a 44.1 kHz stereo pass
+├── llm.rs           the diff sheet, and `claude -p` adjudication of it with the checks and name changes
 ├── mod.rs           the `Item` list in run order, which need the GPU or ggml, and their `Outcome`
 ├── separate.rs      MDX-Net Voc_FT and Mel-Band RoFormer over the track: stems, levels, excerpts
 ├── shots.rs         the scdet scan on the CPU with cut counts per score, and the NVDEC scan time
@@ -22,7 +23,7 @@ tools/stack_spike/src/items/
 ## Boundaries
 
 - Depends on: `media_io` (probe, PCM stream, shot scan), `stages::separation`, `stages::vad`,
-  `stages::asr`, `stages::alignment`, `stages::sound_events`, `stages::diff_sheet::align`, `inference::onnx`;
+  `stages::asr`, `stages::alignment`, `stages::sound_events`, `stages::adjudication`, `stages::diff_sheet::align`, `inference::onnx`, `inference::llm`;
   `crate::context::Context` for paths and model files.
 - Used by: `tools/stack_spike/src/measure/` (`Item::run` in the worker; `needs_gpu` and `ggml` in
   the parent).

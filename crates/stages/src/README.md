@@ -1,8 +1,8 @@
 # Pipeline stages source
 
 The `stages` library: one module folder per stage, from probing the video to writing the subtitle
-file. Separation, voice activity, speech recognition, forced alignment, sound events and the diff
-sheet's word alignment hold code; the other modules are not written yet.
+file. Separation, voice activity, speech recognition, forced alignment, sound events, the diff sheet
+and adjudication hold code; the other modules are not written yet.
 
 ## Contents
 
@@ -36,7 +36,8 @@ the diff sheet and the sound-event candidates, `alignment` reads the adjudicated
 down to `output`. `separation/` holds the stage driver and its resampler, `vad/` the detector
 run, the regions and the chunk plan, `asr/` the engine trait and the run over the plan,
 `alignment/` the CTC Viterbi aligner and its checks, `sound_events/` the windowed tagging and
-event cutting, and `diff_sheet/` the word alignment; every other module holds only a `mod.rs` with its header.
+event cutting, `diff_sheet/` the word alignment and the sheet, and `adjudication/` the model calls and
+their checks; every other module holds only a `mod.rs` with its header.
 
 ## Public surface
 
@@ -44,8 +45,9 @@ event cutting, and `diff_sheet/` the word alignment; every other module holds on
   in `crates/pipeline/`. `separation` offers `separate` and its request, summary and error
   types; `vad` offers `score_file`, `plan` and `VadSettings`; `asr` offers `SpeechEngine` and
   `transcribe_plan`; `alignment` offers `align_words_ctc` and `checks`; `sound_events` offers
-  `score_stem`, `events` and `classes`; `diff_sheet::align`
-  offers `normalise`, `align` and `errors`.
+  `score_stem`, `events` and `classes`; `diff_sheet` offers
+  `align` and `sheet::build`; `adjudication` offers `adjudicate`, `adjudicate_concurrently` and
+  `checks`.
 
 ## Boundaries
 

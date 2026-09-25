@@ -17,6 +17,8 @@ crispasr = ["dep:crispasr"]
 child_process = { path = "../child_process" }
 # Stage names and the contract types.
 job_model = { path = "../job_model" }
+# The language models' JSON answers and schemas.
+serde_json = "1"
 # Unpacks the gzip-compressed ONNX Runtime archive; the pure-Rust backend.
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 # Unpacks NVIDIA's .tar.xz runtime archives without an xz program or a C library.

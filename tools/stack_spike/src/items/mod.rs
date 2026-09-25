@@ -13,6 +13,7 @@ mod align;
 mod asr;
 mod compare;
 mod decode;
+mod llm;
 mod separate;
 mod shots;
 mod sound_events;
@@ -55,6 +56,10 @@ pub(crate) enum Item {
     AlignCtc,
     /// CED-base sound events on both stems, and music left in each vocal stem.
     SoundEvents,
+    /// The diff sheet from Parakeet and Whisper on the mix.
+    DiffSheet,
+    /// Adjudication by `claude -p` (sonnet), eight processes at once.
+    LlmClaude,
     /// The Qwen3 forced aligner (CrispASR, ggml) on the vocal stem.
     AlignQwen3,
 }
@@ -76,6 +81,8 @@ impl Item {
         Item::AlignCtc,
         Item::AlignQwen3,
         Item::SoundEvents,
+        Item::DiffSheet,
+        Item::LlmClaude,
     ];
 
     /// The name used on the command line and in result files.
@@ -89,6 +96,7 @@ impl Item {
     pub(crate) fn needs_gpu(self) -> bool {
         match self {
             Item::Decode | Item::Shots | Item::Vad | Item::AsrCompare => false,
+            Item::DiffSheet | Item::LlmClaude => false,
             Item::SeparateMdx | Item::SeparateRoformer => true,
             Item::AsrParakeetMix | Item::AsrParakeetMdx | Item::AsrParakeetRoformer => true,
             Item::AsrWhisperMix | Item::AsrWhisperRoformer | Item::AsrWhisperTurboMix => true,
@@ -121,6 +129,8 @@ impl Item {
             Item::AsrParakeetRoformer => asr::parakeet(ctx, asr::Input::Roformer),
             Item::AlignCtc => align::run(ctx),
             Item::SoundEvents => sound_events::run(ctx),
+            Item::DiffSheet => llm::diff_sheet(ctx),
+            Item::LlmClaude => llm::claude(ctx),
             Item::AsrWhisperMix
             | Item::AsrWhisperRoformer
             | Item::AsrWhisperTurboMix

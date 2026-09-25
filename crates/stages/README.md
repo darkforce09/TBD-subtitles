@@ -3,7 +3,7 @@
 The `stages` crate: one module folder per pipeline [stage](/documentation/glossary.md#stage), from
 probing the video to writing the subtitle file. Each stage reads its inputs from the job's work
 directory and writes one typed output there. Separation, voice activity, speech recognition,
-forced alignment, sound events and the diff sheet's word alignment hold code; the other stage modules are not written yet.
+forced alignment, sound events, the diff sheet and adjudication hold code; the other stage modules are not written yet.
 
 ## Contents
 
@@ -38,7 +38,8 @@ Media work goes through `media_io`, models through `inference`, and cues and fil
 stems; `vad` scores a stem with earshot and plans the chunks; `asr` runs any `SpeechEngine` over
 the plan; `alignment` times words through a CTC grid and checks an alignment; `sound_events`
 turns tagger scores into events;
-`diff_sheet::align` lines two engines' words up. `src/README.md` describes each module.
+`diff_sheet` lines the engines' words up into the sheet; `adjudication` has a
+language model settle it and checks the answer. `src/README.md` describes each module.
 
 ## Getting started
 
@@ -63,14 +64,16 @@ cargo test -p stages    # the unit tests of the stages that hold code
   `separation::resample::Resampler`; `vad::{score_file, plan, VadSettings}` with `vad::chunk_plan`
   and `vad::regions`; `asr::{SpeechEngine, transcribe_plan}`; `alignment::{align_words_ctc, checks, ctc_viterbi,
   spoken_form}`; `sound_events::{score_stem, events, mean_score, classes}`; and
-  `diff_sheet::align` hold code;
+  `diff_sheet::{align, sheet}`; and `adjudication::{adjudicate, adjudicate_concurrently,
+  checks, prompt}` hold code;
   the other modules hold no items yet.
 - No binary.
 
 ## Boundaries
 
 - Depends on: `media_io` and `inference` (called by `separation`, `vad` and `asr`), `earshot` (in
-  `vad`), `soundevents-dataset` (in `sound_events`); `subtitle_formats` and `job_model`, declared in `Cargo.toml`.
+  `vad`), `soundevents-dataset` (in `sound_events`), `serde` and `serde_json` (in `diff_sheet` and
+  `adjudication`); `subtitle_formats` and `job_model`, declared in `Cargo.toml`.
 - Used by: `tools/stack_spike/` and `tools/stack_spike_ggml/`; `crates/pipeline/` declares it as a
   dependency.
 - Rules:

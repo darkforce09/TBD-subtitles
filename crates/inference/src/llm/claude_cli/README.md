@@ -1,24 +1,27 @@
 # Claude CLI backend
 
-The headless `claude -p` CLI as a language-model backend: a JSON schema in, the structured answer
-out, with no tools enabled. The module's code is not written yet; `mod.rs` holds only its header.
+The headless `claude -p` CLI as a language-model backend: the owner's Claude subscription answers
+in JSON that matches a schema, with every tool disabled.
 
 ## Contents
 
 ```text
 crates/inference/src/llm/claude_cli/
-└── mod.rs  the module header; no items yet
+├── mod.rs  `ClaudeCli` (program, model, deadline, working folder) and `parse` of the JSON result
+└── tests/  unit tests for reading the structured answer, tokens and cost, and for error results
 ```
 
 ## Boundaries
 
-- Depends on: nothing; the module holds no code.
-- Used by: nothing; `crates/inference/src/llm/mod.rs` declares it as a public module.
-- Rules: the CLI runs with no tools enabled and answers against a JSON schema (the header in
-  `mod.rs`); like every program the crates start, it runs through `crates/child_process/`.
+- Depends on: `child_process::Run` (the `claude` program with a deadline), `serde_json`.
+- Used by: `tools/stack_spike/` (through `stages::adjudication`).
+- Rules:
+  - it runs `claude -p --output-format json --json-schema … --tools "" --no-session-persistence
+    --strict-mcp-config --disable-slash-commands --setting-sources project` in an empty folder, so
+    the owner's user-level hooks, plugins and MCP servers never reach the prompt (review);
+  - a result without `structured_output`, or marked `is_error`, is an error
+    (`a_result_without_structured_output_is_an_error`).
 
 ## Related documentation
 
-- [Rust ML stack](/documentation/research/rust_ml_stack.md#6-language-models) — the `claude -p`
-  flags and where the answer lands.
-- [Pipeline](/documentation/architecture/pipeline.md#6-adjudication) — what the backend is asked.
+- [Rust ML stack](/documentation/research/rust_ml_stack.md#6-language-models) — the CLI flags.

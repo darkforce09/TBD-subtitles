@@ -21,7 +21,11 @@ inference = { path = "../inference" }
 subtitle_formats = { path = "../subtitle_formats" }
 # Stage names and the contract types.
 job_model = { path = "../job_model" }
+# The diff sheet is written as JSON beside its text.
+serde = { version = "1", default-features = false, features = ["std", "derive"] }
 # The earshot voice-activity detector (pure Rust).
 earshot = "1"
+# The language models' JSON answers.
+serde_json = "1"
 # The AudioSet rated label table, to name the tagger's 527 outputs.
 soundevents-dataset = { version = "0.4", default-features = false, features = ["std", "rated"] }

@@ -1377,6 +1377,7 @@ dependencies = [
  "ort",
  "parakeet-rs",
  "realfft",
+ "serde_json",
  "sha2",
  "tar",
  "tokenizers",
@@ -3152,6 +3153,8 @@ dependencies = [
  "inference",
  "job_model",
  "media_io",
+ "serde",
+ "serde_json",
  "soundevents-dataset",
  "subtitle_formats",
 ]
