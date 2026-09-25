@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use super::*;
+use crate::model_store::manifest::ONNX_RUNTIME_FOLDER;
 
 fn fake_runtime(base: &Path) {
     let cuda = base.join(CUDA_FOLDER).join("lib");
@@ -12,6 +13,11 @@ fn fake_runtime(base: &Path) {
     }
     for lib in REQUIRED_CUDNN_LIBS {
         std::fs::write(cudnn.join(lib), b"").unwrap();
+    }
+    let ort = base.join(ONNX_RUNTIME_FOLDER).join("lib");
+    std::fs::create_dir_all(&ort).unwrap();
+    for lib in REQUIRED_ONNX_RUNTIME_LIBS {
+        std::fs::write(ort.join(lib), b"").unwrap();
     }
 }
 
@@ -58,10 +64,19 @@ fn the_library_path_puts_the_runtime_first() {
     let runtime = CudaRuntime {
         cuda_root: "/r/cuda".into(),
         cudnn_root: "/r/cudnn".into(),
+        onnxruntime_root: "/r/ort".into(),
     };
     assert_eq!(
         runtime.library_path(Some("/usr/lib")),
-        "/r/cuda/lib:/r/cudnn/lib:/usr/lib"
+        "/r/cuda/lib:/r/cudnn/lib:/r/ort/lib:/usr/lib"
     );
-    assert_eq!(runtime.library_path(Some("")), "/r/cuda/lib:/r/cudnn/lib");
+    assert_eq!(
+        runtime.library_path(Some("")),
+        "/r/cuda/lib:/r/cudnn/lib:/r/ort/lib"
+    );
+    assert!(
+        runtime
+            .onnxruntime_library()
+            .ends_with("lib/libonnxruntime.so")
+    );
 }

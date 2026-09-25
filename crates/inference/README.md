@@ -34,8 +34,8 @@ worker spawn ──▶ cuda_runtime::CudaRuntime::locate ──▶ worker_env (L
 Run these from the repository root:
 
 ```bash
-cargo build -p inference   # the model store and the runtime lookup
-cargo test -p inference    # unit tests for the pins, downloads in place and the runtime lookup
+cargo build -p inference   # the backends, the model store and the runtime lookup
+cargo test -p inference    # unit tests; the model checks are #[ignore] and run on the host
 ```
 
 ## Configuration
@@ -44,6 +44,8 @@ cargo test -p inference    # unit tests for the pins, downloads in place and the
   (`src/model_store/mod.rs`); one of them must be set.
 - `LD_LIBRARY_PATH`: kept after the runtime folders in a GPU worker's environment
   (`src/cuda_runtime/mod.rs`).
+- `ORT_DYLIB_PATH`: where `ort` loads ONNX Runtime from; set for a GPU worker by
+  `CudaRuntime::worker_env` (`src/cuda_runtime/mod.rs`) and read by the `ort` crate.
 
 ## Public surface
 
@@ -53,9 +55,10 @@ cargo test -p inference    # unit tests for the pins, downloads in place and the
 
 ## Boundaries
 
-- Depends on: `ureq`, `sha2`, `lzma-rs` and `tar` for the model store; `child_process` and
-  `job_model`, declared for the backends.
-- Used by: `tools/stack_spike/`; `crates/stages/` declares it as a dependency.
+- Depends on: `ort` (ONNX Runtime, loaded at run time) and `realfft` for the ONNX backends;
+  `ureq`, `sha2`, `lzma-rs`, `flate2` and `tar` for the model store; `child_process` and
+  `job_model`, declared for the other backends.
+- Used by: `crates/stages/` (separation) and `tools/stack_spike/`.
 - Rules:
   - the crate sits in layer 1 and depends only on layer 0 crates (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);

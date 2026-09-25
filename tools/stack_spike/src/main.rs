@@ -18,6 +18,7 @@ mod fetch;
 mod items;
 mod measure;
 mod report;
+mod wav;
 
 use std::path::PathBuf;
 

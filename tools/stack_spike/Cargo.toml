@@ -16,6 +16,8 @@ path = "src/main.rs"
 [dependencies]
 # Starts each item's worker process with a deadline and a streamed stdout.
 child_process = { path = "../../crates/child_process" }
+# The stages under test: separation, voice activity, alignment.
+stages = { path = "../../crates/stages" }
 # Model downloads, the CUDA runtime locator and the model backends under test.
 inference = { path = "../../crates/inference" }
 # The probe result and the other stage outputs the items write.

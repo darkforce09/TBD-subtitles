@@ -13,8 +13,16 @@ publish = false
 child_process = { path = "../child_process" }
 # Stage names and the contract types.
 job_model = { path = "../job_model" }
+# Unpacks the gzip-compressed ONNX Runtime archive; the pure-Rust backend.
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 # Unpacks NVIDIA's .tar.xz runtime archives without an xz program or a C library.
 lzma-rs = { version = "0.3", default-features = false }
+# ONNX Runtime for separation, CTC alignment and sound events, loaded at run time from Microsoft's
+# CUDA 13 build in the runtime folder: the prebuilt static library needs a newer glibc and
+# libstdc++ than the build container has, and a loaded library links nowhere at build time.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "api-27", "cuda", "load-dynamic"] }
+# The short-time Fourier transforms around the separation models.
+realfft = "3"
 # Checks every downloaded file against its pinned SHA-256.
 sha2 = { version = "0.11", default-features = false }
 # Reads the runtime archives once lzma-rs has decompressed them.

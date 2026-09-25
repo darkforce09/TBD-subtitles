@@ -2,7 +2,8 @@
 
 The `stages` crate: one module folder per pipeline [stage](/documentation/glossary.md#stage), from
 probing the video to writing the subtitle file. Each stage reads its inputs from the job's work
-directory and writes one typed output there. The stage modules are not written yet.
+directory and writes one typed output there. The separation stage holds code; the other stage
+modules are not written yet.
 
 ## Contents
 
@@ -33,15 +34,16 @@ language model. The run order and the worker split are those of `job_model::Stag
 | 11 | `output` | the runner | writes the subtitle file beside the video |
 
 Media work goes through `media_io`, models through `inference`, and cues and files through
-`subtitle_formats`. Each module holds only its header; `src/README.md` describes each.
+`subtitle_formats`. `separation` streams the mix through a separation model and writes the two
+stems; every other module holds only its header. `src/README.md` describes each.
 
 ## Getting started
 
 Run these from the repository root:
 
 ```bash
-cargo build -p stages   # the module declarations, with the crates beneath them
-cargo test -p stages    # runs 0 tests: no module holds code yet
+cargo build -p stages   # the stages, with the crates beneath them
+cargo test -p stages    # the unit tests of the stages that hold code
 ```
 
 ## Configuration
@@ -51,15 +53,16 @@ None: the crate reads no setting.
 ## Public surface
 
 - The library `stages`, with one public module per stage: `probe_decode`, `separation`, `vad`,
-  `asr`, `diff_sheet`, `sound_events`, `adjudication`, `alignment`, `cues`, `qc` and `output`;
-  they hold no items yet.
+  `asr`, `diff_sheet`, `sound_events`, `adjudication`, `alignment`, `cues`, `qc` and `output`.
+  `separation::{separate, SeparationRequest, SeparationSummary, SeparationError}` and
+  `separation::resample::Resampler` hold code; the other modules hold no items yet.
 - No binary.
 
 ## Boundaries
 
-- Depends on: `media_io`, `inference`, `subtitle_formats` and `job_model`, declared in `Cargo.toml`
-  and not called yet.
-- Used by: `crates/pipeline/`, which declares it as a dependency.
+- Depends on: `media_io` and `inference` (called by `separation`); `subtitle_formats` and
+  `job_model`, declared in `Cargo.toml`.
+- Used by: `tools/stack_spike/`; `crates/pipeline/` declares it as a dependency.
 - Rules:
   - the crate sits in layer 2 and depends only on lower layers (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);

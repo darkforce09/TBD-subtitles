@@ -23,9 +23,11 @@ Pure-Rust engines come first: `candle` and the `mistral_rs` backend under `llm/`
 `ggml/` are for the models where a crate that binds a native runtime is faster or more accurate.
 `model_store/` fetches every model file, in
 [GGUF, ONNX or safetensors](/documentation/glossary.md#gguf-onnx-safetensors) form, and the CUDA
-13 runtime archives, checking each against its pinned SHA-256 before any backend loads it.
+13 and ONNX Runtime archives, checking each against its pinned SHA-256 before any backend loads
+it.
 `cuda_runtime/` finds the unpacked runtime (beside the executable, or in the user runtime folder)
-and gives the `LD_LIBRARY_PATH` a GPU worker is started with.
+and gives the `LD_LIBRARY_PATH` and `ORT_DYLIB_PATH` a GPU worker is started with. `onnx/`
+holds the ONNX Runtime session helper and the separation models.
 
 ## Public surface
 
@@ -34,13 +36,15 @@ and gives the `LD_LIBRARY_PATH` a GPU worker is started with.
   `tools/stack_spike/`.
 - `cuda_runtime`: `CudaRuntime::locate` and `CudaRuntime::worker_env`; for the processes that
   start GPU workers.
-- `candle`, `ggml`, `llm` and `onnx`: public modules for the GPU stages in `crates/stages/src/`.
+- `onnx`: `session::open`, `Device`, `OnnxError`, and `separation::{MdxNet, MelRoformer,
+  OverlapAdd, WindowModel}`; for `crates/stages/src/separation/` and `tools/stack_spike/`.
+- `candle`, `ggml` and `llm`: public modules for the GPU stages in `crates/stages/src/`.
 
 ## Boundaries
 
-- Depends on: `ureq`, `sha2`, `lzma-rs` and `tar` in `model_store/`; the crate declares
-  `child_process` and `job_model` for the backends.
-- Used by: `tools/stack_spike/`; `crates/stages/` declares the crate as a dependency.
+- Depends on: `ort` and `realfft` in `onnx/`; `ureq`, `sha2`, `lzma-rs`, `flate2` and `tar` in
+  `model_store/`; the crate declares `child_process` and `job_model` for the backends.
+- Used by: `crates/stages/` and `tools/stack_spike/`.
 - Rules: two modules that bundle ggml never link into one binary, so each ggml crate runs in a
   worker process of its own (the headers in `lib.rs` and `ggml/mod.rs`).
 

@@ -12,7 +12,8 @@ tools/stack_spike/src/
 ├── items/      one module per stack item, each run inside a worker process
 ├── main.rs     the binary root: the command line and the dispatch to each command
 ├── measure/    the parent side (budget check, spawn, VRAM sampling, result file) and the worker side
-└── report.rs   the `report` command: the results table and the 120-minute projection
+├── report.rs   the `report` command: the results table and the 120-minute projection
+└── wav.rs      16-bit WAV excerpts of a 16 kHz stem, for listening by ear
 ```
 
 ## How it works
@@ -24,8 +25,8 @@ VRAM peaks. `report` reads every `results/<item>.json` back.
 
 ## Boundaries
 
-- Depends on: `inference`, `media_io`, `job_model` and `child_process`; `clap`, `anyhow`,
-  `serde_json`, `nvml-wrapper` and `libc`.
+- Depends on: `inference`, `media_io`, `stages`, `job_model` and `child_process`; `clap`,
+  `anyhow`, `serde_json`, `nvml-wrapper` and `libc`.
 - Used by: nothing; it is the binary's source.
 - Rules: a command that could not run exits non-zero with the reason, never a success (the
   header in `main.rs`).

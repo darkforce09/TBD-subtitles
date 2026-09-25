@@ -1,4 +1,5 @@
-//! Where the CUDA 13 runtime libraries live, and the environment a GPU worker needs to load them.
+//! Where the CUDA 13 runtime libraries and ONNX Runtime live, and the environment a GPU worker
+//! needs to load them.
 //!
 //! **Role:** find the folder holding cudart, cuBLAS, cuFFT, cuRAND, NVRTC and cuDNN for CUDA 13,
 //! check the libraries ONNX Runtime's CUDA provider loads are all there, and give the
@@ -15,7 +16,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use crate::model_store::manifest::{CUDA_FOLDER, CUDNN_FOLDER};
+use crate::model_store::manifest::{CUDA_FOLDER, CUDNN_FOLDER, ONNX_RUNTIME_FOLDER};
 
 /// The libraries ONNX Runtime 1.28's CUDA provider and cuDNN load, by soname.
 pub const REQUIRED_CUDA_LIBS: &[&str] = &[
@@ -39,6 +40,13 @@ pub const REQUIRED_CUDNN_LIBS: &[&str] = &[
     "libcudnn_engines_runtime_compiled.so.9",
 ];
 
+/// The ONNX Runtime library `ort` loads, and the CUDA provider it loads beside it.
+pub const REQUIRED_ONNX_RUNTIME_LIBS: &[&str] = &[
+    "libonnxruntime.so",
+    "libonnxruntime_providers_shared.so",
+    "libonnxruntime_providers_cuda.so",
+];
+
 /// A CUDA 13 runtime found on disk.
 #[derive(Debug, Clone)]
 pub struct CudaRuntime {
@@ -46,6 +54,8 @@ pub struct CudaRuntime {
     pub cuda_root: PathBuf,
     /// The cuDNN root: `lib/`, `include/`.
     pub cudnn_root: PathBuf,
+    /// The ONNX Runtime root: `lib/`, `include/`.
+    pub onnxruntime_root: PathBuf,
 }
 
 /// Why no runtime was found.
@@ -82,6 +92,7 @@ impl CudaRuntime {
             let runtime = CudaRuntime {
                 cuda_root: base.join(CUDA_FOLDER),
                 cudnn_root: base.join(CUDNN_FOLDER),
+                onnxruntime_root: base.join(ONNX_RUNTIME_FOLDER),
             };
             match runtime.first_missing() {
                 None => return Ok(runtime),
@@ -95,17 +106,32 @@ impl CudaRuntime {
     pub fn first_missing(&self) -> Option<String> {
         let cuda_lib = self.cuda_root.join("lib");
         let cudnn_lib = self.cudnn_root.join("lib");
+        let ort_lib = self.onnxruntime_root.join("lib");
         REQUIRED_CUDA_LIBS
             .iter()
             .map(|lib| cuda_lib.join(lib))
             .chain(REQUIRED_CUDNN_LIBS.iter().map(|lib| cudnn_lib.join(lib)))
+            .chain(
+                REQUIRED_ONNX_RUNTIME_LIBS
+                    .iter()
+                    .map(|lib| ort_lib.join(lib)),
+            )
             .find(|path| !path.exists())
             .map(|path| path.display().to_string())
     }
 
-    /// The library folders, CUDA first.
-    pub fn lib_dirs(&self) -> [PathBuf; 2] {
-        [self.cuda_root.join("lib"), self.cudnn_root.join("lib")]
+    /// The library folders: CUDA, cuDNN, ONNX Runtime.
+    pub fn lib_dirs(&self) -> [PathBuf; 3] {
+        [
+            self.cuda_root.join("lib"),
+            self.cudnn_root.join("lib"),
+            self.onnxruntime_root.join("lib"),
+        ]
+    }
+
+    /// The ONNX Runtime library `ort` loads at run time.
+    pub fn onnxruntime_library(&self) -> PathBuf {
+        self.onnxruntime_root.join("lib").join("libonnxruntime.so")
     }
 
     /// `LD_LIBRARY_PATH` for a GPU worker: the runtime folders ahead of `inherited`.
@@ -121,13 +147,20 @@ impl CudaRuntime {
         parts.join(":")
     }
 
-    /// The environment a GPU worker is started with.
+    /// The environment a GPU worker is started with: the library path, and `ORT_DYLIB_PATH`, which
+    /// tells `ort` where ONNX Runtime is.
     pub fn worker_env(&self) -> Vec<(String, String)> {
         let inherited = std::env::var("LD_LIBRARY_PATH").ok();
-        vec![(
-            "LD_LIBRARY_PATH".to_string(),
-            self.library_path(inherited.as_deref()),
-        )]
+        vec![
+            (
+                "LD_LIBRARY_PATH".to_string(),
+                self.library_path(inherited.as_deref()),
+            ),
+            (
+                "ORT_DYLIB_PATH".to_string(),
+                self.onnxruntime_library().display().to_string(),
+            ),
+        ]
     }
 }
 

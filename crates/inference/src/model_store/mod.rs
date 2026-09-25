@@ -22,7 +22,9 @@ use std::path::{Path, PathBuf};
 
 pub use archive::{install as install_archive, strip_first};
 pub use download::{Progress, fetch_verified, hex, sha256_of};
-pub use manifest::{CUDA_ARCHIVES, MODEL_FILES, PinnedArchive, PinnedFile};
+pub use manifest::{
+    CUDA_ARCHIVES, MODEL_FILES, ONNX_RUNTIME_ARCHIVE, PinnedArchive, PinnedFile, runtime_archives,
+};
 
 /// Why a download or a check failed.
 #[derive(Debug)]

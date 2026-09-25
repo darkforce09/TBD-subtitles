@@ -4,7 +4,7 @@ use std::io::Write;
 
 use anyhow::Context;
 use clap::Args;
-use inference::model_store::{self, CUDA_ARCHIVES, manifest};
+use inference::model_store::{self, manifest};
 
 #[derive(Args)]
 pub(crate) struct FetchArgs {
@@ -40,7 +40,7 @@ pub(crate) fn run(args: &FetchArgs) -> anyhow::Result<()> {
         .with_context(|| format!("fetching model {id}"))?;
         println!();
     }
-    for archive in CUDA_ARCHIVES.iter().filter(|a| wanted(a.id)) {
+    for archive in model_store::runtime_archives().filter(|a| wanted(a.id)) {
         println!("runtime {:<28} {:>8.1} MiB", archive.id, mib(archive.size));
         if args.dry_run {
             continue;

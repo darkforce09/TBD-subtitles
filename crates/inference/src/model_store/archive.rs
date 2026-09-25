@@ -1,10 +1,11 @@
-//! Unpacking a pinned runtime archive (`.tar.xz`) into a runtime folder.
+//! Unpacking a pinned runtime archive (`.tar.xz` or `.tgz`) into a runtime folder.
 //!
-//! **Role:** download an NVIDIA redistributable archive through `download.rs`, decompress it with
-//! lzma-rs on one thread while the tar reader unpacks it on another, strip the archive's top
-//! folder, and record the archive's hash in a marker so the unpack is not repeated.
+//! **Role:** download a runtime archive (NVIDIA's `.tar.xz` redistributables, Microsoft's ONNX
+//! Runtime `.tgz`) through `download.rs`, decompress it on one thread (lzma-rs or flate2) while
+//! the tar reader unpacks it on another, strip the archive's top folder, and record the archive's
+//! hash in a marker so the unpack is not repeated.
 //!
-//! **Position:** called by `mod.rs` for each entry of `CUDA_ARCHIVES`.
+//! **Position:** called by `mod.rs` for each runtime archive.
 //!
 //! **Signals and state:** writes `runtime/<unpack_to>/` and `runtime/.fetched/<id>`; keeps the
 //! downloaded archive in `runtime/.archives/` so a failed unpack does not download again.
@@ -40,7 +41,7 @@ pub fn install(
         progress,
     )?;
     let target = runtime_dir.join(archive.unpack_to);
-    unpack_tar_xz(&download, &target)?;
+    unpack(&download, &target)?;
     if let Some(parent) = marker.parent() {
         fs::create_dir_all(parent).map_err(|e| StoreError::io(parent, e))?;
     }
@@ -48,21 +49,28 @@ pub fn install(
     fs::remove_file(&download).map_err(|e| StoreError::io(&download, e))
 }
 
-/// Unpack a `.tar.xz` into `target`, dropping each entry's first path component.
-pub fn unpack_tar_xz(archive: &Path, target: &Path) -> Result<(), StoreError> {
+/// Unpack a `.tar.xz` or `.tgz` into `target`, dropping each entry's first path component.
+pub fn unpack(archive: &Path, target: &Path) -> Result<(), StoreError> {
+    let gzip = archive.to_string_lossy().ends_with(".tgz");
     let source = File::open(archive).map_err(|e| StoreError::io(archive, e))?;
     let (reader, mut writer) = std::io::pipe().map_err(|e| StoreError::io(archive, e))?;
     let label = archive.to_path_buf();
     let decoder = std::thread::spawn(move || -> Result<(), String> {
         let mut input = BufReader::new(source);
-        let result = lzma_rs::xz_decompress(&mut input, &mut writer).map_err(|e| e.to_string());
+        let result = if gzip {
+            std::io::copy(&mut flate2::read::GzDecoder::new(input), &mut writer)
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        } else {
+            lzma_rs::xz_decompress(&mut input, &mut writer).map_err(|e| e.to_string())
+        };
         let _ = writer.flush();
         result
     });
     let unpacked = unpack_entries(reader, target, &label);
     let decoded = decoder
         .join()
-        .unwrap_or_else(|_| Err("the xz decoder thread panicked".to_string()));
+        .unwrap_or_else(|_| Err("the decoder thread panicked".to_string()));
     unpacked?;
     decoded.map_err(|message| StoreError::Archive {
         path: label,

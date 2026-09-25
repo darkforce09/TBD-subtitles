@@ -1,6 +1,16 @@
 //! The stack items the spike measures, each run inside its own worker process.
+//!
+//! **Role:** list the items in run order, say which need the GPU, and dispatch each to its module.
+//!
+//! **Position:** `Item::run` is called by the worker (`measure/worker.rs`); `needs_gpu` by the
+//! parent (`measure/mod.rs`).
+//!
+//! **Signals and state:** none; each item reads the video and the work folder.
+//!
+//! **Invariants:** an item that reads another item's output comes after it in `Item::ALL`.
 
 mod decode;
+mod separate;
 mod shots;
 
 use std::time::Instant;
@@ -16,10 +26,19 @@ pub(crate) enum Item {
     Decode,
     /// FFmpeg's scdet shot-change scan on a 480-pixel copy, on the CPU and with NVDEC.
     Shots,
+    /// Vocal separation with UVR MDX-Net Voc_FT on CUDA.
+    SeparateMdx,
+    /// Vocal separation with Mel-Band RoFormer on CUDA.
+    SeparateRoformer,
 }
 
 impl Item {
-    pub(crate) const ALL: &[Item] = &[Item::Decode, Item::Shots];
+    pub(crate) const ALL: &[Item] = &[
+        Item::Decode,
+        Item::Shots,
+        Item::SeparateMdx,
+        Item::SeparateRoformer,
+    ];
 
     /// The name used on the command line and in result files.
     pub(crate) fn name(self) -> String {
@@ -32,6 +51,7 @@ impl Item {
     pub(crate) fn needs_gpu(self) -> bool {
         match self {
             Item::Decode | Item::Shots => false,
+            Item::SeparateMdx | Item::SeparateRoformer => true,
         }
     }
 
@@ -40,6 +60,8 @@ impl Item {
         match self {
             Item::Decode => decode::run(ctx),
             Item::Shots => shots::run(ctx),
+            Item::SeparateMdx => separate::run(ctx, separate::Separator::MdxVocFt),
+            Item::SeparateRoformer => separate::run(ctx, separate::Separator::MelRoformer),
         }
     }
 }

@@ -2,7 +2,8 @@
 //!
 //! **Role:** the one list of downloads. A file whose size or hash differs from its entry is never
 //! used. Model hashes are the Hugging Face LFS object ids (SHA-256 of the file); archive hashes
-//! come from NVIDIA's `redistrib_*.json` manifests (CUDA 13.4.2, cuDNN 9.26.0).
+//! come from NVIDIA's `redistrib_*.json` manifests (CUDA 13.4.2, cuDNN 9.26.0) and the GitHub release
+//! digest of ONNX Runtime 1.28.2.
 //!
 //! **Position:** read by `download.rs`, `archive.rs` and the callers that name a model by id.
 //!
@@ -23,7 +24,7 @@ pub struct PinnedFile {
     pub sha256: &'static str,
 }
 
-/// One tar.xz archive unpacked into `runtime/<unpack_to>/` with its top folder stripped.
+/// One `.tar.xz` or `.tgz` archive unpacked into `runtime/<unpack_to>/` with its top folder stripped.
 #[derive(Debug, Clone, Copy)]
 pub struct PinnedArchive {
     pub id: &'static str,
@@ -291,6 +292,26 @@ pub const CUDA_ARCHIVES: &[PinnedArchive] = &[
         "e62c9b4af62ea130765ea5b13244c05c9452edf1690072373d193d19766d9850"
     ),
 ];
+
+/// The ONNX Runtime folder name under `runtime/`.
+pub const ONNX_RUNTIME_FOLDER: &str = "onnxruntime-1.28.2";
+
+/// Microsoft's ONNX Runtime 1.28.2 built for CUDA 13, loaded by the `ort` crate at run time. The
+/// hash is the release asset's digest on GitHub.
+pub const ONNX_RUNTIME_ARCHIVE: PinnedArchive = PinnedArchive {
+    id: "onnxruntime",
+    unpack_to: ONNX_RUNTIME_FOLDER,
+    url: "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-linux-x64-gpu_cuda13-1.28.2.tgz",
+    size: 240_868_705,
+    sha256: "118ca8dbc4e4bb9b3b7fea137d796a89d957c9aa70e1dc3a5199a302cdd5bb32",
+};
+
+/// Every runtime archive: the CUDA libraries, then ONNX Runtime.
+pub fn runtime_archives() -> impl Iterator<Item = &'static PinnedArchive> {
+    CUDA_ARCHIVES
+        .iter()
+        .chain(std::iter::once(&ONNX_RUNTIME_ARCHIVE))
+}
 
 /// The files of one model, in manifest order.
 pub fn files_of(model: &str) -> impl Iterator<Item = &'static PinnedFile> + '_ {

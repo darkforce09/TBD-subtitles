@@ -1,7 +1,7 @@
 # Pipeline stages source
 
 The `stages` library: one module folder per stage, from probing the video to writing the subtitle
-file. The modules are not written yet.
+file. The separation module holds code; the others are not written yet.
 
 ## Contents
 
@@ -32,18 +32,19 @@ probe_decode ─▶ separation ─▶ vad ─▶ asr ─▶ diff_sheet ─▶ so
 The arrows are the run order of `StageName::ALL`. A stage reads what the stages before it wrote to
 the job's work directory: `diff_sheet` reads every engine's words from `asr`, `adjudication` reads
 the diff sheet and the sound-event candidates, `alignment` reads the adjudicated text, and so on
-down to `output`. Each module holds only a `mod.rs` with its header.
+down to `output`. `separation/` holds the stage driver and its resampler; every other module
+holds only a `mod.rs` with its header.
 
 ## Public surface
 
 - One public module per stage, named as the stage is named on the command line: for the job runner
-  in `crates/pipeline/`. No module holds items yet.
+  in `crates/pipeline/`. `separation` offers `separate` and its request, summary and error types.
 
 ## Boundaries
 
-- Depends on: nothing yet; the crate declares `media_io`, `inference`, `subtitle_formats` and
-  `job_model` for these modules.
-- Used by: nothing yet; `crates/pipeline/` declares the crate as a dependency.
+- Depends on: `media_io` and `inference` in `separation/`; the crate also declares
+  `subtitle_formats` and `job_model`.
+- Used by: `tools/stack_spike/`; `crates/pipeline/` declares the crate as a dependency.
 - Rules: each module is named exactly as its stage's `StageName::as_str` name, and a stage's output
   is complete or absent, never partial (the crate header in `lib.rs`).
 

@@ -29,6 +29,18 @@ fn every_pin_is_https_with_a_sha256() {
 }
 
 #[test]
+fn the_onnx_runtime_comes_from_microsoft_as_a_tgz() {
+    assert!(
+        ONNX_RUNTIME_ARCHIVE
+            .url
+            .starts_with("https://github.com/microsoft/onnxruntime/")
+    );
+    assert!(ONNX_RUNTIME_ARCHIVE.url.ends_with(".tgz"));
+    assert!(is_hash(ONNX_RUNTIME_ARCHIVE.sha256));
+    assert_eq!(runtime_archives().count(), CUDA_ARCHIVES.len() + 1);
+}
+
+#[test]
 fn model_ids_are_listed_once_in_order() {
     let ids = manifest::model_ids();
     assert_eq!(ids.first(), Some(&"parakeet-tdt-0.6b-v2"));

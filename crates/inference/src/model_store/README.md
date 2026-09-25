@@ -1,14 +1,14 @@
 # Model store
 
-The models folder and the runtime folder: the compiled-in manifest of pinned model files and CUDA
-runtime archives, the resumable downloads that check each file's SHA-256 before using it, and the
-unpacking of NVIDIA's `.tar.xz` archives.
+The models folder and the runtime folder: the compiled-in manifest of pinned model files and
+runtime archives (CUDA 13, cuDNN, ONNX Runtime), the resumable downloads that check each file's
+SHA-256 before using it, and the unpacking of NVIDIA's `.tar.xz` and Microsoft's `.tgz` archives.
 
 ## Contents
 
 ```text
 crates/inference/src/model_store/
-├── archive.rs   runtime archives: download, xz decode on a thread, tar unpack without the top folder
+├── archive.rs   runtime archives: download, xz or gzip decode on a thread, tar unpack minus the top folder
 ├── download.rs  one pinned file: resumable https download, size and SHA-256 check, rename into place
 ├── manifest.rs  every model file and runtime archive, pinned by URL, size and SHA-256
 ├── mod.rs       the folders, the error type, and the per-model fetch and completeness check
@@ -20,7 +20,7 @@ crates/inference/src/model_store/
 ```text
 fetch_model(models, id) ──▶ manifest::files_of(id) ──▶ download::fetch_verified ──▶ models/<id>/<file>
 install_archive(archive, runtime) ──▶ fetch_verified ──▶ runtime/.archives/<file>.tar.xz
-        └──▶ archive::unpack_tar_xz (lzma-rs thread ─pipe─▶ tar) ──▶ runtime/<unpack_to>/
+        └──▶ archive::unpack (lzma-rs or flate2 thread ─pipe─▶ tar) ──▶ runtime/<unpack_to>/
              └──▶ runtime/.fetched/<id> holds the archive's hash; the archive is deleted
 ```
 
@@ -32,12 +32,13 @@ install_archive(archive, runtime) ──▶ fetch_verified ──▶ runtime/.ar
 - `archive.rs` refuses tar entries with `..` or an absolute path, and lets a later archive's file
   replace an earlier one of the same name (the LICENSE files), so several archives merge into one
   toolkit folder.
-- `manifest.rs` holds the Hugging Face LFS hashes of the models and the hashes from NVIDIA's
-  `redistrib_13.4.2.json` and `redistrib_9.26.0.json`.
+- `manifest.rs` holds the Hugging Face LFS hashes of the models, the hashes from NVIDIA's
+  `redistrib_13.4.2.json` and `redistrib_9.26.0.json`, and the GitHub release digest of ONNX
+  Runtime 1.28.2 (CUDA 13); `runtime_archives` lists every runtime archive.
 
 ## Boundaries
 
-- Depends on: `ureq` (https with rustls), `sha2`, `lzma-rs`, `tar`; `std` for the files.
+- Depends on: `ureq` (https with rustls), `sha2`, `lzma-rs`, `flate2`, `tar`; `std` for the files.
 - Used by: `crates/inference/src/cuda_runtime/` (the folder names); `tools/stack_spike/` (the
   `fetch` command and the model folders).
 - Rules:

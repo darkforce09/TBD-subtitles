@@ -8,7 +8,7 @@ the stems are kept in.
 
 ```text
 crates/media_io/src/pcm_stream/
-├── f32_file.rs  raw little-endian `.f32` files: write a stream whole or not at all, read one in chunks
+├── f32_file.rs  raw little-endian `.f32` files: written through `.part` and renamed, read in chunks
 ├── mod.rs       `PcmStream`: FFmpeg to a pipe, a reader thread, at most four chunks queued
 └── tests/       unit tests on a generated tone: rate, chunk sizes, excerpts, files and failures
 ```
@@ -26,12 +26,15 @@ write_f32_file: every chunk to <path>.part, finish(), rename to <path>
 
 A chunk is `chunk_frames × channels` samples; only the last may be shorter. A dropped
 `PcmStream` drops its `Running` handle, which kills FFmpeg. `F32FileReader` reads a raw file back
-in the same fixed chunks, so a stage streams a stem from the work directory without loading it.
+in the same fixed chunks, so a stage streams a stem from the work directory without loading it;
+`F32FileWriter` writes one sample run at a time and renames its `.part` file into place on
+`finish`.
 
 ## Boundaries
 
 - Depends on: `child_process::Run::spawn` for FFmpeg; `std` for the channel, thread and files.
-- Used by: `tools/stack_spike/` (the decode item writes `mix_16k.f32`).
+- Used by: `crates/stages/src/separation/` (the stems) and `tools/stack_spike/` (the decode item
+  writes `mix_16k.f32`).
 - Rules:
   - memory stays bounded: at most `QUEUED_CHUNKS` chunks wait (`decodes_in_fixed_chunks_at_the_asked_rate`);
   - a failed decode is an error at `finish`, never a short file passed as whole

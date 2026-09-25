@@ -1,7 +1,8 @@
 # CUDA runtime
 
-Finds the CUDA 13 and cuDNN 9 libraries the GPU backends load, and gives the environment a GPU
-worker is started with so ONNX Runtime, ggml and candle all load the same libraries.
+Finds the CUDA 13 and cuDNN 9 libraries and ONNX Runtime the GPU backends load, and gives the
+environment a GPU worker is started with (`LD_LIBRARY_PATH`, `ORT_DYLIB_PATH`) so ONNX Runtime,
+ggml and candle all load the same libraries.
 
 ## Contents
 
@@ -13,12 +14,12 @@ crates/inference/src/cuda_runtime/
 
 ## Boundaries
 
-- Depends on: `crates/inference/src/model_store/manifest.rs` for the folder names `cuda-13.4`
-  and `cudnn-9.26`.
+- Depends on: `crates/inference/src/model_store/manifest.rs` for the folder names `cuda-13.4`,
+  `cudnn-9.26` and `onnxruntime-1.28.2`.
 - Used by: `tools/stack_spike/`, which starts every GPU worker with `CudaRuntime::worker_env`.
 - Rules:
-  - a runtime is returned only when every library in `REQUIRED_CUDA_LIBS` and
-    `REQUIRED_CUDNN_LIBS` exists (`a_missing_library_is_named`);
+  - a runtime is returned only when every library in `REQUIRED_CUDA_LIBS`,
+    `REQUIRED_CUDNN_LIBS` and `REQUIRED_ONNX_RUNTIME_LIBS` exists (`a_missing_library_is_named`);
   - `<exe dir>/cuda/` wins over the user runtime folder (`the_packaged_folder_wins`);
   - the runtime folders come first in `LD_LIBRARY_PATH`
     (`the_library_path_puts_the_runtime_first`).

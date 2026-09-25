@@ -21,6 +21,7 @@ use media_io::Programs;
 pub(crate) struct Context {
     pub(crate) video: PathBuf,
     pub(crate) work: PathBuf,
+    pub(crate) models: PathBuf,
     pub(crate) programs: Programs,
 }
 
@@ -35,8 +36,14 @@ impl Context {
         Ok(Context {
             video: video.to_path_buf(),
             work,
+            models: model_store::models_dir()?,
             programs: Programs::default(),
         })
+    }
+
+    /// A file of a downloaded model.
+    pub(crate) fn model_file(&self, model: &str, file: &str) -> PathBuf {
+        self.models.join(model).join(file)
     }
 
     /// A file in the work folder.

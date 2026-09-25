@@ -26,8 +26,8 @@ usable audio track.
 ## Public surface
 
 - `probe::{probe, parse, english_track}`, `pcm_stream::{PcmStream, PcmRequest, PcmFormat,
-  write_f32_file, F32FileReader}`, `shot_changes::{scan, parse}`, `Programs` and `MediaError`: for
-  `tools/stack_spike/` now and the `probe_decode` stage later.
+  write_f32_file, F32FileReader, F32FileWriter}`, `shot_changes::{scan, parse}`, `Programs` and
+  `MediaError`: for `crates/stages/`, `tools/stack_spike/` and the `probe_decode` stage.
 
 ## Boundaries
 

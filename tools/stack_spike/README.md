@@ -28,7 +28,9 @@ stack-spike report --video V ──▶ Markdown table + the 120-minute projectio
 ```
 
 Items run in the order `Item::ALL` lists them, and later items read what earlier ones wrote to
-the work folder (`probe.json`, `mix_16k.f32`, …). The work folder defaults to
+the work folder (`probe.json`, `mix_16k.f32`, the stems `vocals_16k.<separator>.f32` and
+`background_16k.<separator>.f32`, …). The separation items also write 30-second WAV excerpts of
+the mix and both stems for listening. The work folder defaults to
 `<data home>/tbd-subtitles/work/spike-<video name as a slug>`; the video is only read.
 
 ## Getting started
@@ -61,8 +63,8 @@ A GPU item refuses to run (and records "not run") while less than 5632 MiB of VR
 
 ## Boundaries
 
-- Depends on: `crates/child_process/` (workers), `crates/inference/` (model store, CUDA runtime),
-  `crates/job_model/` and `crates/media_io/` (the items under test); `clap`, `anyhow`, `serde`,
+- Depends on: `crates/child_process/` (workers), `crates/inference/` (model store, CUDA runtime,
+  models), `crates/job_model/`, `crates/media_io/` and `crates/stages/` (the items under test); `clap`, `anyhow`, `serde`,
   `serde_json`, `libc` and `nvml-wrapper`; the programs `ffmpeg` and `ffprobe` through `media_io`.
 - Used by: a developer measuring the stack; nothing depends on it.
 - Rules:
