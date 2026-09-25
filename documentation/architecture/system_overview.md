@@ -2,9 +2,10 @@
 
 # System overview
 
-The planned shape of TBD-subtitles: one Rust binary, a job runner, worker processes for GPU
-stages, FFmpeg for media, and a work directory per job. Nothing here exists yet; milestone M0
-creates the skeleton.
+The shape of TBD-subtitles: one Rust binary, a job runner, worker processes for GPU stages,
+FFmpeg for media, and a work directory per job. The workspace, the binary with its three
+subcommands, every crate and module folder, and the repository gates exist; the stages inside
+them are written milestone by milestone (see the [roadmap](/documentation/roadmap.md)).
 
 ## Processes
 
@@ -35,26 +36,31 @@ creates the skeleton.
 - **FFmpeg/ffprobe** — the only external programs. Audio is decoded to a pipe
   (`-f f32le pipe:1`) and read in fixed-size chunks; stderr is drained on its own thread.
 
-## Planned crates
+## Crates
 
 ```text
 apps/
 └── tbd_subtitles/        the binary: clap subcommands, eframe GUI, composition root
 crates/
-├── job_model/            serde types for jobs, stage outputs, reports — the contracts between stages
-├── media_io/             ffprobe JSON, FFmpeg PCM streaming, shot-change scan, chunking
-├── pipeline/             stage graph, resume logic, worker spawning, progress events
-├── stages/               one module folder per stage (separation, vad, asr, adjudication,
-│                         alignment, cues, sound_events, qc, output)
-├── inference/            backends behind traits: onnx (ort), ggml, candle, llm (claude CLI, mistral.rs)
-└── subtitle_formats/     cue model, SRT/ASS/VTT writers, import of existing subtitles
+├── child_process/        external programs with deadlines, process-group kills and drained pipes
+├── inference/            backends behind traits: onnx (ort), ggml, candle, llm (claude CLI, mistral.rs),
+│                         model store
+├── job_model/            serde types for jobs, stage names, stage outputs, reports — the contracts
+├── media_io/             ffprobe JSON, FFmpeg PCM streaming, shot-change scan
+├── pipeline/             stage graph, resume logic, worker processes, progress events, work directory
+├── stages/               one module folder per stage (probe_decode, separation, vad, asr, diff_sheet,
+│                         sound_events, adjudication, alignment, cues, qc, output)
+└── subtitle_formats/     cue model, SRT/VTT/ASS writers, import of existing subtitles
 tools/
-└── repo_gates/           checks the repository laws (language ban, file length, READMEs, links)
+├── repo_gates/           `cargo gates`: the repository laws a program can check
+└── verification_core/    the fail-closed verdicts, patterns and reports the gates are written with
 ```
 
-Layering: `tbd_subtitles` → `pipeline` → `stages` → `inference`, `media_io`,
-`subtitle_formats` → `job_model`. A lower crate never depends on a higher one; architecture tests
-hold this. All boundaries are Rust to Rust, so the stage contracts are the serde types in
+Layering, lowest first: `job_model` and `child_process`; `media_io`, `subtitle_formats` and
+`inference`; `stages`; `pipeline`; `tbd_subtitles`. A crate depends only on crates of a lower
+layer, never a sibling (`cargo gates crate-layering`); the tools depend on no product crate but
+`child_process`. Inside the app, feature folders keep rendering out of their models and services
+(the tests in `apps/tbd_subtitles/src/tests/architecture_rules.rs`). All boundaries are Rust to Rust, so the stage contracts are the serde types in
 `job_model`; the one external contract, the language model's JSON answer, is a JSON Schema kept
 beside its backend.
 

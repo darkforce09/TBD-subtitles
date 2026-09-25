@@ -8,20 +8,27 @@ passes; nothing moves to a later milestone without the owner saying so.
 
 ## M0 — Workspace skeleton and gates
 
-- [ ] Root `Cargo.toml` workspace (resolver 3, members only); every crate sets edition 2024,
+- [x] Root `Cargo.toml` workspace (resolver 3, members only); every crate sets edition 2024,
       `rust-version = "1.95"`, `publish = false`.
-- [ ] `apps/tbd_subtitles`: one binary with clap subcommands (`gui`, `process`, `worker <stage>`),
+- [x] `apps/tbd_subtitles`: one binary with clap subcommands (`gui`, `process`, `worker <stage>`),
       an eframe window that opens, and a README.md.
-- [ ] Crate skeletons from the [system overview](/documentation/architecture/system_overview.md),
-      each with a README.md and a `//!` module header.
-- [ ] `tools/repo_gates`: a Rust program that fails on tracked Python, shell, Makefile or Node
-      files, production files of 500 lines or more, test files of 1000 or more, code folders
-      without a README.md, documents without a status line, and broken root-relative links.
-- [ ] Architecture rule tests: lower layers never import higher ones.
+- [x] Crate skeletons from the [system overview](/documentation/architecture/system_overview.md),
+      each with a README.md and a `//!` module header, and a README.md in every module folder.
+- [x] `crates/child_process`: child processes with deadlines, process-group kills and drained
+      pipes, for FFmpeg, ffprobe, the `claude` CLI and the GPU workers.
+- [x] `tools/repo_gates` (`cargo gates`) on `tools/verification_core`: fails on tracked Python,
+      shell, Makefile or Node files, production files of 500 lines or more, test files of 1000 or
+      more, missing module headers, inline tests, ticket and milestone ids and history words,
+      whitespace errors, upward crate dependencies, folders without a README.md or with a
+      Contents block that does not match, READMEs out of shape, documents without a status line,
+      and broken links, anchors, backticked paths and cited commands.
+- [x] Architecture rule tests: lower layers never import higher ones (`cargo gates
+      crate-layering`, and the app's feature-folder tests).
+- [x] README standard and templates for every README kind and document type.
 
 **Acceptance:** `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
-`cargo test --workspace` and `cargo run -p repo_gates` all pass; `tbd-subtitles gui` opens a
-window on the host.
+`cargo test --workspace` and `cargo gates` all pass; `tbd-subtitles gui` opens a window on the
+host.
 
 ## M0.5 — Stack spike on Dressrosa 08
 

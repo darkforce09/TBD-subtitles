@@ -1,0 +1,15 @@
+# The inference backends behind traits: ONNX Runtime, ggml and candle models, the language-model
+# backends, and the model store.
+[package]
+name = "inference"
+description = "Inference backends and the model store"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+# Runs FFmpeg, ffprobe and the other external programs with deadlines.
+child_process = { path = "../child_process" }
+# Stage names and the contract types.
+job_model = { path = "../job_model" }

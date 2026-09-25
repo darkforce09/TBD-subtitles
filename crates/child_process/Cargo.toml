@@ -1,0 +1,14 @@
+# Runs external programs: FFmpeg, ffprobe, the claude CLI and the app's own GPU workers, and git
+# and cargo for the repository tools. Every child gets a deadline, its own process group and
+# drained pipes.
+[package]
+name = "child_process"
+description = "Child processes with deadlines, process-group kills and drained pipes"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+# setsid, setpgid and killpg: a timeout kills the whole process tree, not only its leader.
+libc = { version = "0.2", default-features = false }

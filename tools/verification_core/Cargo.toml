@@ -1,0 +1,15 @@
+# The fail-closed check library under every repository gate. Dependency-light on purpose: the
+# gates link it, so anything added here is paid for by every gate build.
+[package]
+name = "verification_core"
+description = "Fail-closed verdicts, pattern scans and child processes for repository gates"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+# Runs git and cargo with timeouts, process-group kills and drained pipes.
+child_process = { path = "../../crates/child_process" }
+# The pattern matcher, compiled into the gate so no search binary can go missing.
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode"] }

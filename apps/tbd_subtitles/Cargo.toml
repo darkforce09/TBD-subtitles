@@ -1,0 +1,29 @@
+# The TBD-subtitles binary: the eframe desktop window, the `process` command line, and the `worker`
+# subcommands that run each GPU stage in its own process. It composes the library crates.
+[package]
+name = "tbd_subtitles"
+description = "Generates English subtitles for local videos: GUI, command line and GPU workers"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[[bin]]
+name = "tbd-subtitles"
+path = "src/main.rs"
+
+[dependencies]
+# Runs jobs: stage order, resume, worker processes, progress.
+pipeline = { path = "../../crates/pipeline" }
+# Stage names for the `worker` subcommand.
+job_model = { path = "../../crates/job_model" }
+# Error context at the top of the binary only; the library crates return typed errors.
+anyhow = "1"
+# The subcommands `gui`, `process` and `worker`.
+clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions", "color"] }
+# The desktop window. glow (OpenGL) is the renderer: wgpu fails to create a surface on the owner's
+# Wayland desktop. wayland and x11 cover both session types.
+eframe = { version = "0.36", default-features = false, features = ["glow", "wayland", "x11", "default_fonts"] }
+# Log lines to stderr, filtered by RUST_LOG.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "ansi", "env-filter"] }

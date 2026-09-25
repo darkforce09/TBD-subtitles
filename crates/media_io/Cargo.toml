@@ -1,0 +1,15 @@
+# Media input through FFmpeg and ffprobe, run as child processes: probing, streaming PCM audio in
+# bounded chunks, and scanning shot changes. No libav is linked.
+[package]
+name = "media_io"
+description = "FFmpeg and ffprobe as child processes: probe, PCM streaming, shot changes"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+# Runs FFmpeg, ffprobe and the other external programs with deadlines.
+child_process = { path = "../child_process" }
+# Stage names and the contract types.
+job_model = { path = "../job_model" }

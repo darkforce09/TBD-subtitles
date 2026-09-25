@@ -1,0 +1,19 @@
+# One module folder per pipeline stage. Each stage reads its inputs from the job's work directory,
+# does its work through media_io, inference and subtitle_formats, and writes a typed output.
+[package]
+name = "stages"
+description = "The pipeline stages, from probe to subtitle file"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+# Media input: probing, PCM audio, shot changes.
+media_io = { path = "../media_io" }
+# The model backends the GPU stages run.
+inference = { path = "../inference" }
+# The cue model and the file writers.
+subtitle_formats = { path = "../subtitle_formats" }
+# Stage names and the contract types.
+job_model = { path = "../job_model" }

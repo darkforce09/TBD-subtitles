@@ -3,12 +3,19 @@
 # Desktop GUI
 
 The window the owner uses to queue videos, watch progress, read job reports and fix the lines the
-pipeline was unsure about. Planned for milestone M2; nothing is built yet.
+pipeline was unsure about. Planned for milestone M2. What exists now: the window opens
+(`tbd-subtitles` or `tbd-subtitles gui [VIDEO]...`), and its queue panel lists the videos given
+on the command line or dropped onto the window, each with a button that takes it out again.
 
 ## Where it lives
 
-- Code (planned): `apps/tbd_subtitles/`, subcommand `gui`, built with eframe (egui).
-- Entry (planned): a desktop entry "TBD Subtitles" on the host; `tbd-subtitles gui` from a terminal.
+- Code: `apps/tbd_subtitles/`, subcommand `gui`, built with eframe (egui) on the glow renderer:
+  the shell in `apps/tbd_subtitles/src/application/`, and one feature folder each for the queue
+  (`apps/tbd_subtitles/src/job_queue/`), the report (`apps/tbd_subtitles/src/job_report/`),
+  line review (`apps/tbd_subtitles/src/line_review/`) and settings
+  (`apps/tbd_subtitles/src/settings/`).
+- Entry: `tbd-subtitles gui` from a terminal on the host; a desktop entry "TBD Subtitles" is
+  planned with the automation feature.
 - Related: [automation](/documentation/features/automation.md) feeds the same job queue.
 
 ## Behaviour
@@ -40,8 +47,10 @@ pipeline was unsure about. Planned for milestone M2; nothing is built yet.
 A simple two-pane window: the queue on the left, the selected job (progress, report or review) on
 the right. Code layout follows the TBD-Reforger desktop-app pattern: one folder per feature with
 `models/`, `services/` and `ui/`, where the UI draws from a borrowed view and returns events that
-the application applies after the frame. Only the pattern is reused; no code or ticket system comes
-from that project.
+the application applies after the frame. Its architecture tests
+(`apps/tbd_subtitles/src/tests/architecture_rules.rs`) hold the pattern here; no ticket system comes
+from that project. The renderer is glow (OpenGL), because wgpu fails to create a surface on the
+owner's Wayland desktop.
 
 ## Open work
 

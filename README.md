@@ -5,8 +5,9 @@ the important sounds (SDH), timed to the word and laid out like professional sub
 video, get a `.srt` or `.ass` file beside it that VLC loads automatically. Later: translated
 subtitles for Japanese text shown on screen.
 
-**Status:** planning. The repository holds the goals, research, architecture and roadmap; code
-starts with milestone M0.
+**Status:** scaffold. The workspace, the desktop window, every crate and module folder with its
+README, and the repository checks exist; the subtitle pipeline is built next (see the
+[roadmap](/documentation/roadmap.md)).
 
 ## Layout
 
@@ -15,10 +16,21 @@ starts with milestone M0.
 | [`CLAUDE.md`](/CLAUDE.md) | Project laws, directory atlas and environment rules for AI sessions (`AGENTS.md` links to it) |
 | [`documentation/`](/documentation/README.md) | Every document: goals, decisions, roadmap, architecture, research, features, runbooks, standards |
 | [`rust-toolchain.toml`](/rust-toolchain.toml) | Rust 1.95.0 for the whole workspace |
+| [`Cargo.toml`](/Cargo.toml) | The Cargo workspace: the app, the library crates and the tools |
+| [`apps/`](/apps/README.md) | The `tbd-subtitles` binary: desktop window, command line, GPU workers |
+| [`crates/`](/crates/README.md) | Library crates: job model, child processes, media input, subtitle formats, inference, stages, job runner |
+| [`tools/`](/tools/README.md) | `cargo gates`, the checks of the repository laws |
 
-Planned: `apps/tbd_subtitles/` (the GUI and CLI binary), `crates/` (media, pipeline, inference,
-subtitle formats) and `tools/repo_gates/` — see the
-[system overview](/documentation/architecture/system_overview.md).
+## Build and check
+
+```bash
+cargo build --workspace
+cargo test --workspace
+cargo gates
+```
+
+The [development environment runbook](/documentation/runbooks/development_environment.md) covers
+the host, the GPU and opening the window.
 
 ## Documentation
 

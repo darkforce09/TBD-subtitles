@@ -1,0 +1,3 @@
+# `cargo gates` runs every repository gate; `cargo gates <gate>` runs one. See tools/repo_gates.
+[alias]
+gates = "run --quiet --package repo_gates --"

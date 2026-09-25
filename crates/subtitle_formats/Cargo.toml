@@ -1,0 +1,13 @@
+# The cue model and the subtitle file formats: writers for SRT, WebVTT and ASS, and import of
+# existing subtitle files.
+[package]
+name = "subtitle_formats"
+description = "Cue model, SRT, WebVTT and ASS writers, subtitle import"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+# Stage names and the contract types.
+job_model = { path = "../job_model" }

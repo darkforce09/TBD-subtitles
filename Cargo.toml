@@ -1,0 +1,16 @@
+# The TBD-subtitles workspace: the app, its library crates and the repository tools. Every member
+# sets its own edition, rust-version and publish flag; see the coding standards.
+[workspace]
+resolver = "3"
+members = [
+    "apps/tbd_subtitles",
+    "crates/child_process",
+    "crates/inference",
+    "crates/job_model",
+    "crates/media_io",
+    "crates/pipeline",
+    "crates/stages",
+    "crates/subtitle_formats",
+    "tools/repo_gates",
+    "tools/verification_core",
+]

@@ -1,0 +1,17 @@
+# Runs a job: the stage graph in order, resume from finished stages, GPU stages as worker
+# subprocesses, and progress events for the GUI and the CLI.
+[package]
+name = "pipeline"
+description = "Job runner: stage order, resume, worker processes, progress"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+# The stages the runner calls in process.
+stages = { path = "../stages" }
+# Starts the app's own worker subprocesses.
+child_process = { path = "../child_process" }
+# Stage names and the contract types.
+job_model = { path = "../job_model" }

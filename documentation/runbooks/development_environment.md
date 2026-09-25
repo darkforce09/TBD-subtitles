@@ -69,10 +69,38 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
 4. Probe a test video.
 
    ```bash
-   distrobox-host-exec ffprobe -v error -show_entries stream=codec_type,codec_name,r_frame_rate,start_time -of compact "/run/media/system/Main_storage/Media/one_pace/[Muhn Pace] Dressrosa 08.mp4"
+   distrobox-host-exec ffprobe -v error -show_entries stream=codec_type,codec_name,r_frame_rate,start_time -of compact "/run/media/system/Main_storage/Media/one_pace/done/[Muhn Pace] Dressrosa 08.mp4"
    ```
 
    **Expected:** an `h264` video stream at `24/1` and an `aac` audio stream, both `start_time=0.000000`.
+
+5. Build the workspace and run its checks, from the repository root.
+
+   ```bash
+   cargo clippy --workspace --all-targets -- -D warnings
+   ```
+
+   **Expected:** `Finished` with no warning. Then `cargo fmt --all --check` prints nothing and
+   `cargo test --workspace` ends every crate with `test result: ok`.
+
+6. Run the repository gates.
+
+   ```bash
+   cargo gates
+   ```
+
+   **Expected:** every gate ends with `OK — N check(s), all held` and the command exits 0. Add
+   `--with-untracked` to include new files before they are staged, and name one gate
+   (`cargo gates link-check`) to run it alone.
+
+7. Open the window on the host (the container has no display driver for it).
+
+   ```bash
+   distrobox-host-exec /run/media/system/Disk_2/Projects/TBD-subtitles/target/debug/tbd-subtitles gui
+   ```
+
+   **Expected:** a window titled "TBD Subtitles" with an empty queue on the left; the log line
+   `videos queued added=0` on stderr. Close the window to end the command.
 
 ## CUDA libraries for ONNX Runtime
 
@@ -88,6 +116,10 @@ recipe is written here during the M0.5 spike.
 - **`~/Projects/...` missing inside another distrobox:** most containers do not mount
   `/run/media`; `claude-desktop` does. Recreate a container with
   `--volume /run/media/system/Disk_2:/run/media/system/Disk_2:rslave` if needed.
+- **`cargo gates` exits 2 with "git not found":** the gates list the tracked files with `git`;
+  run them where `git` is on the `PATH`.
+- **The window does not open inside the container:** it has no display driver; launch the binary
+  with `distrobox-host-exec` as in step 7.
 - **Disk label changed:** the `/run/media/system/<label>` paths follow the disk label; update this
   runbook and CLAUDE.md.
 

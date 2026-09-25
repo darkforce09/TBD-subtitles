@@ -1,0 +1,23 @@
+# The repository gate runner: `cargo gates` checks the laws a program can check over the tracked
+# files and exits 0, 1 (a violation) or 2 (a check that could not run).
+[package]
+name = "repo_gates"
+description = "Checks the TBD-subtitles repository laws over the tracked files"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+# Verdicts, the report and child processes for git.
+verification_core = { path = "../verification_core" }
+# The command line and the command tree the link check walks for cited `cargo gates` commands.
+clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
+# Crate manifests, for the layering gate.
+toml = { version = "0.9", default-features = false, features = ["parse", "std", "serde"] }
+# Rust syntax trees, for the test-placement gate.
+# Line numbers for the items syn finds.
+proc-macro2 = { version = "1", default-features = false, features = ["span-locations"] }
+syn = { version = "2", default-features = false, features = ["full", "parsing", "printing", "visit"] }
+# Patterns for the prose and README gates.
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode"] }
