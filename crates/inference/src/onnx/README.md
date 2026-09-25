@@ -1,14 +1,15 @@
 # ONNX Runtime models
 
 Models run through ONNX Runtime (the `ort` crate) on CUDA: vocal separation and Parakeet speech
-recognition now, and [CTC](/documentation/glossary.md#ctc) alignment and sound events as they are
-added.
+recognition, [CTC](/documentation/glossary.md#ctc) log-probabilities for alignment, and CED sound
+events.
 ONNX Runtime itself is Microsoft's CUDA 13 build, loaded at run time from the runtime folder.
 
 ## Contents
 
 ```text
 crates/inference/src/onnx/
+├── ced/           CED-base: 527 AudioSet class probabilities per audio window
 ├── mod.rs         the module list and the re-exports of `Device` and `OnnxError`
 ├── parakeet_ctc/  Parakeet-CTC-0.6B: CTC log-probabilities and BPE tokens for forced alignment
 ├── parakeet_tdt/  Parakeet-TDT-0.6B-v2 through parakeet-rs: words with times from 16 kHz chunks
@@ -29,7 +30,8 @@ from `crate::cuda_runtime::CudaRuntime::worker_env`, set by the process that sta
 
 - Depends on: `ort` 2.0.0-rc.13 with `load-dynamic` and `cuda`; `realfft` in `separation/`;
   `parakeet-rs` in `parakeet_tdt/`; `tokenizers` in `parakeet_ctc/`.
-- Used by: `crates/stages/src/separation/`, `crates/stages/src/asr/` and `tools/stack_spike/`.
+- Used by: `crates/stages/src/separation/`, `crates/stages/src/asr/`,
+  `crates/stages/src/sound_events/` and `tools/stack_spike/`.
 - Rules:
   - one `ort` version in the whole dependency tree (the coding standards; no gate holds it);
   - a CUDA session never falls back to the CPU (`error_on_failure` in `session.rs`; review);

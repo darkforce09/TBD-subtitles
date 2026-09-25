@@ -25,8 +25,8 @@ its stage argument through `FromStr` and refuses a stage for which `runs_in_work
 
 `outputs` holds the typed stage outputs written so far: the probe result (duration, video stream
 with its frame rate, audio tracks with their `-map 0:a:<n>` position and language) and the
-shot changes with their scdet scores, the speech plan (speech regions and the chunk plan), and each engine's transcript (timed words
-per chunk).
+shot changes with their scdet scores, the speech plan (speech regions and the chunk plan), each engine's transcript (timed words
+per chunk), and the sound events.
 The `job` and `report` modules hold only their one-line
 headers: the job record kept in `job.json` and the job report. `src/README.md` describes each module.
 
@@ -48,7 +48,7 @@ None: the crate reads no setting.
 - The library `job_model`, with `StageName` re-exported at its root and the modules `stage`
   (`StageName`, `UnknownStage`), `outputs` (`ProbeResult`, `VideoStream`, `AudioStream`,
   `ShotChanges`, `ShotCut`, `SpeechPlan`, `TimeSpan`, `EngineTranscript`, `ChunkWords`,
-  `TimedWord`), and `job` and `report`, which hold no items yet.
+  `TimedWord`, `SoundEvent`), and `job` and `report`, which hold no items yet.
 - No binary.
 
 ## Boundaries

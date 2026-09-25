@@ -3,7 +3,7 @@
 The `stages` crate: one module folder per pipeline [stage](/documentation/glossary.md#stage), from
 probing the video to writing the subtitle file. Each stage reads its inputs from the job's work
 directory and writes one typed output there. Separation, voice activity, speech recognition,
-forced alignment and the diff sheet's word alignment hold code; the other stage modules are not written yet.
+forced alignment, sound events and the diff sheet's word alignment hold code; the other stage modules are not written yet.
 
 ## Contents
 
@@ -36,7 +36,8 @@ language model. The run order and the worker split are those of `job_model::Stag
 Media work goes through `media_io`, models through `inference`, and cues and files through
 `subtitle_formats`. `separation` streams the mix through a separation model and writes the two
 stems; `vad` scores a stem with earshot and plans the chunks; `asr` runs any `SpeechEngine` over
-the plan; `alignment` times words through a CTC grid and checks an alignment;
+the plan; `alignment` times words through a CTC grid and checks an alignment; `sound_events`
+turns tagger scores into events;
 `diff_sheet::align` lines two engines' words up. `src/README.md` describes each module.
 
 ## Getting started
@@ -61,14 +62,15 @@ cargo test -p stages    # the unit tests of the stages that hold code
   `separation::{separate, SeparationRequest, SeparationSummary, SeparationError}` and
   `separation::resample::Resampler`; `vad::{score_file, plan, VadSettings}` with `vad::chunk_plan`
   and `vad::regions`; `asr::{SpeechEngine, transcribe_plan}`; `alignment::{align_words_ctc, checks, ctc_viterbi,
-  spoken_form}`; and `diff_sheet::align` hold code;
+  spoken_form}`; `sound_events::{score_stem, events, mean_score, classes}`; and
+  `diff_sheet::align` hold code;
   the other modules hold no items yet.
 - No binary.
 
 ## Boundaries
 
 - Depends on: `media_io` and `inference` (called by `separation`, `vad` and `asr`), `earshot` (in
-  `vad`); `subtitle_formats` and `job_model`, declared in `Cargo.toml`.
+  `vad`), `soundevents-dataset` (in `sound_events`); `subtitle_formats` and `job_model`, declared in `Cargo.toml`.
 - Used by: `tools/stack_spike/` and `tools/stack_spike_ggml/`; `crates/pipeline/` declares it as a
   dependency.
 - Rules:

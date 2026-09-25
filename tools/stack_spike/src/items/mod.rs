@@ -15,6 +15,7 @@ mod compare;
 mod decode;
 mod separate;
 mod shots;
+mod sound_events;
 mod vad;
 
 use std::time::Instant;
@@ -52,6 +53,8 @@ pub(crate) enum Item {
     AsrCompare,
     /// CTC Viterbi forced alignment over Parakeet-CTC on the vocal stem.
     AlignCtc,
+    /// CED-base sound events on both stems, and music left in each vocal stem.
+    SoundEvents,
     /// The Qwen3 forced aligner (CrispASR, ggml) on the vocal stem.
     AlignQwen3,
 }
@@ -72,6 +75,7 @@ impl Item {
         Item::AsrCompare,
         Item::AlignCtc,
         Item::AlignQwen3,
+        Item::SoundEvents,
     ];
 
     /// The name used on the command line and in result files.
@@ -88,7 +92,7 @@ impl Item {
             Item::SeparateMdx | Item::SeparateRoformer => true,
             Item::AsrParakeetMix | Item::AsrParakeetMdx | Item::AsrParakeetRoformer => true,
             Item::AsrWhisperMix | Item::AsrWhisperRoformer | Item::AsrWhisperTurboMix => true,
-            Item::AlignCtc | Item::AlignQwen3 => true,
+            Item::AlignCtc | Item::AlignQwen3 | Item::SoundEvents => true,
         }
     }
 
@@ -116,6 +120,7 @@ impl Item {
             Item::AsrParakeetMdx => asr::parakeet(ctx, asr::Input::Mdx),
             Item::AsrParakeetRoformer => asr::parakeet(ctx, asr::Input::Roformer),
             Item::AlignCtc => align::run(ctx),
+            Item::SoundEvents => sound_events::run(ctx),
             Item::AsrWhisperMix
             | Item::AsrWhisperRoformer
             | Item::AsrWhisperTurboMix

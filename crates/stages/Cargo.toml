@@ -21,4 +21,7 @@ inference = { path = "../inference" }
 subtitle_formats = { path = "../subtitle_formats" }
 # Stage names and the contract types.
 job_model = { path = "../job_model" }
+# The earshot voice-activity detector (pure Rust).
 earshot = "1"
+# The AudioSet rated label table, to name the tagger's 527 outputs.
+soundevents-dataset = { version = "0.4", default-features = false, features = ["std", "rated"] }

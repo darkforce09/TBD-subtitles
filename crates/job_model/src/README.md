@@ -19,7 +19,7 @@ crates/job_model/src/
 
 `stage/` names the stages; the job runner, the app's `worker` subcommand and the work directory all
 use those names. `job/` is for the record of one job, `outputs/` for what each stage writes, and
-`report/` for the job report. `outputs/` holds the probe result, the shot changes, the speech plan and the transcripts; `job/` and
+`report/` for the job report. `outputs/` holds the probe result, the shot changes, the speech plan, the transcripts and the sound events; `job/` and
 `report/` hold only a `mod.rs` with its one-line header. Everything here
 is plain data: no module reads a file, spawns a process or holds state.
 
@@ -28,7 +28,7 @@ is plain data: no module reads a file, spawns a process or holds state.
 - `StageName`, re-exported at the crate root from `stage`: used by `apps/tbd_subtitles/src/cli/`.
 - `stage::UnknownStage`: the error of parsing a name that names no stage.
 - `outputs`: `ProbeResult`, `VideoStream`, `AudioStream`, `ShotChanges`, `ShotCut`,
-  `SpeechPlan`, `TimeSpan`, `EngineTranscript`, `ChunkWords` and `TimedWord`, for
+  `SpeechPlan`, `TimeSpan`, `EngineTranscript`, `ChunkWords`, `TimedWord` and `SoundEvent`, for
   `crates/media_io/`, `crates/inference/`, `crates/stages/` and the stack spike tools.
 - `job` and `report`: public modules with no items yet.
 
