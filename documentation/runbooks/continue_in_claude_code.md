@@ -45,7 +45,7 @@ crate and module folder with its README, the eframe window, and the repository g
    FFmpeg. Run anything that touches the GPU, and FFmpeg/ffprobe, on the host with
    `distrobox-host-exec`. Measure VRAM with nvidia-smi on the host.
 3. Before every commit: cargo fmt --all --check, cargo clippy --workspace --all-targets
-   -- -D warnings, cargo test --workspace, and cargo gates (add --with-untracked for new files).
+   -- -D warnings, cargo test --workspace, and cargo gates --with-untracked.
 4. Milestone M0.5 (roadmap.md): the stack spike on
    "/run/media/system/Main_storage/Media/one_pace/[Muhn Pace] Dressrosa 11.mp4" (30.9 minutes;
    episode 11 is the pilot, see decisions.md). Show me the plan first: which roadmap item uses
