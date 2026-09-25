@@ -1,0 +1,36 @@
+# The stack spike's worker for the ggml models (Whisper and the Qwen3 aligner through CrispASR).
+# It is a binary of its own because ggml and ONNX Runtime corrupt each other's heap when loaded
+# into one process; `stack-spike` starts it for the ggml items.
+[package]
+name = "stack_spike_ggml"
+description = "The stack spike's ggml worker: Whisper and the Qwen3 aligner through CrispASR"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[[bin]]
+name = "stack-spike-ggml"
+path = "src/main.rs"
+
+[features]
+# Links CrispASR and ggml with CUDA; needs cmake and the CUDA toolkit to build. Without it the
+# binary builds and reports that it cannot run a ggml item.
+crispasr = ["inference/crispasr", "stages/crispasr", "dep:crispasr-sys"]
+
+[dependencies]
+# The Whisper and aligner backends.
+inference = { path = "../../crates/inference" }
+# The chunk plan and transcript types.
+job_model = { path = "../../crates/job_model" }
+# The speech recognition stage and the alignment helpers.
+stages = { path = "../../crates/stages" }
+# Only for its `links` metadata: `build.rs` reads where libcrispasr was built and sets the rpath.
+crispasr-sys = { git = "https://github.com/CrispStrobe/CrispASR", tag = "v0.8.37", features = ["cuda"], optional = true }
+# Error context at the top of the binary.
+anyhow = "1"
+# The `worker` command.
+clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
+# The result files in the work folder.
+serde = { version = "1", default-features = false, features = ["std", "derive"] }
+serde_json = "1"

@@ -19,7 +19,7 @@ use std::path::{Component, Path, PathBuf};
 
 use super::StoreError;
 use super::download::{Progress, fetch_verified};
-use super::manifest::PinnedArchive;
+use super::manifest::{CUDA_FOLDER, PinnedArchive};
 
 /// Download (when needed) and unpack `archive` under `runtime_dir`.
 pub fn install(
@@ -42,11 +42,23 @@ pub fn install(
     )?;
     let target = runtime_dir.join(archive.unpack_to);
     unpack(&download, &target)?;
+    if archive.unpack_to == CUDA_FOLDER {
+        link_lib64(&target)?;
+    }
     if let Some(parent) = marker.parent() {
         fs::create_dir_all(parent).map_err(|e| StoreError::io(parent, e))?;
     }
     fs::write(&marker, archive.sha256).map_err(|e| StoreError::io(&marker, e))?;
     fs::remove_file(&download).map_err(|e| StoreError::io(&download, e))
+}
+
+/// nvcc looks for its libraries in `lib64/`; the redistributable archives put them in `lib/`.
+fn link_lib64(cuda_root: &Path) -> Result<(), StoreError> {
+    let link = cuda_root.join("lib64");
+    if fs::symlink_metadata(&link).is_ok() {
+        return Ok(());
+    }
+    std::os::unix::fs::symlink("lib", &link).map_err(|e| StoreError::io(&link, e))
 }
 
 /// Unpack a `.tar.xz` or `.tgz` into `target`, dropping each entry's first path component.

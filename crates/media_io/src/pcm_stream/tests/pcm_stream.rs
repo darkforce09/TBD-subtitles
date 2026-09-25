@@ -82,6 +82,10 @@ fn a_window_decodes_an_excerpt_in_stereo() {
         read += chunk.len() as u64;
     }
     assert_eq!(read, written);
+    let middle = read_f32_range(&path, 1000, 500).unwrap();
+    assert_eq!(middle.len(), 500);
+    let tail = read_f32_range(&path, written - 10, 500).unwrap();
+    assert_eq!(tail.len(), 10, "a range past the end is cut short");
     std::fs::remove_dir_all(&dir).unwrap();
 }
 

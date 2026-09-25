@@ -1,7 +1,8 @@
 # Pipeline stages source
 
 The `stages` library: one module folder per stage, from probing the video to writing the subtitle
-file. The separation and voice-activity modules hold code; the others are not written yet.
+file. Separation, voice activity, speech recognition and the diff sheet's word alignment hold
+code; the other modules are not written yet.
 
 ## Contents
 
@@ -32,20 +33,23 @@ probe_decode ─▶ separation ─▶ vad ─▶ asr ─▶ diff_sheet ─▶ so
 The arrows are the run order of `StageName::ALL`. A stage reads what the stages before it wrote to
 the job's work directory: `diff_sheet` reads every engine's words from `asr`, `adjudication` reads
 the diff sheet and the sound-event candidates, `alignment` reads the adjudicated text, and so on
-down to `output`. `separation/` holds the stage driver and its resampler, `vad/` the detector run, the
-regions and the chunk plan; every other module holds only a `mod.rs` with its header.
+down to `output`. `separation/` holds the stage driver and its resampler, `vad/` the detector
+run, the regions and the chunk plan, `asr/` the engine trait and the run over the plan, and
+`diff_sheet/` the word alignment; every other module holds only a `mod.rs` with its header.
 
 ## Public surface
 
 - One public module per stage, named as the stage is named on the command line: for the job runner
-  in `crates/pipeline/`. `separation` offers `separate` and its request, summary and error types; `vad` offers
-  `score_file`, `plan` and `VadSettings`.
+  in `crates/pipeline/`. `separation` offers `separate` and its request, summary and error
+  types; `vad` offers `score_file`, `plan` and `VadSettings`; `asr` offers `SpeechEngine` and
+  `transcribe_plan`; `diff_sheet::align` offers `normalise`, `align` and `errors`.
 
 ## Boundaries
 
-- Depends on: `media_io` and `inference` in `separation/`, `earshot` and `media_io` in `vad/`; the crate also declares
-  `subtitle_formats` and `job_model`.
-- Used by: `tools/stack_spike/`; `crates/pipeline/` declares the crate as a dependency.
+- Depends on: `media_io` and `inference` in `separation/` and `asr/`, `earshot` and `media_io` in
+  `vad/`; the crate also declares `subtitle_formats` and `job_model`.
+- Used by: `tools/stack_spike/` and `tools/stack_spike_ggml/`; `crates/pipeline/` declares the
+  crate as a dependency.
 - Rules: each module is named exactly as its stage's `StageName::as_str` name, and a stage's output
   is complete or absent, never partial (the crate header in `lib.rs`).
 

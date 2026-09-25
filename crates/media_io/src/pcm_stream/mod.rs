@@ -26,7 +26,7 @@ use child_process::{Run, Running};
 
 use crate::{MediaError, Programs};
 
-pub use f32_file::{F32FileReader, F32FileWriter, write_f32_file};
+pub use f32_file::{F32FileReader, F32FileWriter, read_f32_range, write_f32_file};
 
 /// Chunks allowed to wait between the reader thread and the consumer.
 pub const QUEUED_CHUNKS: usize = 4;

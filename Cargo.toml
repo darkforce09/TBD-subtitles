@@ -13,5 +13,6 @@ members = [
     "crates/subtitle_formats",
     "tools/repo_gates",
     "tools/stack_spike",
+    "tools/stack_spike_ggml",
     "tools/verification_core",
 ]

@@ -8,6 +8,10 @@ edition = "2024"
 rust-version = "1.95"
 publish = false
 
+[features]
+# Whisper and the Qwen3 aligner through CrispASR (ggml with CUDA).
+crispasr = ["inference/crispasr"]
+
 [dependencies]
 # Media input: probing, PCM audio, shot changes.
 media_io = { path = "../media_io" }

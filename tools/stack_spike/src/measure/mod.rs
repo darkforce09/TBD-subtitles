@@ -34,6 +34,8 @@ use crate::items::Item;
 
 /// The VRAM a GPU stage may use with the desktop running.
 pub(crate) const VRAM_BUDGET_MIB: u64 = 5_632;
+/// The worker binary for the ggml items, beside this one.
+const GGML_WORKER: &str = "stack-spike-ggml";
 /// The longest any one item may run.
 const WORKER_DEADLINE: Duration = Duration::from_secs(3 * 3600);
 
@@ -114,7 +116,13 @@ fn measure_inner(ctx: &Context, item: Item) -> anyhow::Result<ItemResult> {
             Some(_) => {}
         }
     }
-    let mut run = Run::new(std::env::current_exe()?)
+    let exe = std::env::current_exe()?;
+    let program = if item.ggml() {
+        exe.with_file_name(GGML_WORKER)
+    } else {
+        exe.clone()
+    };
+    let mut run = Run::new(program)
         .arg("worker")
         .arg(item.name())
         .arg("--video")
@@ -123,7 +131,7 @@ fn measure_inner(ctx: &Context, item: Item) -> anyhow::Result<ItemResult> {
         .arg(&ctx.work)
         .timeout(WORKER_DEADLINE);
     if item.needs_gpu() {
-        let exe_dir = std::env::current_exe()?.parent().map(|d| d.to_path_buf());
+        let exe_dir = exe.parent().map(|d| d.to_path_buf());
         let runtime = CudaRuntime::locate(exe_dir.as_deref(), &model_store::runtime_dir()?)?;
         for (key, value) in runtime.worker_env() {
             run = run.env(key, value);

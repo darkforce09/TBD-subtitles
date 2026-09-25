@@ -9,6 +9,8 @@
 //!
 //! **Invariants:** an item that reads another item's output comes after it in `Item::ALL`.
 
+mod asr;
+mod compare;
 mod decode;
 mod separate;
 mod shots;
@@ -33,6 +35,20 @@ pub(crate) enum Item {
     SeparateRoformer,
     /// earshot voice activity and the chunk plan, on the mix and both vocal stems.
     Vad,
+    /// Parakeet-TDT-0.6B-v2 on the mix.
+    AsrParakeetMix,
+    /// Parakeet-TDT-0.6B-v2 on the MDX-Net vocal stem.
+    AsrParakeetMdx,
+    /// Parakeet-TDT-0.6B-v2 on the RoFormer vocal stem.
+    AsrParakeetRoformer,
+    /// Whisper large-v3 (CrispASR, ggml) on the mix.
+    AsrWhisperMix,
+    /// Whisper large-v3 on the RoFormer vocal stem.
+    AsrWhisperRoformer,
+    /// Whisper large-v3-turbo (8-bit) on the mix.
+    AsrWhisperTurboMix,
+    /// Word disagreement between the transcripts, and name spellings.
+    AsrCompare,
 }
 
 impl Item {
@@ -42,6 +58,13 @@ impl Item {
         Item::SeparateMdx,
         Item::SeparateRoformer,
         Item::Vad,
+        Item::AsrParakeetMix,
+        Item::AsrParakeetMdx,
+        Item::AsrParakeetRoformer,
+        Item::AsrWhisperMix,
+        Item::AsrWhisperRoformer,
+        Item::AsrWhisperTurboMix,
+        Item::AsrCompare,
     ];
 
     /// The name used on the command line and in result files.
@@ -54,9 +77,20 @@ impl Item {
     /// Whether the item runs a model on the GPU, and so needs the VRAM budget free.
     pub(crate) fn needs_gpu(self) -> bool {
         match self {
-            Item::Decode | Item::Shots | Item::Vad => false,
+            Item::Decode | Item::Shots | Item::Vad | Item::AsrCompare => false,
             Item::SeparateMdx | Item::SeparateRoformer => true,
+            Item::AsrParakeetMix | Item::AsrParakeetMdx | Item::AsrParakeetRoformer => true,
+            Item::AsrWhisperMix | Item::AsrWhisperRoformer | Item::AsrWhisperTurboMix => true,
         }
+    }
+
+    /// Whether the item runs a ggml model, and so runs in the `stack-spike-ggml` binary: ggml and
+    /// ONNX Runtime corrupt each other's heap when loaded into one process.
+    pub(crate) fn ggml(self) -> bool {
+        matches!(
+            self,
+            Item::AsrWhisperMix | Item::AsrWhisperRoformer | Item::AsrWhisperTurboMix
+        )
     }
 
     /// Run the item in this (worker) process.
@@ -67,6 +101,13 @@ impl Item {
             Item::SeparateMdx => separate::run(ctx, separate::Separator::MdxVocFt),
             Item::SeparateRoformer => separate::run(ctx, separate::Separator::MelRoformer),
             Item::Vad => vad::run(ctx),
+            Item::AsrParakeetMix => asr::parakeet(ctx, asr::Input::Mix),
+            Item::AsrParakeetMdx => asr::parakeet(ctx, asr::Input::Mdx),
+            Item::AsrParakeetRoformer => asr::parakeet(ctx, asr::Input::Roformer),
+            Item::AsrWhisperMix | Item::AsrWhisperRoformer | Item::AsrWhisperTurboMix => {
+                anyhow::bail!("{} runs in stack-spike-ggml, not here", self.name())
+            }
+            Item::AsrCompare => compare::run(ctx),
         }
     }
 }

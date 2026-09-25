@@ -10,7 +10,7 @@ of the CUDA 13 runtime the GPU backends load.
 crates/inference/src/
 ├── candle/         models run through candle, the pure-Rust engine, where it is competitive
 ├── cuda_runtime/   the CUDA 13 and cuDNN libraries on disk and the environment a GPU worker needs
-├── ggml/           models run through ggml-based crates, each in a worker process of its own
+├── ggml/           Whisper and the Qwen3 aligner through CrispASR, behind the `crispasr` feature
 ├── lib.rs          the crate root: the module list and the crate header
 ├── llm/            the language-model backends that adjudicate the diff sheet
 ├── model_store/    the models and runtime folders: the pinned manifest, downloads, archive unpacking
@@ -27,7 +27,9 @@ Pure-Rust engines come first: `candle` and the `mistral_rs` backend under `llm/`
 it.
 `cuda_runtime/` finds the unpacked runtime (beside the executable, or in the user runtime folder)
 and gives the `LD_LIBRARY_PATH` and `ORT_DYLIB_PATH` a GPU worker is started with. `onnx/`
-holds the ONNX Runtime session helper and the separation models.
+holds the ONNX Runtime session helper, the separation models and Parakeet-TDT; `ggml/` holds
+CrispASR's Whisper and Qwen3 aligner, built only with the `crispasr` feature and never in a
+binary that loads ONNX Runtime.
 
 ## Public surface
 
@@ -36,15 +38,18 @@ holds the ONNX Runtime session helper and the separation models.
   `tools/stack_spike/`.
 - `cuda_runtime`: `CudaRuntime::locate` and `CudaRuntime::worker_env`; for the processes that
   start GPU workers.
-- `onnx`: `session::open`, `Device`, `OnnxError`, and `separation::{MdxNet, MelRoformer,
-  OverlapAdd, WindowModel}`; for `crates/stages/src/separation/` and `tools/stack_spike/`.
-- `candle`, `ggml` and `llm`: public modules for the GPU stages in `crates/stages/src/`.
+- `onnx`: `session::open`, `Device`, `OnnxError`, `separation::{MdxNet, MelRoformer,
+  OverlapAdd, WindowModel}` and `parakeet_tdt::ParakeetTdt`; for `crates/stages/` and
+  `tools/stack_spike/`.
+- `ggml::crispasr::{Whisper, align_qwen3}` with the `crispasr` feature; for `crates/stages/` and
+  `tools/stack_spike_ggml/`.
+- `candle` and `llm`: public modules for the GPU stages in `crates/stages/src/`.
 
 ## Boundaries
 
-- Depends on: `ort` and `realfft` in `onnx/`; `ureq`, `sha2`, `lzma-rs`, `flate2` and `tar` in
+- Depends on: `ort`, `realfft` and `parakeet-rs` in `onnx/`; `crispasr` in `ggml/` (optional); `ureq`, `sha2`, `lzma-rs`, `flate2` and `tar` in
   `model_store/`; the crate declares `child_process` and `job_model` for the backends.
-- Used by: `crates/stages/` and `tools/stack_spike/`.
+- Used by: `crates/stages/`, `tools/stack_spike/` and `tools/stack_spike_ggml/`.
 - Rules: two modules that bundle ggml never link into one binary, so each ggml crate runs in a
   worker process of its own (the headers in `lib.rs` and `ggml/mod.rs`).
 

@@ -40,4 +40,5 @@ pub(crate) const TOOL_DEPENDENCIES: &[(&str, &[&str])] = &[
             "stages",
         ],
     ),
+    ("stack_spike_ggml", &["job_model", "inference", "stages"]),
 ];

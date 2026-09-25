@@ -2,8 +2,8 @@
 
 The `stages` crate: one module folder per pipeline [stage](/documentation/glossary.md#stage), from
 probing the video to writing the subtitle file. Each stage reads its inputs from the job's work
-directory and writes one typed output there. The separation and voice-activity stages hold
-code; the other stage modules are not written yet.
+directory and writes one typed output there. Separation, voice activity, speech recognition and
+the diff sheet's word alignment hold code; the other stage modules are not written yet.
 
 ## Contents
 
@@ -35,8 +35,8 @@ language model. The run order and the worker split are those of `job_model::Stag
 
 Media work goes through `media_io`, models through `inference`, and cues and files through
 `subtitle_formats`. `separation` streams the mix through a separation model and writes the two
-stems; `vad` scores a stem with earshot and plans the chunks; every other module holds only its
-header. `src/README.md` describes each.
+stems; `vad` scores a stem with earshot and plans the chunks; `asr` runs any `SpeechEngine` over
+the plan; `diff_sheet::align` lines two engines' words up. `src/README.md` describes each module.
 
 ## Getting started
 
@@ -49,29 +49,33 @@ cargo test -p stages    # the unit tests of the stages that hold code
 
 ## Configuration
 
-None: the crate reads no setting.
+- The Cargo feature `crispasr` (off by default) adds the Whisper `SpeechEngine`, through
+  `inference/crispasr`; building it needs cmake and the CUDA toolkit
+  (`src/asr/engines.rs`).
 
 ## Public surface
 
 - The library `stages`, with one public module per stage: `probe_decode`, `separation`, `vad`,
   `asr`, `diff_sheet`, `sound_events`, `adjudication`, `alignment`, `cues`, `qc` and `output`.
   `separation::{separate, SeparationRequest, SeparationSummary, SeparationError}` and
-  `separation::resample::Resampler`, and `vad::{score_file, plan, VadSettings}` with
-  `vad::chunk_plan` and `vad::regions`, hold code; the other modules hold no items yet.
+  `separation::resample::Resampler`; `vad::{score_file, plan, VadSettings}` with `vad::chunk_plan`
+  and `vad::regions`; `asr::{SpeechEngine, transcribe_plan}`; and `diff_sheet::align` hold code;
+  the other modules hold no items yet.
 - No binary.
 
 ## Boundaries
 
-- Depends on: `media_io` and `inference` (called by `separation`), `earshot` (in `vad`); `subtitle_formats` and
-  `job_model`, declared in `Cargo.toml`.
-- Used by: `tools/stack_spike/`; `crates/pipeline/` declares it as a dependency.
+- Depends on: `media_io` and `inference` (called by `separation`, `vad` and `asr`), `earshot` (in
+  `vad`); `subtitle_formats` and `job_model`, declared in `Cargo.toml`.
+- Used by: `tools/stack_spike/` and `tools/stack_spike_ggml/`; `crates/pipeline/` declares it as a
+  dependency.
 - Rules:
   - the crate sits in layer 2 and depends only on lower layers (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);
   - which stages run in a worker is set by `StageName::runs_in_worker`
     (`only_model_stages_run_in_a_worker` in `crates/job_model/src/stage/tests/stage_name.rs`);
   - a stage's output is complete or absent, never partial, and only the output stage writes
-    beside the video (the crate header in `crates/stages/src/lib.rs`; no test holds these yet).
+    beside the video (the crate header in `crates/stages/src/lib.rs`).
 
 ## Related documentation
 

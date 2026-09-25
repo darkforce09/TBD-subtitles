@@ -75,6 +75,20 @@ fn io_error(path: &Path, e: std::io::Error) -> MediaError {
     MediaError::Parse(format!("{}: {e}", path.display()))
 }
 
+/// `count` samples of a raw `f32` file from sample `start` on; fewer at the end of the file.
+pub fn read_f32_range(path: &Path, start: u64, count: usize) -> Result<Vec<f32>, MediaError> {
+    use std::io::{Seek, SeekFrom};
+    let mut file = File::open(path).map_err(|e| io_error(path, e))?;
+    file.seek(SeekFrom::Start(start * 4))
+        .map_err(|e| io_error(path, e))?;
+    let mut bytes = Vec::with_capacity(count * 4);
+    file.take(count as u64 * 4)
+        .read_to_end(&mut bytes)
+        .map_err(|e| io_error(path, e))?;
+    bytes.truncate(bytes.len() - bytes.len() % 4);
+    Ok(samples_from_le(&bytes))
+}
+
 /// Reads a raw `f32` file back in fixed-size chunks.
 pub struct F32FileReader {
     source: BufReader<File>,

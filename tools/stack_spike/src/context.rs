@@ -41,6 +41,21 @@ impl Context {
         })
     }
 
+    /// Read a JSON output another item wrote.
+    pub(crate) fn read_json<T: serde::de::DeserializeOwned>(
+        &self,
+        name: &str,
+    ) -> anyhow::Result<T> {
+        let path = self.path(name);
+        let text = std::fs::read_to_string(&path).with_context(|| {
+            format!(
+                "{} is missing: run the item that writes it first",
+                path.display()
+            )
+        })?;
+        serde_json::from_str(&text).with_context(|| format!("reading {}", path.display()))
+    }
+
     /// A file of a downloaded model.
     pub(crate) fn model_file(&self, model: &str, file: &str) -> PathBuf {
         self.models.join(model).join(file)

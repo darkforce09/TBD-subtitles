@@ -44,6 +44,8 @@ cargo test -p inference    # unit tests; the model checks are #[ignore] and run 
   (`src/model_store/mod.rs`); one of them must be set.
 - `LD_LIBRARY_PATH`: kept after the runtime folders in a GPU worker's environment
   (`src/cuda_runtime/mod.rs`).
+- The Cargo feature `crispasr` (off by default): CrispASR and ggml with CUDA for `ggml::crispasr`;
+  building it needs cmake and the CUDA toolkit (`Cargo.toml`).
 - `ORT_DYLIB_PATH`: where `ort` loads ONNX Runtime from; set for a GPU worker by
   `CudaRuntime::worker_env` (`src/cuda_runtime/mod.rs`) and read by the `ort` crate.
 
@@ -55,10 +57,11 @@ cargo test -p inference    # unit tests; the model checks are #[ignore] and run 
 
 ## Boundaries
 
-- Depends on: `ort` (ONNX Runtime, loaded at run time) and `realfft` for the ONNX backends;
+- Depends on: `ort` (ONNX Runtime, loaded at run time), `realfft` and `parakeet-rs` for the ONNX
+  backends; `crispasr` (git tag `v0.8.37`, optional) for the ggml backend;
   `ureq`, `sha2`, `lzma-rs`, `flate2` and `tar` for the model store; `child_process` and
   `job_model`, declared for the other backends.
-- Used by: `crates/stages/` (separation) and `tools/stack_spike/`.
+- Used by: `crates/stages/`, `tools/stack_spike/` and `tools/stack_spike_ggml/`.
 - Rules:
   - the crate sits in layer 1 and depends only on layer 0 crates (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);

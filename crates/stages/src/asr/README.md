@@ -1,29 +1,33 @@
 # Speech recognition stage
 
-The [speech recognition](/documentation/glossary.md#asr) stage: each speech engine run over the
-chunk plan, keeping its words with their times and confidences. The module's code is not written
-yet; `mod.rs` holds only its header.
+Each speech engine over the chunk plan: every chunk cut from a 16 kHz mono file, handed to the
+engine, and its words moved from chunk time to video time.
 
 ## Contents
 
 ```text
 crates/stages/src/asr/
-└── mod.rs  the module header; no items yet
+├── engines.rs  the `inference` backends as `SpeechEngine`s: Parakeet-TDT, and Whisper with `crispasr`
+├── mod.rs      the `SpeechEngine` trait, `transcribe_plan` and the time shift
+└── tests/      unit tests for chunk cutting and the shift into video time
 ```
+
+## How it works
+
+`transcribe_plan` reads each chunk of the plan with `read_f32_range`, asks the engine for its
+words, and shifts their times by the chunk's start, clamped inside the chunk. Every engine gets
+the same chunks, so the diff sheet can line their words up chunk by chunk. The result is an
+`EngineTranscript`: the engine's name, the input it heard, and the words per chunk.
 
 ## Boundaries
 
-- Depends on: nothing; the module holds no code.
-- Used by: nothing; `crates/stages/src/lib.rs` declares it as a public module.
-- Rules:
-  - the stage runs in a worker process of its own (`only_model_stages_run_in_a_worker` in
-    `crates/job_model/src/stage/tests/stage_name.rs`);
-  - its output is complete or absent, never partial (the crate header in
-    `crates/stages/src/lib.rs`).
+- Depends on: `media_io::pcm_stream::read_f32_range`; `inference::onnx::parakeet_tdt` and, with the
+  `crispasr` feature, `inference::ggml::crispasr`; `job_model::outputs`.
+- Used by: `tools/stack_spike/` and `tools/stack_spike_ggml/`.
+- Rules: word times are in video seconds and inside their chunk
+  (`every_chunk_is_heard_and_timed_in_video_seconds`).
 
 ## Related documentation
 
-- [Pipeline](/documentation/architecture/pipeline.md#4-speech-recognition) — the backbone and the
-  second engine.
-- [Rust ML stack](/documentation/research/rust_ml_stack.md#1-speech-recognition) — the engines and
-  their model files.
+- [Pipeline](/documentation/architecture/pipeline.md#4-speech-recognition) — the engines and what
+  they output.

@@ -3,7 +3,9 @@
 pub mod probe;
 pub mod shots;
 pub mod speech;
+pub mod words;
 
 pub use probe::{AudioStream, ProbeResult, VideoStream};
 pub use shots::{ShotChanges, ShotCut};
 pub use speech::{SpeechPlan, TimeSpan};
+pub use words::{ChunkWords, EngineTranscript, TimedWord};
