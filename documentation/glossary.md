@@ -48,9 +48,25 @@ disagreements appear as `{A|B|C}` slots. The input to adjudication.
 An audio track re-recorded in another language. The Muhn Pace videos carry the English dub, whose
 script differs from the Japanese version's subtitles.
 
+### Folder kind
+
+The type of a folder under the README standard — area root, crate root, domain, leaf,
+command-line, data or documentation folder — which decides the sections its README adds.
+
+See: [README standard](/documentation/standards/readme_standard.md#kinds)
+
 ### Forced alignment
 
 Finding when each word of a known text is spoken in the audio. Gives the final word timings.
+
+### Gate
+
+A repository check that a program runs over the tracked files: `cargo gates <gate>`. Each gate
+ends in exit 0 (every check held), 1 (a violation) or 2 (a check that could not run).
+
+In code: `tools/repo_gates/`; each gate is a variant of `Gate` in `tools/repo_gates/src/cli.rs`.
+
+See: [Verdict](#verdict), [coding standards](/documentation/standards/coding_standards.md)
 
 ### GGUF, ONNX, safetensors
 
@@ -121,6 +137,13 @@ timestamp in the job report for review.
 Voice activity detection: marks where speech is present. Used to cut audio into chunks and to
 find speech left without a cue.
 
+### Verdict
+
+The outcome of one check: held, failed, or did not run. A check that could not read its input
+or run its program did not run, and never counts as a pass.
+
+In code: `Verdict` and `NotRun` in `tools/verification_core/src/verdict.rs`.
+
 ### WER
 
 Word error rate: the share of words substituted, deleted or inserted against a reference
@@ -130,3 +153,10 @@ transcript. Lower is better.
 
 A subcommand of the app binary that runs one GPU stage in its own process and exits when done,
 freeing VRAM.
+
+### Work directory
+
+The folder of one job, where every stage writes its output and from which a resumed job reads
+what earlier stages wrote. Source videos are never written to.
+
+See: [system overview](/documentation/architecture/system_overview.md#job-work-directory)

@@ -5,7 +5,7 @@
 Every stage from a video file to a finished subtitle file: what it reads, what it does, what it
 writes, and the guards that keep quality up. The design comes from the Dressrosa research; the
 crates and models behind each stage are in the [Rust ML stack](/documentation/research/rust_ml_stack.md),
-and the layout rules in the [subtitle style rules](/documentation/research/subtitle_style_rules.md).
+and the layout rules in the [subtitle style rules](/documentation/architecture/subtitle_style_rules.md).
 Stage outputs live in the job's work directory ([system overview](/documentation/architecture/system_overview.md#job-work-directory)).
 
 ## Why several engines and a language model
@@ -138,7 +138,7 @@ video ─▶ 1 probe+decode ─▶ 2 separate ─▶ 3 vad+chunks ─▶ 4 asr �
 
 ## 9. Cue building
 
-All times snapped to video frames. Full rules: [subtitle style rules](/documentation/research/subtitle_style_rules.md).
+All times snapped to video frames. Full rules: [subtitle style rules](/documentation/architecture/subtitle_style_rules.md).
 
 - One line if the text fits in 42 characters, else two, broken where the grammar allows and
   bottom-heavy; never more than two lines or 84 characters, never over 7 s.
@@ -172,5 +172,5 @@ detected speech longer than 1 s with no cue, share of words per timing source, `
 
 - [System overview](/documentation/architecture/system_overview.md) — processes, crates, work directory.
 - [Rust ML stack](/documentation/research/rust_ml_stack.md) — crates and model files per stage.
-- [Subtitle style rules](/documentation/research/subtitle_style_rules.md) — layout and timing rules.
+- [Subtitle style rules](/documentation/architecture/subtitle_style_rules.md) — layout and timing rules.
 - [Speech recognition landscape](/documentation/research/speech_recognition_landscape.md) — why these engines.

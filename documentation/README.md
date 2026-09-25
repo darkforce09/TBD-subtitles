@@ -11,30 +11,32 @@ disagree.
 
 ```text
 documentation/
-├── README.md              this map
-├── glossary.md            the project's terms and abbreviations
-├── vision_and_goals.md    main goal, goals, non-goals, success criteria, performance budget
-├── decisions.md           dated decision log
-├── roadmap.md             milestones M0–M4 with checklists and open questions
-├── architecture/          how the app is built: system overview and the subtitle pipeline
-├── research/              dated research snapshots and the subtitle style rules
-├── features/              one document per user-facing feature: GUI, automation, Japanese text
-├── runbooks/              procedures: development environment, continuing in Claude Code
-└── standards/             documentation, coding and commit rules
+├── architecture/        how the app is built: system overview, pipeline, subtitle style rules
+├── decisions.md         dated decision log
+├── features/            one document per user-facing feature: GUI, automation, Japanese text
+├── glossary.md          the project's terms and abbreviations
+├── research/            dated research snapshots: speech recognition and the Rust ML stack
+├── roadmap.md           milestones with checklists, acceptance tests and open questions
+├── runbooks/            procedures: development environment, continuing in Claude Code
+├── standards/           documentation, README, coding and commit rules, and the templates
+└── vision_and_goals.md  main goal, goals, non-goals, success criteria, performance budget
 ```
 
 ## How it works
 
 The project runs on a small version of the TBD-Reforger `documentation_v2` system. Documents live
-only in this folder, never beside the code. Once code exists, each code folder carries its own
-README.md (what the folder holds, how it fits together, where it stops) and this tree goes deeper;
-a document about code sits at the code's path with `apps/` and `src/` left out, so
-`apps/tbd_subtitles/src/job_queue/` is documented in `documentation/tbd_subtitles/job_queue/`.
+only in this folder; each code folder carries its own README.md (what the folder holds, how it fits
+together, where it stops), written to the [README standard](/documentation/standards/readme_standard.md).
+A document about one part of the code sits at the code's path with `apps/`, `crates/` and `src/`
+left out, so the app's feature folder `apps/tbd_subtitles/src/job_queue/` would be documented in
+a folder named `tbd_subtitles/job_queue/` here; such folders are created when the first document
+about that code is written.
 
 Every document opens with a status line. A **live** document tracks the code and changes in the
 same commit as the code it describes. A **frozen record** (a dated research snapshot) keeps its
 words; when the facts move on, a new snapshot is written and the old one stays. The
-[documentation standards](/documentation/standards/documentation_standards.md) set the rules.
+[documentation standards](/documentation/standards/documentation_standards.md) set the rules, and
+`cargo gates` checks the ones a program can check.
 
 ### Authority ladder
 
@@ -56,12 +58,30 @@ When two sources disagree, the higher one wins and the lower one is corrected:
 | why something is the way it is | [decisions.md](/documentation/decisions.md) |
 | the processes, crates and data flow | [architecture/](/documentation/architecture/README.md) |
 | each stage from video to subtitle file | [architecture/pipeline.md](/documentation/architecture/pipeline.md) |
+| how subtitles must look and be timed | [architecture/subtitle_style_rules.md](/documentation/architecture/subtitle_style_rules.md) |
 | which Rust crates and model files to use | [research/rust_ml_stack.md](/documentation/research/rust_ml_stack.md) |
-| how subtitles must look and be timed | [research/subtitle_style_rules.md](/documentation/research/subtitle_style_rules.md) |
 | a planned feature's behaviour | [features/](/documentation/features/README.md) |
 | how to set up, build, run or hand over | [runbooks/](/documentation/runbooks/README.md) |
-| the rules for code, documents and commits | [standards/](/documentation/standards/README.md) |
+| the rules for code, READMEs, documents and commits | [standards/](/documentation/standards/README.md) |
+| a skeleton to start a README or document from | [standards/templates/](/documentation/standards/templates/README.md) |
 | a term or abbreviation | [glossary.md](/documentation/glossary.md) |
+
+## Code
+
+- [The app](/apps/README.md) — the `tbd-subtitles` binary.
+- [Library crates](/crates/README.md) — the job model, child processes, media input, subtitle
+  formats, inference, stages and the job runner.
+- [Repository tools](/tools/README.md) — the `cargo gates` runner and its check library.
+
+## Boundaries
+
+- Depends on: the code it describes, and the laws in [CLAUDE.md](/CLAUDE.md).
+- Used by: every AI session and person working on the project; CLAUDE.md and the root README
+  link here first.
+- Rules: every folder here has a README.md whose Contents matches it (`cargo gates
+  readme-coverage`); every document opens with its status line (`cargo gates status-lines`);
+  every link and backticked path resolves (`cargo gates link-check`); a live document stays within
+  500 lines (`cargo gates markdown-placement`).
 
 ## Related documentation
 

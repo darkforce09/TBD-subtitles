@@ -76,4 +76,4 @@ Estimates to be replaced by measurements in the M0.5 spike (see the [roadmap](/d
 
 - [Roadmap](/documentation/roadmap.md) — the milestones that reach these goals.
 - [Pipeline](/documentation/architecture/pipeline.md) — how each goal maps to a stage.
-- [Subtitle style rules](/documentation/research/subtitle_style_rules.md) — the layout rules in full.
+- [Subtitle style rules](/documentation/architecture/subtitle_style_rules.md) — the layout rules in full.

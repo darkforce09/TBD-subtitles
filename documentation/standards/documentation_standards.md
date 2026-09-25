@@ -2,13 +2,16 @@
 
 # Documentation standards
 
-How documents in this repository are laid out, named, written and kept current.
+How documents in this repository are laid out, named, written and kept current. Rules held by a
+program name the `cargo gates` gate that holds them; the rest are held in review.
 
 ## Where documents live
 
-- Every document lives under `documentation/`. Code folders hold only their README.md.
-- A document about code sits at the code's path with `apps/`, `crates/` and `src/` left out:
-  `apps/tbd_subtitles/src/job_queue/` → `documentation/tbd_subtitles/job_queue/`.
+- Every document lives under `documentation/`. Code folders hold only their README.md
+  (`cargo gates markdown-placement`).
+- A document about one part of the code sits at the code's path with `apps/`, `crates/` and
+  `src/` left out: the app's feature folder `apps/tbd_subtitles/src/job_queue/` is documented in
+  a `tbd_subtitles/job_queue/` folder under `documentation/`, created with its first document.
 - Topics that span the code have their own folders: `architecture/`, `research/`, `features/`,
   `runbooks/`, `standards/`; `glossary.md`, `decisions.md`, `roadmap.md` and
   `vision_and_goals.md` sit at the top.
@@ -16,25 +19,29 @@ How documents in this repository are laid out, named, written and kept current.
 ## Files
 
 - Names are snake_case `.md`, apart from `README.md`.
-- The first line is the status line: `**Status:** live`, `**Status:** frozen record (YYYY-MM-DD)`
-  or `**Status:** archived`. *(gate)*
-- A live document stays within 500 lines; split a longer one into a folder with a README index.
-  *(gate)*
+- The first line of every document under `documentation/` is its status line:
+  `**Status:** live`, `**Status:** frozen record (YYYY-MM-DD)` or `**Status:** archived`
+  (`cargo gates status-lines`). Code READMEs carry no status line (`cargo gates
+  readme-sections`).
+- A live document stays within 500 lines; a longer one splits into a folder with a README index
+  (`cargo gates markdown-placement`).
 - Live documents carry no dates, except decision entries and the status line of frozen records.
 
 ## READMEs
 
-Every folder in `documentation/`, and every code folder once code exists, has a README.md
-*(gate)*, with these sections in order:
+Every folder in `documentation/` and in the code trees has a README.md
+(`cargo gates readme-coverage`), written to the
+[README standard](/documentation/standards/readme_standard.md): a title, a purpose, a Contents
+block that lists the folder exactly, How it works, the sections of the folder's kind, Boundaries
+with its three bullets, and Related documentation (`cargo gates readme-sections`). Folders named
+`tests` or `generated`, and folders whose name begins with `.`, need none.
 
-1. `# Title` and one to three sentences on what the folder holds.
-2. `## Contents` — a `text` code block listing the direct children with a short note each.
-3. `## How it works` — how the parts fit together.
-4. For code folders: `## Boundaries` with exactly three bullets — Depends on, Used by, Rules (each
-   rule names the test or gate that holds it).
-5. `## Related documentation` — links to the deeper documents.
+## Templates
 
-Test folders, generated folders and dot-folders need no README.
+Every README kind and document type has a skeleton with a worked sample in
+[templates](/documentation/standards/templates/README.md): feature documents, runbooks, decision
+entries, glossary entries, known bugs and research snapshots. A new document starts from its
+template.
 
 ## Feature documents
 
@@ -56,16 +63,25 @@ to verify, Troubleshooting, and Related documentation.
 
 - Plain words for a reader who has not seen the code. Define a term in the
   [glossary](/documentation/glossary.md) and link its first use.
-- Links start at the repository root (`/documentation/...`), never `../`. Every link and every
-  backticked repository path must resolve. *(gate)*
+- Present tense in live documents and READMEs: no history words (`cargo gates prose-rules`).
+- Links start at the repository root (`/documentation/...`), never `../`. Every link, anchor and
+  backticked repository path in a live document resolves, and every cited `cargo gates` command
+  exists (`cargo gates link-check`).
 - Diagrams are ASCII inside `text` code blocks.
-- READMEs never name tickets or milestones' internal progress; the roadmap does.
+- Code READMEs never name tickets or milestones; the roadmap does (`cargo gates prose-rules`).
 
 ## Lifecycle
 
 - **Live** documents track the code and change in the same commit as the code they describe.
-- **Frozen records** (research snapshots) keep their words; only broken links are fixed. New facts
-  go into a new snapshot.
+- **Frozen records** (research snapshots in `research/`) keep their words; only broken links are
+  fixed. New facts go into a new snapshot.
 - **Archived** documents record history and are never current.
 - Authority, highest first: running code, CLAUDE.md, decisions, the documentation README and these
   standards, live documents, frozen records.
+
+## Related documentation
+
+- [README standard](/documentation/standards/readme_standard.md) — the README core, Contents
+  grammar and folder kinds.
+- [Templates](/documentation/standards/templates/README.md) — skeletons for every README kind and
+  document type.

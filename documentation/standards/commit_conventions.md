@@ -38,11 +38,14 @@ Commit straight to `main`. Short-lived branches only for experiments that may be
 
 ## Before committing
 
-Once code exists, all of these pass:
+All of these pass, run from the repository root:
 
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo run -p repo_gates
+cargo gates
 ```
+
+`cargo gates` judges the tracked files; run `cargo gates --with-untracked` to include new files
+before they are staged.
