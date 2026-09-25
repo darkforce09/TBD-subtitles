@@ -27,6 +27,8 @@ lzma-rs = { version = "0.3", default-features = false }
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "api-28", "cuda", "load-dynamic"] }
 # Parakeet-TDT: its feature extraction, TDT decoding and word timing, on this crate's `ort`.
 parakeet-rs = { version = "0.3.8", default-features = false, features = ["cuda", "load-dynamic", "api-28"] }
+# Parakeet-CTC's own BPE tokenizer (`tokenizer.json`); the version parakeet-rs already uses.
+tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
 # The short-time Fourier transforms around the separation models.
 realfft = "3"
 # CrispASR (ggml): Whisper and the Qwen3 forced aligner on CUDA. The crates.io package ships no C++

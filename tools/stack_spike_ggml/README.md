@@ -1,7 +1,7 @@
 # Stack spike ggml worker
 
 The `stack_spike_ggml` binary (`stack-spike-ggml`): the stack spike's worker for the ggml models,
-Whisper large-v3 and large-v3-turbo through CrispASR. It is a binary of its own because ggml and
+Whisper large-v3 and large-v3-turbo and the Qwen3 forced aligner through CrispASR. It is a binary of its own because ggml and
 ONNX Runtime corrupt each other's heap when loaded into one process; `stack-spike run` starts it
 for the ggml items and measures it like any other worker.
 
@@ -46,8 +46,8 @@ cargo build -p stack_spike_ggml   # without the feature: builds, and refuses eve
 
 ## Boundaries
 
-- Depends on: `crates/inference/` (`ggml::crispasr`, the models folder), `crates/stages/` (`asr`),
-  `crates/job_model/`; `crispasr-sys` for its build metadata; `clap`, `anyhow`, `serde`,
+- Depends on: `crates/inference/` (`ggml::crispasr`, the models folder), `crates/stages/` (`asr`,
+  `alignment`, `diff_sheet`), `crates/media_io/` (stem ranges), `crates/job_model/`; `crispasr-sys` for its build metadata; `clap`, `anyhow`, `serde`,
   `serde_json`.
 - Used by: `tools/stack_spike/`, which starts it for the ggml items.
 - Rules:

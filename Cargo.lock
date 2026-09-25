@@ -1373,6 +1373,7 @@ dependencies = [
  "realfft",
  "sha2",
  "tar",
+ "tokenizers",
  "ureq",
 ]
 
@@ -3069,6 +3070,7 @@ dependencies = [
  "crispasr-sys",
  "inference",
  "job_model",
+ "media_io",
  "serde",
  "serde_json",
  "stages",

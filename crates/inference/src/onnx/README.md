@@ -10,6 +10,7 @@ ONNX Runtime itself is Microsoft's CUDA 13 build, loaded at run time from the ru
 ```text
 crates/inference/src/onnx/
 ├── mod.rs         the module list and the re-exports of `Device` and `OnnxError`
+├── parakeet_ctc/  Parakeet-CTC-0.6B: CTC log-probabilities and BPE tokens for forced alignment
 ├── parakeet_tdt/  Parakeet-TDT-0.6B-v2 through parakeet-rs: words with times from 16 kHz chunks
 ├── separation/    the separation models, their STFT and the streaming overlap-add
 ├── session.rs     opening a model on CUDA without a silent CPU fall-back, and describing its inputs
@@ -27,7 +28,7 @@ from `crate::cuda_runtime::CudaRuntime::worker_env`, set by the process that sta
 ## Boundaries
 
 - Depends on: `ort` 2.0.0-rc.13 with `load-dynamic` and `cuda`; `realfft` in `separation/`;
-  `parakeet-rs` in `parakeet_tdt/`.
+  `parakeet-rs` in `parakeet_tdt/`; `tokenizers` in `parakeet_ctc/`.
 - Used by: `crates/stages/src/separation/`, `crates/stages/src/asr/` and `tools/stack_spike/`.
 - Rules:
   - one `ort` version in the whole dependency tree (the coding standards; no gate holds it);

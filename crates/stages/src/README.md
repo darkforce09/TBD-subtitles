@@ -1,8 +1,8 @@
 # Pipeline stages source
 
 The `stages` library: one module folder per stage, from probing the video to writing the subtitle
-file. Separation, voice activity, speech recognition and the diff sheet's word alignment hold
-code; the other modules are not written yet.
+file. Separation, voice activity, speech recognition, forced alignment and the diff sheet's word
+alignment hold code; the other modules are not written yet.
 
 ## Contents
 
@@ -34,15 +34,16 @@ The arrows are the run order of `StageName::ALL`. A stage reads what the stages 
 the job's work directory: `diff_sheet` reads every engine's words from `asr`, `adjudication` reads
 the diff sheet and the sound-event candidates, `alignment` reads the adjudicated text, and so on
 down to `output`. `separation/` holds the stage driver and its resampler, `vad/` the detector
-run, the regions and the chunk plan, `asr/` the engine trait and the run over the plan, and
-`diff_sheet/` the word alignment; every other module holds only a `mod.rs` with its header.
+run, the regions and the chunk plan, `asr/` the engine trait and the run over the plan,
+`alignment/` the CTC Viterbi aligner and its checks, and `diff_sheet/` the word alignment; every other module holds only a `mod.rs` with its header.
 
 ## Public surface
 
 - One public module per stage, named as the stage is named on the command line: for the job runner
   in `crates/pipeline/`. `separation` offers `separate` and its request, summary and error
   types; `vad` offers `score_file`, `plan` and `VadSettings`; `asr` offers `SpeechEngine` and
-  `transcribe_plan`; `diff_sheet::align` offers `normalise`, `align` and `errors`.
+  `transcribe_plan`; `alignment` offers `align_words_ctc` and `checks`; `diff_sheet::align`
+  offers `normalise`, `align` and `errors`.
 
 ## Boundaries
 

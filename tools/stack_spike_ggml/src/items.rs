@@ -1,4 +1,4 @@
-//! The ggml items: Whisper over the shared chunk plan.
+//! The ggml items: Whisper over the shared chunk plan, and the Qwen3 aligner (in `align.rs`).
 //!
 //! **Role:** open a Whisper model through CrispASR and run it over the RoFormer stem's chunk plan
 //! on the mix or the RoFormer vocal stem, writing `asr.<engine>.<input>.json`.
@@ -24,6 +24,8 @@ pub(crate) enum Item {
     LargeV3OnRoformer,
     #[value(name = "asr-whisper-turbo-mix")]
     TurboOnMix,
+    #[value(name = "align-qwen3")]
+    Qwen3Aligner,
 }
 
 impl Item {
@@ -32,6 +34,7 @@ impl Item {
             Item::LargeV3OnMix => "asr-whisper-mix",
             Item::LargeV3OnRoformer => "asr-whisper-roformer",
             Item::TurboOnMix => "asr-whisper-turbo-mix",
+            Item::Qwen3Aligner => "align-qwen3",
         }
     }
 }
@@ -41,6 +44,7 @@ pub(crate) fn run(item: Item, work: &Path) -> anyhow::Result<Outcome> {
     #[cfg(feature = "crispasr")]
     {
         let (model, file, short, input, audio) = match item {
+            Item::Qwen3Aligner => return crate::align::run(work),
             Item::LargeV3OnMix => (
                 "whisper-large-v3",
                 "ggml-large-v3.bin",

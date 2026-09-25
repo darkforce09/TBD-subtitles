@@ -11,6 +11,7 @@
 //!
 //! **Invariants:** this binary never loads ONNX Runtime, and `stack-spike` never links ggml.
 
+mod align;
 mod items;
 mod report;
 

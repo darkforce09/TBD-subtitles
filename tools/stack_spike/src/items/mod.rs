@@ -9,6 +9,7 @@
 //!
 //! **Invariants:** an item that reads another item's output comes after it in `Item::ALL`.
 
+mod align;
 mod asr;
 mod compare;
 mod decode;
@@ -49,6 +50,10 @@ pub(crate) enum Item {
     AsrWhisperTurboMix,
     /// Word disagreement between the transcripts, and name spellings.
     AsrCompare,
+    /// CTC Viterbi forced alignment over Parakeet-CTC on the vocal stem.
+    AlignCtc,
+    /// The Qwen3 forced aligner (CrispASR, ggml) on the vocal stem.
+    AlignQwen3,
 }
 
 impl Item {
@@ -65,6 +70,8 @@ impl Item {
         Item::AsrWhisperRoformer,
         Item::AsrWhisperTurboMix,
         Item::AsrCompare,
+        Item::AlignCtc,
+        Item::AlignQwen3,
     ];
 
     /// The name used on the command line and in result files.
@@ -81,6 +88,7 @@ impl Item {
             Item::SeparateMdx | Item::SeparateRoformer => true,
             Item::AsrParakeetMix | Item::AsrParakeetMdx | Item::AsrParakeetRoformer => true,
             Item::AsrWhisperMix | Item::AsrWhisperRoformer | Item::AsrWhisperTurboMix => true,
+            Item::AlignCtc | Item::AlignQwen3 => true,
         }
     }
 
@@ -89,7 +97,10 @@ impl Item {
     pub(crate) fn ggml(self) -> bool {
         matches!(
             self,
-            Item::AsrWhisperMix | Item::AsrWhisperRoformer | Item::AsrWhisperTurboMix
+            Item::AsrWhisperMix
+                | Item::AsrWhisperRoformer
+                | Item::AsrWhisperTurboMix
+                | Item::AlignQwen3
         )
     }
 
@@ -104,7 +115,11 @@ impl Item {
             Item::AsrParakeetMix => asr::parakeet(ctx, asr::Input::Mix),
             Item::AsrParakeetMdx => asr::parakeet(ctx, asr::Input::Mdx),
             Item::AsrParakeetRoformer => asr::parakeet(ctx, asr::Input::Roformer),
-            Item::AsrWhisperMix | Item::AsrWhisperRoformer | Item::AsrWhisperTurboMix => {
+            Item::AlignCtc => align::run(ctx),
+            Item::AsrWhisperMix
+            | Item::AsrWhisperRoformer
+            | Item::AsrWhisperTurboMix
+            | Item::AlignQwen3 => {
                 anyhow::bail!("{} runs in stack-spike-ggml, not here", self.name())
             }
             Item::AsrCompare => compare::run(ctx),

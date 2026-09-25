@@ -23,6 +23,8 @@ crispasr = ["inference/crispasr", "stages/crispasr", "dep:crispasr-sys"]
 inference = { path = "../../crates/inference" }
 # The chunk plan and transcript types.
 job_model = { path = "../../crates/job_model" }
+# The stems, read one chunk at a time.
+media_io = { path = "../../crates/media_io" }
 # The speech recognition stage and the alignment helpers.
 stages = { path = "../../crates/stages" }
 # Only for its `links` metadata: `build.rs` reads where libcrispasr was built and sets the rpath.
