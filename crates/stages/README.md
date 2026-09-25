@@ -2,8 +2,8 @@
 
 The `stages` crate: one module folder per pipeline [stage](/documentation/glossary.md#stage), from
 probing the video to writing the subtitle file. Each stage reads its inputs from the job's work
-directory and writes one typed output there. The separation stage holds code; the other stage
-modules are not written yet.
+directory and writes one typed output there. The separation and voice-activity stages hold
+code; the other stage modules are not written yet.
 
 ## Contents
 
@@ -35,7 +35,8 @@ language model. The run order and the worker split are those of `job_model::Stag
 
 Media work goes through `media_io`, models through `inference`, and cues and files through
 `subtitle_formats`. `separation` streams the mix through a separation model and writes the two
-stems; every other module holds only its header. `src/README.md` describes each.
+stems; `vad` scores a stem with earshot and plans the chunks; every other module holds only its
+header. `src/README.md` describes each.
 
 ## Getting started
 
@@ -55,12 +56,13 @@ None: the crate reads no setting.
 - The library `stages`, with one public module per stage: `probe_decode`, `separation`, `vad`,
   `asr`, `diff_sheet`, `sound_events`, `adjudication`, `alignment`, `cues`, `qc` and `output`.
   `separation::{separate, SeparationRequest, SeparationSummary, SeparationError}` and
-  `separation::resample::Resampler` hold code; the other modules hold no items yet.
+  `separation::resample::Resampler`, and `vad::{score_file, plan, VadSettings}` with
+  `vad::chunk_plan` and `vad::regions`, hold code; the other modules hold no items yet.
 - No binary.
 
 ## Boundaries
 
-- Depends on: `media_io` and `inference` (called by `separation`); `subtitle_formats` and
+- Depends on: `media_io` and `inference` (called by `separation`), `earshot` (in `vad`); `subtitle_formats` and
   `job_model`, declared in `Cargo.toml`.
 - Used by: `tools/stack_spike/`; `crates/pipeline/` declares it as a dependency.
 - Rules:

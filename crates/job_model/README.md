@@ -3,7 +3,7 @@
 The `job_model` crate: the serde types the pipeline's [stages](/documentation/glossary.md#stage)
 write into a job's [work directory](/documentation/glossary.md#work-directory) and read back, which
 are the contracts between them. It sits below every other product crate and depends on no
-workspace crate. The stage names and the probe and shot-change outputs hold code; the job record,
+workspace crate. The stage names and the probe, shot-change and speech-plan outputs hold code; the job record,
 the other stage outputs and the report are not written yet.
 
 ## Contents
@@ -25,7 +25,8 @@ its stage argument through `FromStr` and refuses a stage for which `runs_in_work
 
 `outputs` holds the typed stage outputs written so far: the probe result (duration, video stream
 with its frame rate, audio tracks with their `-map 0:a:<n>` position and language) and the
-shot changes with their scdet scores. The `job` and `report` modules hold only their one-line
+shot changes with their scdet scores, and the speech plan (speech regions and the chunk plan).
+The `job` and `report` modules hold only their one-line
 headers: the job record kept in `job.json` and the job report. `src/README.md` describes each module.
 
 ## Getting started
@@ -45,7 +46,8 @@ None: the crate reads no setting.
 
 - The library `job_model`, with `StageName` re-exported at its root and the modules `stage`
   (`StageName`, `UnknownStage`), `outputs` (`ProbeResult`, `VideoStream`, `AudioStream`,
-  `ShotChanges`, `ShotCut`), and `job` and `report`, which hold no items yet.
+  `ShotChanges`, `ShotCut`, `SpeechPlan`, `TimeSpan`), and `job` and `report`, which hold no
+  items yet.
 - No binary.
 
 ## Boundaries

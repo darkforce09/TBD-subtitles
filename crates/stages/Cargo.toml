@@ -17,3 +17,4 @@ inference = { path = "../inference" }
 subtitle_formats = { path = "../subtitle_formats" }
 # Stage names and the contract types.
 job_model = { path = "../job_model" }
+earshot = "1"

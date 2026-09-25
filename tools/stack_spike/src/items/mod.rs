@@ -12,6 +12,7 @@
 mod decode;
 mod separate;
 mod shots;
+mod vad;
 
 use std::time::Instant;
 
@@ -30,6 +31,8 @@ pub(crate) enum Item {
     SeparateMdx,
     /// Vocal separation with Mel-Band RoFormer on CUDA.
     SeparateRoformer,
+    /// earshot voice activity and the chunk plan, on the mix and both vocal stems.
+    Vad,
 }
 
 impl Item {
@@ -38,6 +41,7 @@ impl Item {
         Item::Shots,
         Item::SeparateMdx,
         Item::SeparateRoformer,
+        Item::Vad,
     ];
 
     /// The name used on the command line and in result files.
@@ -50,7 +54,7 @@ impl Item {
     /// Whether the item runs a model on the GPU, and so needs the VRAM budget free.
     pub(crate) fn needs_gpu(self) -> bool {
         match self {
-            Item::Decode | Item::Shots => false,
+            Item::Decode | Item::Shots | Item::Vad => false,
             Item::SeparateMdx | Item::SeparateRoformer => true,
         }
     }
@@ -62,6 +66,7 @@ impl Item {
             Item::Shots => shots::run(ctx),
             Item::SeparateMdx => separate::run(ctx, separate::Separator::MdxVocFt),
             Item::SeparateRoformer => separate::run(ctx, separate::Separator::MelRoformer),
+            Item::Vad => vad::run(ctx),
         }
     }
 }

@@ -29,7 +29,7 @@ stack-spike report --video V ──▶ Markdown table + the 120-minute projectio
 
 Items run in the order `Item::ALL` lists them, and later items read what earlier ones wrote to
 the work folder (`probe.json`, `mix_16k.f32`, the stems `vocals_16k.<separator>.f32` and
-`background_16k.<separator>.f32`, …). The separation items also write 30-second WAV excerpts of
+`background_16k.<separator>.f32`, the speech plans `vad.<input>.json`, …). The separation items also write 30-second WAV excerpts of
 the mix and both stems for listening. The work folder defaults to
 `<data home>/tbd-subtitles/work/spike-<video name as a slug>`; the video is only read.
 
