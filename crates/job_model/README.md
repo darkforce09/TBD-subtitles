@@ -3,8 +3,8 @@
 The `job_model` crate: the serde types the pipeline's [stages](/documentation/glossary.md#stage)
 write into a job's [work directory](/documentation/glossary.md#work-directory) and read back, which
 are the contracts between them. It sits below every other product crate and depends on no
-workspace crate. The stage names hold code; the job record, the stage outputs and the report are
-not written yet.
+workspace crate. The stage names and the probe and shot-change outputs hold code; the job record,
+the other stage outputs and the report are not written yet.
 
 ## Contents
 
@@ -23,8 +23,10 @@ says which stages load a GPU model or the language model and so run in a
 [worker process](/documentation/glossary.md#worker-process). The app's `worker` subcommand parses
 its stage argument through `FromStr` and refuses a stage for which `runs_in_worker` is false.
 
-The `job`, `outputs` and `report` modules hold only their one-line headers: the job record kept in
-`job.json`, one typed output per stage, and the job report. `src/README.md` describes each module.
+`outputs` holds the typed stage outputs written so far: the probe result (duration, video stream
+with its frame rate, audio tracks with their `-map 0:a:<n>` position and language) and the
+shot changes with their scdet scores. The `job` and `report` modules hold only their one-line
+headers: the job record kept in `job.json` and the job report. `src/README.md` describes each module.
 
 ## Getting started
 
@@ -42,7 +44,8 @@ None: the crate reads no setting.
 ## Public surface
 
 - The library `job_model`, with `StageName` re-exported at its root and the modules `stage`
-  (`StageName`, `UnknownStage`), `job`, `outputs` and `report`; the last three hold no items yet.
+  (`StageName`, `UnknownStage`), `outputs` (`ProbeResult`, `VideoStream`, `AudioStream`,
+  `ShotChanges`, `ShotCut`), and `job` and `report`, which hold no items yet.
 - No binary.
 
 ## Boundaries
@@ -52,8 +55,10 @@ None: the crate reads no setting.
 - Used by:
   - the app: `apps/tbd_subtitles/src/cli/mod.rs` parses the `worker` stage with `StageName`, and
     `apps/tbd_subtitles/src/cli/worker_command.rs` takes it;
-  - `crates/media_io/`, `crates/inference/`, `crates/subtitle_formats/`, `crates/stages/` and
-    `crates/pipeline/`, which declare it as a dependency and use nothing from it yet.
+  - `crates/media_io/`, which returns the probe result and the shot changes;
+  - `tools/stack_spike/`, which writes them to its work folder;
+  - `crates/inference/`, `crates/subtitle_formats/`, `crates/stages/` and `crates/pipeline/`,
+    which declare it as a dependency and use nothing from it yet.
 - Rules:
   - the crate sits in layer 0 and depends on no workspace crate (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);

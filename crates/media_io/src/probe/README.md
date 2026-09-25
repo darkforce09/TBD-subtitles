@@ -1,21 +1,26 @@
 # Video probe
 
-ffprobe's JSON for a video: its streams, languages, durations, frame rate and start time, and the
-choice of the English audio track. The module's code is not written yet; `mod.rs` holds only its
-header.
+ffprobe's JSON for a video, read into the probe result (duration, the video stream and its frame
+rate, the audio tracks), and the choice of the English audio track.
 
 ## Contents
 
 ```text
 crates/media_io/src/probe/
-└── mod.rs  the module header; no items yet
+├── mod.rs  `probe` runs ffprobe, `parse` reads its JSON, `english_track` picks the track to decode
+└── tests/  unit tests for parsing, the `und` tag, and the English, single and ambiguous track cases
 ```
 
 ## Boundaries
 
-- Depends on: nothing; the module holds no code.
-- Used by: nothing; `crates/media_io/src/lib.rs` declares it as a public module.
-- Rules: the video file is only read (the crate header in `crates/media_io/src/lib.rs`).
+- Depends on: `child_process::Run` for ffprobe (60 s deadline); `serde_json`; the
+  `job_model::outputs` probe types.
+- Used by: `tools/stack_spike/` (the decode item).
+- Rules:
+  - `und` is no language, a track tagged `eng` or `en` wins, a single track is taken, and several
+    untagged tracks are refused rather than guessed
+    (`several_untagged_tracks_are_ambiguous` and its neighbours in `tests/probe.rs`);
+  - the video file is only read (the crate header in `crates/media_io/src/lib.rs`).
 
 ## Related documentation
 

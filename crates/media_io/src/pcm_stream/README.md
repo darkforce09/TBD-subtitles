@@ -1,26 +1,43 @@
 # PCM audio stream
 
-FFmpeg decoding a video's audio to 16 kHz mono or 44.1 kHz stereo 32-bit float through a pipe,
-read in fixed-size chunks through a bounded channel so a whole track is never held in memory. The
-module's code is not written yet; `mod.rs` holds only its header.
+FFmpeg decoding one audio track to interleaved 32-bit float PCM at 16 kHz mono or 44.1 kHz stereo,
+read in fixed-size chunks through a bounded channel, and the raw `.f32` files the decoded mix and
+the stems are kept in.
 
 ## Contents
 
 ```text
 crates/media_io/src/pcm_stream/
-└── mod.rs  the module header; no items yet
+├── f32_file.rs  raw little-endian `.f32` files: write a stream whole or not at all, read one in chunks
+├── mod.rs       `PcmStream`: FFmpeg to a pipe, a reader thread, at most four chunks queued
+└── tests/       unit tests on a generated tone: rate, chunk sizes, excerpts, files and failures
 ```
+
+## How it works
+
+```text
+PcmStream::open ──▶ ffmpeg -ss? -i video -t? -map 0:a:<n> -ac C -ar R -f f32le pipe:1
+                        │ stdout (Run::spawn)            stderr drained by child_process
+                        ▼
+                 reader thread: fixed chunks ──sync_channel(4)──▶ next_chunk() ──▶ caller
+finish(): drain the channel, join the reader, wait FFmpeg ──▶ exit code checked
+write_f32_file: every chunk to <path>.part, finish(), rename to <path>
+```
+
+A chunk is `chunk_frames × channels` samples; only the last may be shorter. A dropped
+`PcmStream` drops its `Running` handle, which kills FFmpeg. `F32FileReader` reads a raw file back
+in the same fixed chunks, so a stage streams a stem from the work directory without loading it.
 
 ## Boundaries
 
-- Depends on: nothing; the module holds no code.
-- Used by: nothing; `crates/media_io/src/lib.rs` declares it as a public module.
-- Rules: audio is read in fixed-size chunks through a bounded channel and never held whole at
-  44.1 kHz (the crate header in `crates/media_io/src/lib.rs`).
+- Depends on: `child_process::Run::spawn` for FFmpeg; `std` for the channel, thread and files.
+- Used by: `tools/stack_spike/` (the decode item writes `mix_16k.f32`).
+- Rules:
+  - memory stays bounded: at most `QUEUED_CHUNKS` chunks wait (`decodes_in_fixed_chunks_at_the_asked_rate`);
+  - a failed decode is an error at `finish`, never a short file passed as whole
+    (`a_missing_file_fails_at_finish`, and the `.part` rename in `write_f32_file`).
 
 ## Related documentation
 
-- [Pipeline](/documentation/architecture/pipeline.md#1-probe-and-decode) — the two audio streams
-  and who reads them.
-- [Rust ML stack](/documentation/research/rust_ml_stack.md#9-ffmpeg-from-rust) — the FFmpeg command
-  and the memory a whole track would take.
+- [Rust ML stack](/documentation/research/rust_ml_stack.md#9-ffmpeg-from-rust) — the streaming
+  pattern and its memory figures.

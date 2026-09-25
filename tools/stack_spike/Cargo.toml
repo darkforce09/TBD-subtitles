@@ -1,5 +1,6 @@
-# The stack spike measuring harness: runs each piece of the ML stack on one video from Rust, each in a
-# worker process of its own, and records wall time, speed, peak VRAM, peak RAM and quality notes.
+# The stack spike measuring harness: runs each piece of the ML stack on one video from Rust, each
+# in a worker process of its own, and records wall time, speed, peak VRAM, peak RAM and quality
+# notes.
 [package]
 name = "stack_spike"
 description = "Measures each ML stack piece on one video: time, speed, VRAM, RAM, quality"
@@ -13,9 +14,22 @@ name = "stack-spike"
 path = "src/main.rs"
 
 [dependencies]
+# Starts each item's worker process with a deadline and a streamed stdout.
+child_process = { path = "../../crates/child_process" }
 # Model downloads, the CUDA runtime locator and the model backends under test.
 inference = { path = "../../crates/inference" }
+# The probe result and the other stage outputs the items write.
+job_model = { path = "../../crates/job_model" }
+# ffprobe, FFmpeg PCM streaming and the shot-change scan under test.
+media_io = { path = "../../crates/media_io" }
 # Error context at the top of the binary.
 anyhow = "1"
 # The subcommands `fetch`, `run`, `worker` and `report`.
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
+# The largest child process's peak memory (getrusage), for FFmpeg run by an item.
+libc = { version = "0.2", default-features = false }
+# Peak VRAM per worker, read from the driver's NVML library loaded at run time.
+nvml-wrapper = { version = "0.13", default-features = false }
+# The result files in the work folder.
+serde = { version = "1", default-features = false, features = ["std", "derive"] }
+serde_json = "1"

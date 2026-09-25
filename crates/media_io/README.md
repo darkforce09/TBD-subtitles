@@ -2,14 +2,13 @@
 
 The `media_io` crate: everything the pipeline reads from a video file, which is the probe result,
 the audio as 32-bit float PCM and the [shot-change](/documentation/glossary.md#shot-change) times,
-through FFmpeg and ffprobe run as child processes, with no libav linked. Its three modules are not
-written yet.
+through FFmpeg and ffprobe run as child processes, with no libav linked.
 
 ## Contents
 
 ```text
 crates/media_io/
-├── Cargo.toml  the `media_io` library package; depends on `child_process` and `job_model`
+├── Cargo.toml  the `media_io` library package: `child_process`, `job_model`, and serde for ffprobe JSON
 └── src/        the ffprobe probe, the PCM audio stream and the shot-change scan
 ```
 
@@ -19,17 +18,15 @@ The crate is split by what it reads from the video: `probe` is for ffprobe's JSO
 of the English audio track, `pcm_stream` for FFmpeg decoding the audio through a pipe in
 fixed-size chunks, and `shot_changes` for FFmpeg's `scdet` scan of a small scaled copy of the
 video. The crate header places every FFmpeg and ffprobe run behind `child_process`, whose drain
-threads keep FFmpeg's stderr from blocking the audio pipe, and returns `job_model` types. Each
-module holds only its one-line header; no code runs FFmpeg yet. `src/README.md` describes each
-module.
+threads keep FFmpeg's stderr from blocking the audio pipe, and returns `job_model` types. `src/README.md` describes each module.
 
 ## Getting started
 
 Run these from the repository root:
 
 ```bash
-cargo build -p media_io   # the module declarations; nothing runs FFmpeg yet
-cargo test -p media_io    # runs 0 tests: no module holds code yet
+cargo build -p media_io   # the library
+cargo test -p media_io    # 12 unit tests; some run FFmpeg on generated audio and video
 ```
 
 The app runs FFmpeg 8.1 on the host; inside the development container, run anything that calls
@@ -41,15 +38,15 @@ None: the crate reads no setting.
 
 ## Public surface
 
-- The library `media_io`, with the public modules `pcm_stream`, `probe` and `shot_changes`; they
-  hold no items yet.
+- The library `media_io`: `Programs`, `MediaError`, and the public modules `pcm_stream`,
+  `probe` and `shot_changes`.
 - No binary.
 
 ## Boundaries
 
-- Depends on: `child_process` and `job_model`, declared in `Cargo.toml` and not called yet. No
-  libav crate.
-- Used by: `crates/stages/`, which declares it as a dependency.
+- Depends on: `child_process` (FFmpeg and ffprobe with deadlines), `job_model` (the output
+  types), `serde` and `serde_json`; the programs `ffmpeg` and `ffprobe`. No libav crate.
+- Used by: `tools/stack_spike/`; `crates/stages/` declares it as a dependency.
 - Rules:
   - the crate sits in layer 1 and depends only on layer 0 crates (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);
