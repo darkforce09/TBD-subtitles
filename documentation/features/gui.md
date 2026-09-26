@@ -54,7 +54,10 @@ owner's Wayland desktop.
 
 ## Open work
 
-- Milestone M2 in the [roadmap](/documentation/roadmap.md#m2--desktop-gui).
+- Milestone M2 in the [roadmap](/documentation/roadmap.md#m2--desktop-gui), which ends with the
+  batch of Dressrosa 12–48 run from the window's queue.
+- Behaviour 3 opens the video in VLC and behaviour 4 plays clips through libmpv; the app runs
+  only FFmpeg, ffprobe and `claude` (CLAUDE.md, law 3), so both need the owner's ruling first.
 
 ## Decisions
 

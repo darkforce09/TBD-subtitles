@@ -361,15 +361,11 @@ binary for the local model can join the same way.
 per engine, a second pass and the choice of sound cues. Each of these must resume and be timed
 on its own. Tuning one setting, such as the cut score, should not redo the GPU work.
 
-**Decision:** The runner runs 17 steps (`StepName`), each with one output and one row in the
-report. A step's fingerprint hashes:
-- its name and code revision;
-- the settings it reads;
-- the video's path, size and modification time, for steps that read the video;
-- the fingerprint and finish time of each step it reads.
-
-A step is reused when `job.json` holds that fingerprint and its outputs exist. `--rerun <step>`
-forces one.
+**Decision:** The runner runs 17 steps (`StepName`), each with one output and one report row. A
+step's fingerprint hashes its name and code revision, the settings it reads, the video's path,
+size and time (for steps that read the video), and the fingerprint and finish time of each step it
+reads. A step is reused when `job.json` holds that fingerprint and its outputs exist;
+`--rerun <step>` forces one.
 
 **Consequences:** Changing the cut score reruns only cues, QC and output. Any step that runs
 again reruns every step after it. A step whose code changes what it writes must raise its
@@ -400,20 +396,18 @@ Dressrosa 11 lie within 0.5 s of another; at 20, 409 remain.
 **Decision:** For cue timing, a cut is a change scoring at least 20 (`--cut-score`). Changes
 closer than 0.5 s are merged into the strongest.
 
-**Consequences:** Only cues, QC and output rerun when the score is tuned against the owner's
-viewing.
+**Consequences:** Tuning the score reruns only cues, QC and output.
 
 **Supersedes:** none.
 
 ### 2026-09-26 — Replaced subtitle files are kept in the job's work directory
 
-**Context:** The output step replaces `<video base name>.srt`, and the earlier decision said an
-existing file is backed up first. VLC loads one subtitle file per video, and the media folder is
-kept clean.
+**Context:** An existing subtitle file is backed up before it is replaced; VLC loads one subtitle
+file per video, and the media folder is kept clean.
 
 **Decision:** A different existing file is copied to the job's `backup/` folder as
-`<file name>.<unix time>` before the new one is written. The new file goes to a part file that is
-then renamed. An identical file is left alone.
+`<file name>.<unix time>`; the new file is written to a part file and renamed. An identical file
+is left alone.
 
 **Consequences:** No backup file ever sits beside a video.
 
@@ -435,9 +429,8 @@ owner choose per folder.
 
 ### 2026-09-26 — The offset guard is a signed median
 
-**Context:** The success criteria ask for an aligner-to-engine median difference under 30 ms.
-Both time words on an 80 ms grid, so the absolute median is one frame (80 ms) whatever the
-quality.
+**Context:** The success criteria ask for an aligner-to-engine median difference under 30 ms;
+both time words on an 80 ms grid, so the absolute median is one frame whatever the quality.
 
 **Decision:** The job's offset is the signed median of aligner start minus backbone start, over
 words both timed in blocks that passed. The quality check reports it when it is 30 ms or more.
@@ -456,8 +449,7 @@ voices. The owner asked to keep the pipeline milestone small.
 app worker either. They are listed as later roadmap items, by the owner's word.
 
 **Consequences:** Voice activity is earshot alone; sound cues come from CED and Whisper's tags;
-the language model sees only the sheet and the glossary; no speaker labels are written;
-`claude -p` is the app's only language-model backend.
+the model sees only the sheet and the glossary; `claude -p` is the only app backend.
 
 **Supersedes:** none.
 
@@ -467,14 +459,10 @@ the language model sees only the sheet and the glossary; no speaker labels are w
 utterances with `||`. Quick exchanges split across utterances therefore never shared a
 two-speaker cue, and 11 cues came out under 20 frames.
 
-**Decision:** The adjudication rules add the flag `SPK`: the utterance starts with a different
-speaker than the one before, judged from sense. A cue that alone would be too short or too fast
-shares a cue with its neighbour:
-- as `-Line` / `-Line` when a change was marked;
-- as one cue of one speaker when none was marked and the words fit.
-
-A cramped cue may also take back the lead-out of the cue before, down to that cue's speech and
-minimum.
+**Decision:** The adjudication rules add the flag `SPK` (the utterance starts with a different
+speaker than the one before, judged from sense). A cue too short or too fast alone shares a cue
+with its neighbour: dashed when a change was marked, as one speaker's cue when not and the words
+fit. A cramped cue may take back the lead-out of the cue before, down to its speech and minimum.
 
 **Consequences:** On the pilot, the model flagged 194 utterances `SPK`, 8 cues became two-speaker
 cues, and no cue is under 20 frames. The flag comes from the text alone, so a wrong guess shows as
@@ -492,8 +480,21 @@ silence that follows, and it writes laughs ("ha ha ha") that the model rightly d
 backbone, heard words, each word counted for at most 1 s, outside the cues, songs and dropped
 lines. The voice activity with no cue is reported beside it for reference.
 
-**Consequences:** On the pilot the check finds no heard speech without a cue, and 215 s of voice
-with none (grunts, crowds). Speech only Whisper heard, if the model kept it, is covered by its
-utterance's cue.
+**Consequences:** On the pilot: no heard speech without a cue; 215 s of voice (grunts, crowds)
+without one. Speech only Whisper heard, if the model kept it, is covered by its utterance's cue.
 
 **Supersedes:** none.
+
+### 2026-09-26 — The owner accepts the pilot; the batch runs from the GUI
+
+**Context:** The owner watched the Dressrosa 11 pilot in VLC and found the subtitles right. The
+pipeline milestone had the batch of 12–48 run from the command line after that.
+
+**Decision:** The pilot is accepted. The batch of 12–48 moves to the GUI milestone, run through
+the window's job queue, at the owner's word.
+
+**Consequences:** The batch also tests the queue, progress and report views on 37 episodes. The
+pipeline milestone keeps only its 120-minute test.
+
+**Supersedes:** 2026-09-25 — Dressrosa 11 is the pilot; 12–48 are the first batch (when and
+where the batch runs).

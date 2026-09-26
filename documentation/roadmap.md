@@ -59,13 +59,12 @@ total for a 120-minute video is within the [performance budget](/documentation/v
 - [x] QC report per job (layout checks, uncovered speech, flagged lines with timestamps).
 - [x] Pilot run: Dressrosa 11 → subtitle file installed next to the video
       ([pilot run](/documentation/research/pilot_dressrosa_11.md)).
-- [ ] Pilot review: **the owner watches it in VLC and reports problems** → fixes.
-- [ ] Batch: Dressrosa 12–48 after the owner approves the pilot.
-- [ ] A 120-minute test file within the speed and memory budget, run with the batch.
+- [x] Pilot review: the owner watched it in VLC and accepted it (2026-09-26).
+- [ ] A 120-minute test file within the speed and memory budget.
 - [x] Log the run in the media folder's README.md.
 
-**Acceptance:** the owner accepts the pilot; episodes 11–48 have subtitles that pass QC; a
-120-minute test file meets the speed and memory budget.
+**Acceptance:** the owner accepts the pilot; a 120-minute test file meets the speed and memory
+budget. The batch of Dressrosa 12–48 moved to M2 at the owner's word: it runs from the GUI.
 
 ## M2 — Desktop GUI
 
@@ -73,10 +72,12 @@ total for a 120-minute video is within the [performance budget](/documentation/v
 - [ ] Job report view: QC results and the list of flagged lines.
 - [ ] Review flagged lines: play the clip, pick or edit the text, re-align, save.
 - [ ] Settings: model folder, engines, output format, language-model backend, GPU checks.
+- [ ] Batch: Dressrosa 12–48 queued and run from the window, each with a report that passes QC.
 
 Details: [GUI](/documentation/features/gui.md).
 
-**Acceptance:** the owner processes a new video from the GUI alone and fixes a flagged line in it.
+**Acceptance:** the owner processes a new video from the GUI alone and fixes a flagged line in it;
+episodes 12–48 have subtitles, made from the GUI, that pass QC.
 
 ## M3 — Automation
 
