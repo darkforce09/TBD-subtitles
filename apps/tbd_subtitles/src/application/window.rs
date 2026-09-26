@@ -1,10 +1,14 @@
 //! One frame of the window: the page tabs, the queue on the left, the page on the right, dropped
 //! files, then the actions.
 
-use eframe::egui::{self, Id, Panel, RichText, Ui};
+use std::time::Duration;
+
+use eframe::egui::{self, Id, Panel, Ui};
 
 use super::{Action, Page, TbdSubtitlesApp, feature_views};
-use crate::core::ui::MUTED_TEXT;
+
+/// How often the window redraws while a job runs, so its clock and time left move.
+const RUNNING_REDRAW: Duration = Duration::from_secs(1);
 
 impl eframe::App for TbdSubtitlesApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
@@ -29,6 +33,9 @@ impl TbdSubtitlesApp {
         if !dropped.is_empty() {
             actions.push(Action::QueueVideos(dropped));
         }
+        if self.queue.running_job().is_some() {
+            ui.ctx().request_repaint_after(RUNNING_REDRAW);
+        }
         Panel::top(Id::new("pages")).show(ui, |ui| {
             ui.horizontal(|ui| {
                 for (page, name) in [(Page::Jobs, "Jobs"), (Page::Settings, "Settings")] {
@@ -40,17 +47,11 @@ impl TbdSubtitlesApp {
         });
         Panel::left(Id::new("queue"))
             .resizable(true)
-            .default_size(340.0)
+            .default_size(360.0)
             .show(ui, |ui| feature_views::queue_ui(ui, self, &mut actions));
         egui::CentralPanel::default().show(ui, |ui| match self.page {
             Page::Settings => feature_views::settings_ui(ui, self, &mut actions),
-            Page::Jobs => {
-                ui.heading(super::APP_NAME);
-                ui.label(
-                    RichText::new("Select a job in the queue to see its progress and report.")
-                        .color(MUTED_TEXT),
-                );
-            }
+            Page::Jobs => feature_views::jobs_ui(ui, self, &mut actions),
         });
         actions
     }

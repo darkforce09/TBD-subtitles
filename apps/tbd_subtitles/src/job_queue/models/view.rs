@@ -1,9 +1,16 @@
-//! The borrowed view of the queue that the application lends the panel each frame.
+//! The borrowed views of the queue that the application lends the panels each frame.
 
-use std::path::PathBuf;
+use std::time::Instant;
+
+use crate::job_queue::models::progress::Rates;
+use crate::job_queue::models::queue::Queue;
 
 /// The queue as the panel sees it: read-only, borrowed for one frame.
 pub(crate) struct JobQueueView<'a> {
-    /// The queued videos, in run order.
-    pub(crate) videos: &'a [PathBuf],
+    pub(crate) queue: &'a Queue,
+    /// A model or runtime archive is missing, so no job can start.
+    pub(crate) models_missing: bool,
+    /// Seconds per second of video for each step, for the time left.
+    pub(crate) rates: &'a Rates,
+    pub(crate) now: Instant,
 }

@@ -1,17 +1,43 @@
 //! Lends each feature its borrowed view, draws it, and turns its events into actions.
 
-use eframe::egui::Ui;
+use std::time::Instant;
+
+use eframe::egui::{RichText, Ui};
 
 use super::{Action, TbdSubtitlesApp};
+use crate::core::ui::MUTED_TEXT;
 use crate::job_queue::models::view::JobQueueView;
-use crate::job_queue::ui::queue_panel_ui;
+use crate::job_queue::ui::{progress_view_ui, queue_panel_ui};
 use crate::settings::ui::settings_page_ui;
+
+fn queue_view(app: &TbdSubtitlesApp) -> JobQueueView<'_> {
+    JobQueueView {
+        queue: &app.queue,
+        models_missing: app.models_missing(),
+        rates: &app.rates,
+        now: Instant::now(),
+    }
+}
 
 /// Draw the queue panel and collect its events as actions.
 pub(super) fn queue_ui(ui: &mut Ui, app: &TbdSubtitlesApp, actions: &mut Vec<Action>) {
-    let view = JobQueueView { videos: &app.queue };
     let mut events = Vec::new();
-    queue_panel_ui(ui, &view, &mut events);
+    queue_panel_ui(ui, &queue_view(app), &mut events);
+    actions.extend(events.into_iter().map(Action::from));
+}
+
+/// Draw the selected job, or a hint when none is selected.
+pub(super) fn jobs_ui(ui: &mut Ui, app: &TbdSubtitlesApp, actions: &mut Vec<Action>) {
+    let Some(item) = app.queue.selected.and_then(|id| app.queue.get(id)) else {
+        ui.heading(super::APP_NAME);
+        ui.label(
+            RichText::new("Select a job in the queue to see its progress and report.")
+                .color(MUTED_TEXT),
+        );
+        return;
+    };
+    let mut events = Vec::new();
+    progress_view_ui(ui, &queue_view(app), item, &mut events);
     actions.extend(events.into_iter().map(Action::from));
 }
 

@@ -22,23 +22,26 @@ apps/tbd_subtitles/src/application/
 
 `launch` opens a native window titled "TBD Subtitles" (application id `tbd-subtitles`), 1200 by
 760 and at least 760 by 480, with drag and drop on and the glow renderer, and returns when it
-closes. Its `Environment` names the owner's settings file and runtime folder and wakes the window
-from any thread (`request_repaint`); the tests build one over a scratch folder. `TbdSubtitlesApp`
-holds the page shown (Jobs or Settings), the queue of videos in run order, the settings page and
-`Pending`, the receiving end of every thread it started. The videos passed to `launch` enter the
-queue as the first `Action`; the machine checks and the work folder's measure start at once.
+closes. Its `Environment` names the owner's settings file, the kept queue, the GPU lock and the
+runtime folder, holds the job runner (the pipeline's `run_job`) and wakes the window from any
+thread (`request_repaint`); the tests build one over a scratch folder with a stand-in runner.
+`TbdSubtitlesApp` holds the page shown (Jobs or Settings), the queue loaded from `queue.json`,
+the job runner's thread, the running job's cancel token, the step rates for the time left, the
+settings page and `Pending`, the receiving end of every other thread it started. The videos passed
+to `launch` enter the queue as the first `Action`; the machine checks and the work folder's
+measure start at once. While a job runs the window redraws every second.
 
 Each frame runs in three steps:
 
 ```text
-poll(&mut self)        the threads' answers: chooser paths, download progress, checks, sizes
+poll(&mut self)        the threads' answers: chooser paths, downloads, checks, sizes, job events
 frame_ui(&self)
   ├── dropped files ──▶ Action::QueueVideos
   ├── page tabs ──▶ Action::ShowPage
-  ├── feature_views::queue_ui ──▶ JobQueueEvent ──▶ RemoveFromQueue / ChooseForQueue
-  └── the page: settings_ui ──▶ SettingsEvent ──▶ Action::Settings
+  ├── feature_views::queue_ui ──▶ JobQueueEvent ──▶ Action::Queue
+  └── the page: jobs_ui (the selected job) or settings_ui ──▶ Action::Queue / Action::Settings
 apply(&mut self, actions)
-  └── queue_editing, or actions::settings (save, choosers, downloads, checks)
+  └── actions::queue (edits, Start, Pause, Cancel, the next job) or actions::settings
 ```
 
 `frame_ui` borrows the state immutably and only collects actions; `apply` and `poll` are the only
@@ -55,10 +58,14 @@ thread; its answer goes into the queue or the settings draft.
   - nothing changes state while a frame is drawn: every change is an `Action` applied after the
     frame (`actions_change_the_queue_only_when_applied` in `tests/rendering.rs`), and an edit is
     written only by Save (`an_edit_is_saved_only_by_save`);
-  - an empty queue tells the user how to add videos, queued videos show by file name, and the
-    settings page shows the form, the models and the checks
-    (`an_empty_queue_says_how_to_add_videos`, `queued_videos_show_by_file_name`,
+  - an empty queue tells the user how to add videos, queued videos show by file name and wait
+    for Start, and the settings page shows the form, the models and the checks
+    (`an_empty_queue_says_how_to_add_videos`,
+    `queued_videos_show_by_file_name_and_wait_for_start`,
     `the_settings_page_shows_the_form_models_and_checks`);
+  - jobs run one after another and a cancelled job can be retried
+    (`started_jobs_run_one_after_another_and_the_queue_is_kept`,
+    `a_cancelled_job_ends_cancelled_and_can_be_retried`);
   - the tests never read or write the owner's files (`Environment::scratch`);
   - no feature imports this module
     (`dependency_boundaries_and_external_test_placement_are_enforced` in

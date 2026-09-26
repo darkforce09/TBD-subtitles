@@ -14,7 +14,7 @@
 use std::sync::mpsc::{Receiver, TryRecvError};
 
 use super::TbdSubtitlesApp;
-use super::actions::poll_settings;
+use super::actions::{poll_runner, poll_settings};
 use crate::core::portal::{self, Choose, Chosen};
 use crate::settings::events::PathField;
 use crate::settings::models::machine::Check;
@@ -41,6 +41,7 @@ impl TbdSubtitlesApp {
     /// Apply everything the threads sent since the last frame.
     pub(crate) fn poll(&mut self) {
         poll_settings(self);
+        poll_runner(self);
         self.poll_chooser();
     }
 

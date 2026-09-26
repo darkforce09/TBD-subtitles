@@ -7259,6 +7259,7 @@ dependencies = [
  "pipeline",
  "pollster",
  "serde",
+ "serde_json",
  "stages",
  "toml",
  "tracing",

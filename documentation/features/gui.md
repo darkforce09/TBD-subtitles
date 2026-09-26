@@ -7,8 +7,9 @@ pipeline was unsure about; milestone M2. What exists now: the window opens (`tbd
 `tbd-subtitles gui [VIDEO]...`) with two pages. Its queue panel lists the videos given on the
 command line, dropped onto the window or added through the desktop's chooser (files, or a folder
 for its videos without subtitles), each with a button that takes it out again. The Settings page
-edits `settings.toml`, lists and downloads the models, and checks the machine. The queue does not
-run jobs yet.
+edits `settings.toml`, lists and downloads the models, and checks the machine. Start runs the
+waiting jobs one at a time, with each step's progress and the time left; a running job can be
+cancelled and an ended one retried, and the queue is kept across windows.
 
 ## Where it lives
 

@@ -23,8 +23,11 @@ inference = { path = "../../crates/inference" }
 child_process = { path = "../../crates/child_process" }
 # The built-in series glossary the `process` subcommand defaults to.
 stages = { path = "../../crates/stages" }
-# The settings file: `settings.toml` read into typed settings and written back.
+# Typed settings and the queue kept across windows.
 serde = { version = "1", features = ["derive"] }
+# The queue kept across windows, and the job records and probes read for the time left.
+serde_json = "1"
+# The settings file: `settings.toml` read into typed settings and written back.
 toml = { version = "0.9", default-features = false, features = ["parse", "display", "std", "serde"] }
 # Error context at the top of the binary only; the library crates return typed errors.
 anyhow = "1"

@@ -69,7 +69,7 @@ budget. The batch of Dressrosa 12–48 moved to M2 at the owner's word: it runs 
 
 ## M2 — Desktop GUI
 
-- [ ] Job queue: add files or folders, reorder, cancel, retry; per-stage progress and time left.
+- [x] Job queue: add files or folders, reorder, cancel, retry; per-stage progress and time left.
 - [ ] Job report view: QC results and the list of flagged lines.
 - [ ] Review flagged lines: play the clip, pick or edit the text, re-align, save.
 - [x] Settings: model folder, engines, output format, language-model backend, GPU checks.

@@ -16,25 +16,16 @@ pub(crate) enum Page {
 /// A change to the application state, collected while a frame is drawn.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Action {
-    /// Add these videos to the end of the queue, skipping those already queued.
+    /// Add these videos, or the videos of these folders, to the end of the queue.
     QueueVideos(Vec<PathBuf>),
-    /// Take the video at this queue position out of the queue.
-    RemoveFromQueue(usize),
-    /// Open the desktop's chooser to add videos, or a folder of videos.
-    ChooseForQueue {
-        folder: bool,
-    },
+    Queue(JobQueueEvent),
     ShowPage(Page),
     Settings(SettingsEvent),
 }
 
 impl From<JobQueueEvent> for Action {
     fn from(event: JobQueueEvent) -> Action {
-        match event {
-            JobQueueEvent::Remove(index) => Action::RemoveFromQueue(index),
-            JobQueueEvent::AddVideos => Action::ChooseForQueue { folder: false },
-            JobQueueEvent::AddFolder => Action::ChooseForQueue { folder: true },
-        }
+        Action::Queue(event)
     }
 }
 

@@ -28,7 +28,14 @@ use eframe::egui;
 pub(crate) use environment::Environment;
 pub(crate) use events::{Action, Page};
 
+use pipeline::CancelToken;
+
+use crate::job_queue::models::progress::Rates;
+use crate::job_queue::models::queue::{JobId, Queue};
+use crate::job_queue::services::job_runner::{self, JobRunner};
+use crate::job_queue::services::{queue_editing, queue_store, time_left};
 use crate::settings::models::page::SettingsPage;
+use crate::settings::services::job_settings;
 
 /// The window's name, title and desktop application id.
 const APP_NAME: &str = "TBD Subtitles";
@@ -38,8 +45,14 @@ const APP_ID: &str = "tbd-subtitles";
 pub(crate) struct TbdSubtitlesApp {
     env: Environment,
     page: Page,
-    /// Videos waiting for subtitles, in run order.
-    queue: Vec<PathBuf>,
+    /// Every job, in run order.
+    queue: Queue,
+    /// The thread that runs the jobs.
+    runner: JobRunner,
+    /// The running job and the token that stops it.
+    cancel: Option<(JobId, CancelToken)>,
+    /// Each step's seconds per second of video, for the time left.
+    rates: Rates,
     settings: SettingsPage,
     pending: background::Pending,
 }
@@ -47,10 +60,21 @@ pub(crate) struct TbdSubtitlesApp {
 impl TbdSubtitlesApp {
     fn new(env: Environment, videos: Vec<PathBuf>) -> TbdSubtitlesApp {
         let settings = actions::new_settings_page(&env);
+        let queue = queue_store::load(&env.queue_path).unwrap_or_else(|error| {
+            tracing::warn!(%error, "starting with an empty queue");
+            Queue::default()
+        });
+        let rates = job_settings::work_root(&settings.saved)
+            .map(|root| time_left::from_history(&root))
+            .unwrap_or_else(|_| time_left::pilot_rates());
+        let runner = job_runner::start(env.run_job.clone(), env.wake.clone());
         let mut app = TbdSubtitlesApp {
             env,
             page: Page::Jobs,
-            queue: Vec::new(),
+            queue,
+            runner,
+            cancel: None,
+            rates,
             settings,
             pending: background::Pending::default(),
         };
@@ -61,19 +85,16 @@ impl TbdSubtitlesApp {
 
     /// Apply the actions collected during a frame, in order.
     fn apply(&mut self, actions: Vec<Action>) {
-        use crate::job_queue::services::queue_editing;
         for action in actions {
             match action {
                 Action::QueueVideos(videos) => {
                     let added = queue_editing::add_videos(&mut self.queue, videos);
-                    tracing::info!(added, queued = self.queue.len(), "videos queued");
-                }
-                Action::RemoveFromQueue(index) => {
-                    if let Some(video) = queue_editing::remove_video(&mut self.queue, index) {
-                        tracing::info!(video = %video.display(), "video removed from the queue");
+                    if added > 0 {
+                        tracing::info!(added, "videos queued");
+                        self.save_queue();
                     }
                 }
-                Action::ChooseForQueue { folder } => self.choose_for_queue(folder),
+                Action::Queue(event) => self.apply_queue(event),
                 Action::ShowPage(page) => self.page = page,
                 Action::Settings(event) => self.apply_settings(event),
             }
