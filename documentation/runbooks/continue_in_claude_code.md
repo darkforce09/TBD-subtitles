@@ -19,53 +19,38 @@ with the prompt to paste. Update the prompt whenever the roadmap's next step cha
 
 2. Paste the prompt below as the first message.
 
-   **Expected:** Claude reads the documents, runs the checks, and proposes the M0.5 spike plan
-   before measuring anything.
+   **Expected:** Claude reads the documents, fixes what the notes report, reruns the touched
+   steps on Dressrosa 11, and shows the result before starting the batch.
 
 ## Prompt
 
 ```text
-You're continuing TBD-subtitles: a Rust desktop app that generates high-quality English subtitles
-(every spoken line plus SDH sound cues, timed to the word, Netflix English layout) for videos on my
-PC, and later translates Japanese text shown on screen. The repo is
-/run/media/system/Disk_2/Projects/TBD-subtitles. Milestone M0 is done: the Cargo workspace, every
-crate and module folder with its README, the eframe window, and the repository gates
-(`cargo gates`). No pipeline stage is built yet.
+You're continuing TBD-subtitles: a Rust desktop app that makes English SDH subtitles for videos on
+my PC. The repo is /run/media/system/Disk_2/Projects/TBD-subtitles. M0, M0.5 and the M1 pipeline
+are built: `tbd-subtitles process <video>` runs every step (resumable, GPU steps in workers of
+`tbd-subtitles` and `tbd-subtitles-ggml`) and installed "[Muhn Pace] Dressrosa 11.srt" next to
+the video. I have watched it in VLC; my notes are below.
 
-1. Read CLAUDE.md, then documentation/README.md, vision_and_goals.md, decisions.md, roadmap.md,
-   architecture/system_overview.md, architecture/pipeline.md, research/rust_ml_stack.md,
-   standards/readme_standard.md, standards/coding_standards.md and
-   runbooks/development_environment.md. The CLAUDE.md laws are binding: Rust only (no Python,
-   shell, Makefiles or Node, ever, not even for model conversion); the app runs only FFmpeg,
-   ffprobe and the claude CLI as external programs; native runtimes (ort, ggml) are allowed only
-   where no pure-Rust engine is competitive; a README in every folder, written from the templates
-   in documentation/standards/templates/; Conventional Commits straight to main with explicit
-   paths; no silent deferrals.
-2. You run inside the claude-desktop distrobox, which has no CUDA driver library and an old
-   FFmpeg. Run anything that touches the GPU, and FFmpeg/ffprobe, on the host with
-   `distrobox-host-exec`. Measure VRAM with nvidia-smi on the host.
-3. Before every commit: cargo fmt --all --check, cargo clippy --workspace --all-targets
-   -- -D warnings, cargo test --workspace, and cargo gates --with-untracked.
-4. Milestone M0.5 (roadmap.md): the stack spike on
-   "/run/media/system/Main_storage/Media/one_pace/[Muhn Pace] Dressrosa 11.mp4" (30.9 minutes;
-   episode 11 is the pilot, see decisions.md). Show me the plan first: which roadmap item uses
-   which crate and model file, where each model comes from and how big it is, which code goes into
-   which crate or module folder (reusable code in the crate it belongs to, the measuring harness
-   as a Rust tool under tools/), and where the CUDA 13 libraries for ort will live. Ask me before
-   downloading anything. Then, for every M0.5 item, run it on episode 11 from Rust and measure
-   wall time, speed against realtime, peak VRAM and peak RAM, with quality notes. Write a new
-   research snapshot from the research snapshot template, decision entries that settle the open
-   questions (second speech engine, default language-model backend) and each stack choice, the
-   working CUDA recipe in the development environment runbook, and tick the roadmap boxes in the
-   same commits. Project the total for a 120-minute video against the performance budget in
-   vision_and_goals.md, and say plainly which stages miss it and what would fix them. Stop and
-   show me.
-5. After I approve, M1: build the pipeline, run the Dressrosa 11 pilot, put the subtitle file next
-   to the video, and stop so I can watch it in VLC before you batch episodes 12–48.
+1. Read first: CLAUDE.md (the laws are binding: Rust only, no scripts; FFmpeg/ffprobe/claude CLI
+   as the only external programs; a README in every folder from the templates; Conventional
+   Commits straight to main with explicit paths; no silent deferrals), then
+   documentation/roadmap.md (M1), documentation/research/pilot_dressrosa_11.md,
+   documentation/architecture/pipeline.md and documentation/runbooks/development_environment.md
+   (steps 12–13 build and run the app on the host).
+2. Fix what my notes report. Rerun only the steps a fix touches (`--rerun <step>`; later steps
+   follow), check the report and the SRT, and show me before the batch.
+3. After I approve: run Dressrosa 12–48 (one `process` call per episode, or several videos in one
+   call), check every report, and run one 120-minute test file against the speed and memory
+   budget (ask me which file). Log every change to the media folder in its README.md.
+4. Before every commit: cargo fmt --all --check, cargo clippy --workspace --all-targets
+   -- -D warnings, cargo test --workspace, cargo gates --with-untracked. Tick roadmap boxes as
+   work lands.
 
-Never modify the videos, and keep work files out of the media folder. Log every change to the
-media folder in its README.md.
+Never modify the videos; keep work files out of the media folder. Ignore AGENTS.md in the media
+folder.
 
+My notes from watching Dressrosa 11:
+<paste them here>
 ```
 
 ## Verify

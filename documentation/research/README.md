@@ -10,6 +10,7 @@ episode.
 
 ```text
 documentation/research/
+├── pilot_dressrosa_11.md            frozen record, 2026-09-26: the first end-to-end run, its fixes, resume
 ├── rust_ml_stack.md                 frozen record, 2026-09-25: Rust crates and model files per capability
 ├── speech_recognition_landscape.md  frozen record, 2026-09-25: benchmarks, prices, options, why local
 └── stack_spike_dressrosa_11.md      frozen record, 2026-09-26: every stack piece measured on one episode

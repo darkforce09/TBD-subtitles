@@ -54,13 +54,15 @@ total for a 120-minute video is within the [performance budget](/documentation/v
 
 ## M1 — Pipeline and the Dressrosa pilot
 
-- [ ] Every stage of the [pipeline](/documentation/architecture/pipeline.md) as a resumable stage
+- [x] Every stage of the [pipeline](/documentation/architecture/pipeline.md) as a resumable stage
       with typed JSON output; `tbd-subtitles process <video>` runs them in order.
-- [ ] QC report per job (layout checks, uncovered speech, flagged lines with timestamps).
-- [ ] Pilot: Dressrosa 11 → subtitle file installed next to the video → **stop; the owner watches
-      it in VLC and reports problems** → fixes.
+- [x] QC report per job (layout checks, uncovered speech, flagged lines with timestamps).
+- [x] Pilot run: Dressrosa 11 → subtitle file installed next to the video
+      ([pilot run](/documentation/research/pilot_dressrosa_11.md)).
+- [ ] Pilot review: **the owner watches it in VLC and reports problems** → fixes.
 - [ ] Batch: Dressrosa 12–48 after the owner approves the pilot.
-- [ ] Log the run in the media folder's README.md.
+- [ ] A 120-minute test file within the speed and memory budget, run with the batch.
+- [x] Log the run in the media folder's README.md.
 
 **Acceptance:** the owner accepts the pilot; episodes 11–48 have subtitles that pass QC; a
 120-minute test file meets the speed and memory budget.
@@ -97,6 +99,19 @@ Details: [automation](/documentation/features/automation.md).
 Details: [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md).
 
 **Acceptance:** Dressrosa signs and title cards show translated, positioned subtitles in VLC.
+
+## Later
+
+Items the owner moved out of the pipeline milestone to keep it small (see the
+[decisions](/documentation/decisions.md)); each waits for the owner to place it in a milestone.
+
+- [ ] Silero for voice-activity frames near earshot's threshold.
+- [ ] CLAP zero-shot sound classes for sounds AudioSet lacks.
+- [ ] Reference subtitles (the One Pace `.ass` files) as meaning and spelling hints for the
+      language model.
+- [ ] Speaker labels (`[Law]`) for voices the language model judges off-screen.
+- [ ] The local language model (mistral.rs) as an app worker binary, the offline fallback to
+      `claude -p`.
 
 ## Open questions
 

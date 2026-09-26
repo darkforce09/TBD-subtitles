@@ -9,10 +9,13 @@ Netflix's English rules. It runs locally on the owner's PC. A later milestone tr
 text that appears on screen. The first job is the Muhn Pace Dressrosa English dub in
 `/run/media/system/Main_storage/Media/one_pace/` (41 episodes; no dub subtitles exist anywhere).
 
-**Current state:** milestone M0 is done: the Cargo workspace, the `tbd-subtitles` binary (an
-eframe window and the `gui`, `process` and `worker` subcommands), every crate and module folder
-with its README, and the `cargo gates` checks. No pipeline stage is built yet. Next step:
-milestone M0.5 in the [roadmap](/documentation/roadmap.md), after the owner reviews M0.
+**Current state:** milestones M0 and M0.5 are done. In M1 the whole pipeline runs:
+`tbd-subtitles process <video>` runs 17 resumable steps, with GPU steps in workers of
+`tbd-subtitles` and `tbd-subtitles-ggml`, and writes the SRT, `report.md` and each step's time and
+memory. The Dressrosa 11 pilot file is installed beside the video
+([pilot run](/documentation/research/pilot_dressrosa_11.md)). Next step: the owner watches the
+pilot in VLC and reports problems; the batch of 12–48 and the 120-minute run wait for their
+approval ([roadmap](/documentation/roadmap.md)).
 
 ## 1. Project laws
 
@@ -66,18 +69,20 @@ TBD-subtitles/
 ├── README.md              what the project is, layout, documentation index
 ├── rust-toolchain.toml    Rust 1.95.0 for the whole workspace
 ├── apps/
-│   └── tbd_subtitles/     the binary: cli/, application/ (eframe shell), core/, and the feature
-│                          folders job_queue/, job_report/, line_review/, settings/
+│   ├── tbd_subtitles/     the binary: cli/, application/ (eframe shell), core/, and the feature
+│   │                      folders job_queue/, job_report/, line_review/, settings/
+│   └── tbd_subtitles_ggml/ the ggml worker binary: the Whisper steps (feature `crispasr`)
 ├── crates/                layers, lowest first:
 │   ├── job_model/         0  stage names and the serde contracts between stages
 │   ├── child_process/     0  external programs with deadlines, group kills, drained pipes
 │   ├── media_io/          1  ffprobe, FFmpeg PCM streaming, shot changes
 │   ├── subtitle_formats/  1  cue model, SRT/VTT/ASS writers, import
-│   ├── inference/         1  onnx, ggml, candle, llm backends, model store
+│   ├── inference/         1  onnx, ggml, candle, llm backends, model store, CUDA runtime
 │   ├── stages/            2  one module folder per pipeline stage
-│   └── pipeline/          3  stage graph, resume, worker processes, progress, work directory
+│   └── pipeline/          3  step graph, resume, work directory, workers, tasks, runner, report
 ├── tools/
 │   ├── repo_gates/        `cargo gates`: every law a program can check
+│   ├── stack_spike*/      the stack spike: measuring harness and its ggml and llm workers
 │   └── verification_core/ fail-closed verdicts and reports for the gates
 └── documentation/         goals, decisions, roadmap, architecture, research, features, runbooks,
                            standards and templates
@@ -112,7 +117,10 @@ cargo gates                        # every law a program can check; exit 0, 1 or
 
 More: `cargo gates <gate>` runs one gate (`cargo gates link-check --report`), `--path <dir>`
 narrows it, `--with-untracked` includes new files. Open the window on the host:
-`distrobox-host-exec target/debug/tbd-subtitles gui`.
+`distrobox-host-exec target/debug/tbd-subtitles gui`. Build both app binaries (the ggml
+worker under the CUDA 13.4 toolkit) and generate subtitles on the host as in steps 12 and 13 of
+the [development environment](/documentation/runbooks/development_environment.md#steps) runbook:
+`distrobox-host-exec target/release/tbd-subtitles process <video>`.
 
 ## 5. Where to look
 
