@@ -14,8 +14,10 @@ resumable steps, with GPU steps in workers of `tbd-subtitles` and `tbd-subtitles
 writes the SRT, `report.md` and each step's time and memory. The owner accepted the Dressrosa 11
 pilot ([pilot run](/documentation/research/pilot_dressrosa_11.md)), and a 128.9-minute video ran
 in 19.2 minutes ([120-minute test](/documentation/research/long_video_120min.md)). Now: milestone
-M2, the desktop GUI, which ends with the batch of 12–48 run from the window
-([roadmap](/documentation/roadmap.md)).
+M2, the desktop GUI. The window (`tbd-subtitles gui`) has the job queue, progress and time left,
+the report, the line review with clip playback and a review step that re-times corrections, and
+the settings page with model downloads; left is the batch of 12–48 run from the window, on the
+owner's go ([roadmap](/documentation/roadmap.md)).
 
 ## 1. Project laws
 

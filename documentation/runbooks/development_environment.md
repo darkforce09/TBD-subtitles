@@ -99,8 +99,9 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
    distrobox-host-exec /run/media/system/Disk_2/Projects/TBD-subtitles/target/debug/tbd-subtitles gui
    ```
 
-   **Expected:** a window titled "TBD Subtitles" with an empty queue on the left; the log line
-   `videos queued added=0` on stderr. Close the window to end the command.
+   **Expected:** a window titled "TBD Subtitles" with the queue on the left (empty the first
+   time, else the queue the last window kept). A video named after `gui` joins the queue, with
+   the log line `videos queued added=1` on stderr. Close the window to end the command.
 
 8. Download the models and the GPU runtime (about 16 GiB the first time; later runs check what is
    there and download nothing).
@@ -167,6 +168,21 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
     the paths of the subtitle file beside the video and of `report.md` in the job's work
     directory under `~/.local/share/tbd-subtitles/work/`. Running it again skips every step;
     `--rerun cues` redoes the cues, the quality check and the output only.
+
+14. Run a job from the window on the host, with nothing else using the GPU.
+
+    ```bash
+    distrobox-host-exec target/release/tbd-subtitles gui
+    ```
+
+    Add a video with Add videos… (or drop it on the window), press Start, and select the job.
+
+    **Expected:** each step's row turns from pending to running to done, with the time left under
+    the job; when it ends, the report says whether it passes the quality check and lists the
+    findings. Review lines opens the flagged lines; Play sounds the clip through the desktop's
+    audio and shows its picture; Save and time again queues a "· corrections" run of the video
+    that runs the review step, the cues, the quality check and the output only, and the old
+    subtitle file moves to the work directory's `backup/`.
 
 ## CUDA libraries for ONNX Runtime
 

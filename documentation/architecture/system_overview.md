@@ -4,8 +4,10 @@
 
 The shape of TBD-subtitles: an app binary with a job runner, a second binary for the ggml worker,
 worker processes for the GPU and language-model steps, FFmpeg for media, and a work directory per
-job. The pipeline runs end to end from the command line (`tbd-subtitles process`). The window
-shows a queue; its job view comes with the GUI milestone in the [roadmap](/documentation/roadmap.md).
+job. The pipeline runs end to end from the command line (`tbd-subtitles process`) or from the
+window, which queues videos, runs their jobs one at a time with progress and the time left, shows
+each job's report and lets the owner review and correct its flagged lines
+([GUI](/documentation/features/gui.md)).
 
 ## Processes
 
