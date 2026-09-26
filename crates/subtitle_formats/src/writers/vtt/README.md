@@ -1,23 +1,30 @@
 # WebVTT writer
 
-WebVTT (`.vtt`): the `WEBVTT` header, `HH:MM:SS.mmm` times and `<i>` italics. The module's code is
-not written yet; `mod.rs` holds only its header.
+WebVTT (`.vtt`): the `WEBVTT` header, `HH:MM:SS.mmm` times and `<i>` italics, one of the output
+formats the owner can choose in the settings.
 
 ## Contents
 
 ```text
 crates/subtitle_formats/src/writers/vtt/
-└── mod.rs  the module header; no items yet
+├── mod.rs  `write` (the whole file) and `timestamp` (one frame as `HH:MM:SS.mmm`)
+└── tests/  unit tests for timestamps, the header, italics, escaping and an empty track
 ```
 
 ## Boundaries
 
-- Depends on: nothing; the module holds no code.
-- Used by: nothing; `crates/subtitle_formats/src/writers/mod.rs` declares it as a public module.
-- Rules: none of their own beyond the writers'; see the
-  [writers README](/crates/subtitle_formats/src/writers/README.md#boundaries).
+- Depends on: `crate::cue::{CueTrack, FrameRate}`.
+- Used by: `crates/pipeline/src/tasks/layout.rs`, the output step, when the job's output format is
+  WebVTT.
+- Rules:
+  - the file starts with `WEBVTT` and a blank line; cues carry no numbers
+    (`the_file_starts_with_the_header_and_cues_are_unnumbered` in `tests/vtt.rs`);
+  - a time is the cue's frame rounded to the nearest millisecond
+    (`timestamps_use_a_dot_before_the_milliseconds`);
+  - `&`, `<` and `>` are written as references so the text shows as given
+    (`reserved_characters_are_written_as_references`).
 
 ## Related documentation
 
-- [Rust ML stack](/documentation/research/rust_ml_stack.md#10-subtitle-files) — the one writer for
-  SRT, WebVTT and ASS, and the crates that read subtitle files.
+- [Subtitle style rules](/documentation/architecture/subtitle_style_rules.md#output-formats) — the
+  output formats.
