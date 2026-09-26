@@ -11,6 +11,8 @@ publish = false
 [features]
 # Whisper and the Qwen3 aligner through CrispASR: builds ggml with CUDA, so it needs cmake and nvcc.
 crispasr = ["dep:crispasr"]
+# A local language model through mistral.rs with CUDA; its build accepts CUDA toolkits up to 13.3.
+mistralrs = ["dep:mistralrs", "dep:tokio"]
 
 [dependencies]
 # Runs FFmpeg, ffprobe and the other external programs with deadlines.
@@ -36,9 +38,14 @@ realfft = "3"
 # CrispASR (ggml): Whisper and the Qwen3 forced aligner on CUDA. The crates.io package ships no C++
 # sources, so the pinned git tag is built with cmake; optional, behind the `crispasr` feature.
 crispasr = { git = "https://github.com/CrispStrobe/CrispASR", tag = "v0.8.37", features = ["cuda"], optional = true }
+# mistral.rs (candle, pure Rust) for the local language model, from the pinned git tag: Qwen3.5
+# GGUF support is not on crates.io yet. Optional, behind the `mistralrs` feature.
+mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs", tag = "v0.9.4", default-features = false, features = ["cuda"], optional = true }
 # Checks every downloaded file against its pinned SHA-256.
 sha2 = { version = "0.11", default-features = false }
 # Reads the runtime archives once lzma-rs has decompressed them.
 tar = { version = "0.4", default-features = false }
+# The runtime the async mistral.rs API is driven with.
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread"], optional = true }
 # Downloads model files and runtime archives over https, with resumable ranges.
 ureq = { version = "3", default-features = false, features = ["rustls"] }

@@ -102,12 +102,77 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
    **Expected:** a window titled "TBD Subtitles" with an empty queue on the left; the log line
    `videos queued added=0` on stderr. Close the window to end the command.
 
+8. Download the models and the GPU runtime (about 16 GiB the first time; later runs check what is
+   there and download nothing).
+
+   ```bash
+   cargo run --release -p stack_spike -- fetch
+   ```
+
+   **Expected:** one line per model and runtime archive, then `models in …/models; runtime in
+   …/runtime` and `checked <N> MiB against their pinned SHA-256`.
+
+9. Build the ggml worker with CrispASR, under the CUDA 13.4 toolkit (about 3 minutes the first
+   time).
+
+   ```bash
+   env PATH="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.4/bin:$PATH" CUDACXX="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.4/bin/nvcc" CUDAToolkit_ROOT="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.4" CUDAARCHS=86 cargo build --release -p stack_spike_ggml --features crispasr
+   ```
+
+   **Expected:** `Finished release profile`; `ldd target/release/stack-spike-ggml` lists
+   `libcrispasr.so.1` under `target/release/build/crispasr-sys-*/`.
+
+10. Build the local language-model worker, under the CUDA 13.3 compiler (about 30
+    minutes the first time).
+
+    ```bash
+    env PATH="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.3-build/bin:$PATH" CUDA_ROOT="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.3-build" CUDA_PATH="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.3-build" CUDA_COMPUTE_CAP=86 LIBRARY_PATH="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.4/lib" cargo build --release -p stack_spike_llm --features mistralrs
+    ```
+
+    **Expected:** `Finished release profile`. The kernels compile with nvcc 13.3 and link against
+    the 13.4 cuBLAS, cuRAND and NVRTC (`LIBRARY_PATH`). Without `--features mistralrs` the build
+    needs no toolkit and `stack-spike-llm` refuses its item.
+
+11. Measure an item on the host, with nothing else using the GPU.
+
+    ```bash
+    distrobox-host-exec target/release/stack-spike run decode --video "/run/media/system/Main_storage/Media/one_pace/[Muhn Pace] Dressrosa 11.mp4"
+    ```
+
+    **Expected:** `decode: Ok in <s> s (<x>× realtime)`; `stack-spike report --video …` prints the
+    table. A GPU item with less than 5632 MiB of VRAM free is recorded as not run.
+
 ## CUDA libraries for ONNX Runtime
 
-The `ort` crate's prebuilt GPU build needs CUDA 13 runtime libraries (cudart, cuBLAS, cuDNN ≥ 9.23).
-Bazzite's image does not ship them and the root filesystem is read-only, so they are placed beside
-the app binary (the `preload-dylibs` feature) or in a user folder the app points at. The working
-recipe is written here during the M0.5 spike.
+The GPU backends need the CUDA 13 runtime (cudart, cuBLAS, cuFFT, cuRAND, NVRTC, nvJitLink),
+cuDNN 9 and ONNX Runtime 1.28. Bazzite's image ships none of them and its root filesystem is
+read-only, so `stack-spike fetch` downloads NVIDIA's redistributable archives and Microsoft's ONNX
+Runtime build, each pinned by size and SHA-256 in `crates/inference/src/model_store/manifest.rs`,
+into the runtime folder `~/.local/share/tbd-subtitles/runtime/`:
+
+| Folder | Holds | Needed for |
+|---|---|---|
+| `cuda-13.4/` | cudart, cuBLAS, cuFFT, cuRAND, NVRTC, nvJitLink, nvcc 13.4 and headers; `lib64` links to `lib` | every GPU worker at run time; building ggml (CrispASR) |
+| `cudnn-9.26/` | cuDNN 9.26 for CUDA 13 | ONNX Runtime's CUDA provider at run time |
+| `onnxruntime-1.28.2/` | `libonnxruntime.so` and its CUDA provider | the `ort` crate, which loads it at run time |
+| `cuda-13.3-build/` | nvcc 13.3 with its headers | building mistral.rs only, whose build accepts toolkits up to 13.3 |
+
+- **Why ONNX Runtime is loaded at run time:** the `ort` crate's prebuilt static library needs
+  glibc 2.38 and GCC 13's libstdc++ to link, and the `claude-desktop` container has glibc 2.36 and
+  GCC 12. With `load-dynamic`, nothing links at build time; Microsoft's build is loaded on the
+  host.
+- **At run time:** the process that starts a GPU worker sets `LD_LIBRARY_PATH` to the three `lib/`
+  folders and `ORT_DYLIB_PATH` to `libonnxruntime.so` (`CudaRuntime::worker_env` in
+  `crates/inference/src/cuda_runtime/mod.rs`). A packaged `<binary folder>/cuda/` with the same
+  layout is looked in first.
+- **ggml and ONNX Runtime:** loaded into one process they corrupt each other's heap, so the ggml
+  models run in `stack-spike-ggml`, a binary of its own. That binary finds `libcrispasr` through
+  the rpath its `build.rs` sets; `libggml-cuda` finds cudart through `LD_LIBRARY_PATH`.
+- **Build toolkits:** CrispASR builds ggml with cmake and nvcc 13.4; mistral.rs builds its kernels
+  with nvcc 13.3. Keep each build under its own toolkit: a crate built once under the other one
+  keeps that toolkit's include path in its cached build output (`cargo clean -p candle-kernels`
+  clears it). The container needs `cmake` and `libclang-dev` (`sudo apt install cmake
+  libclang-dev`, done once).
 
 ## Troubleshooting
 

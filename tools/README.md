@@ -2,8 +2,8 @@
 
 The Rust programs that look after this repository rather than the subtitles: the gate runner that
 checks the project laws a program can check, the fail-closed check library it is built on, and
-the stack spike harness that measures the ML stack on a real video, with its ggml worker. Nothing
-here ships with the app.
+the stack spike harness that measures the ML stack on a real video, with its ggml and language-model
+workers. Nothing here ships with the app.
 
 ## Contents
 
@@ -12,6 +12,7 @@ tools/
 ├── repo_gates/         the `cargo gates` runner: one gate per checkable repository law
 ├── stack_spike/        the measuring harness: each ML stack piece on one video, and the model downloads
 ├── stack_spike_ggml/   the stack spike's worker for the ggml models, a binary of its own
+├── stack_spike_llm/    the stack spike's worker for the local language model, a binary of its own
 └── verification_core/  the fail-closed verdict library every gate reports through
 ```
 
@@ -36,10 +37,11 @@ cargo gates [<gate>] ──> repo_gates ──> verification_core ──> crates
 `stack_spike` is a binary crate for measuring, not checking: it downloads the pinned models and
 the CUDA 13 runtime through `crates/inference`, and runs the stack under test on one video.
 
-`stack_spike_ggml` is the spike's worker for the ggml models, kept in a binary of its own because
-ggml and ONNX Runtime cannot share a process.
+`stack_spike_ggml` and `stack_spike_llm` are the spike's workers for the ggml models and the local
+language model, each a binary of its own because ggml, candle and ONNX Runtime cannot share a
+process.
 
-All four crates are members of the one Cargo workspace. The gate crates may run `git` and
+All five crates are members of the one Cargo workspace. The gate crates may run `git` and
 `cargo` as child processes; the app never runs either.
 
 ## Getting started

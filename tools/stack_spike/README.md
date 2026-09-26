@@ -27,8 +27,9 @@ stack-spike run [items] --video V
 stack-spike report --video V ──▶ Markdown table + the 120-minute projection per item
 ```
 
-A ggml item (Whisper) runs in `stack-spike-ggml`, the binary beside this one, because ggml and
-ONNX Runtime cannot share a process; the parent measures it the same way.
+A ggml item (Whisper, the Qwen3 aligner) runs in `stack-spike-ggml` and the local language model
+in `stack-spike-llm`, the binaries beside this one, because ggml, candle and ONNX Runtime cannot
+share a process; the parent measures them the same way.
 
 Items run in the order `Item::ALL` lists them, and later items read what earlier ones wrote to
 the work folder (`probe.json`, `mix_16k.f32`, the stems `vocals_16k.<separator>.f32` and

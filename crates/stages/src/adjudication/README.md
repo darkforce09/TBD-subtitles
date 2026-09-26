@@ -8,10 +8,11 @@ checked automatically.
 
 ```text
 crates/stages/src/adjudication/
-├── checks.rs  the checks: every id once, novel words, dropped agreed words, reading speed
-├── mod.rs     `adjudicate` (one model) and `adjudicate_concurrently` (several processes), batches of 60
-├── prompt.rs  the rules (system prompt), the answer's JSON Schema, the user message with the glossary
-└── tests/     unit tests for the checks
+├── checks.rs   the checks: every id once, novel words, dropped agreed words, reading speed
+├── mod.rs      `adjudicate` (one model) and `adjudicate_concurrently` (several processes), batches of 60
+├── prompt.rs   the rules (system prompt), the answer's JSON Schema, the user message with the glossary
+├── summary.rs  a run summed up: check counts, flags, changed lines, glossary name counts
+└── tests/      unit tests for the checks and the name counting
 ```
 
 ## How it works
@@ -27,7 +28,7 @@ than 25 characters per second.
 
 - Depends on: `inference::llm::LanguageModel`, `crate::diff_sheet::{align, sheet}`, `serde`,
   `serde_json`.
-- Used by: `tools/stack_spike/` (the language-model items).
+- Used by: `tools/stack_spike/` and `tools/stack_spike_llm/` (the language-model items).
 - Rules:
   - the model never sees a timing (the header in `mod.rs`);
   - invented and dropped words are caught, and joined or hyphenated agreed words are not taken for

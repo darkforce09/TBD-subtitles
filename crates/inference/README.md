@@ -46,6 +46,9 @@ cargo test -p inference    # unit tests; the model checks are #[ignore] and run 
   (`src/cuda_runtime/mod.rs`).
 - The Cargo feature `crispasr` (off by default): CrispASR and ggml with CUDA for `ggml::crispasr`;
   building it needs cmake and the CUDA toolkit (`Cargo.toml`).
+- The Cargo feature `mistralrs` (off by default): mistral.rs with CUDA for `llm::mistral_rs`;
+  building it needs the CUDA 13.3 compiler and the 13.4 libraries on `LIBRARY_PATH`
+  (`Cargo.toml`).
 - `ORT_DYLIB_PATH`: where `ort` loads ONNX Runtime from; set for a GPU worker by
   `CudaRuntime::worker_env` (`src/cuda_runtime/mod.rs`) and read by the `ort` crate.
 
@@ -58,7 +61,8 @@ cargo test -p inference    # unit tests; the model checks are #[ignore] and run 
 ## Boundaries
 
 - Depends on: `ort` (ONNX Runtime, loaded at run time), `realfft` and `parakeet-rs` for the ONNX
-  backends; `crispasr` (git tag `v0.8.37`, optional) for the ggml backend;
+  backends; `crispasr` (git tag `v0.8.37`, optional) for the ggml backend; `mistralrs`
+  (git tag `v0.9.4`) and `tokio` (optional) for the local language model; `serde_json`;
   `ureq`, `sha2`, `lzma-rs`, `flate2` and `tar` for the model store; `child_process` and
   `job_model`, declared for the other backends.
 - Used by: `crates/stages/`, `tools/stack_spike/` and `tools/stack_spike_ggml/`.

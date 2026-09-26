@@ -14,6 +14,7 @@
 
 pub mod checks;
 pub mod prompt;
+pub mod summary;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};

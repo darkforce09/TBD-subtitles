@@ -60,6 +60,8 @@ pub(crate) enum Item {
     DiffSheet,
     /// Adjudication by `claude -p` (sonnet), eight processes at once.
     LlmClaude,
+    /// Adjudication by Qwen3.5-4B through mistral.rs on the GPU (in `stack-spike-llm`).
+    LlmLocal,
     /// The Qwen3 forced aligner (CrispASR, ggml) on the vocal stem.
     AlignQwen3,
 }
@@ -83,6 +85,7 @@ impl Item {
         Item::SoundEvents,
         Item::DiffSheet,
         Item::LlmClaude,
+        Item::LlmLocal,
     ];
 
     /// The name used on the command line and in result files.
@@ -100,20 +103,22 @@ impl Item {
             Item::SeparateMdx | Item::SeparateRoformer => true,
             Item::AsrParakeetMix | Item::AsrParakeetMdx | Item::AsrParakeetRoformer => true,
             Item::AsrWhisperMix | Item::AsrWhisperRoformer | Item::AsrWhisperTurboMix => true,
-            Item::AlignCtc | Item::AlignQwen3 | Item::SoundEvents => true,
+            Item::AlignCtc | Item::AlignQwen3 | Item::SoundEvents | Item::LlmLocal => true,
         }
     }
 
-    /// Whether the item runs a ggml model, and so runs in the `stack-spike-ggml` binary: ggml and
-    /// ONNX Runtime corrupt each other's heap when loaded into one process.
-    pub(crate) fn ggml(self) -> bool {
-        matches!(
-            self,
+    /// The binary beside this one that runs the item, or `None` for this binary. Each native GPU
+    /// runtime lives in a binary of its own: ggml, candle (mistral.rs) and ONNX Runtime corrupt
+    /// each other's heap when loaded into one process.
+    pub(crate) fn worker_binary(self) -> Option<&'static str> {
+        match self {
             Item::AsrWhisperMix
-                | Item::AsrWhisperRoformer
-                | Item::AsrWhisperTurboMix
-                | Item::AlignQwen3
-        )
+            | Item::AsrWhisperRoformer
+            | Item::AsrWhisperTurboMix
+            | Item::AlignQwen3 => Some("stack-spike-ggml"),
+            Item::LlmLocal => Some("stack-spike-llm"),
+            _ => None,
+        }
     }
 
     /// Run the item in this (worker) process.
@@ -134,8 +139,10 @@ impl Item {
             Item::AsrWhisperMix
             | Item::AsrWhisperRoformer
             | Item::AsrWhisperTurboMix
-            | Item::AlignQwen3 => {
-                anyhow::bail!("{} runs in stack-spike-ggml, not here", self.name())
+            | Item::AlignQwen3
+            | Item::LlmLocal => {
+                let binary = self.worker_binary().unwrap_or("another binary");
+                anyhow::bail!("{} runs in {binary}, not here", self.name())
             }
             Item::AsrCompare => compare::run(ctx),
         }

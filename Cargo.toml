@@ -14,5 +14,6 @@ members = [
     "tools/repo_gates",
     "tools/stack_spike",
     "tools/stack_spike_ggml",
+    "tools/stack_spike_llm",
     "tools/verification_core",
 ]

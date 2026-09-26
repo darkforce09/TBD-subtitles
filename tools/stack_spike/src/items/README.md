@@ -2,7 +2,8 @@
 
 The pieces of the ML stack the spike measures, one module each, run inside a worker process.
 Each returns the audio seconds it processed, its load and processing times, and its notes. The
-ggml items (Whisper, the Qwen3 aligner) are listed here too, but run in `stack-spike-ggml`.
+ggml items (Whisper, the Qwen3 aligner) and the local language model are listed here too, but run
+in `stack-spike-ggml` and `stack-spike-llm`.
 
 ## Contents
 
@@ -12,8 +13,8 @@ tools/stack_spike/src/items/
 ├── asr.rs           Parakeet-TDT over the shared chunk plan on the mix or a stem, and its transcript
 ├── compare.rs       the transcripts' disagreement with Parakeet on the mix, opening words, name counts
 ├── decode.rs        ffprobe, 16 kHz mono decoded to `mix_16k.f32`, and a 44.1 kHz stereo pass
-├── llm.rs           the diff sheet, and `claude -p` adjudication of it with the checks and name changes
-├── mod.rs           the `Item` list in run order, which need the GPU or ggml, and their `Outcome`
+├── llm.rs           the diff sheet and glossary files, and `claude -p` adjudication with its summary
+├── mod.rs           the `Item` list in run order, which need the GPU or another binary, their `Outcome`
 ├── separate.rs      MDX-Net Voc_FT and Mel-Band RoFormer over the track: stems, levels, excerpts
 ├── shots.rs         the scdet scan on the CPU with cut counts per score, and the NVDEC scan time
 ├── sound_events.rs  CED-base on both RoFormer stems: events per class, music left in vocal stems

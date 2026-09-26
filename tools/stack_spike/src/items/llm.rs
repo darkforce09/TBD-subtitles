@@ -8,18 +8,18 @@
 //! with an `inference::llm` backend.
 //!
 //! **Signals and state:** reads `asr.parakeet.mix.json` and `asr.whisper.mix.json`; writes
-//! `sheet.txt`, `sheet.json` and `adjudicated.<backend>.json`.
+//! `sheet.txt`, `sheet.json`, `glossary.json` and `adjudicated.claude.json`; the local model runs
+//! in `stack-spike-llm`, which reads the same files.
 //!
 //! **Invariants:** every backend answers the same sheet with the same glossary and rules.
 
-use std::collections::BTreeMap;
 use std::time::Instant;
 
 use inference::llm::LanguageModel;
 use inference::llm::claude_cli::ClaudeCli;
 use job_model::outputs::EngineTranscript;
 use serde_json::json;
-use stages::adjudication::{self, Adjudication, checks};
+use stages::adjudication::{self, Adjudication, checks, summary};
 use stages::diff_sheet::sheet::{self, Utterance};
 
 use super::{Outcome, since};
@@ -94,6 +94,7 @@ pub(crate) fn diff_sheet(ctx: &Context) -> anyhow::Result<Outcome> {
     let text: String = utterances.iter().map(|u| format!("{}\n", u.line)).collect();
     std::fs::write(ctx.path("sheet.txt"), text)?;
     ctx.write_json("sheet.json", &utterances)?;
+    ctx.write_json("glossary.json", &GLOSSARY)?;
     let words: usize = utterances.iter().map(|u| u.words.len()).sum();
     let locked: usize = utterances
         .iter()
@@ -146,67 +147,10 @@ pub(crate) fn report(
         &format!("adjudicated.{backend}.json"),
         &json!({"lines": result.lines, "findings": findings, "failed_calls": result.failed_calls}),
     )?;
-    let mut flags: BTreeMap<String, usize> = BTreeMap::new();
-    for line in &result.lines {
-        for f in &line.f {
-            *flags.entry(f.clone()).or_default() += 1;
-        }
-    }
-    let backbone_text: String = sheet
-        .iter()
-        .flat_map(|u| &u.words)
-        .map(|w| format!("{} ", w.text))
-        .collect();
-    let output_text: String = result.lines.iter().map(|l| format!("{} ", l.t)).collect();
-    let mut names = BTreeMap::new();
-    for name in GLOSSARY {
-        let (before, after) = (count(&backbone_text, name), count(&output_text, name));
-        if before != after {
-            names.insert(name.to_string(), format!("{before} -> {after}"));
-        }
-    }
-    let mut outcome = Outcome {
+    Ok(Outcome {
         audio_s: ctx.probe()?.duration_s,
         load_s,
         process_s,
-        ..Outcome::default()
-    };
-    outcome.note("utterances", sheet.len());
-    outcome.note("lines_returned", result.lines.len());
-    outcome.note("calls", result.calls);
-    outcome.note("failed_calls", result.failed_calls.len());
-    outcome.note("input_tokens", result.input_tokens);
-    outcome.note("output_tokens", result.output_tokens);
-    outcome.note("cost_usd", result.cost_usd);
-    outcome.note("missing_ids", findings.missing_ids.len());
-    outcome.note("duplicate_ids", findings.duplicate_ids.len());
-    outcome.note("novel_words", findings.novel.len());
-    outcome.note("removed_locked_words", findings.removed_locked.len());
-    outcome.note("too_fast_lines", findings.too_fast.len());
-    outcome.note("flags", json!(flags));
-    outcome.note("name_count_changes", json!(names));
-    outcome.note(
-        "changed_lines",
-        result
-            .lines
-            .iter()
-            .filter(|l| {
-                sheet.iter().find(|u| u.id == l.id).is_some_and(|u| {
-                    let before: Vec<&str> = u.words.iter().map(|w| w.text.as_str()).collect();
-                    before.join(" ") != l.t
-                })
-            })
-            .count(),
-    );
-    Ok(outcome)
-}
-
-fn count(text: &str, name: &str) -> usize {
-    text.match_indices(name)
-        .filter(|(i, _)| {
-            let before = text[..*i].chars().next_back();
-            let after = text[i + name.len()..].chars().next();
-            !before.is_some_and(char::is_alphanumeric) && !after.is_some_and(char::is_alphanumeric)
-        })
-        .count()
+        notes: summary::summarize(sheet, &result, &findings, GLOSSARY),
+    })
 }

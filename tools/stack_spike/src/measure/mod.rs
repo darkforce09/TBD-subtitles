@@ -34,8 +34,6 @@ use crate::items::Item;
 
 /// The VRAM a GPU stage may use with the desktop running.
 pub(crate) const VRAM_BUDGET_MIB: u64 = 5_632;
-/// The worker binary for the ggml items, beside this one.
-const GGML_WORKER: &str = "stack-spike-ggml";
 /// The longest any one item may run.
 const WORKER_DEADLINE: Duration = Duration::from_secs(3 * 3600);
 
@@ -117,10 +115,9 @@ fn measure_inner(ctx: &Context, item: Item) -> anyhow::Result<ItemResult> {
         }
     }
     let exe = std::env::current_exe()?;
-    let program = if item.ggml() {
-        exe.with_file_name(GGML_WORKER)
-    } else {
-        exe.clone()
+    let program = match item.worker_binary() {
+        Some(binary) => exe.with_file_name(binary),
+        None => exe.clone(),
     };
     let mut run = Run::new(program)
         .arg("worker")
