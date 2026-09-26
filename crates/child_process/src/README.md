@@ -11,7 +11,7 @@ crates/child_process/src/
 ├── lib.rs      the crate root: `Run` and its builder, `Output`, `Merged`, `RunError`, the re-exports
 ├── lookup.rs   the helpers `which`, `retry` and `wait_for`: a PATH lookup, a retry, a deadline poll
 ├── runner.rs   the calls `output`, `merged_output` and `status`: spawn in a new session, feed, reap
-├── running.rs  the call `spawn`: a streamed stdout for the caller, a watchdog deadline, kill on drop
+├── running.rs  the call `spawn`: a streamed stdout, a watchdog deadline and cancel flag, kill on drop
 ├── stream.rs   the drain threads: one per pipe for separate capture, one for the shared pipe
 └── tests/      unit tests for the four calls, the error variants and the lookup helpers
 ```
@@ -53,8 +53,9 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
   otherwise the reader would never see EOF. The interleaving is the child's own, never a join of
   two strings.
 - `running.rs` hands the child's stdout to the caller (FFmpeg's PCM pipe) and drains stderr on a
-  thread. With a deadline, a watchdog thread polls every 50 ms and kills the group when it passes,
-  so a caller blocked on a read sees EOF; `wait` then reports `Timeout`. `wait` closes an unread
+  thread. With a deadline or a cancel flag (`cancel_on`), a watchdog thread polls every 50 ms and
+  kills the group when the deadline passes or the flag is set, so a caller blocked on a read sees
+  EOF; `wait` then reports `Timeout` or `Cancelled`. `wait` closes an unread
   stdout before reaping, and dropping a `Running` that was never waited on kills its group.
 - `lookup.rs`: `which` returns the first `PATH` entry holding a file of that name. `retry` makes at
   least one attempt, sleeps a fixed backoff between attempts, returns the last error when all fail,
@@ -90,9 +91,9 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
     `merged_output_keeps_the_raw_exit_code`);
   - a timeout kills the whole group and returns `Timeout` (`timeout_kills_the_whole_process_group`,
     `timeout_reports_timeout`);
-  - a streamed child dies at its deadline and on drop
-    (`a_deadline_kills_a_reader_blocked_child`, `dropping_an_unwaited_handle_kills_the_child` in
-    `tests/running.rs`), and every child dies with the thread that started it
+  - a streamed child dies at its deadline, on its cancel flag and on drop
+    (`a_deadline_kills_a_reader_blocked_child`, `a_cancel_flag_kills_a_reader_blocked_child`,
+    `dropping_an_unwaited_handle_kills_the_child` in `tests/running.rs`), and every child dies with the thread that started it
     (`a_child_dies_with_the_thread_that_started_it`, same file);
   - no pipe deadlocks a run (`large_output_does_not_deadlock`,
     `merged_output_times_out_without_deadlocking_on_a_full_pipe`), and the shared pipe keeps the

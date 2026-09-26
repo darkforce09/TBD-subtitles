@@ -39,6 +39,8 @@ pub use running::{Finished, Running};
 use std::ffi::OsStr;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 /// What a finished process produced.
@@ -67,7 +69,7 @@ pub struct Merged {
 ///
 /// Each variant means the program never reported a result, and each sends the reader somewhere
 /// different: the machine (`ProgramAbsent`), the operating system (`Failed`), the kernel or a
-/// user (`Signalled`), or the deadline (`Timeout`).
+/// user (`Signalled`), the deadline (`Timeout`), or the caller's cancel flag (`Cancelled`).
 #[derive(Debug)]
 pub enum RunError {
     /// The program is on no `PATH` entry: the honest form of exit 127.
@@ -78,6 +80,8 @@ pub enum RunError {
     Signalled { program: String, signal: i32 },
     /// The run exceeded its deadline and its process group was killed.
     Timeout { program: String, secs: u64 },
+    /// The caller's cancel flag was set and the process group was killed.
+    Cancelled { program: String },
 }
 
 impl fmt::Display for RunError {
@@ -89,6 +93,7 @@ impl fmt::Display for RunError {
                 write!(f, "{program} killed by signal {signal}")
             }
             RunError::Timeout { program, secs } => write!(f, "{program} timed out after {secs}s"),
+            RunError::Cancelled { program } => write!(f, "{program} was cancelled"),
         }
     }
 }
@@ -103,6 +108,7 @@ pub struct Run {
     envs: Vec<(String, String)>,
     env_removes: Vec<String>,
     timeout: Option<Duration>,
+    cancel: Option<Arc<AtomicBool>>,
     stdin: Option<String>,
 }
 
@@ -115,6 +121,7 @@ impl Run {
             envs: Vec::new(),
             env_removes: Vec::new(),
             timeout: None,
+            cancel: None,
             stdin: None,
         }
     }
@@ -152,6 +159,13 @@ impl Run {
 
     pub fn timeout(mut self, d: Duration) -> Run {
         self.timeout = Some(d);
+        self
+    }
+
+    /// Kill the child's process group once `flag` is set. Honoured by [`Run::spawn`], whose
+    /// watchdog watches the flag; the collecting runs (`output`, `status`) ignore it.
+    pub fn cancel_on(mut self, flag: Arc<AtomicBool>) -> Run {
+        self.cancel = Some(flag);
         self
     }
 

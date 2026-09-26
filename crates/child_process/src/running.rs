@@ -8,12 +8,15 @@
 //! spike tool for worker processes; uses `runner.rs` to build and spawn the command and
 //! `stream.rs` to drain stderr.
 //!
-//! **Signals and state:** one watchdog thread per child with a deadline; it kills the process
-//! group when the deadline passes, even while the caller is blocked reading stdout.
+//! **Signals and state:** one watchdog thread per child with a deadline or a cancel flag; it kills
+//! the process group when the deadline passes or the flag is set, even while the caller is blocked
+//! reading stdout.
 //!
 //! **Invariants:** a dropped handle that was never waited on kills its process group, so an
 //! abandoned stream never leaves FFmpeg running; a deadline reports [`RunError::Timeout`], a
-//! signal [`RunError::Signalled`], never an invented exit code.
+//! cancel [`RunError::Cancelled`], a signal [`RunError::Signalled`], never an invented exit code.
+//! Only the direct child's group is killed; children it started in groups of their own die with
+//! it through `PR_SET_PDEATHSIG`.
 
 use std::os::unix::process::ExitStatusExt;
 use std::process::{Child, ChildStdout, Stdio};
@@ -47,6 +50,7 @@ pub struct Running {
     stderr: Option<JoinHandle<String>>,
     finished: Arc<AtomicBool>,
     timed_out: Arc<AtomicBool>,
+    cancelled: Arc<AtomicBool>,
     reaped: bool,
 }
 
@@ -64,8 +68,18 @@ impl Run {
             .map(|mut pipe| std::thread::spawn(move || read_to_string_lossy(&mut pipe)));
         let finished = Arc::new(AtomicBool::new(false));
         let timed_out = Arc::new(AtomicBool::new(false));
-        if let Some(limit) = self.timeout {
-            start_watchdog(pgid, limit, finished.clone(), timed_out.clone());
+        let cancelled = Arc::new(AtomicBool::new(false));
+        if self.timeout.is_some() || self.cancel.is_some() {
+            start_watchdog(
+                pgid,
+                Watch {
+                    deadline: self.timeout.map(|limit| Instant::now() + limit),
+                    cancel: self.cancel.clone(),
+                    finished: finished.clone(),
+                    timed_out: timed_out.clone(),
+                    cancelled: cancelled.clone(),
+                },
+            );
         }
         Ok(Running {
             child,
@@ -76,6 +90,7 @@ impl Run {
             stderr,
             finished,
             timed_out,
+            cancelled,
             reaped: false,
         })
     }
@@ -120,6 +135,11 @@ impl Running {
             .and_then(|h| h.join().ok())
             .unwrap_or_default();
         let status = status?;
+        if self.cancelled.load(Ordering::SeqCst) {
+            return Err(RunError::Cancelled {
+                program: self.label.clone(),
+            });
+        }
         if self.timed_out.load(Ordering::SeqCst) {
             return Err(RunError::Timeout {
                 program: self.label.clone(),
@@ -150,18 +170,31 @@ impl Drop for Running {
     }
 }
 
-/// Kill the group at `limit` unless the child is reaped first.
-fn start_watchdog(
-    pgid: i32,
-    limit: Duration,
+/// What a watchdog watches, and where it records why it killed.
+struct Watch {
+    deadline: Option<Instant>,
+    cancel: Option<Arc<AtomicBool>>,
     finished: Arc<AtomicBool>,
     timed_out: Arc<AtomicBool>,
-) {
-    let deadline = Instant::now() + limit;
+    cancelled: Arc<AtomicBool>,
+}
+
+/// Kill the group at the deadline or once the cancel flag is set, unless the child is reaped
+/// first.
+fn start_watchdog(pgid: i32, watch: Watch) {
     std::thread::spawn(move || {
-        while !finished.load(Ordering::SeqCst) {
-            if Instant::now() >= deadline {
-                timed_out.store(true, Ordering::SeqCst);
+        while !watch.finished.load(Ordering::SeqCst) {
+            if watch
+                .cancel
+                .as_ref()
+                .is_some_and(|flag| flag.load(Ordering::SeqCst))
+            {
+                watch.cancelled.store(true, Ordering::SeqCst);
+                kill_group(pgid);
+                return;
+            }
+            if watch.deadline.is_some_and(|d| Instant::now() >= d) {
+                watch.timed_out.store(true, Ordering::SeqCst);
                 kill_group(pgid);
                 return;
             }

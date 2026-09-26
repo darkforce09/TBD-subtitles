@@ -45,7 +45,7 @@ print the same log.
 `proc.rs` re-exports `Run`, `Output`, `Merged` and `RunError` from `crates/child_process`, which
 spawns each child in its own process group, drains both pipes and kills the group on a timeout. It
 converts every `RunError` into a `NotRun`: an absent program is `ToolAbsent`, a signal
-`Signalled`, a deadline `Timeout`, and a spawn or wait failure `ToolError`. Exit codes pass
+`Signalled`, a deadline `Timeout`, and a spawn or wait failure or a cancel `ToolError`. Exit codes pass
 through raw.
 
 `report.rs` counts the checks run, failed and not run, prints each failure as it lands, and

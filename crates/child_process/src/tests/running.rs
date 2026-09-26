@@ -91,3 +91,43 @@ fn a_child_dies_with_the_thread_that_started_it() {
     unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
     assert!(dead, "the child outlived the thread that started it");
 }
+
+#[test]
+fn a_cancel_flag_kills_a_reader_blocked_child() {
+    let started = Instant::now();
+    let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mut running = Run::new("sh")
+        .arg("-c")
+        .arg("sleep 30")
+        .cancel_on(flag.clone())
+        .spawn()
+        .unwrap();
+    let setter = {
+        let flag = flag.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        })
+    };
+    let mut sink = Vec::new();
+    let _ = running.take_stdout().unwrap().read_to_end(&mut sink);
+    let result = running.wait();
+    setter.join().unwrap();
+    assert!(
+        matches!(result, Err(RunError::Cancelled { .. })),
+        "{result:?}"
+    );
+    assert!(started.elapsed() < Duration::from_secs(10));
+}
+
+#[test]
+fn an_unset_cancel_flag_lets_the_child_finish() {
+    let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let running = Run::new("sh")
+        .arg("-c")
+        .arg("exit 3")
+        .cancel_on(flag)
+        .spawn()
+        .unwrap();
+    assert_eq!(running.wait().unwrap().code, 3);
+}

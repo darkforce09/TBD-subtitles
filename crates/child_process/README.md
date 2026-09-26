@@ -16,7 +16,7 @@ crates/child_process/
 ## How it works
 
 A caller builds a `Run` with `Run::new(program)` and the builder methods `arg`, `args`, `cwd`,
-`env`, `env_remove`, `timeout` and `stdin`, then finishes it with one of four calls:
+`env`, `env_remove`, `timeout`, `cancel_on` and `stdin`, then finishes it with one of four calls:
 
 | Call | Pipes | Answer |
 |---|---|---|
@@ -28,9 +28,10 @@ A caller builds a `Run` with `Run::new(program)` and the builder methods `arg`, 
 Every call either returns the child's real exit code, never folded to 0 or 1, or a `RunError`
 saying why there is none: `ProgramAbsent` (the program is on no `PATH` entry), `Failed` (spawning,
 waiting or piping broke), `Signalled` (the child died on a signal, which is never turned into a
-`128+n` code) or `Timeout` (the deadline passed and the child's process group was killed). A
-`Running` child has a watchdog thread that kills its group at the deadline even while the caller
-is blocked reading its stdout, and a handle dropped without `wait` kills its group too, so an
+`128+n` code), `Timeout` (the deadline passed and the child's process group was killed) or
+`Cancelled` (the flag given to `cancel_on` was set and the group was killed; only `spawn` watches
+it). A `Running` child has a watchdog thread that kills its group at the deadline or on the cancel
+flag even while the caller is blocked reading its stdout, and a handle dropped without `wait` kills its group too, so an
 abandoned FFmpeg stream never keeps running.
 
 `libc` supplies the process calls. Between fork and exec, `setsid`, with `setpgid(0, 0)` as the
@@ -48,7 +49,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p child_process   # the library alone
-cargo test -p child_process    # 25 unit tests; they run sh, cat, sleep and seq, about 3 s
+cargo test -p child_process    # 27 unit tests; they run sh, cat, sleep and seq, about 3 s
 ```
 
 The tests need a Unix shell on the `PATH`. The group-kill test sleeps 2.5 s after its timeout to

@@ -34,6 +34,11 @@ impl From<RunError> for NotRun {
                 tool: program,
                 secs,
             },
+            RunError::Cancelled { program } => NotRun::ToolError {
+                tool: program,
+                status: -1,
+                stderr: "cancelled".to_string(),
+            },
         }
     }
 }
