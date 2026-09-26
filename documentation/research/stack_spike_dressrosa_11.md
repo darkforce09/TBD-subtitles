@@ -18,7 +18,7 @@ tool, which is described in [its README](/tools/stack_spike/README.md):
 
 There is no human reference transcript. Every accuracy figure below is therefore a disagreement
 between engines, or a proxy, and it says so. "(C++)" marks a Rust crate that binds a C or C++
-runtime. The decisions these findings led to are in the [decision log](/documentation/decisions.md).
+runtime. The decisions these findings led to are in the [decision log](/documentation/decisions/).
 
 ## Results
 

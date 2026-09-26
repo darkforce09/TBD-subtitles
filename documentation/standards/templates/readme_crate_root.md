@@ -133,6 +133,6 @@ a child inherits the parent's environment apart from what `env` and `env_remove`
 
 - [System overview](/documentation/architecture/system_overview.md) — the external programs the
   app starts and why FFmpeg's stderr is drained on its own thread.
-- [Repository tooling may run git and cargo](/documentation/decisions.md#2026-09-25--repository-tooling-may-run-git-and-cargo)
+- [Repository tooling may run git and cargo](/documentation/decisions/foundations.md#2026-09-25--repository-tooling-may-run-git-and-cargo)
   — which programs the app and the tools may start.
 ````

@@ -40,4 +40,4 @@ own name ends in `.srt` is refused, so the video is never overwritten.
 ## Related documentation
 
 - [Pipeline](/documentation/architecture/pipeline.md#11-output) — the file name, format and backup.
-- [Decisions](/documentation/decisions.md) — why subtitles live beside the video.
+- [Decisions](/documentation/decisions/) — why subtitles live beside the video.

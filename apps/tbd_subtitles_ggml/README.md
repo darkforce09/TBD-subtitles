@@ -91,9 +91,9 @@ The binary has one command; `--help` prints its usage and `--version` the versio
 
 ## Related documentation
 
-- [Each native GPU runtime lives in a worker binary of its own](/documentation/decisions.md#2026-09-26--each-native-gpu-runtime-lives-in-a-worker-binary-of-its-own)
+- [Each native GPU runtime lives in a worker binary of its own](/documentation/decisions/stack_and_pipeline.md#2026-09-26--each-native-gpu-runtime-lives-in-a-worker-binary-of-its-own)
   — why ggml runs in a binary apart from ONNX Runtime.
-- [Whisper large-v3 through CrispASR is the second speech engine](/documentation/decisions.md#2026-09-26--whisper-large-v3-through-crispasr-is-the-second-speech-engine)
+- [Whisper large-v3 through CrispASR is the second speech engine](/documentation/decisions/stack_and_pipeline.md#2026-09-26--whisper-large-v3-through-crispasr-is-the-second-speech-engine)
   — the engine this binary runs.
 - [Development environment](/documentation/runbooks/development_environment.md#cuda-libraries-for-onnx-runtime)
   — the CUDA toolkit the feature build needs.

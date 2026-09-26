@@ -54,5 +54,5 @@ fail and name `tbd-subtitles-ggml`.
 ## Related documentation
 
 - [Pipeline](/documentation/architecture/pipeline.md) — what each stage does, in order.
-- [Each native GPU runtime lives in a worker binary of its own](/documentation/decisions.md#2026-09-26--each-native-gpu-runtime-lives-in-a-worker-binary-of-its-own)
+- [Each native GPU runtime lives in a worker binary of its own](/documentation/decisions/stack_and_pipeline.md#2026-09-26--each-native-gpu-runtime-lives-in-a-worker-binary-of-its-own)
   — why the Whisper tasks build only into `tbd-subtitles-ggml`.

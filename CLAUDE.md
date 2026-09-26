@@ -31,7 +31,7 @@ M2, the desktop GUI, which ends with the batch of 12–48 run from the window
 4. **Inference runtimes:** pure-Rust engines (candle, burn, mistral.rs, earshot) come first. Rust
    crates that bind a native runtime (ONNX Runtime through `ort`, ggml through whisper-rs or
    transcribe-cpp) are used only where no pure-Rust option is competitive
-   ([decisions](/documentation/decisions.md)). Models are downloaded already exported (ONNX, GGUF,
+   ([decisions](/documentation/decisions/)). Models are downloaded already exported (ONNX, GGUF,
    safetensors); we never convert models.
 5. **Fast and bounded.** A 120-minute video processes end to end in 30 minutes or less on the
    RTX 3070, in bounded memory: audio is streamed and chunked, never held whole at 44.1 kHz.
@@ -127,7 +127,7 @@ the [development environment](/documentation/runbooks/development_environment.md
 | Question | Document |
 |---|---|
 | What are we building and why? | [Vision and goals](/documentation/vision_and_goals.md) |
-| What is decided? | [Decisions](/documentation/decisions.md) |
+| What is decided? | [Decisions](/documentation/decisions/) |
 | What comes next? | [Roadmap](/documentation/roadmap.md) |
 | How does the pipeline work? | [Pipeline](/documentation/architecture/pipeline.md) |
 | Which Rust crates and models? | [Rust ML stack](/documentation/research/rust_ml_stack.md) |

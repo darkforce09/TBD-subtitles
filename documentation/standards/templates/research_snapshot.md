@@ -55,7 +55,7 @@ what must be measured before relying on it>
 
 A snapshot keeps its words. Only a broken link is fixed; new facts (a new release, a measurement
 on real audio) go into a new snapshot, and a decision that changes because of them gets a new
-entry in the [decision log](/documentation/decisions.md). A frozen record carries dates freely,
+entry in the [decision log](/documentation/decisions/). A frozen record carries dates freely,
 may pass 500 lines, and is judged only for its status line and its links:
 `cargo gates status-lines` requires the frozen status in the research folder, and
 `cargo gates link-check` checks its links but not its backticked paths or cited commands.
@@ -74,7 +74,7 @@ gap and one source. The sample sits in a fenced block, so no gate reads it.
 The Rust crates and ready-made model files that can run each capability the app needs, as found
 on 2026-09-25 (crates.io, GitHub, Hugging Face; Claude CLI flags checked against v2.1.282). "(C++)"
 marks a Rust crate that binds a C/C++ runtime; see the
-[native-runtime decision](/documentation/decisions.md). Nothing here needs Python, and every model
+[native-runtime decision](/documentation/decisions/). Nothing here needs Python, and every model
 file named is already exported. Versions and dates are from that day.
 
 ## 2. Voice activity detection

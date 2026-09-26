@@ -55,5 +55,5 @@ In code: the `worker <STAGE> <JOB_DIR>` subcommand, declared in
 ASR, sound events, adjudication and alignment.
 
 See: [Stage](#stage),
-[Each GPU stage runs in its own worker process](/documentation/decisions.md#2026-09-25--each-gpu-stage-runs-in-its-own-worker-process).
+[Each GPU stage runs in its own worker process](/documentation/decisions/foundations.md#2026-09-25--each-gpu-stage-runs-in-its-own-worker-process).
 ````

@@ -67,4 +67,4 @@ step runs is the pipeline's step graph, not this module.
 
 - [Pipeline](/documentation/architecture/pipeline.md#steps-and-processes) — every step, where it
   runs and what it writes.
-- [Decisions](/documentation/decisions.md) — why each GPU stage runs in its own worker process.
+- [Decisions](/documentation/decisions/) — why each GPU stage runs in its own worker process.

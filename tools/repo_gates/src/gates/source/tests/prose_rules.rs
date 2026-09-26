@@ -47,7 +47,8 @@ fn milestones_are_allowed_in_documents_and_history_in_the_decision_log() {
     assert!(problems("documentation/roadmap.md", "## M0 — Workspace\n").is_empty());
     assert!(problems(PROJECT_INSTRUCTIONS, "Next step: M0.\n").is_empty());
     let text = format!("The choice {} made is replaced.\n", word(1));
-    assert!(problems("documentation/decisions.md", &text).is_empty());
+    assert!(problems("documentation/decisions/foundations.md", &text).is_empty());
+    assert_eq!(problems("documentation/roadmap.md", &text).len(), 1);
     assert_eq!(problems("crates/x/README.md", "Built in M1.\n").len(), 1);
 }
 

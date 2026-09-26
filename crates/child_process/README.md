@@ -100,5 +100,5 @@ pairs and minus the `env_remove` names of its `Run`. Nothing else is read.
 
 - [Coding standards](/documentation/standards/coding_standards.md#errors-and-processes) — every
   child process has a timeout and a drained stderr.
-- [Decisions](/documentation/decisions.md) — FFmpeg, ffprobe and the `claude` CLI as the app's only
+- [Decisions](/documentation/decisions/) — FFmpeg, ffprobe and the `claude` CLI as the app's only
   external programs, and `git` and `cargo` for the repository tools.

@@ -37,6 +37,6 @@ the host, the GPU and opening the window.
 - [Vision and goals](/documentation/vision_and_goals.md) — what the app must do, and how fast.
 - [Roadmap](/documentation/roadmap.md) — milestones M0 to M4 and their checklists.
 - [Pipeline](/documentation/architecture/pipeline.md) — from video to finished subtitle file.
-- [Decisions](/documentation/decisions.md) — what is settled and why.
+- [Decisions](/documentation/decisions/) — what is settled and why.
 - [Continue in Claude Code](/documentation/runbooks/continue_in_claude_code.md) — the prompt that
   starts the next working session.

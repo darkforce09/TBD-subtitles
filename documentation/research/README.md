@@ -23,7 +23,7 @@ A snapshot is a frozen record: it keeps its words, because it says what was true
 When the facts move on (a new model, a new crate release, measurements on real audio), a new
 snapshot is written from the [research snapshot template](/documentation/standards/templates/research_snapshot.md),
 named with its subject and date, and listed here; decisions that change get a new entry in the
-[decision log](/documentation/decisions.md).
+[decision log](/documentation/decisions/).
 
 ## Code
 
@@ -44,4 +44,4 @@ named with its subject and date, and listed here; decisions that change get a ne
 ## Related documentation
 
 - [Pipeline](/documentation/architecture/pipeline.md) — where each finding is used.
-- [Decisions](/documentation/decisions.md) — what the research led to.
+- [Decisions](/documentation/decisions/) — what the research led to.

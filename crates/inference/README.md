@@ -77,7 +77,7 @@ cargo test -p inference    # unit tests; the model checks are #[ignore] and run 
 
 - [Rust ML stack](/documentation/research/rust_ml_stack.md#recommended-stack) — the crates and
   model files for each capability.
-- [Decisions](/documentation/decisions.md) — native runtimes where no pure-Rust engine competes,
+- [Decisions](/documentation/decisions/) — native runtimes where no pure-Rust engine competes,
   and one worker process per GPU stage.
 - [System overview](/documentation/architecture/system_overview.md#models) — the models folder and
   its manifest.

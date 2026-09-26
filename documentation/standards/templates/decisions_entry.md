@@ -2,8 +2,8 @@
 
 # Template: decision entry
 
-**When to use:** one decision in the project's single decision log,
-[decisions](/documentation/decisions.md): a choice that shapes the app and would otherwise be
+**When to use:** one decision in the project's decision log,
+[decisions](/documentation/decisions/): a choice that shapes the app and would otherwise be
 argued again. An entry says what was decided, why, what follows from it, and which earlier entry it
 replaces. Open questions not yet decided stay in the roadmap's open questions table until they are
 settled. Live documents carry no dates, decision entries excepted. The
@@ -13,7 +13,7 @@ parts.
 ## Skeleton
 
 Copy the block and replace every `<…>` placeholder; each one says what goes there. Each entry is a
-`###` heading in the log, added below the last entry, with its four parts in this order.
+`###` heading at the end of the log's file for its subject, with its four parts in this order.
 
 ````markdown
 ### <YYYY-MM-DD> — <the decision, as a short statement>
@@ -38,7 +38,7 @@ its text in lowercase with the spaces turned into hyphens and the dash dropped, 
 documents link an entry:
 
 ```text
-[Each GPU stage runs in its own worker process](/documentation/decisions.md#2026-09-25--each-gpu-stage-runs-in-its-own-worker-process)
+[Each GPU stage runs in its own worker process](/documentation/decisions/foundations.md#2026-09-25--each-gpu-stage-runs-in-its-own-worker-process)
 ```
 
 ## Worked sample

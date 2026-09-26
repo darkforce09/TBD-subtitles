@@ -62,7 +62,7 @@ cargo test -p tbd_subtitles -p tbd_subtitles_ggml   # CLI, queue, rendering and 
 
 - [System overview](/documentation/architecture/system_overview.md) — the processes, crates and
   work directory the binaries tie together.
-- [Each native GPU runtime lives in a worker binary of its own](/documentation/decisions.md#2026-09-26--each-native-gpu-runtime-lives-in-a-worker-binary-of-its-own)
+- [Each native GPU runtime lives in a worker binary of its own](/documentation/decisions/stack_and_pipeline.md#2026-09-26--each-native-gpu-runtime-lives-in-a-worker-binary-of-its-own)
   — why the Whisper steps have a binary of their own.
 - [Coding standards](/documentation/standards/coding_standards.md) — the layering and the feature
   folder layout the app follows.

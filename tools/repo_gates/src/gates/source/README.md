@@ -39,8 +39,9 @@ tracked files it judges, and `problems` returns one line per problem found in a 
   fails with the parser's message.
 - `prose-rules` judges production Rust files, every README.md, live documents under the
   documentation root and `CLAUDE.md`. A ticket id fails anywhere; a history word (whole word, any
-  case) fails outside `decisions.md`; a milestone id fails in Rust files and code READMEs. The
-  history words are split in two halves in the source so the file never flags itself.
+  case) fails outside the decision log in `documentation/decisions/`; a milestone id fails in
+  Rust files and code READMEs. The history words are split in two halves in the source so the
+  file never flags itself.
 - `editorconfig` judges every listed file byte for byte; Markdown may end a line in whitespace,
   since two trailing spaces are a hard break there. Each problem names the first line that breaks
   its rule.
@@ -67,5 +68,5 @@ tracked files it judges, and `problems` returns one line per problem found in a 
 
 - [Coding standards](/documentation/standards/coding_standards.md#files-and-tests) — the file
   length and test placement laws.
-- [Rust only](/documentation/decisions.md#2026-09-25--rust-only-ffmpeg-as-the-one-external-program)
+- [Rust only](/documentation/decisions/foundations.md#2026-09-25--rust-only-ffmpeg-as-the-one-external-program)
   — why the language ban exists.

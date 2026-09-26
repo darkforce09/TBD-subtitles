@@ -13,8 +13,8 @@ program name the `cargo gates` gate that holds them; the rest are held in review
   `src/` left out: the app's feature folder `apps/tbd_subtitles/src/job_queue/` is documented in
   a `tbd_subtitles/job_queue/` folder under `documentation/`, created with its first document.
 - Topics that span the code have their own folders: `architecture/`, `research/`, `features/`,
-  `runbooks/`, `standards/`; `glossary.md`, `decisions.md`, `roadmap.md` and
-  `vision_and_goals.md` sit at the top.
+  `runbooks/`, `standards/`, and the decision log in `decisions/`; `glossary.md`, `roadmap.md`
+  and `vision_and_goals.md` sit at the top.
 
 ## Files
 
@@ -50,9 +50,10 @@ features say so in their first paragraph.
 
 ## Decision entries
 
-In `decisions.md`, one `###` heading per decision: `### YYYY-MM-DD — <the decision>`, then
-**Context**, **Decision**, **Consequences**, **Supersedes**. A changed decision gets a new entry
-naming the old one; old entries are never reworded.
+In the decision log (`decisions/`, one file per subject, each within 500 lines), one `###`
+heading per decision: `### YYYY-MM-DD — <the decision>`, then **Context**, **Decision**,
+**Consequences**, **Supersedes**. A changed decision gets a new entry naming the old one; old
+entries are never reworded.
 
 ## Runbooks
 

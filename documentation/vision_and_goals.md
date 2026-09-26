@@ -39,7 +39,7 @@ version do not match the dub's words or cut.
 ## Non-goals
 
 - No cloud speech APIs by default (researched and declined, see the
-  [decisions](/documentation/decisions.md)); a cloud backend may be added later as an option.
+  [decisions](/documentation/decisions/)); a cloud backend may be added later as an option.
 - No Python, shell or Node anywhere, and no model conversion by us.
 - No custom video decoder: FFmpeg does all decoding.
 - No transcription of song lyrics; songs get a music cue.

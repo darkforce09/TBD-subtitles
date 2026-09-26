@@ -59,7 +59,7 @@ call.
   timestamps, speaker labels, audio-event tags. About $5.35 for Dressrosa's 19.8 hours.
 - Mistral Voxtral Mini Transcribe V2: $0.003 per minute (about $3.60 for Dressrosa); word
   timestamps, speaker labels, context biasing.
-- The owner chose free and local; see [decisions](/documentation/decisions.md). A cloud backend
+- The owner chose free and local; see [decisions](/documentation/decisions/). A cloud backend
   can be added behind the same interface if local accuracy falls short.
 
 ## Anime-specific practice

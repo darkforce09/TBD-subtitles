@@ -35,7 +35,7 @@ Dressrosa 11 pilot. Now do milestone M2, the desktop GUI.
    as the only external programs; a README in every folder from the templates; Conventional
    Commits straight to main with explicit paths; no silent deferrals). Then
    documentation/roadmap.md (M1's open item and M2), documentation/features/gui.md,
-   documentation/decisions.md (the 2026-09-26 entries), documentation/architecture/pipeline.md,
+   documentation/decisions/ (the 2026-09-26 entries), documentation/architecture/pipeline.md,
    documentation/architecture/system_overview.md, documentation/research/pilot_dressrosa_11.md,
    documentation/standards/coding_standards.md and
    documentation/runbooks/development_environment.md (steps 7 and 12–13: open the window, build

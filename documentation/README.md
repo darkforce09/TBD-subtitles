@@ -12,7 +12,7 @@ disagree.
 ```text
 documentation/
 ├── architecture/        how the app is built: system overview, pipeline, subtitle style rules
-├── decisions.md         dated decision log
+├── decisions/           dated decision log, one file per subject
 ├── features/            one document per user-facing feature: GUI, automation, Japanese text
 ├── glossary.md          the project's terms and abbreviations
 ├── research/            dated research snapshots: speech recognition and the Rust ML stack
@@ -44,7 +44,7 @@ When two sources disagree, the higher one wins and the lower one is corrected:
 
 1. The running code.
 2. [CLAUDE.md](/CLAUDE.md): the project laws, the directory atlas and the environment rules.
-3. [Decisions](/documentation/decisions.md): the latest entry on a subject.
+3. [Decisions](/documentation/decisions/): the latest entry on a subject.
 4. This README and the [standards](/documentation/standards/README.md).
 5. Live documents: architecture, features, roadmap, runbooks.
 6. Frozen research snapshots under `research/`.
@@ -55,7 +55,7 @@ When two sources disagree, the higher one wins and the lower one is corrected:
 |---|---|
 | what the app is for and how good and fast it must be | [vision_and_goals.md](/documentation/vision_and_goals.md) |
 | what to work on next | [roadmap.md](/documentation/roadmap.md) |
-| why something is the way it is | [decisions.md](/documentation/decisions.md) |
+| why something is the way it is | [decisions](/documentation/decisions/) |
 | the processes, crates and data flow | [architecture/](/documentation/architecture/README.md) |
 | each stage from video to subtitle file | [architecture/pipeline.md](/documentation/architecture/pipeline.md) |
 | how subtitles must look and be timed | [architecture/subtitle_style_rules.md](/documentation/architecture/subtitle_style_rules.md) |

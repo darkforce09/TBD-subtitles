@@ -83,5 +83,5 @@ project instructions, and the layer table of the product crates and tools. The a
   and workspace gates hold.
 - [Documentation standards](/documentation/standards/documentation_standards.md) — status lines,
   placement and size of documents.
-- [Repository tooling may run git and cargo](/documentation/decisions.md#2026-09-25--repository-tooling-may-run-git-and-cargo)
+- [Repository tooling may run git and cargo](/documentation/decisions/foundations.md#2026-09-25--repository-tooling-may-run-git-and-cargo)
   — why the gates may list files with `git`.

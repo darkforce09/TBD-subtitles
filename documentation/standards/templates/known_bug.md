@@ -107,7 +107,7 @@ error.
 
 - [Development environment](/documentation/runbooks/development_environment.md) — the host and
   container split, and the FFmpeg check.
-- [Rust only; FFmpeg as the one external program](/documentation/decisions.md#2026-09-25--rust-only-ffmpeg-as-the-one-external-program)
+- [Rust only; FFmpeg as the one external program](/documentation/decisions/foundations.md#2026-09-25--rust-only-ffmpeg-as-the-one-external-program)
   — why the app depends on the FFmpeg it finds.
 - [M0.5 — Stack spike on Dressrosa 11](/documentation/roadmap.md#m05--stack-spike-on-dressrosa-11)
   — the FFmpeg streaming measurements, which must be taken on the host.

@@ -38,5 +38,5 @@ builder lays text out. The crate and model choices behind them come from the
 ## Related documentation
 
 - [Vision and goals](/documentation/vision_and_goals.md) — the quality and speed targets.
-- [Decisions](/documentation/decisions.md) — why the design is shaped this way.
+- [Decisions](/documentation/decisions/) — why the design is shaped this way.
 - [Roadmap](/documentation/roadmap.md) — the order in which it gets built.

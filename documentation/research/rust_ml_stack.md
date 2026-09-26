@@ -5,7 +5,7 @@
 The Rust crates and ready-made model files that can run each capability the app needs, as found
 on 2026-09-25 (crates.io, GitHub, Hugging Face; Claude CLI flags checked against v2.1.282). "(C++)"
 marks a Rust crate that binds a C/C++ runtime; see the
-[native-runtime decision](/documentation/decisions.md). Nothing here needs Python, and every model
+[native-runtime decision](/documentation/decisions/). Nothing here needs Python, and every model
 file named is already exported. Versions and dates are from that day.
 
 ## 1. Speech recognition

@@ -7,7 +7,7 @@ The first end-to-end run of the pipeline, `tbd-subtitles process`, on
 It ran on the Bazzite host, with the RTX 3070 free apart from the desktop. Every number comes from
 the job's `report.md` and its step outputs. The episode had no reference transcript, so quality is
 judged by the quality check here and by the owner's viewing in VLC. The decisions this run led to
-are in the [decision log](/documentation/decisions.md), dated 2026-09-26.
+are in the [decision log](/documentation/decisions/), dated 2026-09-26.
 
 ## 1. Steps, time and memory
 

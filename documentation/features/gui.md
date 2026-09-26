@@ -25,9 +25,10 @@ on the command line or dropped onto the window, each with a button that takes it
 2. **Progress.** Per job: current stage, stage progress, elapsed and remaining time; the finished
    stages with their durations.
 3. **Report.** When a job ends: the quality-check results, flagged lines (`UNSURE`, `NOVEL`) with
-   timestamps, and the output file's path. A button opens the video in VLC.
-4. **Review.** For each flagged line: play the clip (audio, and video through libmpv), see every
-   engine's hypothesis, pick one or type a correction; the line is re-aligned and the subtitle
+   timestamps, and the output file's path. A button opens the video in the desktop's default
+   player (VLC) through the desktop portal.
+4. **Review.** For each flagged line: play the clip (sound and a small picture, both from
+   FFmpeg), see every engine's hypothesis, pick one or type a correction; the line is re-aligned and the subtitle
    file rewritten. Corrections never touch lines that were not flagged unless the owner opens them.
 5. **Settings.** Models folder and download status, work folder and its size, engines per stage,
    language-model backend, output format, watch folders, GPU check (driver, free VRAM, CUDA
@@ -56,10 +57,13 @@ owner's Wayland desktop.
 
 - Milestone M2 in the [roadmap](/documentation/roadmap.md#m2--desktop-gui), which ends with the
   batch of Dressrosa 12–48 run from the window's queue.
-- Behaviour 3 opens the video in VLC and behaviour 4 plays clips through libmpv; the app runs
-  only FFmpeg, ffprobe and `claude` (CLAUDE.md, law 3), so both need the owner's ruling first.
 
 ## Decisions
 
 - eframe over iced or Slint: the owner already uses it, it is the most active Rust GUI toolkit, and
-  libmpv can embed a video preview in it.
+  it draws the clip frames FFmpeg decodes
+  ([clips play through FFmpeg](/documentation/decisions/desktop_gui.md#2026-09-26--clips-play-through-ffmpeg-not-libmpv)).
+- The desktop portal for choosers and for opening a video
+  ([the desktop portal](/documentation/decisions/desktop_gui.md#2026-09-26--the-desktop-portal-chooses-files-and-opens-videos)),
+  and a review step for the owner's corrections
+  ([review step](/documentation/decisions/desktop_gui.md#2026-09-26--the-owners-corrections-are-timed-by-a-review-step)).

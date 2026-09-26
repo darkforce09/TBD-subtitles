@@ -22,8 +22,9 @@ use crate::gate_run::path_regions::{
 };
 use crate::layout::PROJECT_INSTRUCTIONS;
 
-/// The decision log, which records how choices changed and so may use the history words.
-const DECISION_LOG: &str = "decisions.md";
+/// The decision log's folder, whose files record how choices changed and so may use the history
+/// words.
+const DECISION_LOG: &str = "documentation/decisions/";
 
 /// Words that describe code or documents by their past, each split so this file never matches.
 const HISTORY_WORDS: [(&str, &str); 8] = [
@@ -82,7 +83,7 @@ impl FileRule for ProseRules {
 
     fn problems(&self, path: &str, bytes: &[u8]) -> Vec<String> {
         let text = String::from_utf8_lossy(bytes);
-        let judge_history = file_name(path) != DECISION_LOG;
+        let judge_history = !path.starts_with(DECISION_LOG);
         let judge_milestones =
             extension(path) == Some("rs") || (in_code_tree(path) && file_name(path) == README);
         let mut problems = Vec::new();

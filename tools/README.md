@@ -74,9 +74,9 @@ tests need `git` on the `PATH`: some build a temporary git checkout, and some ju
 
 ## Related documentation
 
-- [Repository tooling may run git and cargo](/documentation/decisions.md#2026-09-25--repository-tooling-may-run-git-and-cargo)
+- [Repository tooling may run git and cargo](/documentation/decisions/foundations.md#2026-09-25--repository-tooling-may-run-git-and-cargo)
   — why the tools, and only the tools, run `git`.
-- [Simple documentation system](/documentation/decisions.md#2026-09-25--simple-documentation-system-no-ticket-machinery)
+- [Simple documentation system](/documentation/decisions/foundations.md#2026-09-25--simple-documentation-system-no-ticket-machinery)
   — why the checkable laws live in one small gate tool.
 - [Coding standards](/documentation/standards/coding_standards.md) — the laws several gates hold.
 - [README standard](/documentation/standards/readme_standard.md) — the README rules the

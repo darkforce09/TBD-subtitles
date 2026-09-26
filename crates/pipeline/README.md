@@ -109,7 +109,7 @@ passes in `JobOptions`, recorded in the job's `job.json` (`crates/job_model/src/
 - [Pipeline](/documentation/architecture/pipeline.md#stage-flow) — the stage flow the runner walks.
 - [System overview](/documentation/architecture/system_overview.md#processes) — the processes and
   the job work directory.
-- [Each GPU stage runs in its own worker process](/documentation/decisions.md#2026-09-25--each-gpu-stage-runs-in-its-own-worker-process)
+- [Each GPU stage runs in its own worker process](/documentation/decisions/foundations.md#2026-09-25--each-gpu-stage-runs-in-its-own-worker-process)
   — why models load in workers.
-- [Each native GPU runtime lives in a worker binary of its own](/documentation/decisions.md#2026-09-26--each-native-gpu-runtime-lives-in-a-worker-binary-of-its-own)
+- [Each native GPU runtime lives in a worker binary of its own](/documentation/decisions/stack_and_pipeline.md#2026-09-26--each-native-gpu-runtime-lives-in-a-worker-binary-of-its-own)
   — why Whisper runs in `tbd-subtitles-ggml`.

@@ -34,7 +34,7 @@ host.
 
 Prove each piece of the [Rust ML stack](/documentation/research/rust_ml_stack.md) on real audio
 before building the pipeline around it. Record speed, VRAM, RAM and quality notes in a new research
-snapshot, and settle the matching open questions in [decisions](/documentation/decisions.md).
+snapshot, and settle the matching open questions in [decisions](/documentation/decisions/).
 
 - [x] FFmpeg streaming: 16 kHz mono f32 through a pipe in bounded chunks; ffprobe JSON for tracks.
 - [x] Vocal separation: MDX-Net Voc_FT vs Mel-RoFormer ONNX on CUDA — speed per hour of audio.
@@ -105,7 +105,7 @@ Details: [Japanese on-screen text](/documentation/features/japanese_onscreen_tex
 ## Later
 
 Items the owner moved out of the pipeline milestone to keep it small (see the
-[decisions](/documentation/decisions.md)); each waits for the owner to place it in a milestone.
+[decisions](/documentation/decisions/)); each waits for the owner to place it in a milestone.
 
 - [ ] Silero for voice-activity frames near earshot's threshold.
 - [ ] CLAP zero-shot sound classes for sounds AudioSet lacks.
