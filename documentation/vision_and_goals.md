@@ -60,17 +60,20 @@ version do not match the dub's words or cut.
 
 ## Performance budget
 
-Estimates to be replaced by measurements in the M0.5 spike (see the [roadmap](/documentation/roadmap.md)):
+Each stage's budget for a 120-minute video, with the time measured on Dressrosa 11 and scaled to
+120 minutes ([stack spike on Dressrosa 11](/documentation/research/stack_spike_dressrosa_11.md#projection-for-a-120-minute-video)):
 
-| Stage (120-minute video) | Budget |
-|---|---|
-| FFmpeg decode + shot-change scan (runs alongside the GPU stages) | ≤ 3 min |
-| Vocal separation (the likely bottleneck) | ≤ 12 min |
-| Voice activity detection | < 1 min |
-| Speech recognition, main engine (Parakeet) | ≤ 3 min |
-| Speech recognition, second engine | ≤ 6 min |
-| Language-model adjudication | ≤ 4 min |
-| Forced alignment, cue building, QC | ≤ 2 min |
+| Stage (120-minute video) | Budget | Measured, scaled |
+|---|---|---|
+| FFmpeg decode + shot-change scan (runs alongside the GPU stages) | ≤ 3 min | 1.4 min |
+| Vocal separation (Mel-Band RoFormer) | ≤ 12 min | 6.5 min |
+| Voice activity detection | < 1 min | 0.0 min |
+| Speech recognition, main engine (Parakeet) | ≤ 3 min | 0.5 min |
+| Speech recognition, second engine (Whisper large-v3) | ≤ 6 min | 4.8 min |
+| Sound events (CED-base, both stems) | ≤ 2 min | 1.1 min |
+| Language-model adjudication (`claude -p`) | ≤ 4 min | 2.5 min |
+| Forced alignment, cue building, QC | ≤ 2 min | 0.4 min (alignment; cues and QC not built) |
+| **Total** | **≤ 30 min** | **about 16 min** |
 
 ## Related documentation
 

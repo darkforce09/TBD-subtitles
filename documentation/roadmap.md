@@ -36,15 +36,18 @@ Prove each piece of the [Rust ML stack](/documentation/research/rust_ml_stack.md
 before building the pipeline around it. Record speed, VRAM, RAM and quality notes in a new research
 snapshot, and settle the matching open questions in [decisions](/documentation/decisions.md).
 
-- [ ] FFmpeg streaming: 16 kHz mono f32 through a pipe in bounded chunks; ffprobe JSON for tracks.
-- [ ] Vocal separation: MDX-Net Voc_FT vs Mel-RoFormer ONNX on CUDA — speed per hour of audio.
-- [ ] Voice activity detection: earshot on the vocal stem.
-- [ ] Speech recognition: parakeet-rs with Parakeet-TDT-0.6B-v2, and one second engine.
-- [ ] Forced alignment: CTC Viterbi over parakeet-ctc ONNX vs the Qwen3 aligner.
-- [ ] Sound events: CED through the soundevents crate on the background stem.
-- [ ] Language model: `claude -p` with a JSON schema vs mistral.rs with a 4B model.
-- [ ] CUDA libraries for `ort` on Bazzite (shipped beside the binary) — working recipe written
-      into the [development environment](/documentation/runbooks/development_environment.md) runbook.
+- [x] FFmpeg streaming: 16 kHz mono f32 through a pipe in bounded chunks; ffprobe JSON for tracks.
+- [x] Vocal separation: MDX-Net Voc_FT vs Mel-RoFormer ONNX on CUDA — speed per hour of audio.
+- [x] Voice activity detection: earshot on the vocal stem.
+- [x] Speech recognition: parakeet-rs with Parakeet-TDT-0.6B-v2, and one second engine.
+- [x] Forced alignment: CTC Viterbi over parakeet-ctc ONNX vs the Qwen3 aligner.
+- [x] Sound events: CED-base on both stems, through our own ONNX runner (the soundevents crate
+      forces OpenSSL into the build).
+- [x] Language model: `claude -p` with a JSON schema vs mistral.rs with a 4B model.
+- [x] CUDA libraries for `ort` on Bazzite (the user runtime folder, or beside the binary) —
+      working recipe written into the [development environment](/documentation/runbooks/development_environment.md) runbook.
+
+Results: [stack spike on Dressrosa 11](/documentation/research/stack_spike_dressrosa_11.md).
 
 **Acceptance:** every item runs on Dressrosa 11 from Rust with measured numbers, and the projected
 total for a 120-minute video is within the [performance budget](/documentation/vision_and_goals.md#performance-budget).
@@ -99,8 +102,6 @@ Details: [Japanese on-screen text](/documentation/features/japanese_onscreen_tex
 
 | Question | Settle by |
 |---|---|
-| Second speech engine: Whisper large-v3 (whisper-rs), Canary or Granite (transcribe-cpp/crispasr), or Kyutai 1B (candle)? | M0.5 measurements |
-| Default language-model backend: `claude -p` (owner's subscription) or local mistral.rs? | M0.5 quality check |
 | Output format when sign subtitles exist: always `.ass`, or `.srt` until signs appear? | M4 |
 | Where models live and how the first download is shown to the user | M2 |
 | Which Japanese text counts: on-screen only, or also Japanese speech and songs? | Owner, at M4 start |

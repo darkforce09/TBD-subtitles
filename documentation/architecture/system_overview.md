@@ -100,8 +100,11 @@ the CLI reads it and accepts overrides.
 
 - GPU stages need the host's NVIDIA driver; inside the `claude-desktop` distrobox they are run
   through `distrobox-host-exec` during development.
-- `ort`'s prebuilt GPU build needs CUDA 13 runtime libraries (cudart, cuBLAS, cuDNN); on Bazzite
-  they ship beside the binary rather than being installed system-wide.
+- ONNX Runtime (Microsoft's CUDA 13 build), the CUDA 13 runtime and cuDNN live in the runtime
+  folder `~/.local/share/tbd-subtitles/runtime/` (or `<binary folder>/cuda/`), not installed
+  system-wide; each GPU worker starts with `LD_LIBRARY_PATH` and `ORT_DYLIB_PATH` pointing there.
+- ONNX Runtime, ggml and candle never share a binary: each GPU runtime has a worker binary of its
+  own.
 - Budget per GPU stage: 5.5 GB of VRAM with the desktop running.
 
 ## Related documentation

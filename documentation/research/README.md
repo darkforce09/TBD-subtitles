@@ -3,14 +3,16 @@
 # Research
 
 The research behind the design: dated snapshots of the speech-recognition field and of the Rust
-crates and model files that can run each capability.
+crates and model files that can run each capability, and the measurements of that stack on a real
+episode.
 
 ## Contents
 
 ```text
 documentation/research/
 ├── rust_ml_stack.md                 frozen record, 2026-09-25: Rust crates and model files per capability
-└── speech_recognition_landscape.md  frozen record, 2026-09-25: benchmarks, prices, options, why local
+├── speech_recognition_landscape.md  frozen record, 2026-09-25: benchmarks, prices, options, why local
+└── stack_spike_dressrosa_11.md      frozen record, 2026-09-26: every stack piece measured on one episode
 ```
 
 ## How it works

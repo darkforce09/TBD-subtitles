@@ -47,8 +47,8 @@ video ─▶ 1 probe+decode ─▶ 2 separate ─▶ 3 vad+chunks ─▶ 4 asr �
 
 ## 2. Vocal separation
 
-- A vocal-separation model on CUDA: UVR MDX-Net Voc_FT ONNX (fast default) or Mel-Band RoFormer
-  ONNX (quality mode). Short-time Fourier transform, chunking and overlap-add are ours (`realfft`).
+- A vocal-separation model on CUDA: Mel-Band RoFormer ONNX (default) or UVR MDX-Net Voc_FT ONNX
+  (fast mode). Short-time Fourier transform, chunking and overlap-add are ours (`realfft`).
 - Outputs: vocal stem and background stem (mix minus vocals), resampled to 16 kHz mono.
 - Speech recognition runs on the original mix by default; the vocal stem feeds voice detection,
   alignment and the vocal half of sound-event detection. The spike measures, per engine, whether
@@ -67,10 +67,9 @@ video ─▶ 1 probe+decode ─▶ 2 separate ─▶ 3 vad+chunks ─▶ 4 asr �
 
 - **Backbone:** NVIDIA Parakeet-TDT-0.6B-v2 (English): fast, no hallucination, word timestamps
   from its token durations.
-- **Second engine** (third optional), each in its own worker process, chosen in the spike:
-  Whisper large-v3 (whisper-rs), Canary or Granite (transcribe-cpp or crispasr), or Kyutai STT 1B
-  (candle). Whisper gets the series glossary as its prompt and runs only on detected speech, so it
-  cannot hallucinate over music.
+- **Second engine:** Whisper large-v3 through CrispASR, in the ggml worker binary, over the same
+  chunk plan and so only on detected speech; large-v3-turbo is the faster fallback. CrispASR gives
+  Whisper no initial prompt, so the glossary reaches only the language model.
 - Output per engine: words with start, end and confidence per chunk.
 
 ## 5. Diff sheet
@@ -92,8 +91,8 @@ video ─▶ 1 probe+decode ─▶ 2 separate ─▶ 3 vad+chunks ─▶ 4 asr �
 
 ## 6. Adjudication
 
-- Backend: headless `claude -p` with a JSON schema, or a local model through mistral.rs (chosen in
-  the spike). Input: the diff sheet, the series glossary (names, attacks, places, and alias traps
+- Backend: headless `claude -p` (Sonnet) with a JSON schema, eight processes at once; a local
+  model through mistral.rs is the offline fallback. Input: the diff sheet, the series glossary (names, attacks, places, and alias traps
   such as Lucy vs Luffy), and optionally reference subtitles as meaning hints. It never sees or
   changes timings.
 - Output, one JSON object per utterance: `{"id":"U0412","t":"Law, the Birdcage is closing in!","f":[]}`.
@@ -117,12 +116,11 @@ video ─▶ 1 probe+decode ─▶ 2 separate ─▶ 3 vad+chunks ─▶ 4 asr �
   dropped stretches force block edges.
 - Text is converted to spoken form before alignment ("III" → "the third", numbers to words,
   "Señor" → "Senor", hyphens to spaces) with an index map back to the displayed words.
-- Aligner: our CTC Viterbi over Parakeet-CTC frame probabilities, or the Qwen3 forced aligner
-  where tighter timing is needed (choice from the spike).
+- Aligner: our CTC Viterbi over Parakeet-CTC-0.6B (fp32) frame probabilities, 80 ms frames.
 - A block **passes** only if: no run of three or more zero-length or evenly spaced words (the
   signature of a silent aligner failure); every utterance lands within 1 s of its recognition
   window; the median difference from the backbone's word times is 0.2 s or less.
-- Fallbacks, in order: align each utterance alone; the other aligner; the backbone's own times.
+- Fallbacks, in order: align each utterance alone; the backbone's own times.
   Every word records which source timed it.
 - Offset guard per job: the median aligner-to-backbone difference stays under 30 ms.
 
