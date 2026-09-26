@@ -117,5 +117,6 @@ pub(crate) fn run(work: &Path) -> anyhow::Result<Outcome> {
     outcome.note("median_start_diff_vs_tdt_s", comparison.median_start_diff_s);
     outcome.note("share_over_200ms_vs_tdt", comparison.share_over_200ms);
     outcome.note("suspicious_runs", checks::suspicious_runs(&timed));
+    outcome.note("zero_length_runs", checks::flat_runs(&timed));
     Ok(outcome)
 }

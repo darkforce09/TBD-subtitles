@@ -85,18 +85,18 @@ pub const MODEL_FILES: &[PinnedFile] = &[
     hf!(
         "parakeet-ctc-0.6b",
         "onnx-community/parakeet-ctc-0.6b-ONNX",
-        "onnx/model_fp16.onnx",
-        "model_fp16.onnx",
-        895_299,
-        "c9def1f936aee2e5e8403954a76e5bed5bc6ba6c6b69c470d0d23bf1035c0a78"
+        "onnx/model.onnx",
+        "model.onnx",
+        887_486,
+        "5c459a949508ff0da5b36e8d94feb8ed1746fea9e732879117dd7c1f78a8a86c"
     ),
     hf!(
         "parakeet-ctc-0.6b",
         "onnx-community/parakeet-ctc-0.6b-ONNX",
-        "onnx/model_fp16.onnx_data",
-        "model_fp16.onnx_data",
-        1_217_499_650,
-        "969e56486047ea605ccd43023fcdee1a7d67854ce541002f5d5e535da930d43b"
+        "onnx/model.onnx_data",
+        "model.onnx_data",
+        2_435_004_420,
+        "8ebe1f7360dc705dfe8163fe72bc7a4d9b823d9ef6d426f1f1f8da18fffcc1ec"
     ),
     hf!(
         "parakeet-ctc-0.6b",
@@ -184,6 +184,9 @@ pub const MODEL_FILES: &[PinnedFile] = &[
 pub const CUDA_FOLDER: &str = "cuda-13.4";
 /// The cuDNN folder name under `runtime/`.
 pub const CUDNN_FOLDER: &str = "cudnn-9.26";
+/// A CUDA 13.3 compiler, used only to build mistral.rs, whose build accepts toolkits up to 13.3;
+/// the libraries it links against at run time are the 13.4 ones.
+pub const CUDA_BUILD_FOLDER: &str = "cuda-13.3-build";
 
 macro_rules! nv {
     ($id:literal, $to:expr, $path:literal, $size:literal, $sha:literal) => {
@@ -293,6 +296,45 @@ pub const CUDA_ARCHIVES: &[PinnedArchive] = &[
     ),
 ];
 
+/// The CUDA 13.3.1 compiler pieces unpacked into `CUDA_BUILD_FOLDER`.
+pub const CUDA_BUILD_ARCHIVES: &[PinnedArchive] = &[
+    nv!(
+        "cuda_nvcc-13.3",
+        CUDA_BUILD_FOLDER,
+        "cuda/redist/cuda_nvcc/linux-x86_64/cuda_nvcc-linux-x86_64-13.3.73-archive.tar.xz",
+        31_628_824,
+        "2ff9f9954060794a1c5134a933ccb45bec723d866b2629dadfe4a1a313f21068"
+    ),
+    nv!(
+        "cuda_crt-13.3",
+        CUDA_BUILD_FOLDER,
+        "cuda/redist/cuda_crt/linux-x86_64/cuda_crt-linux-x86_64-13.3.73-archive.tar.xz",
+        99_152,
+        "1251aa9d668c607a103489cd2250773701e83a313e355578044622cf36713a9d"
+    ),
+    nv!(
+        "libnvvm-13.3",
+        CUDA_BUILD_FOLDER,
+        "cuda/redist/libnvvm/linux-x86_64/libnvvm-linux-x86_64-13.3.73-archive.tar.xz",
+        49_508_948,
+        "206b1ab4979c09b5c32f8bf907c42bc9e16cd7454cf6036f524c45a58d060f93"
+    ),
+    nv!(
+        "cuda_cudart-13.3",
+        CUDA_BUILD_FOLDER,
+        "cuda/redist/cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-13.3.29-archive.tar.xz",
+        1_573_744,
+        "1e59c4888267d27ba1a9bd0f3669a6439db1334a96e754cd9013c7c73e18dc9d"
+    ),
+    nv!(
+        "cccl-13.3",
+        CUDA_BUILD_FOLDER,
+        "cuda/redist/cccl/linux-x86_64/cccl-linux-x86_64-13.3.3.4.1-archive.tar.xz",
+        1_262_552,
+        "26957cede74f9341174ecaf0372f3f886e7c46ceccb98d6dc775fe2b68d19268"
+    ),
+];
+
 /// The ONNX Runtime folder name under `runtime/`.
 pub const ONNX_RUNTIME_FOLDER: &str = "onnxruntime-1.28.2";
 
@@ -306,11 +348,12 @@ pub const ONNX_RUNTIME_ARCHIVE: PinnedArchive = PinnedArchive {
     sha256: "118ca8dbc4e4bb9b3b7fea137d796a89d957c9aa70e1dc3a5199a302cdd5bb32",
 };
 
-/// Every runtime archive: the CUDA libraries, then ONNX Runtime.
+/// Every runtime archive: the CUDA libraries, ONNX Runtime, then the CUDA 13.3 build pieces.
 pub fn runtime_archives() -> impl Iterator<Item = &'static PinnedArchive> {
     CUDA_ARCHIVES
         .iter()
         .chain(std::iter::once(&ONNX_RUNTIME_ARCHIVE))
+        .chain(CUDA_BUILD_ARCHIVES)
 }
 
 /// The files of one model, in manifest order.

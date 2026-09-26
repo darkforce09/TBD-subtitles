@@ -30,8 +30,25 @@ pub fn compare(aligned: &[Option<(f64, f64)>], reference: &[(f64, f64)]) -> Comp
     }
 }
 
+/// Runs of three consecutive zero-length words: words an aligner collapsed.
+pub fn flat_runs(times: &[(f64, f64)]) -> usize {
+    let flat = |i: usize| times[i].1 - times[i].0 < 1e-3;
+    let mut runs = 0;
+    let mut i = 2;
+    while i < times.len() {
+        if flat(i - 2) && flat(i - 1) && flat(i) {
+            runs += 1;
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+    runs
+}
+
 /// Runs of three or more consecutive words that are zero-length or evenly spaced with equal
-/// lengths: what an aligner leaves when it gave up and spread the words out.
+/// lengths: what an aligner leaves when it gave up and spread the words out. On a coarse frame
+/// grid (80 ms) short words meet the even rule by chance, so read it with `flat_runs`.
 pub fn suspicious_runs(times: &[(f64, f64)]) -> usize {
     let flat = |i: usize| times[i].1 - times[i].0 < 1e-3;
     let even = |i: usize| {

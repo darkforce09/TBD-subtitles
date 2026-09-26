@@ -33,8 +33,10 @@ install_archive(archive, runtime) ──▶ fetch_verified ──▶ runtime/.ar
   replace an earlier one of the same name (the LICENSE files), so several archives merge into one
   toolkit folder.
 - `manifest.rs` holds the Hugging Face LFS hashes of the models, the hashes from NVIDIA's
-  `redistrib_13.4.2.json` and `redistrib_9.26.0.json`, and the GitHub release digest of ONNX
-  Runtime 1.28.2 (CUDA 13); `runtime_archives` lists every runtime archive.
+  `redistrib_13.4.2.json` and `redistrib_9.26.0.json`, the GitHub release digest of ONNX
+  Runtime 1.28.2 (CUDA 13), and the CUDA 13.3.1 compiler pieces that build mistral.rs (whose build
+  accepts toolkits up to 13.3) into `cuda-13.3-build/`; `runtime_archives` lists every runtime
+  archive.
 
 ## Boundaries
 

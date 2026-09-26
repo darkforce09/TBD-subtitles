@@ -8,7 +8,7 @@ that failed quietly.
 
 ```text
 crates/stages/src/alignment/
-├── checks.rs       an alignment against reference times: median start difference, share over 200 ms, flat runs
+├── checks.rs       an alignment against reference times: median start difference, share over 200 ms, runs
 ├── ctc_viterbi.rs  the best path of a known token sequence through a CTC grid, with each token's frames
 ├── mod.rs          `align_words_ctc`: displayed words ─▶ spoken tokens ─▶ Viterbi ─▶ word times
 ├── spoken_form.rs  displayed words to spoken words: accents, digits, hyphens, symbols, punctuation
@@ -20,9 +20,9 @@ crates/stages/src/alignment/
 `align_words_ctc` turns each displayed word into spoken words, spells each in the model's tokens
 (a closure the caller passes, so this module needs no model), and runs `ctc_viterbi::align` over
 the whole token sequence. A word's time runs from its first token's first frame to its last
-token's last frame; a word with nothing speakable gets none. `checks::suspicious_runs` counts runs
-of three or more words that are zero-length or spread at even steps, the signature of an aligner
-that gave up.
+token's last frame; a word with nothing speakable gets none. `checks::flat_runs` counts runs of three
+zero-length words, words an aligner collapsed; `checks::suspicious_runs` also counts words spread
+at even steps, which on an 80 ms frame grid short words meet by chance.
 
 ## Boundaries
 

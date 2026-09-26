@@ -21,8 +21,9 @@ crates/inference/src/onnx/parakeet_ctc/
   - the blank is token 1024 and every grid row is a log-softmax (`log_probs`);
   - the frontend gives `floor(samples / 160)` frames with zero-mean bands
     (`frames_follow_nemo_and_bands_are_normalised`);
-  - the pinned fp16 export (`model_fp16.onnx`) returns NaN for any real audio on both CPU and
-    CUDA; `greedy_text` and the NaN count in the stack spike's notes show it.
+  - the model is the fp32 export (`model.onnx` with `model.onnx_data`): the fp16 export returns NaN
+    for any real audio on both CPU and CUDA; `greedy_text` and the NaN count in the stack spike's
+    notes show which one a run used.
 
 ## Related documentation
 

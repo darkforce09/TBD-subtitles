@@ -19,7 +19,7 @@ use std::path::{Component, Path, PathBuf};
 
 use super::StoreError;
 use super::download::{Progress, fetch_verified};
-use super::manifest::{CUDA_FOLDER, PinnedArchive};
+use super::manifest::{CUDA_BUILD_FOLDER, CUDA_FOLDER, PinnedArchive};
 
 /// Download (when needed) and unpack `archive` under `runtime_dir`.
 pub fn install(
@@ -42,7 +42,7 @@ pub fn install(
     )?;
     let target = runtime_dir.join(archive.unpack_to);
     unpack(&download, &target)?;
-    if archive.unpack_to == CUDA_FOLDER {
+    if archive.unpack_to == CUDA_FOLDER || archive.unpack_to == CUDA_BUILD_FOLDER {
         link_lib64(&target)?;
     }
     if let Some(parent) = marker.parent() {

@@ -52,9 +52,9 @@ pub struct ParakeetCtc {
 }
 
 impl ParakeetCtc {
-    /// Open the model folder (`model_fp16.onnx` with its data, `tokenizer.json`).
+    /// Open the model folder (`model.onnx` with its data, `tokenizer.json`).
     pub fn open(dir: &Path, device: Device) -> Result<ParakeetCtc, OnnxError> {
-        let session = session::open(&dir.join("model_fp16.onnx"), device)?;
+        let session = session::open(&dir.join("model.onnx"), device)?;
         let tokenizer = Tokenizer::from_file(dir.join("tokenizer.json"))
             .map_err(|e| OnnxError::new("reading the Parakeet-CTC tokenizer", e))?;
         Ok(ParakeetCtc {

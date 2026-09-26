@@ -18,4 +18,6 @@ fn evenly_spread_words_are_flagged_and_real_speech_is_not() {
     assert_eq!(suspicious_runs(&speech), 0);
     let flat = [(1.0, 1.0), (1.0, 1.0), (1.0, 1.0)];
     assert_eq!(suspicious_runs(&flat), 1);
+    assert_eq!(flat_runs(&flat), 1);
+    assert_eq!(flat_runs(&spread), 0);
 }
