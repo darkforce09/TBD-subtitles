@@ -157,7 +157,7 @@ pub fn drafts(units: &[Unit], rules: &FrameRules) -> Vec<Draft> {
             let after = units.get(i + 2).map(Unit::start_s);
             let cramped = cramped(unit, Some(next.start_s()), rules) || cramped(next, after, rules);
             if cramped && pairs(unit, next, rules) {
-                out.push(Draft::new(
+                let mut paired = Draft::new(
                     vec![
                         CueLine::plain(format!("-{}", unit.text())),
                         CueLine::plain(format!("-{}", next.text())),
@@ -165,7 +165,9 @@ pub fn drafts(units: &[Unit], rules: &FrameRules) -> Vec<Draft> {
                     CueKind::Dialogue,
                     unit.start_s(),
                     next.end_s(),
-                ));
+                );
+                paired.starts_speaker = unit.speaker_change;
+                out.push(paired);
                 i += 2;
                 continue;
             }
@@ -199,7 +201,9 @@ fn laid_out(unit: &Unit) -> Draft {
             }
         })
         .collect();
-    Draft::new(lines, CueKind::Dialogue, unit.start_s(), unit.end_s())
+    let mut draft = Draft::new(lines, CueKind::Dialogue, unit.start_s(), unit.end_s());
+    draft.starts_speaker = unit.speaker_change;
+    draft
 }
 
 /// Whether `u` alone, from its lead-in to two frames before `next_start`, is shorter than the

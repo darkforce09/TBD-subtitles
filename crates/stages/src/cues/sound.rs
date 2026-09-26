@@ -87,6 +87,7 @@ fn own_cue(drafts: &mut Vec<Draft>, sound: &SoundCue, rules: &FrameRules) -> boo
         speech_end_s: sound.start_s,
         start,
         end,
+        starts_speaker: false,
     };
     let at = drafts.partition_point(|d| d.start < start);
     drafts.insert(at, draft);

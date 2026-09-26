@@ -3,7 +3,8 @@
 //!
 //! **Role:** cut utterances into cues (`segment.rs`), break lines (`line_break.rs`), time each
 //! cue from its speech (`timing.rs`), snap to shot cuts (`shots.rs`), place the sound cues
-//! (`sound.rs`), and hand back the finished track.
+//! (`sound.rs`), give a cue still too short a neighbour to share or room to grow (`short.rs`),
+//! and hand back the finished track.
 //!
 //! **Position:** called by the cue step in the job runner, from `aligned.json`,
 //! `sound_cues.json`, `shots.json` and the probe's frame rate; the result is `cues.json`.
@@ -15,6 +16,7 @@
 
 pub mod line_break;
 pub mod segment;
+pub mod short;
 pub mod shots;
 pub mod sound;
 pub mod timing;
@@ -76,6 +78,8 @@ pub struct Draft {
     pub speech_end_s: f64,
     pub start: u64,
     pub end: u64,
+    /// The cue's first words start a new speaker (the language model marked the change).
+    pub starts_speaker: bool,
 }
 
 impl Draft {
@@ -92,6 +96,7 @@ impl Draft {
             speech_end_s,
             start: 0,
             end: 0,
+            starts_speaker: false,
         }
     }
 
@@ -135,6 +140,7 @@ pub fn build(
         timing::extend(&mut drafts, &rules);
         timing::separate(&mut drafts, &rules);
     }
+    short::resolve(&mut drafts, &rules);
     let dropped_sounds = sound::place(&mut drafts, sounds, &rules);
     timing::chain(&mut drafts, &rules);
     timing::clamp(&mut drafts, &rules);

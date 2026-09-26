@@ -94,6 +94,8 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
 
 /// Steps whose code changed what they write, with their revision; every other step is at 1.
 const REVISIONS: &[(StepName, u32)] = &[
+    // A cue still too short shares a neighbour's cue or grows into its lead-out.
+    (StepName::Cues, 2),
     // Its findings name the utterance they are about.
     (StepName::Qc, 2),
 ];

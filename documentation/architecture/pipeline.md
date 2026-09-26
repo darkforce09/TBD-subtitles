@@ -212,7 +212,11 @@ All times snapped to video frames. Full rules: [subtitle style rules](/documenta
   marked the change (`||` or `SPK`), the gap is under 12 frames, and separate cues would break the
   minimum duration or reading speed. Never for the narrator, whose lines are italic. Two short
   lines of one speaker share a cue in the same case. A cue too short for its room may take back
-  the lead-out of the cue before, down to that cue's speech and minimum.
+  the lead-out of the cue before, down to that cue's speech and minimum. A cue still under 20
+  frames (a one-word interjection between two full cues) shares the cue before or after it, the
+  words broken again or dashed when a speaker change was marked, else grows into the time around
+  it; sharing wins over reading speed, since a fast cue is for review and a short one breaks a
+  rule.
 - Sound cues take their own cue when there is a gap of 0.8 s or more, else their own line in the
   overlapping cue when it fits, else they are dropped.
 - Shot changes:

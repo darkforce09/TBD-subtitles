@@ -11,6 +11,7 @@ crates/stages/src/cues/
 ├── line_break.rs  one line up to 42 characters, else the best-reading two-line break
 ├── mod.rs         `FrameRules` (the rules in frames), `Draft`, and `build`, which runs the passes
 ├── segment.rs     utterances cut into units that fit one cue; quick exchanges paired with dashes
+├── short.rs       a cue still too short shares a neighbour's cue or grows into a lead-out
 ├── shots.rs       the shot cuts that count, merged within 0.5 s, and cue edges snapped onto them
 ├── sound.rs       sound and music cues placed in free stretches, as a second line, or dropped
 ├── tests/         unit tests for each pass and for a whole scene built end to end
@@ -27,7 +28,9 @@ span and frames are still being settled:
 ```text
 aligned.json ─▶ segment::units ─▶ segment::drafts ─▶ timing::initial ─▶ shots::snap
                                                                            │
-cues.json ◀─ timing::clamp ◀─ timing::chain ◀─ sound::place ◀─ (extend, separate) ×2
+                                                          (extend, separate) ×2
+                                                                           │
+cues.json ◀─ timing::clamp ◀─ timing::chain ◀─ sound::place ◀─ short::resolve
 ```
 
 `segment` splits each speaker's turn at sentence ends, then clauses, then pauses of 250 ms, until
@@ -45,6 +48,14 @@ changes closer than 0.5 s into the strongest; `snap` starts a cue on a cut its s
 closely and ends it 2 frames before a nearby cut. `timing::extend` grows short or fast cues into
 the gap, `separate` restores the 2-frame gap keeping speech covered first, `chain` closes gaps of
 3 frames up to just under the lead-out, and `clamp` stops every cue at the video's end.
+
+`short::resolve` then places each dialogue cue still under the minimum, as a one-word interjection
+between two cues that need all their time: it shares the cue before, else the cue after, when
+they are within 0.5 s (the words broken again into two lines, or `-Line` / `-Line` when the later
+cue starts a marked speaker change), within 7 s and 20 characters per second; else it grows into
+the gap after it, then into the cue before's lead-out, down to that cue's speech and minimum; when
+that still leaves it short, it shares a neighbour even over 20 characters per second, since a fast
+cue is for review and a short one breaks a rule.
 
 `sound::place` gives a sound cue its own cue where the dialogue leaves at least 0.8 s free around
 it; otherwise it becomes the second line of the one-line dialogue cue it overlaps, when the text
@@ -70,7 +81,11 @@ duration, then the shot rules.
     (`overlapping_cues_are_pulled_apart_keeping_speech_first`, `no_cue_ends_after_the_video` in
     `tests/timing.rs`);
   - a sound cue with no room is dropped, never squeezed in (`a_sound_with_no_room_is_dropped` in
-    `tests/sound.rs`).
+    `tests/sound.rs`);
+  - a cue still too short shares a neighbour, dashed across a marked speaker change, or grows
+    into a lead-out (`a_short_cue_joins_the_cue_before_when_the_words_fit`,
+    `a_marked_speaker_change_shares_with_dashes`,
+    `with_no_neighbour_to_share_the_cue_grows_into_a_lead_out` in `tests/short.rs`).
 
 ## Related documentation
 
