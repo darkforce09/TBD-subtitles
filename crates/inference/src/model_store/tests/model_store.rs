@@ -93,7 +93,7 @@ fn a_file_already_in_place_is_hashed_and_kept() {
         &path,
         3,
         "unused",
-        &mut |_, _| {},
+        &mut |_, _| std::ops::ControlFlow::Continue(()),
     )
     .unwrap();
     std::fs::remove_dir_all(&dir).unwrap();

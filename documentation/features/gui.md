@@ -3,9 +3,12 @@
 # Desktop GUI
 
 The window the owner uses to queue videos, watch progress, read job reports and fix the lines the
-pipeline was unsure about. Planned for milestone M2. What exists now: the window opens
-(`tbd-subtitles` or `tbd-subtitles gui [VIDEO]...`), and its queue panel lists the videos given
-on the command line or dropped onto the window, each with a button that takes it out again.
+pipeline was unsure about; milestone M2. What exists now: the window opens (`tbd-subtitles` or
+`tbd-subtitles gui [VIDEO]...`) with two pages. Its queue panel lists the videos given on the
+command line, dropped onto the window or added through the desktop's chooser (files, or a folder
+for its videos without subtitles), each with a button that takes it out again. The Settings page
+edits `settings.toml`, lists and downloads the models, and checks the machine. The queue does not
+run jobs yet.
 
 ## Where it lives
 
@@ -28,11 +31,13 @@ on the command line or dropped onto the window, each with a button that takes it
    timestamps, and the output file's path. A button opens the video in the desktop's default
    player (VLC) through the desktop portal.
 4. **Review.** For each flagged line: play the clip (sound and a small picture, both from
-   FFmpeg), see every engine's hypothesis, pick one or type a correction; the line is re-aligned and the subtitle
-   file rewritten. Corrections never touch lines that were not flagged unless the owner opens them.
+   FFmpeg), see every engine's hypothesis, pick one or type a correction; the line is re-aligned
+   and the subtitle file rewritten. Corrections never touch lines that were not flagged unless
+   the owner opens them.
 5. **Settings.** Models folder and download status, work folder and its size, engines per stage,
-   language-model backend, output format, watch folders, GPU check (driver, free VRAM, CUDA
-   libraries found).
+   language-model backend, output format, GPU check (driver, free VRAM, CUDA libraries found,
+   FFmpeg, ffprobe, `claude`, the Whisper worker). Watch folders come with the
+   [automation](/documentation/features/automation.md) feature.
 6. **Models on first use.** Missing models are listed with their sizes and downloaded with
    progress before the first job starts.
 

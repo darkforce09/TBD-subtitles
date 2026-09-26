@@ -28,10 +28,11 @@ install_archive(archive, runtime) ──▶ fetch_verified ──▶ runtime/.ar
   `~/.local/share/tbd-subtitles/`): `models/` and `runtime/`. `is_complete` checks sizes only;
   hashes are checked when a file is downloaded, and only a matching file is renamed into place.
 - `download.rs` writes `<file>.part`, resumes it with an HTTP `Range` request, hashes as it
-  writes, and deletes the `.part` on a size or hash mismatch.
+  writes, and deletes the `.part` on a size or hash mismatch. Its progress callback returns
+  `ControlFlow`: a break stops the download with `StoreError::Cancelled` and keeps the `.part`.
 - `archive.rs` refuses tar entries with `..` or an absolute path, and lets a later archive's file
   replace an earlier one of the same name (the LICENSE files), so several archives merge into one
-  toolkit folder.
+  toolkit folder. `is_installed` (re-exported as `is_archive_installed`) reads the marker.
 - `manifest.rs` holds the Hugging Face LFS hashes of the models, the hashes from NVIDIA's
   `redistrib_13.4.2.json` and `redistrib_9.26.0.json`, the GitHub release digest of ONNX
   Runtime 1.28.2 (CUDA 13), and the CUDA 13.3.1 compiler pieces that build mistral.rs (whose build
@@ -41,7 +42,8 @@ install_archive(archive, runtime) ──▶ fetch_verified ──▶ runtime/.ar
 ## Boundaries
 
 - Depends on: `ureq` (https with rustls), `sha2`, `lzma-rs`, `flate2`, `tar`; `std` for the files.
-- Used by: `crates/inference/src/cuda_runtime/` (the folder names); `tools/stack_spike/` (the
+- Used by: `crates/inference/src/cuda_runtime/` (the folder names); the app's settings page
+  (`apps/tbd_subtitles/src/settings/services/model_downloads.rs`); `tools/stack_spike/` (the
   `fetch` command and the model folders).
 - Rules:
   - a file at its final path matches its pinned size and hash (`fetch_verified`; the

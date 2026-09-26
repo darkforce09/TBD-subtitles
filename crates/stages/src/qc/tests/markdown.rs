@@ -38,6 +38,7 @@ fn record() -> JobRecord {
         video_size: 1,
         video_modified_s: 0,
         settings: JobSettings::with_glossary(vec![]),
+        models_dir: None,
         steps,
     }
 }
@@ -57,6 +58,7 @@ fn the_report_lists_flags_steps_and_unmeasured_values_as_dashes() {
             time_s: 725.44,
             text: "Law | the Birdcage".into(),
             detail: "U0412".into(),
+            utterance: Some("U0412".into()),
         }],
     };
     let md = render(

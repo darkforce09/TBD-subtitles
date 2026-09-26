@@ -61,9 +61,30 @@ pub fn is_valid(step: StepName, record: &JobRecord, work: &WorkDir) -> bool {
         return false;
     };
     done.fingerprint == fingerprint(step, record)
-        && graph::outputs(step, work, Path::new(&record.video))
-            .iter()
-            .all(|p| p.exists())
+        && graph::outputs(
+            step,
+            work,
+            Path::new(&record.video),
+            record.settings.output_format,
+        )
+        .iter()
+        .all(|p| p.exists())
+}
+
+/// The steps a run would do now, in order: each step whose record is not valid, and each step
+/// that reads one of them, because its fingerprint changes once that input runs again.
+pub fn stale_steps(record: &JobRecord, work: &WorkDir) -> Vec<StepName> {
+    let mut stale: Vec<StepName> = Vec::new();
+    for step in StepName::ALL {
+        if !is_valid(step, record, work)
+            || graph::inputs(step)
+                .iter()
+                .any(|input| stale.contains(input))
+        {
+            stale.push(step);
+        }
+    }
+    stale
 }
 
 /// Holds a job's lock file while alive.

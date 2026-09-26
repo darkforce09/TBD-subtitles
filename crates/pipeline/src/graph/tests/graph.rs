@@ -39,13 +39,27 @@ fn every_step_leaves_at_least_one_file() {
     let work = WorkDir::new("/work/job");
     for step in StepName::ALL {
         assert!(
-            !outputs(step, &work, Path::new("/v/a.mp4")).is_empty(),
+            !outputs(step, &work, Path::new("/v/a.mp4"), OutputFormat::Srt).is_empty(),
             "{step}"
         );
     }
     assert!(
-        outputs(StepName::Output, &work, Path::new("/v/a.mp4"))
-            .contains(&PathBuf::from("/v/a.srt"))
+        outputs(
+            StepName::Output,
+            &work,
+            Path::new("/v/a.mp4"),
+            OutputFormat::Srt
+        )
+        .contains(&PathBuf::from("/v/a.srt"))
+    );
+    assert!(
+        outputs(
+            StepName::Output,
+            &work,
+            Path::new("/v/a.mp4"),
+            OutputFormat::Ass
+        )
+        .contains(&PathBuf::from("/v/a.ass"))
     );
 }
 
@@ -59,6 +73,13 @@ fn only_the_settings_a_step_reads_reach_its_fingerprint() {
         settings(StepName::Alignment, &b)
     );
     assert_ne!(settings(StepName::Cues, &a), settings(StepName::Cues, &b));
+    let mut c = b.clone();
+    c.output_format = OutputFormat::Vtt;
+    assert_ne!(
+        settings(StepName::Output, &b),
+        settings(StepName::Output, &c)
+    );
+    assert_eq!(settings(StepName::Cues, &b), settings(StepName::Cues, &c));
     a.glossary.push("Luffy".into());
     assert_ne!(
         settings(StepName::Adjudicate, &a),

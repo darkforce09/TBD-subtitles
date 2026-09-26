@@ -17,6 +17,10 @@ pub struct JobRecord {
     /// The video's modification time, in seconds since the Unix epoch.
     pub video_modified_s: i64,
     pub settings: JobSettings,
+    /// The folder the models are read from, for this run; `None` means the default one. It never
+    /// changes a step's output, so no fingerprint covers it.
+    #[serde(default)]
+    pub models_dir: Option<String>,
     /// Every step that finished, with what it was run on.
     #[serde(default)]
     pub steps: BTreeMap<StepName, StepRecord>,

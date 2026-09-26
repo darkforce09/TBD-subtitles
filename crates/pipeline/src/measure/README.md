@@ -7,7 +7,7 @@ and the peak resident memory of a process and of the children it waited for.
 
 ```text
 crates/pipeline/src/measure/
-├── gpu_monitor.rs  device memory now, and a thread sampling one pid's VRAM every 100 ms
+├── gpu_monitor.rs  the device and its memory now, and a thread sampling one pid's VRAM every 100 ms
 ├── memory.rs       `VmHWM` of this process, `ru_maxrss` of its children, and the peak reset
 └── mod.rs          the module tree
 ```
@@ -18,7 +18,8 @@ crates/pipeline/src/measure/
   `getrusage(RUSAGE_CHILDREN)`; `/proc/self/status` and `/proc/self/clear_refs`; `serde` for
   `VramPeaks`.
 - Used by: `crate::workers` (the VRAM monitor around each GPU worker) and `crate::tasks` (peak RAM
-  in process and in a worker); `tools/stack_spike/src/measure/`.
+  in process and in a worker); `tools/stack_spike/src/measure/`; the app's machine check
+  (`device_info`, in `apps/tbd_subtitles/src/settings/services/system_check.rs`).
 - Rules:
   - without NVML, as in the development container, VRAM is reported as not measured, never as
     zero (the header of `gpu_monitor.rs`);

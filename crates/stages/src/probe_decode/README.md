@@ -17,13 +17,15 @@ crates/stages/src/probe_decode/
 
 `probe_and_decode` probes the video with `media_io::probe`, picks the track with `pick_track` (the
 one at the given `-map 0:a:<n>` position, else the English one), and streams it through FFmpeg in
-one-second chunks into the mix file, which `media_io` writes as a part file and renames. The
+one-second chunks into the mix file, which `media_io` writes as a part file and renames once
+FFmpeg has finished cleanly; after each chunk its progress callback hears the seconds decoded of
+the probed length. The
 returned `Decoded` holds the probe result, the chosen track and the samples written; the pipeline
 keeps it as `probe.json` (`job_model::outputs::ProbeDecoded`).
 
 ## Boundaries
 
-- Depends on: `media_io` (`probe`, `pcm_stream::PcmStream` and `write_f32_file`, `MediaError`,
+- Depends on: `media_io` (`probe`, `pcm_stream::PcmStream` and `F32FileWriter`, `MediaError`,
   `Programs`), `job_model::outputs::{ProbeResult, AudioStream}`.
 - Used by: `crates/pipeline/src/tasks/media.rs` (the probe-and-decode step).
 - Rules:

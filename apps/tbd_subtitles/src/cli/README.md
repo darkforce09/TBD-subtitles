@@ -10,7 +10,7 @@ its own [worker process](/documentation/glossary.md#worker-process). People run 
 ```text
 apps/tbd_subtitles/src/cli/
 ├── mod.rs              `Cli` and its subcommands in clap, and the dispatch to each runner
-├── process_command.rs  the `process` options, the job settings they make, the run and its printout
+├── process_command.rs  the `process` options over the settings file, the run and its printout
 ├── tests/              parsing, the process settings, the worker step check and the refusals
 └── worker_command.rs   the `worker` runner and its step check: every step but the Whisper ones
 ```
@@ -30,9 +30,13 @@ tbd-subtitles [COMMAND] ──▶ Cli::parse ──▶ dispatch
    worker <STEP> <JOB_DIR>           ──▶ worker_command::run  ──▶ pipeline::tasks::worker_main
 ```
 
-`process_command::settings` turns the options into a `JobSettings`: the glossary (the built-in
-`stages::adjudication::glossary::one_piece`, none, or a JSON file of names), the audio track, the
-separator, the Whisper model, the shot-cut score and the language model. `run` checks every video
+`process_command::merged` puts the options over the settings file (`--settings`, else
+`~/.config/tbd-subtitles/settings.toml`, read by `crate::settings::services::settings_file`; no
+file means the defaults), and `process_command::settings` turns the result into a `JobSettings`
+through `crate::settings::services::job_settings`: the glossary (the built-in
+`stages::adjudication::glossary::one_piece`, none, or a JSON file of names), the separator, the
+Whisper model, the shot-cut score, the language model and the output format, plus the audio
+track, which only the command line names. `run` checks every video
 before the first job starts, finds the job runner's two binaries beside the running one
 (`Binaries::beside_current_exe`), runs the jobs in order and stops at the first that fails. Each
 [step](/documentation/architecture/pipeline.md) prints one line to stderr as it starts (`>`), is
@@ -54,18 +58,21 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
 
 ### process
 
-- Synopsis: `tbd-subtitles process <VIDEOS>... [--work-root <DIR>] [--glossary <one_piece|none|FILE>] [--audio-track <N>] [--separator <roformer|mdx-net>] [--whisper <large-v3|large-v3-turbo>] [--cut-score <SCORE>] [--llm-model <MODEL>] [--rerun <STEP>]...`
+- Synopsis: `tbd-subtitles process <VIDEOS>... [--settings <FILE>] [--work-root <DIR>] [--models-dir <DIR>] [--glossary <one_piece|none|FILE>] [--audio-track <N>] [--separator <roformer|mdx-net>] [--whisper <large-v3|large-v3-turbo>] [--cut-score <SCORE>] [--llm-model <MODEL>] [--format <srt|vtt|ass>] [--rerun <STEP>]...`
 - Does: runs one job per video, in order, and prints where each wrote its subtitles
-  (`<video base name>.srt` beside the video), its report (`report.md` in the job's
-  [work directory](/documentation/glossary.md#work-directory)) and a quality line (cues,
-  findings, the share within 20 characters per second, whether the layout rules hold). Each job
-  resumes from the steps whose output is still valid. The defaults: work directories under
-  `tbd-subtitles/work/` in the data folder, the `one_piece` glossary, the English audio track,
-  `roformer`, `large-v3`, a cut score of 20, and the `sonnet` model. `--rerun` names a step to run
+  (`<video base name>.srt`, `.vtt` or `.ass` beside the video), its report (`report.md` in the
+  job's [work directory](/documentation/glossary.md#work-directory)) and a quality line (cues,
+  findings, the share within 20 characters per second, and whether the job passes the quality
+  check or why not). Each job resumes from the steps whose output is still valid. Every option but
+  `--audio-track` and `--rerun` wins over the same setting in the settings file; without either,
+  the defaults are work directories under `tbd-subtitles/work/` in the data folder, models under
+  `tbd-subtitles/models/`, the `one_piece` glossary, the English audio track, `roformer`,
+  `large-v3`, a cut score of 20, the `sonnet` model and SRT. `--rerun` names a step to run
   again even when its output is valid, and may repeat.
 - Exit codes: 0 every job finished; 1 a missing or unreadable video, a path that is not a file,
-  an unreadable glossary file, or a job whose step failed, with the reason; 2 on a usage error,
-  including no video and a `--rerun` value that is no step.
+  an unreadable or invalid settings file, an unreadable glossary file, a model missing from the
+  models folder (named, with where to download it), or a job whose step failed,
+  with the reason; 2 on a usage error, including no video and a `--rerun` value that is no step.
 - Example: `distrobox-host-exec target/release/tbd-subtitles process "Dressrosa 08.mp4" --rerun cues`
 
 ### worker
@@ -84,8 +91,8 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
 - Depends on: `crate::application::launch`; `pipeline` (`run_job`, `JobOptions`,
   `progress::Progress`, `workers::Binaries`, `work_dir::default_root`, `graph::placement`,
   `tasks::worker_main`) from `crates/pipeline/`; `job_model::StepName` and `job_model::job` from
-  `crates/job_model/`; `stages::adjudication::glossary` from `crates/stages/`; `clap` and
-  `anyhow`.
+  `crates/job_model/`; `crate::settings::{models, services}` (the settings file and the job
+  settings it makes); `clap` and `anyhow`.
 - Used by: `apps/tbd_subtitles/src/main.rs`, which calls `run`; the job runner in
   `crates/pipeline/`, which starts `worker`.
 - Rules:
@@ -95,7 +102,8 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
     (`gui_takes_optional_videos`, `process_needs_at_least_one_video`);
   - `process` defaults to the built-in glossary and the measured stack, and every option reaches
     the settings (`process_defaults_to_the_built_in_glossary_and_the_measured_stack`,
-    `process_options_reach_the_settings`);
+    `process_options_reach_the_settings`), and an option wins over the settings file
+    (`options_win_over_the_settings_file`);
   - `worker` refuses the Whisper steps by naming `tbd-subtitles-ggml`
     (`worker_takes_main_binary_steps_only`);
   - `process` names a missing video, and `worker` fails without a job; neither reports success

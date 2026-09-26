@@ -2,6 +2,7 @@
 
 pub mod adjudication;
 pub mod aligned;
+pub mod output;
 pub mod probe;
 pub mod sheet;
 pub mod shots;
@@ -12,6 +13,7 @@ pub mod words;
 
 pub use adjudication::{AdjudicationPass, Findings, Line, Redecode};
 pub use aligned::{Aligned, AlignedUtterance, AlignedWord, TimingSource};
+pub use output::OutputRecord;
 pub use probe::{AudioStream, ProbeDecoded, ProbeResult, VideoStream};
 pub use sheet::Utterance;
 pub use shots::{ShotChanges, ShotCut};

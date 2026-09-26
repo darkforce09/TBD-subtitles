@@ -17,6 +17,7 @@ fn record() -> JobRecord {
         video_size: 10,
         video_modified_s: 5,
         settings: JobSettings::with_glossary(vec!["Luffy".into()]),
+        models_dir: None,
         steps: BTreeMap::new(),
     }
 }
@@ -114,5 +115,29 @@ fn a_live_lock_refuses_a_second_run_and_a_dead_one_is_taken_over() {
     );
     drop(held);
     assert!(!work.lock().exists());
+    let _ = fs::remove_dir_all(work.root());
+}
+
+#[test]
+fn the_stale_steps_are_the_invalid_ones_and_everything_that_reads_them() {
+    let work = scratch("stale");
+    let mut r = record();
+    r.video = work.root().join("a.mp4").to_string_lossy().into_owned();
+    assert_eq!(stale_steps(&r, &work), StepName::ALL.to_vec(), "a new job");
+    for (ns, step) in StepName::ALL.into_iter().enumerate() {
+        finish(&mut r, step, ns as u128 + 1);
+        touch(&graph::outputs(
+            step,
+            &work,
+            Path::new(&r.video),
+            r.settings.output_format,
+        ));
+    }
+    assert!(stale_steps(&r, &work).is_empty(), "a finished job");
+    r.steps.remove(&StepName::Cues);
+    assert_eq!(
+        stale_steps(&r, &work),
+        vec![StepName::Cues, StepName::Qc, StepName::Output]
+    );
     let _ = fs::remove_dir_all(work.root());
 }

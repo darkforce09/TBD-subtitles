@@ -21,8 +21,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use inference::cuda_runtime::CudaRuntime;
 use job_model::StepName;
 use job_model::job::{JobRecord, JobSettings, StepMeasure, StepRecord};
+use job_model::outputs::ProbeDecoded;
 use job_model::report::QcReport;
 
+use crate::cancel::CancelToken;
 use crate::error::{Context, PipelineError, Result};
 use crate::graph::{self, Placement};
 use crate::progress::{Progress, ProgressSink};
@@ -40,6 +42,13 @@ pub struct JobOptions {
     /// Steps to run again even when their output is valid; the steps after them follow.
     pub rerun: Vec<StepName>,
     pub binaries: Binaries,
+    /// The folder the models are read from.
+    pub models_dir: PathBuf,
+    /// Stops the job: no further step starts and the running worker is killed. The runner also
+    /// sets it when a step fails, so the shot scan running alongside stops too.
+    pub cancel: CancelToken,
+    /// The machine-wide GPU lock file (`gpu.lock` in the app data folder).
+    pub gpu_lock: PathBuf,
 }
 
 /// What a finished job left.
@@ -78,12 +87,14 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
             video_size: 0,
             video_modified_s: 0,
             settings: options.settings.clone(),
+            models_dir: None,
             steps: Default::default(),
         },
     };
     record.video_size = meta.len();
     record.video_modified_s = modified_s;
     record.settings = options.settings.clone();
+    record.models_dir = Some(options.models_dir.to_string_lossy().into_owned());
     for step in &options.rerun {
         record.steps.remove(step);
     }
@@ -91,6 +102,7 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
     progress(Progress::JobStarted {
         video: video.clone(),
         work_dir: work.root().to_path_buf(),
+        stale: resume::stale_steps(&record, &work),
     });
 
     let cuda_env: OnceLock<std::result::Result<Vec<(String, String)>, String>> = OnceLock::new();
@@ -116,7 +128,15 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
             }
             Placement::Worker(binary) => {
                 let env = env_for(step)?;
-                workers::run_worker(options.binaries.path(binary), step, &work, &env, progress)
+                workers::run_worker(
+                    options.binaries.path(binary),
+                    step,
+                    &work,
+                    &env,
+                    progress,
+                    &options.cancel,
+                    &options.gpu_lock,
+                )
             }
         }
     };
@@ -124,46 +144,72 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
     let (mut ran, mut skipped) = (Vec::new(), Vec::new());
     std::thread::scope(|scope| -> Result<()> {
         let mut shots = None;
-        for step in StepName::ALL {
-            if graph::inputs(step).contains(&StepName::ShotScan)
-                && let Some(handle) = shots.take()
-            {
+        let walked = (|| -> Result<()> {
+            for step in StepName::ALL {
+                if options.cancel.is_cancelled() {
+                    return Err(PipelineError::cancelled(format!("step {step}")));
+                }
+                if graph::inputs(step).contains(&StepName::ShotScan)
+                    && let Some(handle) = shots.take()
+                {
+                    let measure = join(handle)?;
+                    finish(&mut record, &work, StepName::ShotScan, measure, progress)?;
+                }
+                if resume::is_valid(step, &record, &work) {
+                    skipped.push(step);
+                    progress(Progress::StepSkipped(step));
+                    announce_duration(step, &work, progress);
+                    continue;
+                }
+                record.steps.remove(&step);
+                ran.push(step);
+                progress(Progress::StepStarted(step));
+                if step == StepName::ShotScan {
+                    let snapshot = record.clone();
+                    let run_step = &run_step;
+                    shots = Some(scope.spawn(move || run_step(StepName::ShotScan, &snapshot)));
+                    continue;
+                }
+                let measure = run_step(step, &record).inspect_err(|error| {
+                    progress(Progress::StepFailed {
+                        step,
+                        message: error.to_string(),
+                    })
+                })?;
+                finish(&mut record, &work, step, measure, progress)?;
+                announce_duration(step, &work, progress);
+            }
+            if let Some(handle) = shots.take() {
                 let measure = join(handle)?;
                 finish(&mut record, &work, StepName::ShotScan, measure, progress)?;
             }
-            if resume::is_valid(step, &record, &work) {
-                skipped.push(step);
-                progress(Progress::StepSkipped(step));
-                continue;
-            }
-            record.steps.remove(&step);
-            ran.push(step);
-            progress(Progress::StepStarted(step));
-            if step == StepName::ShotScan {
-                let snapshot = record.clone();
-                let run_step = &run_step;
-                shots = Some(scope.spawn(move || run_step(StepName::ShotScan, &snapshot)));
-                continue;
-            }
-            let measure = run_step(step, &record)?;
-            finish(&mut record, &work, step, measure, progress)?;
+            Ok(())
+        })();
+        if walked.is_err() {
+            // The scope waits for the shot scan; stop it rather than wait out a long scan.
+            options.cancel.cancel();
         }
-        if let Some(handle) = shots {
-            let measure = join(handle)?;
-            finish(&mut record, &work, StepName::ShotScan, measure, progress)?;
-        }
-        Ok(())
+        walked
     })?;
 
     let qc = report::write(&work, &record)?;
     Ok(JobOutcome {
         work_dir: work.root().to_path_buf(),
-        subtitles: stages::output::subtitle_path(&video),
+        subtitles: stages::output::subtitle_path(&video, record.settings.output_format),
         report: work.report(),
         qc,
         ran,
         skipped,
     })
+}
+
+/// Tell the listener the video's length once the probe is there.
+fn announce_duration(step: StepName, work: &WorkDir, progress: ProgressSink) {
+    if step == StepName::ProbeDecode
+        && let Ok(probe) = work_dir::read_json::<ProbeDecoded>(&work.probe())
+    {
+        progress(Progress::JobDuration(probe.probe.duration_s));
+    }
 }
 
 /// The CUDA runtime's environment for GPU workers, packaged beside the binaries or in the

@@ -1,9 +1,11 @@
 //! Peak VRAM of one worker process, sampled through NVML while it runs.
 //!
-//! **Role:** report the device's free memory before a GPU step, and sample the worker pid's own
-//! VRAM and the device's use above the baseline every 100 ms while it runs.
+//! **Role:** describe the device (name, driver, memory), report its free memory before a GPU
+//! step, and sample the worker pid's own VRAM and the device's use above the baseline every
+//! 100 ms while it runs.
 //!
-//! **Position:** called by `crate::workers` around each GPU worker, and by the stack spike tool;
+//! **Position:** called by `crate::workers` around each GPU worker, by the app's machine check,
+//! and by the stack spike tool;
 //! loads NVML, the driver's own library (`libnvidia-ml.so`), at run time, so no `nvidia-smi`
 //! child is needed.
 //!
@@ -46,6 +48,31 @@ pub fn device_memory() -> Option<DeviceMemory> {
     Some(DeviceMemory {
         used_mib: info.used / MIB,
         free_mib: info.free / MIB,
+    })
+}
+
+/// The first GPU as the driver describes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceInfo {
+    pub name: String,
+    pub driver: String,
+    pub total_mib: u64,
+    pub free_mib: u64,
+}
+
+/// The first GPU's name, the driver's version and the device's memory, or `None` when NVML
+/// cannot be loaded or finds no device.
+pub fn device_info() -> Option<DeviceInfo> {
+    let nvml = Nvml::init().ok()?;
+    let device = nvml.device_by_index(0).ok()?;
+    let memory = device.memory_info().ok()?;
+    Some(DeviceInfo {
+        name: device.name().unwrap_or_else(|_| "unknown GPU".to_string()),
+        driver: nvml
+            .sys_driver_version()
+            .unwrap_or_else(|_| "unknown".to_string()),
+        total_mib: memory.total / MIB,
+        free_mib: memory.free / MIB,
     })
 }
 

@@ -19,20 +19,14 @@ use job_model::outputs::ProbeDecoded;
 use media_io::{Programs, shot_changes};
 use stages::separation::{self, SeparationRequest};
 
-use super::{Job, TaskReport, since};
+use super::{Job, StepProgress, TaskReport, since};
 use crate::error::{Context, Result};
-use crate::work_dir;
+use crate::{models, work_dir};
 
-/// The separation models, as the model store names them.
-const ROFORMER: (&str, &str) = (
-    "mel-band-roformer-vocals",
-    "syhft_core_folded_fp16_webgpu.onnx",
-);
-const MDX_NET: (&str, &str) = ("mdx-net-voc-ft", "UVR-MDX-NET-Voc_FT.onnx");
 /// The longest a shot scan or a separation may keep FFmpeg running.
 const MEDIA_DEADLINE: Duration = Duration::from_secs(3 * 3600);
 
-pub(super) fn probe_decode(job: &Job) -> Result<TaskReport> {
+pub(super) fn probe_decode(job: &Job, progress: StepProgress) -> Result<TaskReport> {
     audio_folder(job)?;
     let started = Instant::now();
     let decoded = stages::probe_decode::probe_and_decode(
@@ -40,6 +34,7 @@ pub(super) fn probe_decode(job: &Job) -> Result<TaskReport> {
         &job.video(),
         job.settings().audio_track,
         &job.work.mix(),
+        progress,
     )
     .context("probe and decode")?;
     let mut report = TaskReport {
@@ -77,10 +72,10 @@ pub(super) fn shot_scan(job: &Job) -> Result<TaskReport> {
     Ok(report)
 }
 
-pub(super) fn separation(job: &Job) -> Result<TaskReport> {
+pub(super) fn separation(job: &Job, progress: StepProgress) -> Result<TaskReport> {
     audio_folder(job)?;
     let probe = job.probe()?;
-    let models = job.models()?;
+    let root = job.models()?;
     let programs = Programs::default();
     let (vocals, background) = (job.work.vocals(), job.work.background());
     let request = SeparationRequest {
@@ -90,18 +85,22 @@ pub(super) fn separation(job: &Job) -> Result<TaskReport> {
         deadline: MEDIA_DEADLINE,
         vocals_16k: &vocals,
         background_16k: &background,
+        duration_s: probe.probe.duration_s,
+        progress,
     };
     let load = Instant::now();
     let mut report = TaskReport::default();
     let summary = match job.settings().separator {
         Separator::Roformer => {
-            let model = MelRoformer::open(&models.join(ROFORMER.0).join(ROFORMER.1))
+            let (folder, file) = models::separator_model(Separator::Roformer);
+            let model = MelRoformer::open(&root.join(folder).join(file))
                 .context("load Mel-Band RoFormer")?;
             report.load_s = since(load);
             separation::separate(model, &request).context("separate")?.0
         }
         Separator::MdxNet => {
-            let model = MdxNet::open(&models.join(MDX_NET.0).join(MDX_NET.1), mdx_net::VOC_FT, 1)
+            let (folder, file) = models::separator_model(Separator::MdxNet);
+            let model = MdxNet::open(&root.join(folder).join(file), mdx_net::VOC_FT, 1)
                 .context("load MDX-Net")?;
             report.load_s = since(load);
             separation::separate(model, &request).context("separate")?.0

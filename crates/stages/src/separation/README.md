@@ -19,7 +19,8 @@ crates/stages/src/separation/
 signals: the vocals, and the mix minus the vocals. Each goes through its own `Resampler` into an
 `F32FileWriter`, so memory holds a few model windows at most. The summary records the frames,
 the time spent waiting on FFmpeg and the time spent separating; the model comes back to the
-caller for its own counters.
+caller for its own counters. After each chunk the request's progress callback hears the seconds
+separated of `duration_s`.
 
 ## Boundaries
 

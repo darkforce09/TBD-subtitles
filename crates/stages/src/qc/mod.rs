@@ -30,7 +30,7 @@ use crate::cues::line_break::MAX_LINE;
 use crate::cues::segment::MAX_CPS;
 
 /// Target share of cues at or under 20 characters per second.
-pub const CPS_TARGET: f64 = 0.95;
+pub const CPS_TARGET: f64 = job_model::report::CPS_TARGET;
 /// An aligner offset at or over this is reported.
 pub const MAX_OFFSET_S: f64 = 0.030;
 /// An utterance with less than this share of aligner-timed words is reported.
@@ -56,6 +56,7 @@ pub struct QcInput<'a> {
 pub fn check(input: &QcInput) -> QcReport {
     let rules = FrameRules::new(input.track.frame_rate, input.duration_s);
     let mut findings = cue_findings(input.track, &rules);
+    attach_utterances(&mut findings, input.track, input.aligned);
     let excused: Vec<TimeSpan> = input
         .sound_cues
         .candidates
@@ -82,6 +83,7 @@ pub fn check(input: &QcInput) -> QcReport {
             time_s: span.start_s,
             text: String::new(),
             detail: format!("{:.1} s", span.duration_s()),
+            utterance: None,
         });
     }
     findings.extend(line_findings(input));
@@ -101,6 +103,7 @@ pub fn cue_findings(track: &CueTrack, rules: &FrameRules) -> Vec<QcFinding> {
             time_s: rate.seconds(cue.start),
             text: cue.text(),
             detail,
+            utterance: None,
         });
     };
     for (i, cue) in track.cues.iter().enumerate() {
@@ -162,6 +165,33 @@ pub fn cue_findings(track: &CueTrack, rules: &FrameRules) -> Vec<QcFinding> {
     out
 }
 
+/// Name, on each finding about a cue, the utterance whose words overlap the cue the longest, so
+/// the owner can open that line for review.
+fn attach_utterances(findings: &mut [QcFinding], track: &CueTrack, aligned: &Aligned) {
+    let rate = track.frame_rate;
+    for finding in findings.iter_mut() {
+        let Some(cue) = track
+            .cues
+            .iter()
+            .find(|c| rate.seconds(c.start) == finding.time_s)
+        else {
+            continue;
+        };
+        let (from, to) = (rate.seconds(cue.start), rate.seconds(cue.end));
+        finding.utterance = aligned
+            .utterances
+            .iter()
+            .filter_map(|u| {
+                let start = u.words.first()?.start_s;
+                let end = u.words.last()?.end_s;
+                let overlap = end.min(to) - start.max(from);
+                (overlap > 0.0).then_some((overlap, &u.id))
+            })
+            .max_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, id)| id.clone());
+    }
+}
+
 /// Findings about utterances and model calls.
 fn line_findings(input: &QcInput) -> Vec<QcFinding> {
     let at = |id: &str| input.utterance_starts.get(id).copied().unwrap_or(0.0);
@@ -186,6 +216,7 @@ fn line_findings(input: &QcInput) -> Vec<QcFinding> {
                 time_s: at(&u.id),
                 text: words.clone(),
                 detail: u.id.clone(),
+                utterance: Some(u.id.clone()),
             });
         }
         let aligned = u
@@ -199,6 +230,7 @@ fn line_findings(input: &QcInput) -> Vec<QcFinding> {
                 time_s: u.words[0].start_s,
                 text: words,
                 detail: format!("{} of {} words aligned", aligned, u.words.len()),
+                utterance: Some(u.id.clone()),
             });
         }
     }
@@ -209,6 +241,7 @@ fn line_findings(input: &QcInput) -> Vec<QcFinding> {
             time_s: at(id),
             text: text(id),
             detail: format!("{id}: {word}"),
+            utterance: Some(id.clone()),
         });
     }
     for (id, word) in &findings.removed_locked {
@@ -217,6 +250,7 @@ fn line_findings(input: &QcInput) -> Vec<QcFinding> {
             time_s: at(id),
             text: text(id),
             detail: format!("{id}: {word}"),
+            utterance: Some(id.clone()),
         });
     }
     if let Some(offset) = input.aligned.offset_s.filter(|o| o.abs() >= MAX_OFFSET_S) {
@@ -225,6 +259,7 @@ fn line_findings(input: &QcInput) -> Vec<QcFinding> {
             time_s: 0.0,
             text: String::new(),
             detail: format!("{:+.0} ms", offset * 1000.0),
+            utterance: None,
         });
     }
     for failure in input
@@ -238,6 +273,7 @@ fn line_findings(input: &QcInput) -> Vec<QcFinding> {
             time_s: 0.0,
             text: String::new(),
             detail: failure.clone(),
+            utterance: None,
         });
     }
     out

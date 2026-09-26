@@ -72,7 +72,7 @@ budget. The batch of Dressrosa 12–48 moved to M2 at the owner's word: it runs 
 - [ ] Job queue: add files or folders, reorder, cancel, retry; per-stage progress and time left.
 - [ ] Job report view: QC results and the list of flagged lines.
 - [ ] Review flagged lines: play the clip, pick or edit the text, re-align, save.
-- [ ] Settings: model folder, engines, output format, language-model backend, GPU checks.
+- [x] Settings: model folder, engines, output format, language-model backend, GPU checks.
 - [ ] Batch: Dressrosa 12–48 queued and run from the window, each with a report that passes QC.
 
 Details: [GUI](/documentation/features/gui.md).
@@ -120,5 +120,4 @@ Items the owner moved out of the pipeline milestone to keep it small (see the
 | Question | Settle by |
 |---|---|
 | Output format when sign subtitles exist: always `.ass`, or `.srt` until signs appear? | M4 |
-| Where models live and how the first download is shown to the user | M2 |
 | Which Japanese text counts: on-screen only, or also Japanese speech and songs? | Owner, at M4 start |

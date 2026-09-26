@@ -25,7 +25,8 @@ crates/stages/src/adjudication/
 The first pass sends the sheet to the model in batches of 60 utterances, each with the glossary.
 Every answer is `{"lines": [{"id", "t", "f"}]}`, with the flags `NARR`, `SPK` (the utterance starts
 with a different speaker than the one before), `LYRIC`, `DROP` and `UNSURE`; ids a batch left out
-are asked for once more, and the lines are put back in sheet order. One private `ask_with` makes every call with a given system
+are asked for once more, and the lines are put back in sheet order. Both `adjudicate` and
+`adjudicate_concurrently` report each finished batch to a progress callback. One private `ask_with` makes every call with a given system
 prompt and message, so the first and second passes share the answer reading and the cost counting.
 `checks::check` then lists missing, duplicate and unknown ids; words no engine heard in the
 utterance or next to it and the glossary lacks (`novel`); agreed non-filler words the answer
@@ -37,7 +38,7 @@ padded by 0.5 s on each side and clamped to the video, for both engines to hear 
 stem. `with_alternatives` adds what they heard to those utterances as extra hypotheses and shows it
 on the line as `ALT p: "…" w: "…"`. `readjudicate` asks the model about those ids only, with each
 one's settled neighbours as `CONTEXT` lines, asks once more for ids the answer left out, and drops
-any line for an id it did not ask; `merge` puts the second pass's lines in place of the first's.
+any line for an id it did not ask, reporting each batch asked; `merge` puts the second pass's lines in place of the first's.
 
 `sound_cues.rs` groups the sound candidates into windows of 300 s of video, shows each window's
 candidates among the dialogue within 10 s of them, and asks several `claude` processes at once.

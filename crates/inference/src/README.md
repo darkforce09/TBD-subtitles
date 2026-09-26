@@ -34,13 +34,13 @@ binary that loads ONNX Runtime.
 ## Public surface
 
 - `model_store`: `models_dir`, `runtime_dir`, `fetch_model`, `is_complete`, `install_archive`,
-  the `manifest` with `MODEL_FILES` and `CUDA_ARCHIVES`, and `StoreError`; for
-  `tools/stack_spike/`.
+  `is_archive_installed`, the `manifest` with `MODEL_FILES` and `CUDA_ARCHIVES`, and `StoreError`;
+  for `tools/stack_spike/` and the app's models view.
 - `cuda_runtime`: `CudaRuntime::locate` and `CudaRuntime::worker_env`; for the processes that
   start GPU workers.
 - `onnx`: `session::open`, `Device`, `OnnxError`, `separation::{MdxNet, MelRoformer,
   OverlapAdd, WindowModel}` and `parakeet_tdt::ParakeetTdt`; for `crates/stages/` and
-  `tools/stack_spike/`.
+  `tools/stack_spike/` and the app's models view.
 - `ggml::crispasr::{Whisper, align_qwen3}` with the `crispasr` feature; for `crates/stages/` and
   `tools/stack_spike_ggml/`.
 - `candle` and `llm`: public modules for the GPU stages in `crates/stages/src/`.

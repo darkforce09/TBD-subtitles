@@ -58,13 +58,19 @@ and peak memory in the job report.
 | alignment | 7 | worker, `tbd-subtitles` (ONNX Runtime) | `aligned.json` |
 | cues | 9 | job runner | `cues.json` |
 | qc | 10 | job runner | `qc.json` |
-| output | 11 | job runner | `<video base name>.srt`, `output.json` |
+| output | 11 | job runner | `<video base name>.srt` (or `.vtt`, `.ass`), `output.json` |
 
 - **Resume:** a step is skipped when the job record holds its fingerprint and its files exist.
   The fingerprint hashes the step's name and code revision, the settings it reads, the video's
   path, size and modification time (for the steps that read the video), and the fingerprint and
   finish time of every step it reads. A step that runs again therefore re-runs every step after
   it, and `--rerun <step>` forces one.
+- **Cancel:** the job's cancel token is checked before each step and watched by the running
+  worker's watchdog, which kills the worker's process group; the job ends as cancelled and its
+  finished steps stay valid, so the next run resumes after them.
+- **GPU lock:** a GPU worker first takes an exclusive lock on `gpu.lock` in the app data folder,
+  so a command-line run and the window never load models onto the card together; the kernel
+  frees the lock when its holder dies.
 - **Binaries:** ONNX Runtime, ggml and candle never share a process. `tbd-subtitles` hosts the
   ONNX Runtime, FFmpeg and `claude` workers; `tbd-subtitles-ggml`, built beside it with the
   `crispasr` feature, hosts Whisper.
@@ -231,10 +237,12 @@ and one row per step with its time, load, processing, peak RAM, peak child RAM a
 
 ## 11. Output
 
-- `<video base name>.srt`, or `.ass` when positioned sign subtitles exist (M4), UTF-8, in the
-  video's folder, written to a part file and renamed. An existing, different subtitle file is
-  first copied to the job's `backup/` folder, never beside the video; an identical one is left
-  alone.
+- `<video base name>.srt` (the default), `.vtt` or `.ass`, as the settings' output format says,
+  UTF-8, in the video's folder, written to a part file and renamed. An existing, different
+  subtitle file is first copied to the job's `backup/` folder, never beside the video; an
+  identical one is left alone. When the format changes, the job's file of the old format moves to
+  `backup/`, so one subtitle file stays beside the video. `output.json` records the path, the
+  backup and the moved file.
 - The job report stays in the work directory; the GUI shows it.
 
 ## Related documentation

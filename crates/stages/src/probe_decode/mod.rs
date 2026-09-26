@@ -15,7 +15,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use job_model::outputs::{AudioStream, ProbeResult};
-use media_io::pcm_stream::{PcmFormat, PcmRequest, PcmStream, write_f32_file};
+use media_io::pcm_stream::{F32FileWriter, PcmFormat, PcmRequest, PcmStream};
 use media_io::{MediaError, Programs, probe};
 
 /// Frames per chunk read from FFmpeg: one second at 16 kHz.
@@ -45,12 +45,14 @@ pub fn pick_track(probe: &ProbeResult, position: Option<u32>) -> Result<&AudioSt
     }
 }
 
-/// Probe `video` and write its mix, as 16 kHz mono `f32`, to `mix`.
+/// Probe `video` and write its mix, as 16 kHz mono `f32`, to `mix`; `progress` hears `(seconds
+/// decoded, seconds)`.
 pub fn probe_and_decode(
     programs: &Programs,
     video: &Path,
     position: Option<u32>,
     mix: &Path,
+    progress: &dyn Fn(usize, usize),
 ) -> Result<Decoded, MediaError> {
     let probe = probe::probe(programs, video)?;
     let track = pick_track(&probe, position)?.clone();
@@ -62,8 +64,19 @@ pub fn probe_and_decode(
         chunk_frames: CHUNK_FRAMES,
         deadline: DEADLINE,
     };
-    let stream = PcmStream::open(programs, &request)?;
-    let samples = write_f32_file(stream, mix)?;
+    let total_s = probe.duration_s.max(0.0).ceil() as usize;
+    let mut stream = PcmStream::open(programs, &request)?;
+    let mut sink = F32FileWriter::create(mix)?;
+    let mut written = 0usize;
+    while let Some(chunk) = stream.next_chunk() {
+        let chunk = chunk?;
+        sink.write(&chunk)?;
+        written += chunk.len();
+        progress((written / CHUNK_FRAMES).min(total_s), total_s);
+    }
+    // The mix is renamed into place only once FFmpeg has finished cleanly.
+    stream.finish()?;
+    let samples = sink.finish()?;
     Ok(Decoded {
         probe,
         track,

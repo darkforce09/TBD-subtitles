@@ -23,11 +23,14 @@ use child_process::Run;
 use job_model::StepName;
 use job_model::job::{StepMeasure, WorkerMeasure};
 
+use crate::cancel::CancelToken;
 use crate::error::{Context, PipelineError, Result};
 use crate::graph::{self, Binary};
 use crate::measure::gpu_monitor;
 use crate::progress::{Progress, ProgressSink};
 use crate::work_dir::{self, WorkDir};
+
+pub mod gpu_lock;
 
 /// Lines of a failed worker's stderr quoted in the error.
 const STDERR_TAIL: usize = 12;
@@ -57,13 +60,16 @@ impl Binaries {
     }
 }
 
-/// Run `step` in a worker of `binary` with `env` added, and measure it.
+/// Run `step` in a worker of `binary` with `env` added, and measure it. A GPU step first takes
+/// the machine-wide lock at `gpu_lock`; `cancel` kills the worker, or ends the wait for the lock.
 pub fn run_worker(
     binary: &Path,
     step: StepName,
     work: &WorkDir,
     env: &[(String, String)],
     progress: ProgressSink,
+    cancel: &CancelToken,
+    gpu_lock: &Path,
 ) -> Result<StepMeasure> {
     let context = format!("step {step}");
     if !binary.exists() {
@@ -81,11 +87,22 @@ pub fn run_worker(
         .arg("worker")
         .arg(step.as_str())
         .arg(work.root())
-        .timeout(graph::timeout(step));
+        .timeout(graph::timeout(step))
+        .cancel_on(cancel.flag());
     for (key, value) in env {
         run = run.env(key, value);
     }
     let gpu = graph::uses_gpu(step);
+    let _held = if gpu {
+        Some(gpu_lock::acquire(gpu_lock, cancel, &|| {
+            progress(Progress::StepMessage {
+                step,
+                text: "waiting for the GPU: another run of the app is using it".to_string(),
+            })
+        })?)
+    } else {
+        None
+    };
     let baseline = if gpu {
         gpu_monitor::device_memory()
     } else {
@@ -103,9 +120,14 @@ pub fn run_worker(
             progress(parse_line(step, &line));
         }
     }
-    let finished = worker.wait().context(context.clone());
+    let finished = worker.wait();
     let peaks = monitor.and_then(gpu_monitor::Monitor::finish);
-    let finished = finished?;
+    let finished = match finished {
+        Err(child_process::RunError::Cancelled { .. }) => {
+            return Err(PipelineError::cancelled(context));
+        }
+        other => other.context(context.clone())?,
+    };
     work_dir::write_text(&work.log(step), &finished.stderr)?;
     if finished.code != 0 {
         let tail: Vec<&str> = finished.stderr.lines().rev().take(STDERR_TAIL).collect();

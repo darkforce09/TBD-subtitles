@@ -8,6 +8,7 @@ fn a_record_round_trips_through_json_with_steps_by_name() {
         video_size: 10,
         video_modified_s: 1_700_000_000,
         settings: JobSettings::with_glossary(vec!["Luffy".to_string()]),
+        models_dir: None,
         steps: BTreeMap::new(),
     };
     record.steps.insert(
@@ -35,4 +36,6 @@ fn a_record_without_steps_parses() {
     let record: JobRecord = serde_json::from_str(json).expect("parse");
     assert!(record.steps.is_empty());
     assert_eq!(record.settings.audio_track, Some(1));
+    assert_eq!(record.settings.output_format, crate::job::OutputFormat::Srt);
+    assert_eq!(record.models_dir, None);
 }

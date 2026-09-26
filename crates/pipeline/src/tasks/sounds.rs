@@ -22,7 +22,7 @@ use job_model::outputs::{AdjudicationPass, EngineTranscript, SoundCues, SoundEve
 use stages::adjudication::sound_cues;
 use stages::sound_events::{self, Windowing, candidates, classes};
 
-use super::{Job, TaskReport, llm, since};
+use super::{Job, StepProgress, TaskReport, llm, since};
 use crate::error::{Context, PipelineError, Result};
 use crate::work_dir;
 
@@ -56,7 +56,7 @@ pub(super) fn sound_events(job: &Job, progress: &dyn Fn(usize, usize)) -> Result
     Ok(report)
 }
 
-pub(super) fn sound_cues(job: &Job) -> Result<TaskReport> {
+pub(super) fn sound_cues(job: &Job, progress: StepProgress) -> Result<TaskReport> {
     let events: Vec<SoundEvent> = work_dir::read_json(&job.work.sound_events())?;
     let sheet: Vec<Utterance> = work_dir::read_json(&job.work.sheet())?;
     let adjudicated: AdjudicationPass = work_dir::read_json(&job.work.adjudicated())?;
@@ -84,6 +84,7 @@ pub(super) fn sound_cues(job: &Job) -> Result<TaskReport> {
             &found,
             &dialogue,
             &job.glossary(),
+            progress,
         )
     };
     let mut report = TaskReport {

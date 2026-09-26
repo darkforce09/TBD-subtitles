@@ -21,7 +21,7 @@ use inference::llm::claude_cli::ClaudeCli;
 use job_model::outputs::{AdjudicationPass, Redecode, Utterance};
 use stages::adjudication::{self, Adjudication, checks, redecode};
 
-use super::{Job, TaskReport, since};
+use super::{Job, StepProgress, TaskReport, since};
 use crate::error::Result;
 use crate::work_dir;
 
@@ -32,7 +32,7 @@ pub(super) fn claude(job: &Job) -> impl Fn() -> Box<dyn LanguageModel + Send> + 
     move || Box::new(ClaudeCli::new(&model, cwd.clone())) as Box<dyn LanguageModel + Send>
 }
 
-pub(super) fn adjudicate(job: &Job) -> Result<TaskReport> {
+pub(super) fn adjudicate(job: &Job, progress: StepProgress) -> Result<TaskReport> {
     let sheet: Vec<Utterance> = work_dir::read_json(&job.work.sheet())?;
     let glossary = job.glossary();
     let started = Instant::now();
@@ -42,6 +42,7 @@ pub(super) fn adjudicate(job: &Job) -> Result<TaskReport> {
         job.settings().llm_processes,
         &sheet,
         &glossary,
+        progress,
     );
     let findings = checks::check(&sheet, &result.lines, &glossary);
     let pass = to_pass(result, findings, Vec::new());
@@ -60,7 +61,7 @@ pub(super) fn adjudicate(job: &Job) -> Result<TaskReport> {
     Ok(report)
 }
 
-pub(super) fn readjudicate(job: &Job) -> Result<TaskReport> {
+pub(super) fn readjudicate(job: &Job, progress: StepProgress) -> Result<TaskReport> {
     let sheet: Vec<Utterance> = work_dir::read_json(&job.work.sheet())?;
     let first: AdjudicationPass = work_dir::read_json(&job.work.first_pass())?;
     let parakeet: Redecode = work_dir::read_json(&job.work.redecode("parakeet"))?;
@@ -79,6 +80,7 @@ pub(super) fn readjudicate(job: &Job) -> Result<TaskReport> {
             &first.lines,
             &ids,
             &glossary,
+            progress,
         );
         pass.lines = redecode::merge(&first.lines, &second.lines);
         pass.findings = checks::check(&with_alternatives, &pass.lines, &glossary);

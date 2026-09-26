@@ -8,10 +8,12 @@ measurements, the progress events and the report.
 
 ```text
 crates/pipeline/src/
-├── error.rs   `PipelineError`: what was being done and why it failed, and the `Context` helper
+├── cancel.rs  `CancelToken`: the shared flag that stops a running job and its worker
+├── error.rs   `PipelineError`: what was being done, why it failed or that it was cancelled
 ├── graph/     the step table: inputs, placement, GPU use, revision, settings, timeout and outputs
 ├── lib.rs     the crate root: the module list, the crate header and the `run_job` re-exports
 ├── measure/   peak VRAM of a worker through NVML, peak RAM of a process and its children
+├── models/    the models a job needs: each step's model folder, the required list, the missing ones
 ├── progress/  the events a running job reports and the sink they go to
 ├── report/    `report.md` from the quality check and the job record
 ├── resume/    step fingerprints, whether a recorded output is reusable, and the job lock
@@ -47,12 +49,15 @@ returns `PipelineError`.
 
 ## Public surface
 
-- `run_job`, `JobOptions`, `JobOutcome`, `PipelineError` and `Result`, re-exported at the crate
-  root for the app's `process` subcommand.
+- `run_job`, `JobOptions`, `JobOutcome`, `CancelToken`, `PipelineError` and `Result`, re-exported
+  at the crate root for the app's `process` subcommand and its window.
 - `tasks::worker_main` and `graph::{placement, Placement, Binary}`: the `worker` subcommands of
   `apps/tbd_subtitles/` and `apps/tbd_subtitles_ggml/`.
-- `progress::Progress`, `workers::Binaries` and `work_dir::default_root`: what the `process`
-  subcommand prints, the binaries it passes, and its default work root.
+- `progress::Progress`, `workers::Binaries`, `work_dir::default_root` and
+  `work_dir::gpu_lock_path`: what the app shows, the binaries it passes, its default work root and
+  the GPU lock file.
+- `models::{required, missing, default_dir}`: the model folders a job needs, for the window's
+  models view and the check before a job starts.
 - `measure::gpu_monitor` and `measure::memory`: used by `tools/stack_spike/`.
 
 ## Boundaries

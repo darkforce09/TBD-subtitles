@@ -1,10 +1,10 @@
 //! The layout tasks: cue building, the quality check, and the subtitle file beside the video.
 //!
 //! **Role:** build the cue track at the video's frame rate, check it and everything flagged
-//! before it, and install the SRT file.
+//! before it, and install the subtitle file in the job's output format.
 //!
 //! **Position:** called by `tasks::run` inside the job runner; calls `stages::{cues, qc, output}`
-//! and the SRT writer.
+//! and the subtitle writers.
 //!
 //! **Signals and state:** reads the outputs of the earlier steps; writes `cues.json`,
 //! `cues_dropped_sounds.json`, `qc.json`, `output.json` and the subtitle file beside the video.
@@ -13,15 +13,17 @@
 //! file is the only file written outside the work directory.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use job_model::job::OutputFormat;
 use job_model::outputs::{
-    AdjudicationPass, Aligned, EngineTranscript, ShotChanges, SoundCues, SpeechPlan, TimeSpan,
-    Utterance,
+    AdjudicationPass, Aligned, EngineTranscript, OutputRecord, ShotChanges, SoundCues, SpeechPlan,
+    TimeSpan, Utterance,
 };
 use stages::{cues, output, qc};
 use subtitle_formats::cue::{CueTrack, FrameRate};
-use subtitle_formats::writers::srt;
+use subtitle_formats::writers::{ass, srt, vtt};
 
 use super::{Job, TaskReport, since};
 use crate::error::{Context, Result};
@@ -119,23 +121,50 @@ pub(super) fn qc(job: &Job) -> Result<TaskReport> {
 pub(super) fn output(job: &Job) -> Result<TaskReport> {
     let track: CueTrack = work_dir::read_json(&job.work.cues())?;
     let started = Instant::now();
-    let text = srt::write(&track);
+    let format = job.settings().output_format;
+    let text = match format {
+        OutputFormat::Srt => srt::write(&track),
+        OutputFormat::Vtt => vtt::write(&track),
+        OutputFormat::Ass => ass::write(&track),
+    };
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
         .to_string();
-    let installed = output::install(&job.video(), &text, &job.work.backup(), &stamp).context(
-        format!("cannot write the subtitle file beside {}", job.record.video),
-    )?;
+    let earlier = work_dir::read_json::<OutputRecord>(&job.work.output_record())
+        .ok()
+        .map(|r| PathBuf::from(r.path));
+    let installed = output::install(
+        &job.video(),
+        format,
+        &text,
+        &job.work.backup(),
+        &stamp,
+        earlier.as_deref(),
+    )
+    .context(format!(
+        "cannot write the subtitle file beside {}",
+        job.record.video
+    ))?;
     let mut report = TaskReport {
         process_s: since(started),
         ..TaskReport::default()
     };
     report.note("path", installed.path.display());
     report.note("unchanged", installed.unchanged);
-    if let Some(backup) = &installed.backup {
-        report.note("backup", backup.display());
+    let shown = |p: &Option<PathBuf>| p.as_ref().map(|p| p.to_string_lossy().into_owned());
+    if let Some(backup) = shown(&installed.backup) {
+        report.note("backup", &backup);
     }
-    work_dir::write_json(&job.work.output_record(), &report.notes)?;
+    if let Some(retired) = shown(&installed.retired) {
+        report.note("retired", &retired);
+    }
+    let record = OutputRecord {
+        path: installed.path.to_string_lossy().into_owned(),
+        unchanged: installed.unchanged,
+        backup: shown(&installed.backup),
+        retired: shown(&installed.retired),
+    };
+    work_dir::write_json(&job.work.output_record(), &record)?;
     Ok(report)
 }

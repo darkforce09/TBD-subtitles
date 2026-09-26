@@ -10,13 +10,14 @@ reports about itself.
 crates/job_model/src/job/
 ├── mod.rs       the module tree and the re-exports
 ├── record.rs    `JobRecord`, `StepRecord`, `StepMeasure` and `WorkerMeasure`
-├── settings.rs  `JobSettings` and its model choices, `Separator` and `WhisperModel`
+├── settings.rs  `JobSettings`, its model choices `Separator` and `WhisperModel`, and `OutputFormat`
 └── tests/       unit tests for the record's JSON
 ```
 
 ## How it works
 
 A `JobRecord` names the video by path, size and modification time, holds its `JobSettings`, and
+names the models folder the run read (`None` for the default; no fingerprint covers it), and
 maps each finished `StepName` to a `StepRecord`: the fingerprint of the step's settings and
 inputs, its finish time in nanoseconds, and its `StepMeasure` (wall time, load and process time,
 peak memory of the step, of its largest child and of the GPU, and short notes). A measure that was
@@ -25,9 +26,11 @@ and the runner folds it into the step's measure.
 
 `JobSettings` is everything that changes a job's output: the separation model (`roformer` or
 `mdx_net`), the Whisper model (`large_v3` or `large_v3_turbo`), the audio track, the glossary, the
-`claude` model and how many processes run at once, and the lowest shot-change score that counts
-as a cut. `JobSettings::with_glossary` gives the defaults: RoFormer, large-v3, the English track,
-`sonnet` with 8 processes, and a cut score of 20.
+`claude` model and how many processes run at once, the lowest shot-change score that counts as a
+cut, and the subtitle file's format (`srt`, `vtt` or `ass`). `JobSettings::with_glossary` gives
+the defaults: RoFormer, large-v3, the English track, `sonnet` with 8 processes, a cut score of 20
+and SRT. Fields added to the record or the settings carry a serde default, so an older `job.json`
+still parses and its finished steps stay valid.
 
 ## Boundaries
 
@@ -38,7 +41,7 @@ as a cut. `JobSettings::with_glossary` gives the defaults: RoFormer, large-v3, t
   the settings.
 - Rules:
   - a record round-trips through JSON with its steps keyed by step name, and a record without
-    steps parses (`a_record_round_trips_through_json_with_steps_by_name`,
+    steps, output format or models folder parses (`a_record_round_trips_through_json_with_steps_by_name`,
     `a_record_without_steps_parses` in `tests/record.rs`);
   - the JSON names stay stable so a resumed job reads what an earlier run wrote (the crate header
     in `crates/job_model/src/lib.rs`).

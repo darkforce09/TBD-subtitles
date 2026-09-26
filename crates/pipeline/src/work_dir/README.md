@@ -8,7 +8,7 @@ leaves half a file.
 
 ```text
 crates/pipeline/src/work_dir/
-├── mod.rs  `WorkDir` and its paths, `job_id`, `default_root`, `read_json` and the part-file writes
+├── mod.rs  `WorkDir` and its paths, `job_id`, `default_root`, `gpu_lock_path`, `read_json`, writes
 └── tests/  unit tests for the job id and the JSON round trip
 ```
 
@@ -21,7 +21,7 @@ files under `audio/`, `shots.json`, `vad.json`, `asr/<engine>.json`, `sheet.json
 `cues.json` and `cues_dropped_sounds.json`, `qc.json`, `report.md`, `output.json`, the empty
 `claude-cwd/`, `backup/`, `logs/<step>.log` and `steps/<step>.worker.json`. `job_id` is the video's
 file stem as a lowercase slug plus the first 8 hex digits of the SHA-256 of its full path.
-`default_root` is `work/` in the app's data folder. `write_text` creates the folder, writes
+`default_root` is `work/` in the app's data folder, and `gpu_lock_path` is `gpu.lock` beside it. `write_text` creates the folder, writes
 `<name>.part` and renames it over `<name>`.
 
 ## Boundaries

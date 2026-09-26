@@ -10,6 +10,7 @@ crates/job_model/src/outputs/
 ├── adjudication.rs  the model's lines, the checks' findings, one pass, the unsure heard again
 ├── aligned.rs       the final words with their times and timing source, per kept utterance
 ├── mod.rs           the module list and the re-exports
+├── output.rs        what the output step left: the subtitle file, its backup, a retired format
 ├── probe.rs         the probe result, and the probe with its decoded audio track
 ├── sheet.rs         a diff-sheet utterance: backbone words, locks, the sheet line, every hypothesis
 ├── shots.rs         the shot changes: every scdet cut with its time and score
@@ -36,6 +37,7 @@ Each type is the file one step writes and the steps after it read:
 | `adjudicated.json` | `AdjudicationPass` | the second pass, merged with the first |
 | `sound_cues.json` | `SoundCues` | the sound-cue choice |
 | `aligned.json` | `Aligned` | forced alignment |
+| `output.json` | `OutputRecord` | the output step |
 
 A `Line` is one adjudicated utterance as the model returns it: its id, its final text (`||` marks
 a speaker change) and its flags (`NARR`, `LYRIC`, `DROP`, `UNSURE`). An `AlignedWord` records its

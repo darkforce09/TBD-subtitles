@@ -63,12 +63,16 @@ cargo gates file-length
 - `XDG_DATA_HOME`, else `HOME`: the data folder `tbd-subtitles/` that holds the models, the CUDA
   runtime and, unless `--work-root` names another, the jobs' work directories under `work/`
   (read by `crates/inference/src/model_store/mod.rs` and `crates/pipeline/src/work_dir/mod.rs`).
-- The `process` options (`--glossary`, `--audio-track`, `--separator`, `--whisper`,
-  `--cut-score`, `--llm-model`, `--rerun`) and their defaults: `src/cli/README.md`.
+- `XDG_CONFIG_HOME`, else `HOME`: the settings file `tbd-subtitles/settings.toml` under the
+  config folder (`~/.config`), read by `src/settings/services/settings_file.rs` for
+  the `process` subcommand. A missing file means the defaults; an unknown key or a bad value is an
+  error naming it. Its keys: `models_dir`, `work_root`, `glossary`, `cut_score`, `output_format`,
+  `[engines]` `separator` and `whisper`, `[language_model]` `backend`, `model` and `processes`.
+- The `process` options (`--settings`, `--models-dir`, `--glossary`, `--audio-track`,
+  `--separator`, `--whisper`, `--cut-score`, `--llm-model`, `--format`, `--rerun`), which win over
+  the settings file: `src/cli/README.md`.
 - Build features: none of its own. The `eframe` dependency is built with `glow`, `wayland`, `x11`
   and `default_fonts` only, because wgpu fails to create a surface on the owner's Wayland desktop.
-- No settings file is read: the `src/settings/` feature holds no code yet, and the window keeps
-  no state between runs.
 
 ## Public surface
 

@@ -12,7 +12,15 @@ fn the_file_lands_beside_the_video_with_its_base_name() {
     let dir = scratch("new");
     let video = dir.join("[Muhn Pace] Dressrosa 11.mp4");
     fs::write(&video, b"video").expect("video");
-    let installed = install(&video, "1\n", &dir.join("backup"), "1").expect("install");
+    let installed = install(
+        &video,
+        OutputFormat::Srt,
+        "1\n",
+        &dir.join("backup"),
+        "1",
+        None,
+    )
+    .expect("install");
     assert_eq!(installed.path, dir.join("[Muhn Pace] Dressrosa 11.srt"));
     assert_eq!(fs::read_to_string(&installed.path).expect("read"), "1\n");
     assert_eq!(installed.backup, None);
@@ -27,20 +35,73 @@ fn a_different_file_is_backed_up_and_an_identical_one_is_left_alone() {
     let video = dir.join("a.mp4");
     fs::write(dir.join("a.srt"), "old").expect("old");
     let backups = dir.join("work").join("backup");
-    let installed = install(&video, "new", &backups, "20260926").expect("install");
+    let installed =
+        install(&video, OutputFormat::Srt, "new", &backups, "20260926", None).expect("install");
     assert_eq!(installed.backup, Some(backups.join("a.srt.20260926")));
     assert_eq!(
         fs::read_to_string(backups.join("a.srt.20260926")).expect("backup"),
         "old"
     );
     assert_eq!(fs::read_to_string(dir.join("a.srt")).expect("new"), "new");
-    let again = install(&video, "new", &backups, "later").expect("again");
+    let again = install(&video, OutputFormat::Srt, "new", &backups, "later", None).expect("again");
     assert!(again.unchanged);
     assert!(!backups.join("a.srt.later").exists());
     let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
-fn a_video_named_srt_is_refused() {
-    assert!(install(Path::new("/tmp/x.srt"), "", Path::new("/tmp"), "1").is_err());
+fn a_new_format_moves_the_jobs_old_file_aside() {
+    let dir = scratch("format");
+    let video = dir.join("a.mp4");
+    fs::write(dir.join("a.srt"), "old").expect("old");
+    let backups = dir.join("backup");
+    let installed = install(
+        &video,
+        OutputFormat::Ass,
+        "[Script Info]\n",
+        &backups,
+        "7",
+        Some(&dir.join("a.srt")),
+    )
+    .expect("install");
+    assert_eq!(installed.path, dir.join("a.ass"));
+    assert_eq!(installed.retired, Some(backups.join("a.srt.7")));
+    assert!(!dir.join("a.srt").exists());
+    assert_eq!(
+        fs::read_to_string(backups.join("a.srt.7")).expect("moved"),
+        "old"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn only_the_videos_own_subtitle_files_are_moved_aside() {
+    let dir = scratch("guard");
+    let video = dir.join("a.mp4");
+    fs::write(dir.join("notes.srt"), "keep").expect("other");
+    let installed = install(
+        &video,
+        OutputFormat::Srt,
+        "1\n",
+        &dir.join("backup"),
+        "1",
+        Some(&dir.join("notes.srt")),
+    )
+    .expect("install");
+    assert_eq!(installed.retired, None);
+    assert!(dir.join("notes.srt").exists());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_video_named_like_its_subtitles_is_refused() {
+    let result = install(
+        Path::new("/tmp/x.srt"),
+        OutputFormat::Srt,
+        "",
+        Path::new("/tmp"),
+        "1",
+        None,
+    );
+    assert!(result.is_err());
 }

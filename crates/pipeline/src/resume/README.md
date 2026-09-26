@@ -7,7 +7,7 @@ step is reused when the job record holds its current fingerprint and every file 
 
 ```text
 crates/pipeline/src/resume/
-├── mod.rs  `fingerprint`, `is_valid`, and `lock` with its `JobLock` guard
+├── mod.rs  `fingerprint`, `is_valid`, `stale_steps`, and `lock` with its `JobLock` guard
 └── tests/  unit tests for reuse, invalidation by settings, video and upstream steps, and the lock
 ```
 
@@ -18,7 +18,9 @@ reads (`graph::settings`), the video's path, size and modification time when the
 video itself, and the fingerprint and finish time of each step it reads. Re-running a step gives it
 a new finish time, so every step that reads it gets a new fingerprint and runs again. `lock`
 writes this process's pid to `job.lock`; a lock whose pid still runs refuses the job, and a lock
-whose pid is gone is taken over. Dropping the `JobLock` removes the file.
+whose pid is gone is taken over. Dropping the `JobLock` removes the file. `stale_steps` lists, in
+order, the steps a run would do now: each step that is not valid and each step that reads one of
+them.
 
 ## Boundaries
 
@@ -36,6 +38,8 @@ whose pid is gone is taken over. Dropping the `JobLock` removes the file.
     (`a_setting_changes_only_the_steps_that_read_it_and_the_video_changes_the_first`);
   - a live lock refuses a second run and a dead one is taken over
     (`a_live_lock_refuses_a_second_run_and_a_dead_one_is_taken_over`).
+  - the stale steps are the invalid ones and every step that reads them
+    (`the_stale_steps_are_the_invalid_ones_and_everything_that_reads_them`).
 
 ## Related documentation
 

@@ -8,8 +8,9 @@ the step's measure.
 
 ```text
 crates/pipeline/src/workers/
-├── mod.rs  `Binaries`, `run_worker` and `parse_line`
-└── tests/  unit tests for the progress lines and a missing binary
+├── gpu_lock.rs  the machine-wide GPU lock: one GPU worker at a time across every app process
+├── mod.rs       `Binaries`, `run_worker` and `parse_line`
+└── tests/       unit tests for the progress lines, a missing binary and the GPU lock
 ```
 
 ## How it works
@@ -17,8 +18,11 @@ crates/pipeline/src/workers/
 `Binaries::beside_current_exe` finds `tbd-subtitles` and `tbd-subtitles-ggml` in the running
 binary's folder. `run_worker` removes the step's old `steps/<step>.worker.json`, then starts
 `<binary> worker <step> <job dir>` through `child_process::Run::spawn` with the step's timeout
-from `graph` and the environment the runner passes (the CUDA runtime for GPU steps). For a GPU
-step it reads the device's memory first and starts a `measure::gpu_monitor::Monitor` on the
+from `graph`, the environment the runner passes (the CUDA runtime for GPU steps) and the job's
+cancel token, which the child's watchdog watches: a cancelled worker is killed with its process
+group and the step fails as cancelled. A GPU step first takes `gpu_lock`, an exclusive `flock` on
+`gpu.lock` in the app data folder, waiting (and saying so once) while another process of the app
+holds it; the kernel drops the lock when its holder dies. It reads the device's memory first and starts a `measure::gpu_monitor::Monitor` on the
 worker's pid. Each stdout line becomes a progress event: `progress <done> <total>` an advance,
 anything else a message. When the worker ends, its stderr goes to `logs/<step>.log`; a non-zero
 exit is an error quoting the last 12 lines. Otherwise the worker's measure file and the VRAM peaks
@@ -27,11 +31,14 @@ during it as notes.
 
 ## Boundaries
 
-- Depends on: `child_process` (`Run`, `Running`), `job_model` (`StepMeasure`, `WorkerMeasure`),
+- Depends on: `child_process` (`Run`, `Running`), `libc` (`flock`), `crate::cancel`, `job_model`
+  (`StepMeasure`, `WorkerMeasure`),
   `crate::graph`, `crate::measure::gpu_monitor`, `crate::progress` and `crate::work_dir`.
 - Used by: `crate::runner` for every step placed in a worker;
   `apps/tbd_subtitles/src/cli/process_command.rs` for `Binaries`.
 - Rules:
+  - one GPU worker runs at a time on the machine, and a cancelled wait never takes the lock
+    (`a_held_lock_waits_until_released`, `a_cancelled_wait_gives_up` in `tests/gpu_lock.rs`);
   - a missing binary fails with where to look (`a_missing_binary_fails_with_where_to_look` in
     `tests/workers.rs`);
   - only a line of exactly `progress`, two numbers and nothing else is an advance

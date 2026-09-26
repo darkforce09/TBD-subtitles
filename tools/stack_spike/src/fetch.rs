@@ -1,6 +1,17 @@
 //! `stack-spike fetch`: download what the manifest pins and is not yet on disk.
+//!
+//! **Role:** list every pinned model and runtime archive with its size and state, and download
+//! the missing ones, printing each file's progress.
+//!
+//! **Position:** a subcommand of the stack spike tool; calls `inference::model_store`.
+//!
+//! **Signals and state:** writes the models and runtime folders under the app data folder;
+//! prints to stdout.
+//!
+//! **Invariants:** only pinned files are fetched, each checked against its size and SHA-256.
 
 use std::io::Write;
+use std::ops::ControlFlow;
 
 use anyhow::Context;
 use clap::Args;
@@ -35,7 +46,7 @@ pub(crate) fn run(args: &FetchArgs) -> anyhow::Result<()> {
         total += size;
         let mut last = 0u64;
         model_store::fetch_model(&models, id, &mut |file, held, size| {
-            report(&mut last, file.file, held, size);
+            report(&mut last, file.file, held, size)
         })
         .with_context(|| format!("fetching model {id}"))?;
         println!();
@@ -48,7 +59,7 @@ pub(crate) fn run(args: &FetchArgs) -> anyhow::Result<()> {
         total += archive.size;
         let mut last = 0u64;
         model_store::install_archive(archive, &runtime, &mut |held, size| {
-            report(&mut last, archive.id, held, size);
+            report(&mut last, archive.id, held, size)
         })
         .with_context(|| format!("installing runtime archive {}", archive.id))?;
         println!();
@@ -65,13 +76,14 @@ pub(crate) fn run(args: &FetchArgs) -> anyhow::Result<()> {
 }
 
 /// Print a progress line every 5 % of a file.
-fn report(last: &mut u64, name: &str, held: u64, size: u64) {
+fn report(last: &mut u64, name: &str, held: u64, size: u64) -> ControlFlow<()> {
     let step = (size / 20).max(1);
     if held == size || held / step != *last / step {
         print!("\r  {name}: {:>6.1} / {:.1} MiB", mib(held), mib(size));
         let _ = std::io::stdout().flush();
     }
     *last = held;
+    ControlFlow::Continue(())
 }
 
 fn mib(bytes: u64) -> f64 {

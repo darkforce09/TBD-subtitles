@@ -12,6 +12,7 @@
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
@@ -21,8 +22,9 @@ use super::StoreError;
 /// Bytes read per network read and hash update.
 const BLOCK: usize = 1 << 20;
 
-/// What a download reports as it goes: bytes held so far and the total.
-pub type Progress<'a> = &'a mut dyn FnMut(u64, u64);
+/// What a download reports as it goes: bytes held so far and the total. Breaking stops the
+/// download with [`StoreError::Cancelled`]; the part file stays, so the next attempt resumes it.
+pub type Progress<'a> = &'a mut dyn FnMut(u64, u64) -> ControlFlow<()>;
 
 /// Download `url` to `dest` unless a file matching `size` and `sha256` is already there.
 pub fn fetch_verified(
@@ -124,7 +126,10 @@ fn stream_into(
         if held > size {
             break;
         }
-        progress(held, size);
+        if progress(held, size).is_break() {
+            sink.flush().map_err(|e| StoreError::io(part, e))?;
+            return Err(StoreError::Cancelled);
+        }
     }
     sink.flush().map_err(|e| StoreError::io(part, e))?;
     Ok(held)

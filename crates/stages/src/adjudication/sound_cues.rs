@@ -144,16 +144,18 @@ pub fn check_choice(
 }
 
 /// Ask `workers` models at once, window by window, and keep the checked choices; every song
-/// ends up with a cue.
+/// ends up with a cue. `progress` hears `(windows done, windows)`.
 pub fn choose(
     make: &(dyn Fn() -> Box<dyn LanguageModel + Send> + Sync),
     workers: usize,
     candidates: &[SoundCandidate],
     dialogue: &[(f64, String)],
     glossary: &[&str],
+    progress: &(dyn Fn(usize, usize) + Sync),
 ) -> SoundCues {
     let windows = windows(candidates);
     let next = AtomicUsize::new(0);
+    let done = AtomicUsize::new(0);
     let answers: Mutex<(Vec<Choice>, Vec<String>, f64)> = Mutex::new((Vec::new(), Vec::new(), 0.0));
     std::thread::scope(|scope| {
         for _ in 0..workers.max(1).min(windows.len().max(1)) {
@@ -183,6 +185,7 @@ pub fn choose(
                             Err(e) => all.1.push(format!("{}..: {e}", window[0].id)),
                         }
                     }
+                    progress(done.fetch_add(1, Ordering::SeqCst) + 1, windows.len());
                 }
             });
         }

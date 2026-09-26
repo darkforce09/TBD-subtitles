@@ -15,6 +15,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+/// The share of cues that must read at or under 20 characters per second.
+pub const CPS_TARGET: f64 = 0.95;
+
 /// One kind of problem the quality check looks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -101,6 +104,9 @@ pub struct QcFinding {
     pub text: String,
     /// Numbers behind the finding, such as `23.4 cps` or `U0412`.
     pub detail: String,
+    /// The utterance the finding is about, when it is about one line of speech.
+    #[serde(default)]
+    pub utterance: Option<String>,
 }
 
 /// The counts the report opens with.
@@ -149,4 +155,48 @@ impl QcReport {
     pub fn has_layout_violations(&self) -> bool {
         self.findings.iter().any(|f| f.check.is_layout_violation())
     }
+
+    /// Why the job does not pass the quality check, one reason per failed rule; empty when it
+    /// passes. A job passes with no layout violation, no heard speech left without a cue, no
+    /// failed language-model call, no aligner offset of 30 ms or more, and at least
+    /// [`CPS_TARGET`] of its cues at or under 20 characters per second. The other findings are
+    /// for review and never fail a job.
+    pub fn failures(&self) -> Vec<String> {
+        let counts = self.counts();
+        let mut reasons = Vec::new();
+        let layout: usize = counts
+            .iter()
+            .filter(|(check, _)| check.is_layout_violation())
+            .map(|(_, n)| n)
+            .sum();
+        if layout > 0 {
+            reasons.push(format!("{layout} layout rule(s) broken"));
+        }
+        for check in [
+            QcCheck::UncoveredSpeech,
+            QcCheck::FailedCall,
+            QcCheck::Offset,
+        ] {
+            if let Some(n) = counts.get(&check) {
+                reasons.push(format!("{n} × {}", check.describe()));
+            }
+        }
+        if self.summary.cues > 0 && self.summary.cps_ok_share < CPS_TARGET {
+            reasons.push(format!(
+                "{:.1} % of cues within 20 characters per second (target {:.0} %)",
+                self.summary.cps_ok_share * 100.0,
+                CPS_TARGET * 100.0
+            ));
+        }
+        reasons
+    }
+
+    /// Whether the job passes the quality check; see [`QcReport::failures`].
+    pub fn passes(&self) -> bool {
+        self.failures().is_empty()
+    }
 }
+
+#[cfg(test)]
+#[path = "tests/report.rs"]
+mod tests;

@@ -13,10 +13,18 @@ pub(crate) fn queue_panel_ui(
     events: &mut Vec<JobQueueEvent>,
 ) {
     ui.heading("Queue");
+    ui.horizontal(|ui| {
+        if ui.button("Add videos…").clicked() {
+            events.push(JobQueueEvent::AddVideos);
+        }
+        if ui.button("Add folder…").clicked() {
+            events.push(JobQueueEvent::AddFolder);
+        }
+    });
     ui.separator();
     if view.videos.is_empty() {
         ui.label(
-            RichText::new("No videos queued. Drop videos onto the window to add them.")
+            RichText::new("No videos queued. Add videos or a folder, or drop them here.")
                 .color(MUTED_TEXT),
         );
         return;

@@ -19,10 +19,11 @@ the runner's own process; the Whisper steps in a worker of `tbd-subtitles-ggml`
 (`Binary::Ggml`); every other step in a worker of `tbd-subtitles` (`Binary::Main`). `uses_gpu`
 marks the steps that load a model onto the GPU, which get the CUDA environment and a VRAM monitor.
 `settings` returns the part of `JobSettings` a step reads, so a changed cut score reruns cue
-building and nothing before it. `revision` is 1 for every step until one is listed in `REVISIONS`,
-which makes the outputs of older code stale. `timeout` is 180 minutes for separation, 120 for
+building and nothing before it, and a changed output format reruns only the output. `revision`
+is 1 for every step but those listed in `REVISIONS` (the quality check is at 2: its findings name
+their utterance), which makes outputs written by other code stale. `timeout` is 180 minutes for separation, 120 for
 Whisper, adjudication and the sound cues, and 60 for the rest. `outputs` lists the files a
-finished step leaves, the subtitle file beside the video among them.
+finished step leaves, the subtitle file beside the video, in the job's output format, among them.
 
 ## Boundaries
 

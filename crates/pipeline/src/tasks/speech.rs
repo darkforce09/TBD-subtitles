@@ -18,7 +18,6 @@ use std::time::Instant;
 
 use inference::onnx::Device;
 use inference::onnx::parakeet_tdt::{self, ParakeetTdt};
-use job_model::job::WhisperModel;
 use job_model::outputs::{AdjudicationPass, EngineTranscript, Redecode, SpeechPlan};
 use stages::adjudication::redecode;
 use stages::asr::{self, SpeechEngine};
@@ -168,17 +167,9 @@ fn parakeet(job: &Job) -> Result<ParakeetTdt> {
         .context("load Parakeet")
 }
 
-/// Whisper's model folder and file.
-pub(super) fn whisper_model(model: WhisperModel) -> (&'static str, &'static str) {
-    match model {
-        WhisperModel::LargeV3 => ("whisper-large-v3", "ggml-large-v3.bin"),
-        WhisperModel::LargeV3Turbo => ("whisper-large-v3-turbo", "ggml-large-v3-turbo-q8_0.bin"),
-    }
-}
-
 #[cfg(feature = "crispasr")]
 fn whisper(job: &Job) -> Result<Box<dyn SpeechEngine>> {
-    let (folder, file) = whisper_model(job.settings().whisper);
+    let (folder, file) = crate::models::whisper_model(job.settings().whisper);
     let engine = inference::ggml::crispasr::Whisper::open(
         &job.models()?.join(folder).join(file),
         folder,
@@ -190,7 +181,7 @@ fn whisper(job: &Job) -> Result<Box<dyn SpeechEngine>> {
 
 #[cfg(not(feature = "crispasr"))]
 fn whisper(job: &Job) -> Result<Box<dyn SpeechEngine>> {
-    let (folder, _) = whisper_model(job.settings().whisper);
+    let (folder, _) = crate::models::whisper_model(job.settings().whisper);
     Err(PipelineError::new(
         format!("load {folder}"),
         "this binary is built without CrispASR; Whisper runs in `tbd-subtitles-ggml`",

@@ -17,12 +17,26 @@ path = "src/main.rs"
 pipeline = { path = "../../crates/pipeline" }
 # Step names and job settings for the `process` and `worker` subcommands.
 job_model = { path = "../../crates/job_model" }
+# The model store and the CUDA runtime, for the models view and the machine check.
+inference = { path = "../../crates/inference" }
+# The version queries of the machine check (FFmpeg, ffprobe, claude).
+child_process = { path = "../../crates/child_process" }
 # The built-in series glossary the `process` subcommand defaults to.
 stages = { path = "../../crates/stages" }
+# The settings file: `settings.toml` read into typed settings and written back.
+serde = { version = "1", features = ["derive"] }
+toml = { version = "0.9", default-features = false, features = ["parse", "display", "std", "serde"] }
 # Error context at the top of the binary only; the library crates return typed errors.
 anyhow = "1"
 # The subcommands `gui`, `process` and `worker`.
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions", "color"] }
+# The desktop portal over D-Bus (pure Rust, zbus on async-io): the file and folder chooser, and
+# opening a video in the desktop's default player. No tokio, and no GTK or Wayland handles.
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "file_chooser", "open_uri"] }
+# Blocks a portal call on the thread that asked for it.
+pollster = "1"
+# Tables in the settings, queue and report views.
+egui_extras = { version = "0.36", default-features = false }
 # The desktop window. glow (OpenGL) is the renderer: wgpu fails to create a surface on the owner's
 # Wayland desktop. wayland and x11 cover both session types.
 eframe = { version = "0.36", default-features = false, features = ["glow", "wayland", "x11", "default_fonts"] }

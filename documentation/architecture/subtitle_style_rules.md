@@ -70,9 +70,15 @@ implements them and the quality check verifies them.
 
 ## Output formats
 
+The owner chooses the format in the settings (`output_format`); SRT is the default. One subtitle
+file sits beside each video: when the format changes, the file of the old format that the job
+wrote moves to the job's `backup/` folder.
+
 - SRT: UTF-8, italics as `<i>…</i>`, no positioning.
-- ASS: used when positioned sign subtitles exist (milestone M4); dialogue style at the bottom,
-  sign style positioned near the on-screen text (`\pos`, or `{\an8}` for the top).
+- WebVTT: UTF-8, the `WEBVTT` header, italics as `<i>…</i>`, `&`, `<` and `>` as references.
+- ASS: UTF-8, one bottom-centred dialogue style (white, black outline), italics as `{\i1}…{\i0}`.
+  Sign subtitles (milestone M4) add a sign style positioned near the on-screen text (`\pos`, or
+  `{\an8}` for the top).
 
 ## Sources
 

@@ -58,6 +58,8 @@ pub(crate) fn run(ctx: &Context, separator: Separator) -> anyhow::Result<Outcome
         deadline: DEADLINE,
         vocals_16k: &vocals,
         background_16k: &background,
+        duration_s: probe.duration_s,
+        progress: &|_, _| {},
     };
     let mut outcome = Outcome {
         audio_s: probe.duration_s,

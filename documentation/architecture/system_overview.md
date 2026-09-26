@@ -120,12 +120,14 @@ No model conversion ever happens locally.
 
 ## Configuration
 
-The command line sets a job's settings: `tbd-subtitles process --help` lists the work folder,
-the glossary (the built-in One Piece glossary by default), the audio track, the separator, the
-Whisper model, the cut score, the `claude` model and steps to run again. The job record keeps
-them in `job.json`, so a resumed job knows what its outputs were made with. A TOML settings file
-(default `~/.config/tbd-subtitles/settings.toml`) that the GUI edits and the command line reads
-comes with the GUI milestone.
+The settings file `~/.config/tbd-subtitles/settings.toml` (TOML; `XDG_CONFIG_HOME` moves it)
+holds the owner's choices: the models folder, the work folder, the glossary (the built-in One
+Piece glossary by default), the separator and Whisper model, the language-model backend, model
+and process count, the cut score and the output format. A missing file means the defaults; an
+unknown key or a bad value stops the run with its name. The window edits the file and the command
+line reads it; `tbd-subtitles process --help` lists the options that win over it for one run,
+plus the audio track and the steps to run again. The job record keeps the job's settings in
+`job.json`, so a resumed job knows what its outputs were made with.
 
 ## Hardware and host rules
 
@@ -137,6 +139,8 @@ comes with the GUI milestone.
 - ONNX Runtime, ggml and candle never share a binary: each GPU runtime has a worker binary of its
   own.
 - Budget per GPU stage: 5.5 GB of VRAM with the desktop running.
+- One GPU worker at a time on the machine: every GPU worker holds `gpu.lock` in the app data
+  folder while it runs, whichever process of the app started it.
 
 ## Related documentation
 

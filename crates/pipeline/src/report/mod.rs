@@ -11,7 +11,10 @@ use crate::work_dir::{self, WorkDir};
 pub fn write(work: &WorkDir, record: &JobRecord) -> Result<QcReport> {
     let qc: QcReport = work_dir::read_json(&work.qc())?;
     let dropped: Vec<String> = work_dir::read_json(&work.dropped_sounds()).unwrap_or_default();
-    let output = stages::output::subtitle_path(std::path::Path::new(&record.video));
+    let output = stages::output::subtitle_path(
+        std::path::Path::new(&record.video),
+        record.settings.output_format,
+    );
     let text = stages::qc::markdown::render(&qc, record, &output.to_string_lossy(), &dropped);
     work_dir::write_text(&work.report(), &text)?;
     Ok(qc)

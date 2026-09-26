@@ -84,3 +84,64 @@ the reading speed; when no merge fits, the short cue grows into the gaps around 
 output once.
 
 **Supersedes:** none.
+
+### 2026-09-26 — Models live in the settings' models folder and download from the Settings page
+
+**Context:** The roadmap left open where models live and how their first download is shown. Only
+the stack spike tool downloaded them, and the tasks named their model folders in three places.
+
+**Decision:** The models folder is a setting (`models_dir`, default
+`~/.local/share/tbd-subtitles/models/`); a job records the folder it read in `job.json`, and no
+fingerprint covers it. `pipeline::models::required` is the one list of the folders a job's settings
+need. The window's Settings page lists them and the runtime archives the workers load (the CUDA 13
+libraries and ONNX Runtime; not the build-only toolkit), each with its size and whether it is on
+disk, and downloads the missing ones with progress and a stop button; a job does not start while
+one is missing. The runtime folder stays `~/.local/share/tbd-subtitles/runtime/`.
+
+**Consequences:** Every download is pinned by size and SHA-256 and resumes a stopped part file.
+Changing the models folder changes no job's output.
+
+**Supersedes:** none.
+
+### 2026-09-26 — A job passes the quality check on five rules
+
+**Context:** The batch's acceptance asks that each report pass the quality check; the report listed
+findings but said nothing of passing.
+
+**Decision:** A job passes with no layout violation (overlap, under 20 frames, a line over 42
+characters, a third line, an empty cue, a cue past the end), no heard speech left without a cue, no
+failed language-model call, no aligner offset of 30 ms or more, and at least 95 % of cues at or
+under 20 characters per second. The other findings (fast cues, unsure lines, novel words, dropped
+agreed words, weak timing, gaps under 2 frames) are for review and never fail a job.
+
+**Consequences:** The command line and the window say whether a job passes and name each failed
+rule. Each finding about one line names its utterance, so the window can open the line.
+
+**Supersedes:** none.
+
+### 2026-09-26 — One GPU worker at a time on the machine
+
+**Context:** The window's queue and a command-line run could each start a GPU worker, and two
+models together overrun the card's 5.5 GB.
+
+**Decision:** Every GPU worker first takes an exclusive `flock` on `gpu.lock` in the app data folder
+and holds it while it runs; a run that finds it held waits, says so, and can be cancelled while it
+waits. The kernel frees the lock when its holder dies.
+
+**Consequences:** A second run of the app never loads the GPU beside the first; it waits instead.
+
+**Supersedes:** none.
+
+### 2026-09-26 — The owner chooses SRT, WebVTT or ASS
+
+**Context:** The settings ask for an output format; only an SRT writer existed. VLC loads one
+subtitle file per video.
+
+**Decision:** The output format is a setting (`output_format`, SRT by default) that only the output
+step reads. When it changes, the job's file of the old format moves to the job's `backup/` folder,
+so one subtitle file stays beside the video.
+
+**Consequences:** Changing the format reruns only the output step. The ASS file carries one
+dialogue style; positioned sign styles come with the Japanese on-screen text feature.
+
+**Supersedes:** none.

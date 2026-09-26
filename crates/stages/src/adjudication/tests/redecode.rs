@@ -170,7 +170,14 @@ fn ids_a_second_pass_leaves_out_are_asked_once_more_and_strays_are_dropped() {
     ];
     let first = [line("U1", "x", &["UNSURE"]), line("U2", "y", &[])];
     let mut model = Forgetful { calls: 0 };
-    let result = readjudicate(&mut model, &sheet, &first, &["U1".to_string()], &["Luffy"]);
+    let result = readjudicate(
+        &mut model,
+        &sheet,
+        &first,
+        &["U1".to_string()],
+        &["Luffy"],
+        &|_, _| {},
+    );
     assert_eq!(model.calls, 2);
     assert_eq!(result.lines, vec![line("U1", "settled", &[])]);
 }

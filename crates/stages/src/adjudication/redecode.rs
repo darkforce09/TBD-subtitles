@@ -126,16 +126,20 @@ pub fn user_message(
 }
 
 /// Ask `model` about `ids` only, over the sheet with alternatives; ids an answer left out are
-/// asked once more. Returns the second-pass lines of those ids.
+/// asked once more. Returns the second-pass lines of those ids. `progress` hears `(batches asked,
+/// batches)`; a batch asked again counts once.
 pub fn readjudicate(
     model: &mut dyn LanguageModel,
     sheet: &[Utterance],
     first: &[Line],
     ids: &[String],
     glossary: &[&str],
+    progress: &dyn Fn(usize, usize),
 ) -> Adjudication {
     let system = format!("{}{SECOND_PASS}", prompt::SYSTEM);
     let mut result = Adjudication::default();
+    let batches = ids.len().div_ceil(BATCH);
+    let mut asked = 0;
     // The second round asks again for what the first left out.
     for _ in 0..2 {
         let answered: HashSet<String> = result.lines.iter().map(|l| l.id.clone()).collect();
@@ -150,6 +154,8 @@ pub fn readjudicate(
         for batch in todo.chunks(BATCH) {
             let message = user_message(glossary, sheet, first, batch);
             ask_with(model, &system, &message, &batch[0], &mut result);
+            asked += 1;
+            progress(asked.min(batches), batches);
         }
     }
     let asked: HashSet<&str> = ids.iter().map(String::as_str).collect();

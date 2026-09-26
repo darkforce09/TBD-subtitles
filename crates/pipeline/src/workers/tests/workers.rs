@@ -32,6 +32,8 @@ fn a_missing_binary_fails_with_where_to_look() {
         &work,
         &[],
         &|_| {},
+        &CancelToken::new(),
+        &std::env::temp_dir().join("tbd-gpu-lock-missing-binary"),
     )
     .expect_err("missing");
     assert!(error.message.contains("runbook"), "{error}");

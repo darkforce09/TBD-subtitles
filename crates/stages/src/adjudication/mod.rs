@@ -60,15 +60,18 @@ pub fn adjudicate(
 }
 
 /// Settle `sheet` with `workers` models at once, each made by `make`; for backends that are
-/// separate processes, such as the `claude` CLI.
+/// separate processes, such as the `claude` CLI. `progress` hears `(batches done, batches)` from
+/// every worker thread.
 pub fn adjudicate_concurrently(
     make: &(dyn Fn() -> Box<dyn LanguageModel + Send> + Sync),
     workers: usize,
     sheet: &[Utterance],
     glossary: &[&str],
+    progress: &(dyn Fn(usize, usize) + Sync),
 ) -> Adjudication {
     let batches: Vec<&[Utterance]> = sheet.chunks(BATCH).collect();
     let next = AtomicUsize::new(0);
+    let done = AtomicUsize::new(0);
     let parts: Vec<Adjudication> = std::thread::scope(|scope| {
         let handles: Vec<_> = (0..workers.max(1))
             .map(|_| {
@@ -77,6 +80,7 @@ pub fn adjudicate_concurrently(
                     let mut part = Adjudication::default();
                     while let Some(batch) = batches.get(next.fetch_add(1, Ordering::SeqCst)) {
                         ask(model.as_mut(), batch, glossary, &mut part);
+                        progress(done.fetch_add(1, Ordering::SeqCst) + 1, batches.len());
                     }
                     part
                 })

@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use job_model::StepName;
-use job_model::job::JobSettings;
+use job_model::job::{JobSettings, OutputFormat};
 use serde_json::{Value, json};
 
 use crate::work_dir::WorkDir;
@@ -93,7 +93,10 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
 }
 
 /// Steps whose code changed what they write, with their revision; every other step is at 1.
-const REVISIONS: &[(StepName, u32)] = &[];
+const REVISIONS: &[(StepName, u32)] = &[
+    // Its findings name the utterance they are about.
+    (StepName::Qc, 2),
+];
 
 /// The revision of a step's code; a change makes every earlier output of the step stale.
 pub fn revision(step: StepName) -> u32 {
@@ -115,6 +118,7 @@ pub fn settings(step: StepName, settings: &JobSettings) -> Value {
             "llm_model": settings.llm_model,
         }),
         Cues => json!({ "cut_score": settings.cut_score }),
+        Output => json!({ "output_format": settings.output_format }),
         _ => Value::Null,
     }
 }
@@ -130,7 +134,7 @@ pub fn timeout(step: StepName) -> Duration {
 }
 
 /// The files a finished step leaves; the step is redone when one is missing.
-pub fn outputs(step: StepName, work: &WorkDir, video: &Path) -> Vec<PathBuf> {
+pub fn outputs(step: StepName, work: &WorkDir, video: &Path, format: OutputFormat) -> Vec<PathBuf> {
     use StepName::*;
     match step {
         ProbeDecode => vec![work.probe(), work.mix()],
@@ -149,7 +153,10 @@ pub fn outputs(step: StepName, work: &WorkDir, video: &Path) -> Vec<PathBuf> {
         Alignment => vec![work.aligned()],
         Cues => vec![work.cues(), work.dropped_sounds()],
         Qc => vec![work.qc()],
-        Output => vec![work.output_record(), stages::output::subtitle_path(video)],
+        Output => vec![
+            work.output_record(),
+            stages::output::subtitle_path(video, format),
+        ],
     }
 }
 

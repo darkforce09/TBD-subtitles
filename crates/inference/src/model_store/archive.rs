@@ -21,6 +21,12 @@ use super::StoreError;
 use super::download::{Progress, fetch_verified};
 use super::manifest::{CUDA_BUILD_FOLDER, CUDA_FOLDER, PinnedArchive};
 
+/// Whether `archive` is unpacked under `runtime_dir`: its marker holds the archive's hash.
+pub fn is_installed(archive: &PinnedArchive, runtime_dir: &Path) -> bool {
+    fs::read_to_string(runtime_dir.join(".fetched").join(archive.id))
+        .is_ok_and(|held| held.trim() == archive.sha256)
+}
+
 /// Download (when needed) and unpack `archive` under `runtime_dir`.
 pub fn install(
     archive: &PinnedArchive,
@@ -28,7 +34,7 @@ pub fn install(
     progress: Progress<'_>,
 ) -> Result<(), StoreError> {
     let marker = runtime_dir.join(".fetched").join(archive.id);
-    if fs::read_to_string(&marker).is_ok_and(|held| held.trim() == archive.sha256) {
+    if is_installed(archive, runtime_dir) {
         return Ok(());
     }
     let file_name = archive.url.rsplit('/').next().unwrap_or(archive.id);

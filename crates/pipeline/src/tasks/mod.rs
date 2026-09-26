@@ -63,9 +63,12 @@ impl Job {
         work_dir::read_json(&self.work.probe())
     }
 
-    /// The folder models are kept in.
+    /// The folder models are read from: the one the run named, else the default.
     pub fn models(&self) -> Result<PathBuf> {
-        inference::model_store::models_dir().context("cannot find the models folder")
+        match &self.record.models_dir {
+            Some(dir) => Ok(PathBuf::from(dir)),
+            None => inference::model_store::models_dir().context("cannot find the models folder"),
+        }
     }
 
     pub fn glossary(&self) -> Vec<&str> {
@@ -97,22 +100,25 @@ pub(crate) fn since(start: Instant) -> f64 {
     start.elapsed().as_secs_f64()
 }
 
+/// Where a task reports `(done, total)`; shared by the threads of a concurrent task.
+pub type StepProgress<'a> = &'a (dyn Fn(usize, usize) + Sync);
+
 /// Run `step`'s task; `progress` hears `(done, total)`.
-pub fn run(step: StepName, job: &Job, progress: &dyn Fn(usize, usize)) -> Result<TaskReport> {
+pub fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<TaskReport> {
     let result = match step {
-        StepName::ProbeDecode => media::probe_decode(job),
+        StepName::ProbeDecode => media::probe_decode(job, progress),
         StepName::ShotScan => media::shot_scan(job),
-        StepName::Separation => media::separation(job),
+        StepName::Separation => media::separation(job, progress),
         StepName::Vad => speech::vad(job),
         StepName::AsrParakeet => speech::asr_parakeet(job, progress),
         StepName::AsrWhisper => speech::asr_whisper(job, progress),
         StepName::DiffSheet => speech::diff_sheet(job),
         StepName::SoundEvents => sounds::sound_events(job, progress),
-        StepName::Adjudicate => llm::adjudicate(job),
+        StepName::Adjudicate => llm::adjudicate(job, progress),
         StepName::RedecodeParakeet => speech::redecode_parakeet(job, progress),
         StepName::RedecodeWhisper => speech::redecode_whisper(job, progress),
-        StepName::Readjudicate => llm::readjudicate(job),
-        StepName::SoundCues => sounds::sound_cues(job),
+        StepName::Readjudicate => llm::readjudicate(job, progress),
+        StepName::SoundCues => sounds::sound_cues(job, progress),
         StepName::Alignment => alignment::alignment(job, progress),
         StepName::Cues => layout::cues(job),
         StepName::Qc => layout::qc(job),
@@ -122,11 +128,7 @@ pub fn run(step: StepName, job: &Job, progress: &dyn Fn(usize, usize)) -> Result
 }
 
 /// Run `step` inside this process and measure it.
-pub fn in_process(
-    step: StepName,
-    job: &Job,
-    progress: &dyn Fn(usize, usize),
-) -> Result<StepMeasure> {
+pub fn in_process(step: StepName, job: &Job, progress: StepProgress) -> Result<StepMeasure> {
     let reset = memory::reset_peak_ram();
     let started = Instant::now();
     let report = run(step, job, progress)?;

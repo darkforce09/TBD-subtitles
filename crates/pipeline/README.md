@@ -72,14 +72,16 @@ passes in `JobOptions`, recorded in the job's `job.json` (`crates/job_model/src/
 
 ## Public surface
 
-- `run_job`, `JobOptions` and `JobOutcome` at the crate root: one job end to end, for the
-  `process` subcommand in `apps/tbd_subtitles/src/cli/process_command.rs`.
+- `run_job`, `JobOptions`, `JobOutcome` and `CancelToken` at the crate root: one job end to end,
+  stoppable, for the `process` subcommand in `apps/tbd_subtitles/src/cli/process_command.rs` and
+  the window's job queue.
 - `tasks::worker_main`: the body of the `worker` subcommand of both binaries
   (`apps/tbd_subtitles/src/cli/worker_command.rs`, `apps/tbd_subtitles_ggml/src/main.rs`).
 - `graph::{placement, Placement, Binary}`: which binary a step's worker runs in, which the
   `worker` subcommands check before they start.
-- `progress::{Progress, ProgressSink}`, `workers::Binaries` and `work_dir::default_root`: the
-  events the caller prints, the binaries beside the running one, and the default work root.
+- `progress::{Progress, ProgressSink}`, `workers::Binaries`, `work_dir::default_root` and
+  `work_dir::gpu_lock_path`: the events the caller shows, the binaries beside the running one, the
+  default work root and the machine-wide GPU lock file.
 - `measure::{gpu_monitor, memory}`: the VRAM sampler and the peak-memory readings, also used by
   `tools/stack_spike/`.
 - `PipelineError` and `Result`: what failed, and what was being done.

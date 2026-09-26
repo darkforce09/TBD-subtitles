@@ -155,6 +155,13 @@ pub fn default_root() -> Result<PathBuf> {
         .join("work"))
 }
 
+/// The machine-wide GPU lock file: `~/.local/share/tbd-subtitles/gpu.lock`.
+pub fn gpu_lock_path() -> Result<PathBuf> {
+    Ok(inference::model_store::app_data_dir()
+        .context("cannot find the data folder")?
+        .join("gpu.lock"))
+}
+
 /// Read a JSON file.
 pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
     let text = fs::read_to_string(path).context(format!("cannot read {}", path.display()))?;

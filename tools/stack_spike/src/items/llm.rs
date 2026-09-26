@@ -75,8 +75,13 @@ pub(crate) fn claude(ctx: &Context) -> anyhow::Result<Outcome> {
         || -> Box<dyn LanguageModel + Send> { Box::new(ClaudeCli::new("sonnet", cwd.clone())) };
     let started = Instant::now();
     let terms = glossary_terms();
-    let result =
-        adjudication::adjudicate_concurrently(&make, WORKERS, &sheet, &glossary::as_strs(&terms));
+    let result = adjudication::adjudicate_concurrently(
+        &make,
+        WORKERS,
+        &sheet,
+        &glossary::as_strs(&terms),
+        &|_, _| {},
+    );
     report(ctx, "claude", &sheet, result, since(started), 0.0)
 }
 

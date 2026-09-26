@@ -3,7 +3,7 @@
 //! **Role:** name where model files and runtime libraries live, download the pinned ones that
 //! are missing, and tell a caller whether a model is complete on disk.
 //!
-//! **Position:** called by the stack spike tool's `fetch` command and, later, by the app's model
+//! **Position:** called by the stack spike tool's `fetch` command and by the app's model
 //! download; `cuda_runtime` reads the runtime folder it fills. Uses `manifest.rs`, `download.rs`
 //! and `archive.rs`.
 //!
@@ -20,7 +20,7 @@ pub mod manifest;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-pub use archive::{install as install_archive, strip_first};
+pub use archive::{install as install_archive, is_installed as is_archive_installed, strip_first};
 pub use download::{Progress, fetch_verified, hex, sha256_of};
 pub use manifest::{
     CUDA_ARCHIVES, MODEL_FILES, ONNX_RUNTIME_ARCHIVE, PinnedArchive, PinnedFile, runtime_archives,
@@ -55,6 +55,8 @@ pub enum StoreError {
         path: PathBuf,
         message: String,
     },
+    /// The caller stopped the download; its part file stays for the next attempt.
+    Cancelled,
 }
 
 impl StoreError {
@@ -88,6 +90,7 @@ impl fmt::Display for StoreError {
                 path.display()
             ),
             StoreError::Archive { path, message } => write!(f, "{}: {message}", path.display()),
+            StoreError::Cancelled => write!(f, "the download was stopped"),
         }
     }
 }
@@ -136,7 +139,7 @@ pub fn is_complete(models: &Path, model: &str) -> bool {
 pub fn fetch_model(
     models: &Path,
     model: &str,
-    progress: &mut dyn FnMut(&PinnedFile, u64, u64),
+    progress: &mut dyn FnMut(&PinnedFile, u64, u64) -> std::ops::ControlFlow<()>,
 ) -> Result<PathBuf, StoreError> {
     let dir = model_dir(models, model)?;
     for file in manifest::files_of(model) {

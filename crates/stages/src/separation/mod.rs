@@ -37,6 +37,10 @@ pub struct SeparationRequest<'a> {
     pub deadline: Duration,
     pub vocals_16k: &'a Path,
     pub background_16k: &'a Path,
+    /// The track's length, the total that `progress` counts towards.
+    pub duration_s: f64,
+    /// Hears `(seconds separated, seconds)`.
+    pub progress: &'a dyn Fn(usize, usize),
 }
 
 /// What a separation run did.
@@ -154,6 +158,11 @@ pub fn separate<M: WindowModel>(
         let separated = driver.push(&chunk)?;
         summary.separate_s += started.elapsed().as_secs_f64();
         stems.write(&separated)?;
+        let total_s = request.duration_s.max(0.0).ceil() as usize;
+        (request.progress)(
+            ((summary.frames_44k / CHUNK_FRAMES as u64) as usize).min(total_s),
+            total_s,
+        );
     }
     stream.finish()?;
     let started = Instant::now();

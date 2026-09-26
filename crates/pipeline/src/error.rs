@@ -7,6 +7,8 @@ use std::fmt;
 pub struct PipelineError {
     pub context: String,
     pub message: String,
+    /// The job stopped because its cancel token was set, not because something broke.
+    pub cancelled: bool,
 }
 
 impl PipelineError {
@@ -14,7 +16,21 @@ impl PipelineError {
         PipelineError {
             context: context.into(),
             message: message.to_string(),
+            cancelled: false,
         }
+    }
+
+    /// The job was stopped by its cancel token while doing `context`.
+    pub fn cancelled(context: impl Into<String>) -> PipelineError {
+        PipelineError {
+            context: context.into(),
+            message: "cancelled".to_string(),
+            cancelled: true,
+        }
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled
     }
 }
 
