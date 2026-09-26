@@ -60,7 +60,8 @@ total for a 120-minute video is within the [performance budget](/documentation/v
 - [x] Pilot run: Dressrosa 11 → subtitle file installed next to the video
       ([pilot run](/documentation/research/pilot_dressrosa_11.md)).
 - [x] Pilot review: the owner watched it in VLC and accepted it (2026-09-26).
-- [ ] A 120-minute test file within the speed and memory budget.
+- [x] A 120-minute test file within the speed and memory budget
+      ([120-minute test](/documentation/research/long_video_120min.md)).
 - [x] Log the run in the media folder's README.md.
 
 **Acceptance:** the owner accepts the pilot; a 120-minute test file meets the speed and memory
