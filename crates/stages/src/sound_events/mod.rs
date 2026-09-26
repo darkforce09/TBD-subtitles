@@ -14,6 +14,7 @@
 //! **Invariants:** window `i` covers `[i × hop, i × hop + window)`; an event's times are the
 //! centres of its first and last windows widened by half a hop.
 
+pub mod candidates;
 pub mod classes;
 
 use std::path::Path;

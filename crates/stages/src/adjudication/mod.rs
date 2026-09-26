@@ -13,7 +13,10 @@
 //! on the whole answer.
 
 pub mod checks;
+pub mod glossary;
 pub mod prompt;
+pub mod redecode;
+pub mod sound_cues;
 pub mod summary;
 
 use std::collections::{HashMap, HashSet};
@@ -127,13 +130,27 @@ fn ask(
     glossary: &[&str],
     result: &mut Adjudication,
 ) {
+    ask_with(
+        model,
+        prompt::SYSTEM,
+        &prompt::user_message(glossary, batch),
+        &batch[0].id,
+        result,
+    );
+}
+
+/// One call with the given rules and message; the answer's lines are added to `result`, or the
+/// failure is recorded under `first_id`.
+fn ask_with(
+    model: &mut dyn LanguageModel,
+    system: &str,
+    user: &str,
+    first_id: &str,
+    result: &mut Adjudication,
+) {
     result.calls += 1;
     let answer = model
-        .complete_json(
-            prompt::SYSTEM,
-            &prompt::user_message(glossary, batch),
-            &prompt::schema(),
-        )
+        .complete_json(system, user, &prompt::schema())
         .and_then(|c| {
             let lines: Vec<Line> =
                 serde_json::from_value(c.json.get("lines").cloned().unwrap_or_default())
@@ -147,6 +164,6 @@ fn ask(
             result.cost_usd += completion.cost_usd.unwrap_or(0.0);
             result.lines.extend(lines);
         }
-        Err(e) => result.failed_calls.push(format!("{}..: {e}", batch[0].id)),
+        Err(e) => result.failed_calls.push(format!("{first_id}..: {e}")),
     }
 }

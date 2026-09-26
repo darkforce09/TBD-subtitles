@@ -4952,8 +4952,16 @@ name = "pipeline"
 version = "0.1.0"
 dependencies = [
  "child_process",
+ "inference",
  "job_model",
+ "libc",
+ "media_io",
+ "nvml-wrapper",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
  "stages",
+ "subtitle_formats",
 ]
 
 [[package]]
@@ -6540,9 +6548,8 @@ dependencies = [
  "clap",
  "inference",
  "job_model",
- "libc",
  "media_io",
- "nvml-wrapper",
+ "pipeline",
  "serde",
  "serde_json",
  "stages",
@@ -6706,6 +6713,8 @@ name = "subtitle_formats"
 version = "0.1.0"
 dependencies = [
  "job_model",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -6970,8 +6979,20 @@ dependencies = [
  "eframe",
  "job_model",
  "pipeline",
+ "stages",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "tbd_subtitles_ggml"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "crispasr-sys",
+ "job_model",
+ "pipeline",
 ]
 
 [[package]]

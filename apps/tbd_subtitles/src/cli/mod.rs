@@ -2,14 +2,13 @@
 //!
 //! **Role:** declares the subcommands with clap and dispatches each to its runner.
 //!
-//! **Position:** called by `main`; starts `application` for `gui`; `process_command` and
-//! `worker_command` check their arguments and stop with an error, because no pipeline stage is
-//! built yet.
+//! **Position:** called by `main`; starts `application` for `gui`; `process_command` runs each
+//! video's job through `pipeline`; `worker_command` runs one step of a job for the job runner.
 //!
 //! **Signals and state:** reads the process arguments; no state.
 //!
 //! **Invariants:** running with no subcommand opens the window, as a desktop launcher expects;
-//! `worker` accepts only stages that run in a worker process.
+//! `worker` refuses the steps that belong to the ggml worker binary.
 
 mod process_command;
 mod worker_command;
@@ -17,7 +16,7 @@ mod worker_command;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use job_model::StageName;
+use job_model::StepName;
 
 /// Generates English subtitles for local videos.
 #[derive(Debug, Parser)]
@@ -35,16 +34,12 @@ enum Command {
         videos: Vec<PathBuf>,
     },
     /// Generate subtitles for the given videos without a window.
-    Process {
-        /// Videos to process, one job each, in order.
-        #[arg(required = true)]
-        videos: Vec<PathBuf>,
-    },
-    /// Run one GPU stage of a job in this process; started by the job runner.
+    Process(process_command::ProcessArgs),
+    /// Run one step of a job in this process; started by the job runner.
     Worker {
-        /// The stage to run.
-        #[arg(value_parser = parse_worker_stage)]
-        stage: StageName,
+        /// The step to run.
+        #[arg(value_parser = worker_command::parse_step)]
+        step: StepName,
         /// The job's work directory.
         job_dir: PathBuf,
     },
@@ -59,26 +54,8 @@ fn dispatch(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
         None => crate::application::launch(Vec::new()),
         Some(Command::Gui { videos }) => crate::application::launch(videos),
-        Some(Command::Process { videos }) => process_command::run(&videos),
-        Some(Command::Worker { stage, job_dir }) => worker_command::run(stage, &job_dir),
-    }
-}
-
-/// Accept a stage name only when that stage runs in a worker process.
-fn parse_worker_stage(text: &str) -> Result<StageName, String> {
-    let stage: StageName = text.parse().map_err(|error| format!("{error}"))?;
-    if stage.runs_in_worker() {
-        Ok(stage)
-    } else {
-        let workers: Vec<&str> = StageName::ALL
-            .into_iter()
-            .filter(|stage| stage.runs_in_worker())
-            .map(StageName::as_str)
-            .collect();
-        Err(format!(
-            "`{stage}` runs inside the job runner, not in a worker; worker stages: {}",
-            workers.join(", ")
-        ))
+        Some(Command::Process(args)) => process_command::run(&args),
+        Some(Command::Worker { step, job_dir }) => worker_command::run(step, &job_dir),
     }
 }
 

@@ -12,9 +12,12 @@
 //! **Invariants:** a displayed word is timed from its first spoken token's first frame to its
 //! last token's last frame; a word with nothing speakable gets no time.
 
+pub mod blocks;
 pub mod checks;
 pub mod ctc_viterbi;
+pub mod run;
 pub mod spoken_form;
+pub mod timing;
 
 /// `(start, end)` in block seconds per displayed word; `None` for a word with nothing to say.
 pub type WordTimes = Vec<Option<(f64, f64)>>;

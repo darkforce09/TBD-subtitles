@@ -1,17 +1,36 @@
-# Runs a job: the stage graph in order, resume from finished stages, GPU stages as worker
-# subprocesses, and progress events for the GUI and the CLI.
+# Runs a job: the steps in order, resume from finished steps, GPU steps as worker subprocesses,
+# the time and peak memory of every step, and progress events for the GUI and the CLI.
 [package]
 name = "pipeline"
-description = "Job runner: stage order, resume, worker processes, progress"
+description = "Job runner: step order, resume, worker processes, measurements, progress"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
 publish = false
 
+[features]
+# The Whisper steps, through CrispASR (ggml with CUDA); only the ggml worker binary enables it.
+crispasr = ["stages/crispasr", "inference/crispasr"]
+
 [dependencies]
-# The stages the runner calls in process.
+# The stage logic every step calls.
 stages = { path = "../stages" }
 # Starts the app's own worker subprocesses.
 child_process = { path = "../child_process" }
-# Stage names and the contract types.
+# Step names, the job record and the contract types.
 job_model = { path = "../job_model" }
+# The model backends the worker steps load, the model folder and the CUDA runtime locator.
+inference = { path = "../inference" }
+# ffprobe, FFmpeg and the audio files the steps read.
+media_io = { path = "../media_io" }
+# The cue track and the SRT writer.
+subtitle_formats = { path = "../subtitle_formats" }
+# Every step's output and `job.json` are JSON.
+serde = { version = "1", default-features = false, features = ["std", "derive"] }
+serde_json = "1"
+# Step fingerprints and the job id.
+sha2 = { version = "0.11", default-features = false }
+# Peak memory of this process and its children (getrusage), and whether a lock's pid lives.
+libc = { version = "0.2", default-features = false }
+# Peak VRAM per worker, read from the driver's NVML library loaded at run time.
+nvml-wrapper = { version = "0.13", default-features = false }

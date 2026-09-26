@@ -19,9 +19,12 @@ lines next to it, or from the glossary. Never add, reword or paraphrase. Choose 
 variants by sense and context; fix capitalisation, punctuation and the spelling of glossary names.
 - Keep meaningful interjections and hesitations (whoa, hmm, huh, I... I said no!). Drop pure \
 filler (uh, um).
-- If a second speaker starts inside the utterance, mark the change with `||`.
-- `f` lists flags: NARR for the narrator, LYRIC for sung lyrics (they are dropped), DROP for noise \
-or gibberish that is not speech, UNSURE when you cannot decide what was said. Otherwise [].
+- Speakers: if a second speaker starts inside the utterance, mark the change with `||`. Judge \
+from sense (a question and its answer, a reply, an exclamation from someone else) whether the \
+utterance starts with a different speaker than the one before it.
+- `f` lists flags: NARR for the narrator, SPK when the utterance starts with a different speaker \
+than the utterance before it, LYRIC for sung lyrics (they are dropped), DROP for noise or \
+gibberish that is not speech, UNSURE when you cannot decide what was said. Otherwise [].
 Do not explain. Answer only with the JSON.";
 
 /// The answer's JSON Schema.
@@ -36,7 +39,7 @@ pub fn schema() -> Value {
                     "properties": {
                         "id": {"type": "string"},
                         "t": {"type": "string"},
-                        "f": {"type": "array", "items": {"type": "string", "enum": ["NARR", "LYRIC", "DROP", "UNSURE"]}}
+                        "f": {"type": "array", "items": {"type": "string", "enum": ["NARR", "SPK", "LYRIC", "DROP", "UNSURE"]}}
                     },
                     "required": ["id", "t", "f"],
                     "additionalProperties": false

@@ -16,4 +16,4 @@ pub mod outputs;
 pub mod report;
 pub mod stage;
 
-pub use stage::StageName;
+pub use stage::{StageName, StepName};

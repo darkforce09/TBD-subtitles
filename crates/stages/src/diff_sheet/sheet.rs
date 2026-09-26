@@ -13,7 +13,6 @@
 //! on is locked; each utterance keeps every engine's own words for it, for the novelty check.
 
 use job_model::outputs::{EngineTranscript, TimedWord};
-use serde::{Deserialize, Serialize};
 
 use super::align::{self, Step};
 
@@ -24,21 +23,7 @@ pub const SENTENCE_PAUSE_S: f64 = 0.2;
 /// No utterance runs longer.
 pub const MAX_UTTERANCE_S: f64 = 12.0;
 
-/// One utterance of the sheet.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Utterance {
-    pub id: String,
-    pub start_s: f64,
-    pub end_s: f64,
-    /// The backbone's words.
-    pub words: Vec<TimedWord>,
-    /// Whether every engine heard each backbone word the same (after normalising).
-    pub locked: Vec<bool>,
-    /// The sheet line.
-    pub line: String,
-    /// Each engine's words for this utterance, backbone first: `(engine tag, words)`.
-    pub hypotheses: Vec<(String, Vec<String>)>,
-}
+pub use job_model::outputs::Utterance;
 
 /// What another engine heard against one backbone word.
 #[derive(Debug, Clone, Default)]

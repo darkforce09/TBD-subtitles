@@ -31,7 +31,8 @@ inside speech.
 
 - Depends on: `earshot` (the detector), `media_io::pcm_stream::F32FileReader` (the stem),
   `job_model::outputs::{SpeechPlan, TimeSpan}`.
-- Used by: `tools/stack_spike/` (the vad item).
+- Used by: `crates/pipeline/src/tasks/speech.rs` (the voice-activity step, in the job runner) and
+  `tools/stack_spike/` (the vad item).
 - Rules:
   - chunks are ordered, disjoint and never longer than 60 s (`chunks_are_ordered_and_disjoint`,
     `no_chunk_passes_the_maximum` in `tests/chunk_plan.rs`);

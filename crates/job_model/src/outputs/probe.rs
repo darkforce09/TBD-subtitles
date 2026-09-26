@@ -47,3 +47,12 @@ impl VideoStream {
         (self.frame_rate_den != 0).then(|| self.frame_rate_num as f64 / self.frame_rate_den as f64)
     }
 }
+
+/// What the probe-and-decode step keeps in `probe.json`: the probe, the audio track it decoded,
+/// and how many 16 kHz samples the mix file holds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProbeDecoded {
+    pub probe: ProbeResult,
+    pub track: AudioStream,
+    pub samples: u64,
+}

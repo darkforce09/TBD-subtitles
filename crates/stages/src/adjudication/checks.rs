@@ -12,8 +12,6 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use serde::{Deserialize, Serialize};
-
 use crate::diff_sheet::align;
 use crate::diff_sheet::sheet::Utterance;
 
@@ -22,28 +20,7 @@ pub const FILLER: [&str; 6] = ["uh", "um", "er", "erm", "uhh", "umm"];
 /// Characters per second over which a line is flagged.
 pub const MAX_CPS: f64 = 25.0;
 
-/// One adjudicated utterance, as the model returns it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Line {
-    pub id: String,
-    pub t: String,
-    #[serde(default)]
-    pub f: Vec<String>,
-}
-
-/// What the checks found.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct Findings {
-    pub missing_ids: Vec<String>,
-    pub duplicate_ids: Vec<String>,
-    pub unknown_ids: Vec<String>,
-    /// `(id, word)` for each output word no engine heard nearby and the glossary lacks.
-    pub novel: Vec<(String, String)>,
-    /// `(id, word)` for each agreed, non-filler word the answer dropped.
-    pub removed_locked: Vec<(String, String)>,
-    /// Ids whose text reads faster than `MAX_CPS`.
-    pub too_fast: Vec<String>,
-}
+pub use job_model::outputs::{Findings, Line};
 
 /// Check `lines` against the `sheet` they answer.
 pub fn check(sheet: &[Utterance], lines: &[Line], glossary: &[&str]) -> Findings {

@@ -1,68 +1,115 @@
 # Job runner
 
-The `pipeline` crate: runs one job end to end, which means the
-[stages](/documentation/glossary.md#stage) in graph order, skipping those whose outputs are still
-valid, each GPU stage as a `worker` subprocess of the app binary, with progress events for the
-window and the command line. Its modules are not written yet.
+The `pipeline` crate: runs one video through every step of the pipeline, in the order
+`StepName::ALL` gives, skipping each step whose output is still valid, running each model step as a
+[worker process](/documentation/glossary.md#worker-process) of one of the app's two binaries, and
+recording the time and peak memory of every step. The app's `process` and `worker` subcommands and
+the ggml worker binary call it.
 
 ## Contents
 
 ```text
 crates/pipeline/
-├── Cargo.toml  the `pipeline` library package; depends on `stages`, `child_process` and `job_model`
-└── src/        the stage graph, resume, the work directory, worker processes and progress events
+├── Cargo.toml  the `pipeline` package, its `crispasr` feature, and what each dependency is for
+└── src/        the runner, the step graph, resume, work directory, workers, tasks, measures, report
 ```
 
 ## How it works
 
 ```text
-app: `process` subcommand or the window
-  └─▶ pipeline
-        ├─ graph     which stages run, in which order, on which inputs
-        ├─ resume    skip a stage whose output and recorded inputs are unchanged
-        ├─ work_dir  the job's work directory: its layout, each stage's output, job.json
-        ├─ workers   `tbd-subtitles worker <stage> <job dir>`, one at a time, via child_process
-        └─ progress  current stage, stage progress, elapsed and remaining time
+tbd-subtitles process <video>
+  └─▶ runner::run_job
+        ├─ work_dir   job id from the video's path, job.json, job.lock, every output path
+        ├─ resume     fingerprint each step; reuse it when the record matches and the files exist
+        ├─ graph      inputs, placement, GPU flag, settings, timeout and outputs of each step
+        ├─ in process ──▶ tasks::in_process ──▶ stages
+        ├─ worker     ──▶ workers::run_worker ──▶ `<binary> worker <step> <job dir>`
+        │                                          └─▶ tasks::worker_main ──▶ stages, inference
+        ├─ measure    peak RAM of this process and its children; peak VRAM per worker through NVML
+        ├─ progress   events to the caller's sink
+        └─ report     report.md from qc.json and the job record
 ```
 
-A CPU stage runs in process through `stages`; a stage for which `StageName::runs_in_worker` is true
-runs as a [worker process](/documentation/glossary.md#worker-process), so its GPU memory and native
-libraries go when it exits. Each module holds only its header; the runner is not written yet.
-`src/README.md` describes each module.
+`run_job` canonicalises the video, derives the job's folder under the work root, takes the job's
+lock and writes `job.json` with the settings of this run. It then walks the steps: a step whose
+recorded fingerprint and output files are intact is skipped; any other runs, in process (voice
+activity, the diff sheet, cue building, the quality check and the output) or in a worker of
+`tbd-subtitles` (FFmpeg, ONNX Runtime and the `claude` CLI) or `tbd-subtitles-ggml` (Whisper). The
+shot scan runs on a scoped thread beside the other steps and is joined before the first step that
+reads it. After every step `job.json` records its fingerprint, finish time and measure, so a
+killed job resumes from the last finished step. The step's code lives in `tasks`, which both
+binaries share, so the same body runs in the runner or in a worker. `src/README.md` describes each
+module.
 
 ## Getting started
 
 Run these from the repository root:
 
 ```bash
-cargo build -p pipeline   # the module declarations, with stages and the crates beneath it
-cargo test -p pipeline    # runs 0 tests: no module holds code yet
+cargo build -p pipeline   # the library, with stages, inference and the crates beneath it
+cargo test -p pipeline    # 12 unit tests: the graph, resume, the work directory, worker lines
 ```
+
+A whole job runs through the app: build both binaries and run
+`tbd-subtitles process <video>` on the host, as the
+[development environment runbook](/documentation/runbooks/development_environment.md) says. The
+worker binaries must sit beside the running binary.
 
 ## Configuration
 
-None: the crate reads no setting.
+The crate reads no settings file. What changes a job's output is the `JobSettings` the caller
+passes in `JobOptions`, recorded in the job's `job.json` (`crates/job_model/src/job/settings.rs`);
+`graph::settings` picks the part each step reads. Other inputs:
+
+- the work root: `JobOptions::work_root`, by default `<data home>/tbd-subtitles/work` from
+  `work_dir::default_root`, where the data home is `XDG_DATA_HOME` or `~/.local/share` (read by
+  `crates/inference/src/model_store/mod.rs`); the models and the CUDA runtime folder sit beside it;
+- `LD_LIBRARY_PATH`, which `inference::cuda_runtime` extends, with `ORT_DYLIB_PATH`, for every GPU
+  worker;
+- the Cargo feature `crispasr`, off by default: it builds the Whisper tasks, and only
+  `apps/tbd_subtitles_ggml/` turns it on; without it a Whisper step fails instead of being skipped;
+- NVML (`libnvidia-ml.so`), loaded at run time when present; without it no VRAM is recorded.
 
 ## Public surface
 
-- The library `pipeline`, with the public modules `graph`, `progress`, `resume`, `work_dir` and
-  `workers`; they hold no items yet.
+- `run_job`, `JobOptions` and `JobOutcome` at the crate root: one job end to end, for the
+  `process` subcommand in `apps/tbd_subtitles/src/cli/process_command.rs`.
+- `tasks::worker_main`: the body of the `worker` subcommand of both binaries
+  (`apps/tbd_subtitles/src/cli/worker_command.rs`, `apps/tbd_subtitles_ggml/src/main.rs`).
+- `graph::{placement, Placement, Binary}`: which binary a step's worker runs in, which the
+  `worker` subcommands check before they start.
+- `progress::{Progress, ProgressSink}`, `workers::Binaries` and `work_dir::default_root`: the
+  events the caller prints, the binaries beside the running one, and the default work root.
+- `measure::{gpu_monitor, memory}`: the VRAM sampler and the peak-memory readings, also used by
+  `tools/stack_spike/`.
+- `PipelineError` and `Result`: what failed, and what was being done.
 - No binary.
 
 ## Boundaries
 
-- Depends on: `stages`, `child_process` and `job_model`, declared in `Cargo.toml` and not called
-  yet.
-- Used by: the app, which declares it in `apps/tbd_subtitles/Cargo.toml`; no app code calls it yet.
+- Depends on: `stages`, `inference`, `media_io`, `subtitle_formats`, `child_process` and
+  `job_model`; `serde`, `serde_json`, `sha2`, `libc` (`getrusage`) and `nvml-wrapper`; at run time
+  the app's two binaries as workers, and through them FFmpeg and the `claude` CLI.
+- Used by: `apps/tbd_subtitles/` (the `process` and `worker` subcommands),
+  `apps/tbd_subtitles_ggml/` (its `worker` subcommand) and `tools/stack_spike/` (the measures).
 - Rules:
   - the crate sits in layer 3 and depends only on lower layers (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);
-  - one GPU worker runs at a time, and a killed job leaves every finished stage valid for resume
-    (the crate header in `crates/pipeline/src/lib.rs`; no test holds these yet).
+  - a step reads only earlier steps, every GPU step runs in a worker, and only the Whisper steps
+    run in the ggml binary, so ONNX Runtime and ggml never share a process
+    (`crates/pipeline/src/graph/tests/graph.rs`);
+  - one worker runs at a time besides the shot scan, which loads no GPU, and `job.json` holds
+    finished steps only, so a killed job resumes from the last one (the header of
+    `crates/pipeline/src/runner/mod.rs`);
+  - a changed setting, video or upstream step reruns exactly the steps that read it, and a missing
+    output reruns its step (`crates/pipeline/src/resume/tests/resume.rs`).
 
 ## Related documentation
 
+- [Pipeline](/documentation/architecture/pipeline.md#stage-flow) — the stage flow the runner walks.
 - [System overview](/documentation/architecture/system_overview.md#processes) — the processes and
   the job work directory.
-- [Pipeline](/documentation/architecture/pipeline.md#stage-flow) — the stage flow the runner walks.
-- [Decisions](/documentation/decisions.md) — why each GPU stage runs in its own worker process.
+- [Each GPU stage runs in its own worker process](/documentation/decisions.md#2026-09-25--each-gpu-stage-runs-in-its-own-worker-process)
+  — why models load in workers.
+- [Each native GPU runtime lives in a worker binary of its own](/documentation/decisions.md#2026-09-26--each-native-gpu-runtime-lives-in-a-worker-binary-of-its-own)
+  — why Whisper runs in `tbd-subtitles-ggml`.

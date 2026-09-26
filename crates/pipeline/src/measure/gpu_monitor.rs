@@ -1,10 +1,11 @@
 //! Peak VRAM of one worker process, sampled through NVML while it runs.
 //!
-//! **Role:** report the device's free memory before a GPU item, and sample the worker pid's own
+//! **Role:** report the device's free memory before a GPU step, and sample the worker pid's own
 //! VRAM and the device's use above the baseline every 100 ms while it runs.
 //!
-//! **Position:** called by `measure/mod.rs`; loads NVML, the driver's own library
-//! (`libnvidia-ml.so`), at run time, so no `nvidia-smi` child is needed.
+//! **Position:** called by `crate::workers` around each GPU worker, and by the stack spike tool;
+//! loads NVML, the driver's own library (`libnvidia-ml.so`), at run time, so no `nvidia-smi`
+//! child is needed.
 //!
 //! **Signals and state:** one sampling thread per worker, stopped by an atomic flag.
 //!
@@ -23,23 +24,23 @@ const SAMPLE_EVERY: Duration = Duration::from_millis(100);
 const MIB: u64 = 1 << 20;
 
 /// Free and used device memory right now, in MiB.
-pub(crate) struct DeviceMemory {
-    pub(crate) used_mib: u64,
-    pub(crate) free_mib: u64,
+pub struct DeviceMemory {
+    pub used_mib: u64,
+    pub free_mib: u64,
 }
 
 /// What the sampler saw over a worker's life.
 #[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
-pub(crate) struct VramPeaks {
+pub struct VramPeaks {
     /// The worker pid's own allocation, as NVML reports it per process.
-    pub(crate) process_mib: u64,
+    pub process_mib: u64,
     /// Device memory used above what was in use before the worker started.
-    pub(crate) device_delta_mib: u64,
-    pub(crate) samples: u64,
+    pub device_delta_mib: u64,
+    pub samples: u64,
 }
 
 /// The device's memory now, or `None` when NVML cannot be loaded.
-pub(crate) fn device_memory() -> Option<DeviceMemory> {
+pub fn device_memory() -> Option<DeviceMemory> {
     let nvml = Nvml::init().ok()?;
     let info = nvml.device_by_index(0).ok()?.memory_info().ok()?;
     Some(DeviceMemory {
@@ -49,14 +50,14 @@ pub(crate) fn device_memory() -> Option<DeviceMemory> {
 }
 
 /// A sampling thread watching one pid.
-pub(crate) struct Monitor {
+pub struct Monitor {
     stop: Arc<AtomicBool>,
     thread: JoinHandle<Option<VramPeaks>>,
 }
 
 impl Monitor {
     /// Start sampling `pid` against the device's use at `baseline_mib`.
-    pub(crate) fn start(pid: u32, baseline_mib: u64) -> Monitor {
+    pub fn start(pid: u32, baseline_mib: u64) -> Monitor {
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
         let thread = std::thread::spawn(move || {
@@ -84,7 +85,7 @@ impl Monitor {
     }
 
     /// Stop sampling; `None` when NVML was never available.
-    pub(crate) fn finish(self) -> Option<VramPeaks> {
+    pub fn finish(self) -> Option<VramPeaks> {
         self.stop.store(true, Ordering::SeqCst);
         self.thread.join().ok().flatten()
     }

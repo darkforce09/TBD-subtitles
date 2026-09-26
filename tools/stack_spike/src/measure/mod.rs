@@ -14,7 +14,6 @@
 //! **Invariants:** an item that could not run is recorded as not run with the reason, never with
 //! numbers; a GPU item never runs with less than the VRAM budget free.
 
-mod gpu_monitor;
 pub(crate) mod worker;
 
 use std::io::{BufRead, BufReader};
@@ -27,7 +26,8 @@ use inference::model_store;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-pub(crate) use gpu_monitor::VramPeaks;
+use pipeline::measure::gpu_monitor;
+pub(crate) use pipeline::measure::gpu_monitor::VramPeaks;
 
 use crate::context::Context;
 use crate::items::Item;

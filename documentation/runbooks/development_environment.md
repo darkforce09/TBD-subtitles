@@ -36,8 +36,8 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
   `/run/media/system/Disk_2/Projects`; 124 GB free on that disk).
 - Test videos: `/run/media/system/Main_storage/Media/one_pace/` (3.3 TB free). Read-only for the
   project; see that folder's README.md.
-- Models (planned default): `~/.local/share/tbd-subtitles/models/`. Work folders (planned
-  default): `~/.local/share/tbd-subtitles/work/`, configurable to a larger disk.
+- Models: `~/.local/share/tbd-subtitles/models/`. Job work directories:
+  `~/.local/share/tbd-subtitles/work/<job id>/`, or under `--work-root` on a larger disk.
 
 ## Steps
 
@@ -142,6 +142,32 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
     **Expected:** `decode: Ok in <s> s (<x>× realtime)`; `stack-spike report --video …` prints the
     table. A GPU item with less than 5632 MiB of VRAM free is recorded as not run.
 
+12. Build the app's two binaries: `tbd-subtitles`, then its Whisper worker `tbd-subtitles-ggml`
+    under the CUDA 13.4 toolkit (about 3 minutes the first time). Both land in `target/release/`,
+    where the runner finds the worker beside the app.
+
+    ```bash
+    cargo build --release -p tbd_subtitles
+    ```
+
+    ```bash
+    env PATH="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.4/bin:$PATH" CUDACXX="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.4/bin/nvcc" CUDAToolkit_ROOT="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.4" CUDAARCHS=86 cargo build --release -p tbd_subtitles_ggml --features crispasr
+    ```
+
+    **Expected:** `Finished release profile` twice; `ldd target/release/tbd-subtitles-ggml` lists
+    `libcrispasr.so.1`. Without `--features crispasr` the worker builds but refuses every step.
+
+13. Generate subtitles for a video on the host, with nothing else using the GPU.
+
+    ```bash
+    distrobox-host-exec target/release/tbd-subtitles process "/run/media/system/Main_storage/Media/one_pace/[Muhn Pace] Dressrosa 11.mp4"
+    ```
+
+    **Expected:** one `> step` and `✓ step` line per step (`= step` for one still valid), then
+    the paths of the subtitle file beside the video and of `report.md` in the job's work
+    directory under `~/.local/share/tbd-subtitles/work/`. Running it again skips every step;
+    `--rerun cues` redoes the cues, the quality check and the output only.
+
 ## CUDA libraries for ONNX Runtime
 
 The GPU backends need the CUDA 13 runtime (cudart, cuBLAS, cuFFT, cuRAND, NVRTC, nvJitLink),
@@ -185,6 +211,13 @@ into the runtime folder `~/.local/share/tbd-subtitles/runtime/`:
   run them where `git` is on the `PATH`.
 - **The window does not open inside the container:** it has no display driver; launch the binary
   with `distrobox-host-exec` as in step 7.
+- **`tbd-subtitles-ggml … is missing` at the `asr_whisper` step:** build the worker as in step 12,
+  into the same folder as `tbd-subtitles`.
+- **`process <pid> is already running it`:** another run holds the job's `job.lock`. Wait for it,
+  or stop it; a lock whose process is gone is taken over.
+- **A step fails:** the error names the step and quotes the end of its log,
+  `logs/<step>.log` in the job's work directory. Fix the cause and run the same command again;
+  the finished steps are skipped.
 - **Disk label changed:** the `/run/media/system/<label>` paths follow the disk label; update this
   runbook and CLAUDE.md.
 

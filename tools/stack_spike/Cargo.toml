@@ -28,10 +28,8 @@ media_io = { path = "../../crates/media_io" }
 anyhow = "1"
 # The subcommands `fetch`, `run`, `worker` and `report`.
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
-# The largest child process's peak memory (getrusage), for FFmpeg run by an item.
-libc = { version = "0.2", default-features = false }
-# Peak VRAM per worker, read from the driver's NVML library loaded at run time.
-nvml-wrapper = { version = "0.13", default-features = false }
+# Peak VRAM per worker (NVML) and peak RAM (VmHWM, getrusage), shared with the job runner.
+pipeline = { path = "../../crates/pipeline" }
 # The result files in the work folder.
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 serde_json = "1"

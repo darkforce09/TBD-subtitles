@@ -25,10 +25,12 @@ caller for its own counters.
 
 - Depends on: `media_io::pcm_stream` (FFmpeg audio and the stem files),
   `inference::onnx::separation` (the driver and the models).
-- Used by: `tools/stack_spike/` (the separation items).
+- Used by: `crates/pipeline/src/tasks/media.rs` (the separation step) and `tools/stack_spike/`
+  (the separation items).
 - Rules:
-  - the stage runs in a worker process of its own (`only_model_stages_run_in_a_worker` in
-    `crates/job_model/src/stage/tests/stage_name.rs`);
+  - the stage runs in a worker process of its own
+    (`gpu_steps_run_in_workers_and_whisper_alone_in_the_ggml_binary` in
+    `crates/pipeline/src/graph/tests/graph.rs`);
   - both stems are whole or absent (each moves into place from its `.part` file in
     `F32FileWriter::finish`);
   - the resampler passes speech frequencies and removes content above 8 kHz

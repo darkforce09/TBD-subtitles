@@ -1,48 +1,54 @@
-# Stage names
+# Stage and step names
 
-Every [stage](/documentation/glossary.md#stage) of the pipeline, in run order, with the one name
-used on the command line, in file names and in JSON, and whether it runs in a
-[worker process](/documentation/glossary.md#worker-process).
+Every [stage](/documentation/glossary.md#stage) of the pipeline and every step the stages are made
+of, in run order, with the one name each carries on the command line, in file names and in JSON.
 
 ## Contents
 
 ```text
 crates/job_model/src/stage/
-├── mod.rs         the module tree and the re-export of the stage name
-├── stage_name.rs  every stage in run order, with its command-line and JSON name
-└── tests/         unit tests for the stage names
+├── mod.rs         the module tree and the re-exports of the stage and step names
+├── stage_name.rs  every stage in run order, with its name and whether it runs in a worker
+├── step_name.rs   every step in run order, with its name and the stage it belongs to
+└── tests/         unit tests for the stage and step names
 ```
 
 ## How it works
 
-`StageName::ALL` lists the stages in the order the job runner runs them, which is not the order
-the enum declares them in:
+`StageName::ALL` lists the eleven stages in run order, which is not the order the enum declares
+them in; `runs_in_worker` says which stages load a GPU model or the language model. A stage runs
+as one or more steps: `StepName::ALL` lists the seventeen steps the job runner runs, resumes and
+times, and `StepName::stage` gives each its stage.
 
-| # | Name | Runs in a worker |
+| # | Stage | Steps |
 |---|---|---|
-| 1 | `probe_decode` | no |
-| 2 | `separation` | yes |
-| 3 | `vad` | no |
-| 4 | `asr` | yes |
-| 5 | `diff_sheet` | no |
-| 6 | `sound_events` | yes |
-| 7 | `adjudication` | yes |
-| 8 | `alignment` | yes |
-| 9 | `cues` | no |
-| 10 | `qc` | no |
-| 11 | `output` | no |
+| 1 | `probe_decode` | `probe_decode`, `shot_scan` |
+| 2 | `separation` | `separation` |
+| 3 | `vad` | `vad` |
+| 4 | `asr` | `asr_parakeet`, `asr_whisper` |
+| 5 | `diff_sheet` | `diff_sheet` |
+| 6 | `sound_events` | `sound_events` |
+| 7 | `adjudication` | `adjudicate`, `redecode_parakeet`, `redecode_whisper`, `readjudicate`, `sound_cues` |
+| 8 | `alignment` | `alignment` |
+| 9 | `cues` | `cues` |
+| 10 | `qc` | `qc` |
+| 11 | `output` | `output` |
 
-`as_str` holds the names; `Display` and serde's `snake_case` spell the same ones, and `FromStr`
-searches `ALL` for a match, answering `UnknownStage` with the text it was given (its message reads
-`` `subtitles` is not a stage ``). The match in `as_str` is exhaustive, so a new variant cannot
-build without a name; its place in `ALL`, and the array's length, are set by hand.
+`as_str` holds each name; `Display` and serde's `snake_case` spell the same ones, and `FromStr`
+searches `ALL` for a match, answering `UnknownStage` or `UnknownStep` with the text it was given
+(`` `subtitles` is not a stage ``). The matches in `as_str` and `stage` are exhaustive, so a new
+variant cannot build without a name and a stage; its place in `ALL` is set by hand. Where each
+step runs is the pipeline's step graph, not this module.
 
 ## Boundaries
 
 - Depends on: `serde` (`Serialize`, `Deserialize`) and `std`.
-- Used by: `crates/job_model/src/lib.rs`, which re-exports `StageName`; the app's
-  `apps/tbd_subtitles/src/cli/mod.rs`, which accepts a `worker` stage only when `runs_in_worker`
-  is true, and `apps/tbd_subtitles/src/cli/worker_command.rs`.
+- Used by: `crates/job_model/src/lib.rs`, which re-exports `StageName` and `StepName`;
+  `crates/job_model/src/job/`, whose record keys steps by `StepName`; `crates/pipeline/` (the step
+  graph, the resume check, the workers, the progress and the work directory); the `worker` and
+  `process` subcommands in `apps/tbd_subtitles/src/cli/` and the ggml binary in
+  `apps/tbd_subtitles_ggml/src/main.rs`, which parse step names; and
+  `crates/stages/src/qc/markdown.rs`.
 - Rules:
   - `ALL` lists every stage once, and each name parses back to its own stage
     (`every_stage_is_listed_once_and_parses_back_to_itself` in `tests/stage_name.rs`); an unknown
@@ -50,9 +56,15 @@ build without a name; its place in `ALL`, and the array's length, are set by han
   - the JSON name equals the command-line name (`json_names_match_the_command_line_names`);
   - sound events run before adjudication, which chooses the sound cues, and adjudication before
     alignment (`sound_events_come_before_adjudication_which_chooses_the_cues`);
-  - only the five model stages run in a worker (`only_model_stages_run_in_a_worker`).
+  - only the five model stages run in a worker (`only_model_stages_run_in_a_worker`);
+  - every step is listed once and parses back, and serialises by its name
+    (`every_step_is_listed_once_and_parses_back`, `steps_serialise_by_name` in
+    `tests/step_name.rs`);
+  - the steps of a stage are contiguous and the stages follow `StageName::ALL`
+    (`steps_follow_the_stage_order`).
 
 ## Related documentation
 
-- [Pipeline](/documentation/architecture/pipeline.md#stage-flow) — what each stage does.
+- [Pipeline](/documentation/architecture/pipeline.md#steps-and-processes) — every step, where it
+  runs and what it writes.
 - [Decisions](/documentation/decisions.md) — why each GPU stage runs in its own worker process.

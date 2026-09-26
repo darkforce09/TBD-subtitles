@@ -1,0 +1,31 @@
+# The ggml worker binary, `tbd-subtitles-ggml`: runs the Whisper steps (the second speech engine,
+# and its re-decode of unsure utterances) through CrispASR. It is a binary of its own because
+# ggml and ONNX Runtime corrupt each other's heap in one process; `tbd-subtitles` starts it.
+[package]
+name = "tbd_subtitles_ggml"
+description = "The ggml worker: Whisper steps through CrispASR, started by tbd-subtitles"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[[bin]]
+name = "tbd-subtitles-ggml"
+path = "src/main.rs"
+
+[features]
+# Links CrispASR and ggml with CUDA; needs cmake and the CUDA 13.4 toolkit to build. Without it
+# the binary builds and refuses every step.
+crispasr = ["pipeline/crispasr", "dep:crispasr-sys"]
+
+[dependencies]
+# The Whisper tasks and the worker protocol.
+pipeline = { path = "../../crates/pipeline" }
+# Step names.
+job_model = { path = "../../crates/job_model" }
+# Only for its `links` metadata: `build.rs` reads where libcrispasr was built and sets the rpath.
+crispasr-sys = { git = "https://github.com/CrispStrobe/CrispASR", tag = "v0.8.37", features = ["cuda"], optional = true }
+# Error context at the top of the binary.
+anyhow = "1"
+# The `worker` command.
+clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }

@@ -24,6 +24,7 @@ pub(crate) const PRODUCT_LAYERS: &[(&str, u8)] = &[
     ("stages", 2),
     ("pipeline", 3),
     ("tbd_subtitles", 4),
+    ("tbd_subtitles_ggml", 4),
 ];
 
 /// The repository tools and the product crates each may depend on.
@@ -38,6 +39,7 @@ pub(crate) const TOOL_DEPENDENCIES: &[(&str, &[&str])] = &[
             "media_io",
             "inference",
             "stages",
+            "pipeline",
         ],
     ),
     (

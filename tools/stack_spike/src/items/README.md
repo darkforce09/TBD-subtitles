@@ -24,8 +24,9 @@ tools/stack_spike/src/items/
 ## Boundaries
 
 - Depends on: `media_io` (probe, PCM stream, shot scan), `stages::separation`, `stages::vad`,
-  `stages::asr`, `stages::alignment`, `stages::sound_events`, `stages::adjudication`, `stages::diff_sheet::align`, `inference::onnx`, `inference::llm`;
-  `crate::context::Context` for paths and model files.
+  `stages::asr`, `stages::alignment`, `stages::sound_events`, `stages::adjudication` (with the
+  built-in One Piece glossary, `glossary::one_piece`), `stages::diff_sheet`, `inference::onnx`,
+  `inference::llm`; `crate::context::Context` for paths and model files.
 - Used by: `tools/stack_spike/src/measure/` (`Item::run` in the worker; `needs_gpu` and `ggml` in
   the parent).
 - Rules: an item reads only the video and the work folder, and writes only the work folder (the

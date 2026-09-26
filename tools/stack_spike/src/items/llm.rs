@@ -19,71 +19,16 @@ use inference::llm::LanguageModel;
 use inference::llm::claude_cli::ClaudeCli;
 use job_model::outputs::EngineTranscript;
 use serde_json::json;
-use stages::adjudication::{self, Adjudication, checks, summary};
+use stages::adjudication::{self, Adjudication, checks, glossary, summary};
 use stages::diff_sheet::sheet::{self, Utterance};
 
 use super::{Outcome, since};
 use crate::context::Context;
 
-/// The series glossary: names and terms of the Dressrosa arc.
-pub(crate) const GLOSSARY: &[&str] = &[
-    "Luffy",
-    "Lucy",
-    "Zoro",
-    "Nami",
-    "Usopp",
-    "Sanji",
-    "Chopper",
-    "Robin",
-    "Franky",
-    "Brook",
-    "Law",
-    "Trafalgar Law",
-    "Doflamingo",
-    "Donquixote",
-    "Rebecca",
-    "Kyros",
-    "Scarlett",
-    "Viola",
-    "Riku",
-    "Dold",
-    "Dressrosa",
-    "Colosseum",
-    "Corrida",
-    "Bartolomeo",
-    "Cavendish",
-    "Diamante",
-    "Trebol",
-    "Pica",
-    "Sugar",
-    "Senor Pink",
-    "Gladius",
-    "Machvise",
-    "Dellinger",
-    "Lao G",
-    "Kanjuro",
-    "Kin'emon",
-    "Momonosuke",
-    "Fujitora",
-    "Issho",
-    "Sabo",
-    "Ace",
-    "Garp",
-    "Marineford",
-    "Blackbeard",
-    "Tontatta",
-    "Leo",
-    "Mansherry",
-    "Birdcage",
-    "Straw Hat",
-    "Flame-Flame Fruit",
-    "Mera Mera",
-    "Haki",
-    "Kaido",
-    "Punk Hazard",
-    "Caesar",
-    "Sengoku",
-];
+/// The series glossary: the built-in One Piece glossary of the adjudication stage.
+fn glossary_terms() -> Vec<String> {
+    glossary::one_piece()
+}
 
 /// Build and write the diff sheet.
 pub(crate) fn diff_sheet(ctx: &Context) -> anyhow::Result<Outcome> {
@@ -94,7 +39,7 @@ pub(crate) fn diff_sheet(ctx: &Context) -> anyhow::Result<Outcome> {
     let text: String = utterances.iter().map(|u| format!("{}\n", u.line)).collect();
     std::fs::write(ctx.path("sheet.txt"), text)?;
     ctx.write_json("sheet.json", &utterances)?;
-    ctx.write_json("glossary.json", &GLOSSARY)?;
+    ctx.write_json("glossary.json", &glossary_terms())?;
     let words: usize = utterances.iter().map(|u| u.words.len()).sum();
     let locked: usize = utterances
         .iter()
@@ -129,7 +74,9 @@ pub(crate) fn claude(ctx: &Context) -> anyhow::Result<Outcome> {
     let make =
         || -> Box<dyn LanguageModel + Send> { Box::new(ClaudeCli::new("sonnet", cwd.clone())) };
     let started = Instant::now();
-    let result = adjudication::adjudicate_concurrently(&make, WORKERS, &sheet, GLOSSARY);
+    let terms = glossary_terms();
+    let result =
+        adjudication::adjudicate_concurrently(&make, WORKERS, &sheet, &glossary::as_strs(&terms));
     report(ctx, "claude", &sheet, result, since(started), 0.0)
 }
 
@@ -142,7 +89,9 @@ pub(crate) fn report(
     process_s: f64,
     load_s: f64,
 ) -> anyhow::Result<Outcome> {
-    let findings = checks::check(sheet, &result.lines, GLOSSARY);
+    let terms = glossary_terms();
+    let names = glossary::as_strs(&terms);
+    let findings = checks::check(sheet, &result.lines, &names);
     ctx.write_json(
         &format!("adjudicated.{backend}.json"),
         &json!({"lines": result.lines, "findings": findings, "failed_calls": result.failed_calls}),
@@ -151,6 +100,6 @@ pub(crate) fn report(
         audio_s: ctx.probe()?.duration_s,
         load_s,
         process_s,
-        notes: summary::summarize(sheet, &result, &findings, GLOSSARY),
+        notes: summary::summarize(sheet, &result, &findings, &names),
     })
 }

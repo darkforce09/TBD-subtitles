@@ -337,3 +337,163 @@ development environment runbook). The workspace lockfile pins `regex` below 1.13
 `serde-saphyr`.
 
 **Supersedes:** none.
+
+### 2026-09-26 — The app ships two binaries: `tbd-subtitles` and `tbd-subtitles-ggml`
+
+**Context:** ONNX Runtime, ggml and candle must never share a binary. The pipeline needs ONNX
+Runtime for separation, Parakeet, CTC alignment and CED, and ggml for Whisper. The local
+language model (candle, through mistral.rs) is not run by the app.
+
+**Decision:** `tbd-subtitles` holds the window, the command line, the job runner, and the workers
+for the ONNX Runtime, FFmpeg and `claude` steps. ONNX Runtime is loaded only by those workers.
+`tbd-subtitles-ggml` (`apps/tbd_subtitles_ggml`, feature `crispasr`) holds the Whisper steps
+only. Both take `worker <step> <job dir>`, and the runner finds the second beside the first.
+
+**Consequences:** The ggml binary builds under the CUDA 13.4 toolkit, as the spike's did.
+`cargo build --workspace` never links CrispASR, because the feature is off by default. A third
+binary for the local model can join the same way.
+
+**Supersedes:** none.
+
+### 2026-09-26 — Stages run as fingerprinted steps
+
+**Context:** Speech recognition has two engines, and adjudication has a first pass, a re-decode
+per engine, a second pass and the choice of sound cues. Each of these must resume and be timed
+on its own. Tuning one setting, such as the cut score, should not redo the GPU work.
+
+**Decision:** The runner runs 17 steps (`StepName`), each with one output and one row in the
+report. A step's fingerprint hashes:
+- its name and code revision;
+- the settings it reads;
+- the video's path, size and modification time, for steps that read the video;
+- the fingerprint and finish time of each step it reads.
+
+A step is reused when `job.json` holds that fingerprint and its outputs exist. `--rerun <step>`
+forces one.
+
+**Consequences:** Changing the cut score reruns only cues, QC and output. Any step that runs
+again reruns every step after it. A step whose code changes what it writes must raise its
+revision in `crates/pipeline/src/graph/mod.rs`.
+
+**Supersedes:** none.
+
+### 2026-09-26 — Unsure utterances are heard again on the vocal stem by both engines
+
+**Context:** The pipeline re-decodes `UNSURE` spans with alternatives. CrispASR gives Whisper no
+initial prompt, so neighbouring lines cannot steer it.
+
+**Decision:** Each unsure utterance, padded by 0.5 s, is transcribed again by Parakeet and by
+Whisper on the RoFormer vocal stem. Both hypotheses join the sheet as `ALT p/w`. Only those ids
+are asked again, with the settled lines around them as context, and the answer replaces the
+first pass for those ids only.
+
+**Consequences:** When nothing is unsure, no model loads and no call is made. The checks run on
+the merged answer, so words heard again count as heard.
+
+**Supersedes:** none.
+
+### 2026-09-26 — A shot cut is an scdet change scoring 20 or more
+
+**Context:** The scan keeps every change scoring 10 or more. At 10, 784 of 1280 changes on
+Dressrosa 11 lie within 0.5 s of another; at 20, 409 remain.
+
+**Decision:** For cue timing, a cut is a change scoring at least 20 (`--cut-score`). Changes
+closer than 0.5 s are merged into the strongest.
+
+**Consequences:** Only cues, QC and output rerun when the score is tuned against the owner's
+viewing.
+
+**Supersedes:** none.
+
+### 2026-09-26 — Replaced subtitle files are kept in the job's work directory
+
+**Context:** The output step replaces `<video base name>.srt`, and the earlier decision said an
+existing file is backed up first. VLC loads one subtitle file per video, and the media folder is
+kept clean.
+
+**Decision:** A different existing file is copied to the job's `backup/` folder as
+`<file name>.<unix time>` before the new one is written. The new file goes to a part file that is
+then renamed. An identical file is left alone.
+
+**Consequences:** No backup file ever sits beside a video.
+
+**Supersedes:** none.
+
+### 2026-09-26 — The One Piece glossary is built in and used by default
+
+**Context:** The glossary reaches the language model and the novelty check. The first videos are
+all One Piece, and a file-manager entry passes no options.
+
+**Decision:** The spike's 56-name glossary lives in
+`crates/stages/src/adjudication/glossary/one_piece.json` and is used unless
+`--glossary none` or `--glossary <file>` (a JSON array of names) is given.
+
+**Consequences:** A video of another series needs `--glossary`, until the settings file lets the
+owner choose per folder.
+
+**Supersedes:** none.
+
+### 2026-09-26 — The offset guard is a signed median
+
+**Context:** The success criteria ask for an aligner-to-engine median difference under 30 ms.
+Both time words on an 80 ms grid, so the absolute median is one frame (80 ms) whatever the
+quality.
+
+**Decision:** The job's offset is the signed median of aligner start minus backbone start, over
+words both timed in blocks that passed. The quality check reports it when it is 30 ms or more.
+
+**Consequences:** A systematic shift shows; the grid's own scatter does not.
+
+**Supersedes:** none.
+
+### 2026-09-26 — The pipeline milestone stays small
+
+**Context:** The pipeline and style documents name Silero for borderline voice frames, CLAP for
+sounds AudioSet lacks, reference subtitles as meaning hints, and speaker labels for off-screen
+voices. The owner asked to keep the pipeline milestone small.
+
+**Decision:** The pipeline milestone builds none of them, and none of the local language model's
+app worker either. They are listed as later roadmap items, by the owner's word.
+
+**Consequences:** Voice activity is earshot alone; sound cues come from CED and Whisper's tags;
+the language model sees only the sheet and the glossary; no speaker labels are written;
+`claude -p` is the app's only language-model backend.
+
+**Supersedes:** none.
+
+### 2026-09-26 — The language model marks speaker changes between utterances
+
+**Context:** On the first Dressrosa 11 run the model marked only 2 speaker changes, all inside
+utterances with `||`. Quick exchanges split across utterances therefore never shared a
+two-speaker cue, and 11 cues came out under 20 frames.
+
+**Decision:** The adjudication rules add the flag `SPK`: the utterance starts with a different
+speaker than the one before, judged from sense. A cue that alone would be too short or too fast
+shares a cue with its neighbour:
+- as `-Line` / `-Line` when a change was marked;
+- as one cue of one speaker when none was marked and the words fit.
+
+A cramped cue may also take back the lead-out of the cue before, down to that cue's speech and
+minimum.
+
+**Consequences:** On the pilot, the model flagged 194 utterances `SPK`, 8 cues became two-speaker
+cues, and no cue is under 20 frames. The flag comes from the text alone, so a wrong guess shows as
+a wrong dash, not as lost words.
+
+**Supersedes:** none.
+
+### 2026-09-26 — Speech with no cue is measured on the backbone's words
+
+**Context:** The first pilot run reported 215 s of detected speech with no cue. Voice activity on
+the vocal stem also fires on grunts, crowds and shouts. Whisper stretches word ends over the
+silence that follows, and it writes laughs ("ha ha ha") that the model rightly drops.
+
+**Decision:** The quality check's uncovered speech is made of stretches where Parakeet, the
+backbone, heard words, each word counted for at most 1 s, outside the cues, songs and dropped
+lines. The voice activity with no cue is reported beside it for reference.
+
+**Consequences:** On the pilot the check finds no heard speech without a cue, and 215 s of voice
+with none (grunts, crowds). Speech only Whisper heard, if the model kept it, is covered by its
+utterance's cue.
+
+**Supersedes:** none.

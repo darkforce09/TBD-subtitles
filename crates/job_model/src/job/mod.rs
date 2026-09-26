@@ -1,2 +1,8 @@
-//! The job record: one video, its probe result, its settings, and the status and timing of every
-//! stage, as kept in `job.json`.
+//! The job record: one video, its settings, and the fingerprint and measurements of every
+//! finished step, as kept in `job.json`.
+
+mod record;
+mod settings;
+
+pub use record::{JobRecord, StepMeasure, StepRecord, WorkerMeasure};
+pub use settings::{JobSettings, Separator, WhisperModel};

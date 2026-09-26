@@ -28,7 +28,7 @@ frame_ui(&self)
   ├── dropped files ──▶ Action::QueueVideos
   ├── feature_views::queue_ui ──▶ JobQueueView ──▶ queue_panel_ui
   │                                                └──▶ JobQueueEvent ──▶ Action::RemoveFromQueue
-  └── central panel: the title and a note that no stage is built
+  └── central panel: the title and a note to run jobs with `tbd-subtitles process`
 
 apply(&mut self, actions)
   └── queue_editing::add_videos / remove_video, then a log line

@@ -25,8 +25,8 @@ VRAM peaks. `report` reads every `results/<item>.json` back.
 
 ## Boundaries
 
-- Depends on: `inference`, `media_io`, `stages`, `job_model` and `child_process`; `clap`,
-  `anyhow`, `serde_json`, `nvml-wrapper` and `libc`.
+- Depends on: `inference`, `media_io`, `stages`, `job_model`, `child_process` and
+  `pipeline::measure`; `clap`, `anyhow`, `serde` and `serde_json`.
 - Used by: nothing; it is the binary's source.
 - Rules: a command that could not run exits non-zero with the reason, never a success (the
   header in `main.rs`).

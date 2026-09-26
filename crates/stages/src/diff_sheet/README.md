@@ -19,12 +19,17 @@ crates/stages/src/diff_sheet/
 words. It cuts the backbone into utterances at pauses of 0.6 s, at sentence ends followed by
 0.2 s, and at 12 s, and writes each as `U0412 12:03.4 2.1s | Law, the {P:Birdcage|W:bird cage}
 is closing{W:+in}!`. A word every engine heard the same is locked; each utterance keeps every
-engine's own words for the novelty check.
+engine's own words for the novelty check. The `Utterance` type is `job_model::outputs::Utterance`,
+re-exported from `sheet`, so the pipeline stores the sheet as `sheet.json` and the later stages
+read it back.
 
 ## Boundaries
 
-- Depends on: `job_model::outputs`, `serde`.
-- Used by: `crates/stages/src/adjudication/`, `tools/stack_spike/` and `tools/stack_spike_ggml/`.
+- Depends on: `job_model::outputs` (`EngineTranscript`, `TimedWord`, `Utterance`).
+- Used by: `crates/pipeline/src/tasks/speech.rs` (the diff-sheet step);
+  `crates/stages/src/adjudication/` (the sheet and the word normalisation) and
+  `crates/stages/src/alignment/` (`align`, to line displayed words up with the backbone's);
+  `tools/stack_spike/`, `tools/stack_spike_ggml/` and `tools/stack_spike_llm/`.
 - Rules: an alignment visits every word of both lists once, in order
   (`every_word_of_both_lists_appears_once_in_order`); disagreements are written inline and
   agreements locked (`disagreements_are_written_inline_and_agreements_locked`).

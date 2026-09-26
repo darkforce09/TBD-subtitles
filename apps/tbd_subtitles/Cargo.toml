@@ -13,10 +13,12 @@ name = "tbd-subtitles"
 path = "src/main.rs"
 
 [dependencies]
-# Runs jobs: stage order, resume, worker processes, progress.
+# Runs jobs: step order, resume, worker processes, measurements, progress.
 pipeline = { path = "../../crates/pipeline" }
-# Stage names for the `worker` subcommand.
+# Step names and job settings for the `process` and `worker` subcommands.
 job_model = { path = "../../crates/job_model" }
+# The built-in series glossary the `process` subcommand defaults to.
+stages = { path = "../../crates/stages" }
 # Error context at the top of the binary only; the library crates return typed errors.
 anyhow = "1"
 # The subcommands `gui`, `process` and `worker`.

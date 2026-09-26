@@ -23,9 +23,14 @@ the same chunks, so the diff sheet can line their words up chunk by chunk. The r
 
 - Depends on: `media_io::pcm_stream::read_f32_range`; `inference::onnx::parakeet_tdt` and, with the
   `crispasr` feature, `inference::ggml::crispasr`; `job_model::outputs`.
-- Used by: `tools/stack_spike/` and `tools/stack_spike_ggml/`.
-- Rules: word times are in video seconds and inside their chunk
-  (`every_chunk_is_heard_and_timed_in_video_seconds`).
+- Used by: `crates/pipeline/src/tasks/speech.rs` (the speech-recognition and re-decode steps, one
+  per engine) and the stack spike tools in `tools/stack_spike/` and `tools/stack_spike_ggml/`.
+- Rules:
+  - word times are in video seconds and inside their chunk
+    (`every_chunk_is_heard_and_timed_in_video_seconds` in `tests/asr.rs`);
+  - Parakeet runs in a worker of the main binary and Whisper in one of the ggml binary
+    (`gpu_steps_run_in_workers_and_whisper_alone_in_the_ggml_binary` in
+    `crates/pipeline/src/graph/tests/graph.rs`).
 
 ## Related documentation
 

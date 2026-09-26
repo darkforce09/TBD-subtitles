@@ -24,7 +24,7 @@ apps/tbd_subtitles/src/
 `main.rs` installs logging from `core`, hands the process arguments to `cli`, and turns the
 result into the exit code: 0 on success, 1 with the whole error chain on stderr otherwise. `cli`
 parses with clap and opens the window through `application` for `gui` or no subcommand, or runs
-its own `process` and `worker` runners.
+its own `process` and `worker` runners, which hand the jobs and steps to `crates/pipeline/`.
 
 `application` composes the features. Each feature keeps its data in `models/` and `services/`,
 free of egui, and draws in `ui/` from a narrow borrowed view the application lends it each frame;
@@ -37,7 +37,8 @@ module headers, and their code is not written yet. `core` holds what any module 
 main.rs ──▶ cli ──▶ application ──▶ job_queue (models, services, ui, events)
              │           │
              │           └── job_report, line_review, settings: headers only
-             └──▶ job_model::StageName (crates/job_model)
+             └──▶ pipeline (run_job, tasks::worker_main), job_model (StepName, JobSettings),
+                  stages::adjudication::glossary
 
 any module ──▶ core (logging, ui)
 ```
@@ -49,9 +50,11 @@ and its subcommands are described in the crate README and in `cli/README.md`.
 
 ## Boundaries
 
-- Depends on: `crates/job_model/` for `StageName`; `anyhow`, `clap`, `eframe`, `tracing` and
-  `tracing-subscriber`.
-- Used by: nothing in the repository links it; people run the binary.
+- Depends on: `crates/pipeline/` for running jobs and worker steps; `crates/job_model/` for
+  `StepName` and the job settings; `crates/stages/` for the built-in glossary; `anyhow`, `clap`,
+  `eframe`, `tracing` and `tracing-subscriber`.
+- Used by: nothing in the repository links it; people run the binary, and the job runner in
+  `crates/pipeline/` starts its `worker` subcommand.
 - Rules: each held by a test in `tests/architecture_rules.rs`:
   - the top level holds only `main.rs`, this README, `tests/` and the seven module folders, each
     with a `mod.rs`; every feature has `models/mod.rs`, `services/mod.rs` and `ui/mod.rs`; and

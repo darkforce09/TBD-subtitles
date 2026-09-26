@@ -68,8 +68,10 @@ A GPU item refuses to run (and records "not run") while less than 5632 MiB of VR
 ## Boundaries
 
 - Depends on: `crates/child_process/` (workers), `crates/inference/` (model store, CUDA runtime,
-  models), `crates/job_model/`, `crates/media_io/` and `crates/stages/` (the items under test); `clap`, `anyhow`, `serde`,
-  `serde_json`, `libc` and `nvml-wrapper`; the programs `ffmpeg` and `ffprobe` through `media_io`.
+  models), `crates/job_model/`, `crates/media_io/` and `crates/stages/` (the items under test,
+  and the built-in glossary), `crates/pipeline/` (`measure`: the NVML VRAM sampler and the peak
+  RAM readings the job runner uses too); `clap`, `anyhow`, `serde` and `serde_json`; the programs
+  `ffmpeg` and `ffprobe` through `media_io`.
 - Used by: a developer measuring the stack; nothing depends on it.
 - Rules:
   - the tool depends only on the workspace crates the tool table in

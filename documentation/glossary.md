@@ -115,8 +115,20 @@ A bracketed description of a meaningful non-speech sound in SDH, lowercase: `[ex
 
 ### Stage
 
-One step of the pipeline with typed inputs and outputs in the job's work directory. Stages are
-resumable.
+One part of the pipeline with typed inputs and outputs in the job's work directory, run as one or
+more steps.
+
+See: [pipeline](/documentation/architecture/pipeline.md#stage-flow)
+
+### Step
+
+The unit the job runner runs, resumes and times: one output, one fingerprint, one row of time and
+peak memory in the job report. Speech recognition is one step per engine; adjudication is its
+first pass, the re-decode per engine, the second pass and the choice of sound cues.
+
+In code: `StepName` in `crates/job_model/src/stage/step_name.rs`.
+
+See: [pipeline](/documentation/architecture/pipeline.md#steps-and-processes)
 
 ### Stem
 
@@ -126,6 +138,14 @@ One part of a separated mix: the vocal stem (voices) and the background stem (mu
 
 Token-and-duration transducer, the decoder design of NVIDIA's Parakeet models; it predicts each
 token and how long it lasts, which gives word timestamps directly.
+
+### Timing source
+
+What timed a displayed word: the CTC aligner over a block, the aligner over the utterance alone,
+the backbone engine's own time, or interpolation between timed neighbours. The job report counts
+the words per source.
+
+In code: `TimingSource` in `crates/job_model/src/outputs/aligned.rs`.
 
 ### UNSURE
 
@@ -151,8 +171,10 @@ transcript. Lower is better.
 
 ### Worker process
 
-A subcommand of the app binary that runs one GPU stage in its own process and exits when done,
-freeing VRAM.
+A `worker <step>` subcommand of an app binary that runs one step in its own process and exits
+when done, freeing VRAM. The main binary `tbd-subtitles` hosts the ONNX Runtime, FFmpeg and
+`claude` workers; `tbd-subtitles-ggml` hosts Whisper, because ggml and ONNX Runtime cannot share
+a process.
 
 ### Work directory
 

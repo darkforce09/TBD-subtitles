@@ -2,87 +2,115 @@
 
 # System overview
 
-The shape of TBD-subtitles: one Rust binary, a job runner, worker processes for GPU stages,
-FFmpeg for media, and a work directory per job. The workspace, the binary with its three
-subcommands, every crate and module folder, and the repository gates exist; the stages inside
-them are written milestone by milestone (see the [roadmap](/documentation/roadmap.md)).
+The shape of TBD-subtitles: an app binary with a job runner, a second binary for the ggml worker,
+worker processes for the GPU and language-model steps, FFmpeg for media, and a work directory per
+job. The pipeline runs end to end from the command line (`tbd-subtitles process`). The window
+shows a queue; its job view comes with the GUI milestone in the [roadmap](/documentation/roadmap.md).
 
 ## Processes
 
 ```text
-            ┌──────────────── tbd-subtitles (one binary) ────────────────┐
- user ────▶ │ gui      eframe window: queue, progress, reports, review   │
- Dolphin ─▶ │ process  CLI: run one video end to end                     │
- watcher ─▶ │          job runner: stages in order, resume, report       │
-            └───────────────┬───────────────────────┬─────────────────────┘
-                            │ spawns, one at a time │ spawns (CPU, parallel)
-                            ▼                       ▼
-                 worker <gpu stage>          ffmpeg / ffprobe
-                 separate · asr · align      decode · probe · shot changes
-                 sound_events · llm · ocr
+            ┌──────────────────── tbd-subtitles ──────────────────────────┐
+ user ────▶ │ gui      eframe window: queue, progress, reports, review    │
+ Dolphin ─▶ │ process  CLI: run each video end to end                     │
+ watcher ─▶ │          job runner: steps in order, resume, measure, report│
+            └───────────────┬─────────────────────────────┬───────────────┘
+                            │ spawns, one at a time       │ spawns alongside
+                            ▼                             ▼
+      tbd-subtitles worker <step>                 tbd-subtitles worker shot_scan
+      probe_decode · separation · asr_parakeet    (FFmpeg scdet, CPU)
+      sound_events · alignment · redecode_parakeet
+      adjudicate · readjudicate · sound_cues (claude)
+      tbd-subtitles-ggml worker <step>
+      asr_whisper · redecode_whisper
                             │ reads and writes
                             ▼
-                 work/<job id>/  stage outputs (JSON + audio), report
-                            │ final stage
+                 work/<job id>/  step outputs (JSON + audio), job.json, report.md
+                            │ output step
                             ▼
-                 <video folder>/<video base name>.srt|.ass
+                 <video folder>/<video base name>.srt
 ```
 
 - **gui** — the eframe desktop app ([GUI feature](/documentation/features/gui.md)).
 - **process** — headless run for one or more files; used by the Dolphin entry and watch folders
   ([automation](/documentation/features/automation.md)).
-- **worker `<stage>`** — a GPU stage in its own process: loads one model, processes all
-  chunks of the job, writes its output, exits. Frees VRAM and keeps native libraries apart.
-- **FFmpeg/ffprobe** — the only external programs. Audio is decoded to a pipe
-  (`-f f32le pipe:1`) and read in fixed-size chunks; stderr is drained on its own thread.
+- **worker `<step>`** — one step in its own process: it loads its model once, processes the whole
+  job, writes its output and its own measure (`steps/<step>.worker.json`), and exits. This frees
+  VRAM and keeps native libraries apart. ONNX Runtime, ggml and candle never share a binary, so
+  the Whisper steps run in `tbd-subtitles-ggml`, which sits beside `tbd-subtitles`. A worker dies
+  with the process that started it (`PR_SET_PDEATHSIG`).
+- **FFmpeg/ffprobe** — the media programs. Audio is decoded to a pipe (`-f f32le pipe:1`) and read
+  in fixed-size chunks; stderr is drained on its own thread. The `claude` CLI is the other
+  external program, for the language-model steps.
+- **Steps** — each stage is one or more steps with their own output, fingerprint and timing row
+  ([pipeline](/documentation/architecture/pipeline.md#steps-and-processes)).
 
 ## Crates
 
 ```text
 apps/
-└── tbd_subtitles/        the binary: clap subcommands, eframe GUI, composition root
+├── tbd_subtitles/        the main binary: clap subcommands, eframe GUI, the job runner's front end,
+│                         the ONNX Runtime, FFmpeg and claude workers
+└── tbd_subtitles_ggml/   the ggml worker binary: the Whisper steps through CrispASR
 crates/
-├── child_process/        external programs with deadlines, process-group kills and drained pipes
+├── child_process/        external programs with deadlines, process-group kills, drained pipes, and
+│                         death with their parent
 ├── inference/            backends behind traits: onnx (ort), ggml, candle, llm (claude CLI, mistral.rs),
-│                         model store
-├── job_model/            serde types for jobs, stage names, stage outputs, reports — the contracts
+│                         model store, CUDA runtime locator
+├── job_model/            serde types for the job record, stage and step names, stage outputs, the QC
+│                         report — the contracts
 ├── media_io/             ffprobe JSON, FFmpeg PCM streaming, shot-change scan
-├── pipeline/             stage graph, resume logic, worker processes, progress events, work directory
+├── pipeline/             step graph, resume, work directory, worker processes, measurements, tasks,
+│                         runner, progress events, report
 ├── stages/               one module folder per stage (probe_decode, separation, vad, asr, diff_sheet,
 │                         sound_events, adjudication, alignment, cues, qc, output)
-└── subtitle_formats/     cue model, SRT/VTT/ASS writers, import of existing subtitles
+└── subtitle_formats/     cue model (frames), SRT writer; VTT/ASS writers and import to come
 tools/
 ├── repo_gates/           `cargo gates`: the repository laws a program can check
+├── stack_spike*/         the stack spike's measuring harness and its ggml and llm workers
 └── verification_core/    the fail-closed verdicts, patterns and reports the gates are written with
 ```
 
 Layering, lowest first: `job_model` and `child_process`; `media_io`, `subtitle_formats` and
-`inference`; `stages`; `pipeline`; `tbd_subtitles`. A crate depends only on crates of a lower
-layer, never a sibling (`cargo gates crate-layering`); the tools depend on no product crate but
-`child_process`. Inside the app, feature folders keep rendering out of their models and services
-(the tests in `apps/tbd_subtitles/src/tests/architecture_rules.rs`). All boundaries are Rust to Rust, so the stage contracts are the serde types in
-`job_model`; the one external contract, the language model's JSON answer, is a JSON Schema kept
-beside its backend.
+`inference`; `stages`; `pipeline`; the apps `tbd_subtitles` and `tbd_subtitles_ggml`. A crate
+depends only on crates of a lower layer, never a sibling (`cargo gates crate-layering`); a tool
+depends only on the crates listed for it in `tools/repo_gates/src/layout.rs`. Inside the app,
+feature folders keep rendering out of their models and services (the tests in
+`apps/tbd_subtitles/src/tests/architecture_rules.rs`). All boundaries are Rust to Rust, so the
+stage contracts are the serde types in `job_model`; the external contracts, the language model's
+JSON answers, are JSON Schemas kept beside their prompts in `crates/stages/src/adjudication/`.
 
 ## Job work directory
 
 ```text
-work/<job id>/
-├── job.json              input path, probe result, settings, stage status and timings
+work/<job id>/            <video file stem as a slug>-<8 hex of its path>
+├── job.json              the video, its size and time, the settings, and each finished step's
+│                         fingerprint, finish time and measure
+├── job.lock              the pid of the run holding the job
+├── probe.json            the probe result and the decoded audio track
 ├── audio/                mix_16k.f32, vocals_16k.f32, background_16k.f32 (streamed, chunked)
-├── shots.json            shot-change times
+├── shots.json            every shot change with its scdet score
 ├── vad.json              speech regions and chunk plan
-├── asr/<engine>.json     per-engine words with times and confidences
-├── sheet.txt             the diff sheet for adjudication
-├── adjudicated.json      final text per utterance, flags
+├── asr/                  parakeet.json, whisper.json: words with times and confidences
+├── sheet.json, sheet.txt the diff sheet for adjudication
+├── sound_events.json     the detector's events on both stems
+├── adjudication/         first.json (first pass), redecode_parakeet.json, redecode_whisper.json
+├── adjudicated.json      final text per utterance, flags and the checks' findings
+├── sound_cues.json       candidates and the chosen, worded sound cues
 ├── aligned.json          final words with times and their timing source
-├── sound_events.json     candidate and chosen sound cues
-├── cues.json             finished cues
-└── report.md             QC results, flagged lines with timestamps, stage timings
+├── cues.json             finished cues, in frames (and cues_dropped_sounds.json)
+├── qc.json               the quality check
+├── output.json           where the subtitle file went and what it replaced
+├── report.md             QC results, flagged lines with timestamps, step timings and memory
+├── steps/, logs/         each worker's own measure and its stderr
+├── backup/               subtitle files the output step replaced
+└── claude-cwd/           the empty folder `claude -p` runs in
 ```
 
-A stage is skipped when its output exists and its recorded inputs and settings are unchanged.
-Deleting a stage's output reruns it and everything after it.
+A step is skipped when `job.json` holds its current fingerprint and its outputs exist. The
+fingerprint covers the settings the step reads and what its inputs were, so a changed setting
+reruns only the steps that read it and the steps after them. Deleting a step's output, or
+`--rerun <step>`, reruns it and everything after it.
 
 ## Models
 
@@ -92,9 +120,12 @@ No model conversion ever happens locally.
 
 ## Configuration
 
-A TOML settings file (default `~/.config/tbd-subtitles/settings.toml`): models folder, work
-folder, engines per stage, language-model backend, output format, watch folders. The GUI edits it;
-the CLI reads it and accepts overrides.
+The command line sets a job's settings: `tbd-subtitles process --help` lists the work folder,
+the glossary (the built-in One Piece glossary by default), the audio track, the separator, the
+Whisper model, the cut score, the `claude` model and steps to run again. The job record keeps
+them in `job.json`, so a resumed job knows what its outputs were made with. A TOML settings file
+(default `~/.config/tbd-subtitles/settings.toml`) that the GUI edits and the command line reads
+comes with the GUI milestone.
 
 ## Hardware and host rules
 

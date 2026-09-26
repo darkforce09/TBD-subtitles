@@ -60,9 +60,10 @@ tests need `git` on the `PATH`: some build a temporary git checkout, and some ju
 
 ## Boundaries
 
-- Depends on: `crates/child_process` (through `verification_core`) and `crates/inference`,
-  `crates/media_io`, `crates/stages` and `crates/job_model` (in the stack spike tools); the crates.io crates `clap`, `anyhow`, `regex`, `syn`, `proc-macro2` and `toml`;
-  the `git` program.
+- Depends on: `crates/child_process` (through `verification_core`); `crates/inference`,
+  `crates/media_io`, `crates/stages` and `crates/job_model` in the stack spike tools, and
+  `crates/pipeline` (its measurements) in `stack_spike`; the crates.io crates `clap`, `anyhow`,
+  `regex`, `syn`, `proc-macro2` and `toml`; the `git` program.
 - Used by: people and agents before a commit, through `cargo gates`, and a developer measuring the
   stack, through `stack-spike`; no product crate depends on anything here.
 - Rules:
