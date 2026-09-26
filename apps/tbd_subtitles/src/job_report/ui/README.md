@@ -14,7 +14,8 @@ apps/tbd_subtitles/src/job_report/ui/
 
 The verdict comes first: passes, or each failed rule in red. Then the counts, the subtitle file
 with Copy path, the buttons that open the video, its folder and `report.md`, the findings (time as
-`h:mm:ss.d`, check, text, detail) and the steps (time, peak RAM, peak VRAM) in tables.
+`h:mm:ss.d`, check, text, detail, and Review for a finding about one line) with a Review lines
+button above them, and the steps (time, peak RAM, peak VRAM) in tables.
 
 ## Boundaries
 

@@ -36,6 +36,8 @@ use crate::job_queue::services::job_runner::{self, JobRunner};
 use crate::job_queue::services::{queue_editing, queue_store, time_left};
 use crate::job_report::events::ReportEvent;
 use crate::job_report::models::report::JobReport;
+use crate::line_review::models::session::ReviewSession;
+use crate::line_review::services::clip_player::ClipPlayer;
 use crate::settings::models::page::SettingsPage;
 use crate::settings::services::job_settings;
 
@@ -49,16 +51,25 @@ pub(crate) struct TbdSubtitlesApp {
     page: Page,
     /// Every job, in run order.
     queue: Queue,
-    /// The thread that runs the jobs.
+    /// The thread that runs the full jobs, one at a time.
     runner: JobRunner,
-    /// The running job and the token that stops it.
+    /// The running full job and the token that stops it.
     cancel: Option<(JobId, CancelToken)>,
+    /// The thread that runs review runs, beside a full job: their one stale model step runs on
+    /// the CPU.
+    review_runner: JobRunner,
+    /// The running review run and the token that stops it.
+    review_cancel: Option<(JobId, CancelToken)>,
     /// Each step's seconds per second of video, for the time left.
     rates: Rates,
     settings: SettingsPage,
     pending: background::Pending,
     /// The selected finished job's report, read from its work directory.
     report: Option<(JobId, Result<JobReport, String>)>,
+    /// The selected job's line review, while it is open.
+    review: Option<(JobId, ReviewSession)>,
+    /// The clip playing in the review.
+    clip: Option<ClipPlayer>,
 }
 
 impl TbdSubtitlesApp {
@@ -72,16 +83,21 @@ impl TbdSubtitlesApp {
             .map(|root| time_left::from_history(&root))
             .unwrap_or_else(|_| time_left::pilot_rates());
         let runner = job_runner::start(env.run_job.clone(), env.wake.clone());
+        let review_runner = job_runner::start(env.run_job.clone(), env.wake.clone());
         let mut app = TbdSubtitlesApp {
             env,
             page: Page::Jobs,
             queue,
             runner,
             cancel: None,
+            review_runner,
+            review_cancel: None,
             rates,
             settings,
             pending: background::Pending::default(),
             report: None,
+            review: None,
+            clip: None,
         };
         app.start_settings_threads();
         app.apply(vec![Action::QueueVideos(videos)]);
@@ -103,6 +119,8 @@ impl TbdSubtitlesApp {
                 Action::ShowPage(page) => self.page = page,
                 Action::Settings(event) => self.apply_settings(event),
                 Action::Report(ReportEvent::Open(path)) => crate::core::portal::open(&path),
+                Action::Report(ReportEvent::Review(line)) => self.open_review(line),
+                Action::Review(event) => self.apply_review(event),
             }
         }
     }

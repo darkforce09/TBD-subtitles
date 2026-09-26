@@ -17,8 +17,9 @@ apps/tbd_subtitles/src/job_queue/ui/
 `queue_panel_ui` draws Add videos and Add folder, Start (enabled with a waiting job and every
 model on disk) or Pause, the counts of waiting and done jobs, a warning while a model is missing,
 then a row per job: its mark (waiting, running, passed, finished with findings that fail the
-quality check, failed, cancelled), its file name, and under it the running job's bar, time left and
-Cancel, or a waiting job's Up, Down, Next and remove buttons, or an ended job's Retry and remove.
+quality check, failed, cancelled), its file name (with "· corrections" for a review run), and
+under it the running job's bar, time left and Cancel, or a waiting job's Up, Down, Next and remove
+buttons, or an ended job's Retry and remove.
 `progress_view_ui` draws the selected job; while it runs, its elapsed time, time left and a row
 per step.
 

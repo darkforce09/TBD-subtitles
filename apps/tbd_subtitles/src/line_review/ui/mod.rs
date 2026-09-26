@@ -1,1 +1,5 @@
-//! The line review panels, drawn from a borrowed view; they return events and change nothing.
+//! The review view.
+
+mod review_view;
+
+pub(crate) use review_view::{ReviewView, review_view_ui};

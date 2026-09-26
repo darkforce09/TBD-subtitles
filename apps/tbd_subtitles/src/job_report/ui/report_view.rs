@@ -80,8 +80,17 @@ pub(crate) fn report_view_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<R
         }
     });
     ui.add_space(8.0);
-    ui.heading(format!("Findings ({})", report.qc.findings.len()));
-    findings_ui(ui, report);
+    ui.horizontal(|ui| {
+        ui.heading(format!("Findings ({})", report.qc.findings.len()));
+        if ui
+            .button("Review lines")
+            .on_hover_text("Hear each flagged line and correct it")
+            .clicked()
+        {
+            events.push(ReportEvent::Review(None));
+        }
+    });
+    findings_ui(ui, report, events);
     ui.add_space(8.0);
     ui.heading(format!(
         "Steps ({} of step time)",
@@ -90,7 +99,7 @@ pub(crate) fn report_view_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<R
     steps_ui(ui, report);
 }
 
-fn findings_ui(ui: &mut Ui, report: &JobReport) {
+fn findings_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<ReportEvent>) {
     if report.qc.findings.is_empty() {
         ui.label(RichText::new("No findings.").color(MUTED_TEXT));
         return;
@@ -102,9 +111,10 @@ fn findings_ui(ui: &mut Ui, report: &JobReport) {
             .column(Column::auto().at_least(70.0))
             .column(Column::auto().at_least(160.0))
             .column(Column::initial(380.0).clip(true))
+            .column(Column::auto().at_least(120.0))
             .column(Column::remainder())
             .header(20.0, |mut header| {
-                for title in ["Time", "Check", "Text", "Detail"] {
+                for title in ["Time", "Check", "Text", "Detail", ""] {
                     header.col(|ui| {
                         ui.strong(title);
                     });
@@ -124,6 +134,13 @@ fn findings_ui(ui: &mut Ui, report: &JobReport) {
                         });
                         row.col(|ui| {
                             ui.label(RichText::new(&finding.detail).color(MUTED_TEXT));
+                        });
+                        row.col(|ui| {
+                            if let Some(id) = &finding.utterance
+                                && ui.small_button("Review").clicked()
+                            {
+                                events.push(ReportEvent::Review(Some(id.clone())));
+                            }
                         });
                     });
                 }

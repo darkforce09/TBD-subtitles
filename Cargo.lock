@@ -7256,6 +7256,7 @@ dependencies = [
  "egui_extras",
  "inference",
  "job_model",
+ "media_io",
  "pipeline",
  "pollster",
  "serde",

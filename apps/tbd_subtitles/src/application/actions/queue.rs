@@ -10,8 +10,10 @@
 //! **Signals and state:** the queue, the running job's cancel token, the step rates; writes
 //! `queue.json` after every change.
 //!
-//! **Invariants:** at most one job runs; no job starts while a model is missing; a new job takes
-//! the settings chosen now, a retry or a review run the settings its `job.json` holds.
+//! **Invariants:** at most one full run and one review run run at once, each on its own runner;
+//! no job starts while a model is missing; a review run never starts while a full run of its
+//! video runs; a new job takes the settings chosen now, a retry or a review run the settings its
+//! `job.json` holds.
 
 use std::path::Path;
 use std::time::Instant;
@@ -36,14 +38,20 @@ impl TbdSubtitlesApp {
             JobQueueEvent::Select(id) => {
                 self.queue.selected = Some(id);
                 self.page = crate::application::Page::Jobs;
+                if self.review.as_ref().is_some_and(|(job, _)| *job != id) {
+                    self.apply_review(crate::line_review::events::ReviewEvent::Close);
+                }
             }
             JobQueueEvent::Remove(id) => {
                 queue_editing::remove(&mut self.queue, id);
             }
             JobQueueEvent::Move(id, to) => queue_editing::move_job(&mut self.queue, id, to),
             JobQueueEvent::Cancel(id) => {
-                if let Some((running, token)) = &self.cancel
-                    && *running == id
+                let lanes = [&self.cancel, &self.review_cancel];
+                if let Some((_, token)) = lanes
+                    .into_iter()
+                    .flatten()
+                    .find(|(running, _)| *running == id)
                 {
                     token.cancel();
                     if let Some(item) = self.queue.get_mut(id)
@@ -69,44 +77,62 @@ impl TbdSubtitlesApp {
         self.settings.items.iter().any(|item| !item.present)
     }
 
-    /// Hand the first waiting job to the runner when the queue runs and no job does.
+    /// Hand the next job of each lane to its runner: the first waiting full run when the queue
+    /// runs and no full run does, the first waiting review run when no review run does.
     pub(crate) fn start_next(&mut self) {
-        if !self.queue.running || self.cancel.is_some() || self.models_missing() {
+        if self.models_missing() {
             return;
         }
-        let Some(id) = queue_editing::next_waiting(&self.queue) else {
-            self.queue.running = false;
-            return;
-        };
+        if self.queue.running && self.cancel.is_none() {
+            match queue_editing::next_waiting(&self.queue, JobKind::Full) {
+                Some(id) => self.cancel = self.start(id),
+                None => self.queue.running = false,
+            }
+        }
+        if self.review_cancel.is_none()
+            && let Some(id) = queue_editing::next_waiting(&self.queue, JobKind::Review)
+            && !self.video_busy(id)
+        {
+            self.review_cancel = self.start(id);
+        }
+    }
+
+    /// Start job `id` on its lane's runner; the job and its cancel token when it started.
+    fn start(&mut self, id: JobId) -> Option<(JobId, CancelToken)> {
         let token = CancelToken::new();
         let options = self.options(id, token.clone());
-        let Some(item) = self.queue.get_mut(id) else {
-            return;
-        };
+        let item = self.queue.get_mut(id)?;
         let options = match options {
             Ok(options) => options,
             Err(error) => {
                 item.state = JobState::Failed(format!("{error:#}"));
                 self.save_queue();
-                return;
+                return None;
             }
         };
         item.state = JobState::Running(Box::new(JobProgress::new(Instant::now())));
         item.ran_before = true;
+        let kind = item.kind;
         let command = Command {
             id,
             video: item.video.clone(),
             options,
         };
-        match self.runner.run(command) {
-            Ok(()) => self.cancel = Some((id, token)),
+        let runner = match kind {
+            JobKind::Full => &self.runner,
+            JobKind::Review => &self.review_runner,
+        };
+        let started = runner.run(command);
+        self.save_queue();
+        match started {
+            Ok(()) => Some((id, token)),
             Err(error) => {
                 if let Some(item) = self.queue.get_mut(id) {
                     item.state = JobState::Failed(error);
                 }
+                None
             }
         }
-        self.save_queue();
     }
 
     /// The options of job `id`: the settings chosen now for a first run, the job's own for a
@@ -153,10 +179,17 @@ fn recorded_settings(work_root: &Path, video: &Path) -> Option<JobSettings> {
     Some(record.settings)
 }
 
-/// Fold what the job runner sent into the queue, and start the next job when one ended.
+/// Fold what both job runners sent into the queue, and start the next job when one ended.
 pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
-    let mut ended = false;
+    let mut events = Vec::new();
     while let Ok(event) = app.runner.events.try_recv() {
+        events.push(event);
+    }
+    while let Ok(event) = app.review_runner.events.try_recv() {
+        events.push(event);
+    }
+    let mut ended = false;
+    for event in events {
         match event {
             RunnerEvent::Progress(id, progress) => {
                 if let Some(item) = app.queue.get_mut(id)
@@ -184,12 +217,10 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
                         Err(error) => JobState::Failed(error.to_string()),
                     };
                 }
-                if app
-                    .cancel
-                    .as_ref()
-                    .is_some_and(|(running, _)| *running == id)
-                {
-                    app.cancel = None;
+                for lane in [&mut app.cancel, &mut app.review_cancel] {
+                    if lane.as_ref().is_some_and(|(running, _)| *running == id) {
+                        *lane = None;
+                    }
                 }
                 ended = true;
             }
@@ -202,5 +233,6 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
         app.save_queue();
         app.start_next();
         app.refresh_report(true);
+        app.refresh_review();
     }
 }

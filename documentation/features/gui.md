@@ -11,7 +11,12 @@ edits `settings.toml`, lists and downloads the models, and checks the machine. S
 waiting jobs one at a time, with each step's progress and the time left; a running job can be
 cancelled and an ended one retried, and the queue is kept across windows. A finished job shows
 its report: whether it passes the quality check, its findings with their times, its steps, and
-buttons that open the video, its folder and `report.md` through the desktop.
+buttons that open the video, its folder and `report.md` through the desktop. From the report the
+owner opens the line review: the flagged lines (or every line), each with its clip (the video's
+sound or the voices alone, and a small picture), what every engine heard, the text and its flags.
+The owner picks a reading or types the line, and Save and time again writes `review.json` and
+starts a review run at once, which re-times the corrected lines and rewrites the subtitle file;
+Take the correction back undoes one.
 
 ## Where it lives
 

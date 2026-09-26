@@ -19,7 +19,9 @@ apps/tbd_subtitles/src/job_queue/services/
 ## How it works
 
 `queue_editing::add_videos` queues each video not already waiting or running; a folder stands for
-its videos with no subtitle file beside them. `job_runner::start` spawns one thread that runs each
+its videos with no subtitle file beside them. `next_waiting(queue, kind)` names the job that runs
+next in a lane: full runs in queue order, review runs in theirs; `queue_review` queues a video's
+review run unless one already waits. `job_runner::start` spawns one thread that runs each
 `Command` it is handed with the given `RunJob` (the pipeline's `run_job`, or a stand-in in the
 tests) and sends every progress event and the outcome back, waking the window; the thread lives as
 long as the window, so the workers it starts are not killed early. `progress_tracking::apply`
@@ -38,6 +40,8 @@ them. `queue_store` keeps each job's video, kind and coarse state.
   - nothing here names egui or eframe
     (`dependency_boundaries_and_external_test_placement_are_enforced` in
     `apps/tbd_subtitles/src/tests/architecture_rules.rs`);
+  - review runs wait in their own lane and are queued once per video
+    (`review_runs_wait_in_their_own_lane_and_are_queued_once` in `tests/queue_editing.rs`);
   - jobs run in order and a cancelled job ends cancelled
     (`jobs_run_in_order_and_report_each_event`, `a_cancelled_job_ends_cancelled` in
     `tests/job_runner.rs`);

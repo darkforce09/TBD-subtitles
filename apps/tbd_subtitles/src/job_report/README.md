@@ -2,13 +2,14 @@
 
 The feature that shows a finished job: whether it passes the quality check and why not, its counts,
 its subtitle file with buttons that open the video, its folder and `report.md` through the desktop,
-every finding with its time, and each step's time and memory.
+every finding with its time, and each step's time and memory; from it the owner opens the line
+review.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/job_report/
-├── events.rs  `ReportEvent`: open a file or folder through the desktop
+├── events.rs  `ReportEvent`: open a file or folder through the desktop, or review the lines
 ├── mod.rs     the module tree
 ├── models/    `JobReport`, the finished job as the view shows it
 ├── services/  reading a job's `job.json`, `qc.json` and `output.json` into a `JobReport`
@@ -22,7 +23,8 @@ through `services::report_loading::load`: the video's work directory is found as
 names it (the canonical path's job id under the work folder), then `job.json` gives the steps'
 measures, `qc.json` the quality check and `output.json` the subtitle file. The view draws it under
 the job's progress on the Jobs page. Open asks the desktop portal, so the video opens in the
-desktop's default player (VLC) and the app starts no program.
+desktop's default player (VLC) and the app starts no program. Review lines opens the line review
+at the first flagged line, and a finding's Review button at the line it names.
 
 ## Public surface
 

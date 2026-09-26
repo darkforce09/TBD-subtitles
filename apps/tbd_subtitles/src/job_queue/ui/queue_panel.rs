@@ -14,7 +14,7 @@ use eframe::egui::{Button, ProgressBar, RichText, ScrollArea, Ui};
 use crate::core::format;
 use crate::core::ui::{BAD, CAUTION, GOOD, MUTED_TEXT};
 use crate::job_queue::events::JobQueueEvent;
-use crate::job_queue::models::queue::{JobState, Move, QueueItem};
+use crate::job_queue::models::queue::{JobKind, JobState, Move, QueueItem};
 use crate::job_queue::models::view::JobQueueView;
 use crate::job_queue::services::time_left;
 
@@ -86,6 +86,10 @@ fn row_ui(ui: &mut Ui, view: &JobQueueView<'_>, item: &QueueItem, events: &mut V
         || item.video.display().to_string(),
         |name| name.to_string_lossy().into_owned(),
     );
+    let name = match item.kind {
+        JobKind::Full => name,
+        JobKind::Review => format!("{name} · corrections"),
+    };
     let (mark, colour) = match &item.state {
         JobState::Waiting => ("…", MUTED_TEXT),
         JobState::Running(_) => ("▶", CAUTION),

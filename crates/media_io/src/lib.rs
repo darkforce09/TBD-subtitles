@@ -12,6 +12,7 @@
 //! whole at 44.1 kHz; FFmpeg's stderr is drained on its own thread; the source video is only read.
 
 pub mod pcm_stream;
+pub mod preview;
 pub mod probe;
 pub mod shot_changes;
 

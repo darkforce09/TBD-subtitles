@@ -26,7 +26,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p media_io   # the library
-cargo test -p media_io    # 12 unit tests; some run FFmpeg on generated audio and video
+cargo test -p media_io    # 16 unit tests; some run FFmpeg on generated audio and video
 ```
 
 The app runs FFmpeg 8.1 on the host; inside the development container, run anything that calls
@@ -39,14 +39,15 @@ None: the crate reads no setting.
 ## Public surface
 
 - The library `media_io`: `Programs`, `MediaError`, and the public modules `pcm_stream`,
-  `probe` and `shot_changes`.
+  `preview`, `probe` and `shot_changes`.
 - No binary.
 
 ## Boundaries
 
 - Depends on: `child_process` (FFmpeg and ffprobe with deadlines), `job_model` (the output
   types), `serde` and `serde_json`; the programs `ffmpeg` and `ffprobe`. No libav crate.
-- Used by: `tools/stack_spike/`; `crates/stages/` declares it as a dependency.
+- Used by: `crates/stages/`, `crates/pipeline/`, `tools/stack_spike/`, and the app's line review
+  (`preview`).
 - Rules:
   - the crate sits in layer 1 and depends only on layer 0 crates (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);

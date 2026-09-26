@@ -1,1 +1,4 @@
-//! The data the line review views draw, with no rendering code.
+//! The data the review view draws, with no rendering code.
+
+pub(crate) mod clip;
+pub(crate) mod session;

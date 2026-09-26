@@ -71,10 +71,10 @@ fn waiting_jobs_move_among_themselves() {
 fn only_an_ended_job_is_retried_and_the_first_waiting_runs_next() {
     let mut q = queue(&["a", "b"]);
     q.items[0].state = JobState::Failed("boom".into());
-    assert_eq!(next_waiting(&q), Some(1));
+    assert_eq!(next_waiting(&q, JobKind::Full), Some(1));
     assert!(retry(&mut q, 0));
     assert!(!retry(&mut q, 1), "already waiting");
-    assert_eq!(next_waiting(&q), Some(0));
+    assert_eq!(next_waiting(&q, JobKind::Full), Some(0));
 }
 
 #[test]
@@ -96,4 +96,13 @@ fn a_folder_stands_for_its_videos_without_subtitles() {
     assert_eq!(add_videos(&mut q, [dir.clone()]), 1);
     assert_eq!(q.items[1].video, dir.join("a.MKV"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn review_runs_wait_in_their_own_lane_and_are_queued_once() {
+    let mut q = queue(&["a"]);
+    let first = queue_review(&mut q, PathBuf::from("b"));
+    assert_eq!(queue_review(&mut q, PathBuf::from("b")), first);
+    assert_eq!(next_waiting(&q, JobKind::Full), Some(0));
+    assert_eq!(next_waiting(&q, JobKind::Review), Some(first));
 }

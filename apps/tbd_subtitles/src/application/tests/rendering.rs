@@ -260,3 +260,57 @@ fn a_finished_job_shows_its_report() {
     }
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn a_saved_correction_queues_a_review_run_that_runs_at_once() {
+    let root = std::env::temp_dir().join(format!("tbd-app-review-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("root");
+    let video = root.join("Dressrosa 13.mp4");
+    std::fs::write(&video, b"video").expect("video");
+    let mut app =
+        TbdSubtitlesApp::new(Environment::scratch(&root, stand_in()), vec![video.clone()]);
+    app.settings.items.iter_mut().for_each(|i| i.present = true);
+    app.apply(vec![Action::from(JobQueueEvent::Start)]);
+    settle(&mut app);
+    let job = root.join("work").join(pipeline::work_dir::job_id(
+        &std::fs::canonicalize(&video).expect("c"),
+    ));
+    std::fs::create_dir_all(&job).expect("job");
+    let sheet = r#"[{"id":"U1","start_s":10.0,"end_s":11.0,"words":[],"locked":[],"line":"U1","hypotheses":[["P",["blame!"]],["W",["flavor!"]]]}]"#;
+    let adjudicated = r#"{"lines":[{"id":"U1","t":"Blaver!","f":["UNSURE"]}],
+        "findings":{"missing_ids":[],"duplicate_ids":[],"unknown_ids":[],"novel":[],"removed_locked":[],"too_fast":[]},
+        "calls":1,"input_tokens":0,"output_tokens":0,"cost_usd":0.0}"#;
+    std::fs::write(job.join("sheet.json"), sheet).expect("sheet");
+    std::fs::write(job.join("adjudicated.json"), adjudicated).expect("adjudicated");
+    let id = app.queue.items[0].id;
+    app.apply(vec![
+        Action::from(JobQueueEvent::Select(id)),
+        Action::from(crate::job_report::events::ReportEvent::Review(None)),
+    ]);
+    let (text, _) = render(&app);
+    for expected in [
+        "Review lines",
+        "Blaver!",
+        "Parakeet",
+        "flavor!",
+        "Save and time again",
+    ] {
+        assert!(text.contains(expected), "{expected} not in {text}");
+    }
+    app.apply(vec![
+        Action::from(crate::line_review::events::ReviewEvent::Pick("P".into())),
+        Action::from(crate::line_review::events::ReviewEvent::Save),
+    ]);
+    assert!(job.join("review.json").exists());
+    let review_runs = app
+        .queue
+        .items
+        .iter()
+        .filter(|i| i.kind == crate::job_queue::models::queue::JobKind::Review)
+        .count();
+    assert_eq!(review_runs, 1);
+    settle(&mut app);
+    assert!(matches!(app.queue.items[1].state, JobState::Finished(_)));
+    let _ = std::fs::remove_dir_all(&root);
+}

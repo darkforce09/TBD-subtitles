@@ -136,13 +136,25 @@ pub(crate) fn retry(queue: &mut Queue, id: JobId) -> bool {
     true
 }
 
-/// The first waiting job, which runs next.
-pub(crate) fn next_waiting(queue: &Queue) -> Option<JobId> {
+/// The first waiting job of `kind`, which runs next in its lane: full runs one after another
+/// while the queue runs, review runs as soon as they are queued.
+pub(crate) fn next_waiting(queue: &Queue, kind: JobKind) -> Option<JobId> {
     queue
         .items
         .iter()
-        .find(|item| item.state.is_waiting())
+        .find(|item| item.state.is_waiting() && item.kind == kind)
         .map(|item| item.id)
+}
+
+/// Queue a review run of `video` unless one already waits; returns the waiting run's id.
+pub(crate) fn queue_review(queue: &mut Queue, video: PathBuf) -> JobId {
+    let waiting = queue.items.iter().find(|item| {
+        item.kind == JobKind::Review && item.video == video && item.state.is_waiting()
+    });
+    match waiting {
+        Some(item) => item.id,
+        None => push(queue, video, JobKind::Review),
+    }
 }
 
 #[cfg(test)]

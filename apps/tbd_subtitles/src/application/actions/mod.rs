@@ -2,6 +2,7 @@
 
 mod queue;
 mod report;
+mod review;
 mod settings;
 
 pub(super) use queue::poll_runner;

@@ -10,6 +10,7 @@ and `MediaError`.
 crates/media_io/src/
 ├── lib.rs         the crate root: the programs to run, the error type and the module list
 ├── pcm_stream/    FFmpeg decoding audio to 32-bit float PCM, read in fixed-size chunks
+├── preview/       the FFmpeg command lines that play a clip's sound and decode its frames
 ├── probe/         ffprobe's JSON for a video, and the choice of the English audio track
 └── shot_changes/  FFmpeg's `scdet` scan: the times of the shot changes that cue timing snaps to
 ```

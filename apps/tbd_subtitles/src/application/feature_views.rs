@@ -9,6 +9,7 @@ use crate::core::ui::{BAD, MUTED_TEXT};
 use crate::job_queue::models::view::JobQueueView;
 use crate::job_queue::ui::{progress_view_ui, queue_panel_ui};
 use crate::job_report::ui::report_view_ui;
+use crate::line_review::ui::{ReviewView, review_view_ui};
 use crate::settings::ui::settings_page_ui;
 
 fn queue_view(app: &TbdSubtitlesApp) -> JobQueueView<'_> {
@@ -37,6 +38,18 @@ pub(super) fn jobs_ui(ui: &mut Ui, app: &TbdSubtitlesApp, actions: &mut Vec<Acti
         );
         return;
     };
+    if let Some((_, session)) = app.review.as_ref().filter(|(id, _)| *id == item.id) {
+        let view = ReviewView {
+            session,
+            playing: app.clip.as_ref().is_some_and(|clip| clip.is_playing()),
+            frame: app.clip.as_ref().and_then(|clip| clip.frame()),
+            job_busy: app.video_busy(item.id),
+        };
+        let mut events = Vec::new();
+        review_view_ui(ui, &view, &mut events);
+        actions.extend(events.into_iter().map(Action::from));
+        return;
+    }
     ScrollArea::vertical().show(ui, |ui| {
         let mut events = Vec::new();
         progress_view_ui(ui, &queue_view(app), item, &mut events);

@@ -26,11 +26,12 @@ closes. Its `Environment` names the owner's settings file, the kept queue, the G
 runtime folder, holds the job runner (the pipeline's `run_job`) and wakes the window from any
 thread (`request_repaint`); the tests build one over a scratch folder with a stand-in runner.
 `TbdSubtitlesApp` holds the page shown (Jobs or Settings), the queue loaded from `queue.json`,
-the job runner's thread, the running job's cancel token, the step rates for the time left, the
-settings page, the selected finished job's report and `Pending`, the receiving end of every
-other thread it started. The videos passed
-to `launch` enter the queue as the first `Action`; the machine checks and the work folder's
-measure start at once. While a job runs the window redraws every second.
+two job runners with the cancel token of the job each runs (one for full runs, one for the review
+runs that re-time the owner's corrections), the step rates for the time left, the settings page,
+the selected finished job's report, its line review while open, the clip playing in it, and
+`Pending`, the receiving end of every other thread it started. The videos passed to `launch`
+enter the queue as the first `Action`; the machine checks and the work folder's measure start at
+once. While a job runs the window redraws every second; a playing clip wakes it at each frame.
 
 Each frame runs in three steps:
 
@@ -40,9 +41,11 @@ frame_ui(&self)
   ├── dropped files ──▶ Action::QueueVideos
   ├── page tabs ──▶ Action::ShowPage
   ├── feature_views::queue_ui ──▶ JobQueueEvent ──▶ Action::Queue
-  └── the page: jobs_ui (progress, then the report) or settings_ui ──▶ Queue / Report / Settings
+  └── the page: jobs_ui (the review, or progress then the report) or settings_ui
+                  ──▶ Queue / Report / Review / Settings
 apply(&mut self, actions)
-  └── actions::queue (edits, Start, Pause, Cancel, the next job) or actions::settings
+  └── actions::queue (edits, Start, Pause, Cancel, the next job of each lane), actions::review
+      (open, edit, save and queue a review run, play), actions::report or actions::settings
 ```
 
 `frame_ui` borrows the state immutably and only collects actions; `apply` and `poll` are the only
@@ -51,7 +54,8 @@ thread; its answer goes into the queue or the settings draft.
 
 ## Boundaries
 
-- Depends on: `crate::job_queue` and `crate::settings` (events, models, services and ui);
+- Depends on: `crate::job_queue`, `crate::job_report`, `crate::line_review` and
+  `crate::settings` (events, models, services and ui); `media_io::preview` for the clip;
   `crate::core` (`background`, `portal`, `ui`); `inference::model_store` for the runtime folder;
   `eframe`, `anyhow` and `tracing`.
 - Used by: `crate::cli`, which calls `launch` for the `gui` subcommand and for no subcommand.
@@ -66,7 +70,9 @@ thread; its answer goes into the queue or the settings draft.
     `the_settings_page_shows_the_form_models_and_checks`);
   - jobs run one after another and a cancelled job can be retried
     (`started_jobs_run_one_after_another_and_the_queue_is_kept`,
-    `a_cancelled_job_ends_cancelled_and_can_be_retried`);
+    `a_cancelled_job_ends_cancelled_and_can_be_retried`), a finished job shows its report
+    (`a_finished_job_shows_its_report`), and a saved correction queues a review run that starts
+    at once (`a_saved_correction_queues_a_review_run_that_runs_at_once`);
   - the tests never read or write the owner's files (`Environment::scratch`);
   - no feature imports this module
     (`dependency_boundaries_and_external_test_placement_are_enforced` in

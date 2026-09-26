@@ -19,6 +19,8 @@ pipeline = { path = "../../crates/pipeline" }
 job_model = { path = "../../crates/job_model" }
 # The model store and the CUDA runtime, for the models view and the machine check.
 inference = { path = "../../crates/inference" }
+# The FFmpeg command lines that play a line's clip in the review.
+media_io = { path = "../../crates/media_io" }
 # The version queries of the machine check (FFmpeg, ffprobe, claude).
 child_process = { path = "../../crates/child_process" }
 # The built-in series glossary the `process` subcommand defaults to.
