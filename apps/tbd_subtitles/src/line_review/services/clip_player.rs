@@ -114,9 +114,9 @@ fn run(
             .spawn()
             .map_err(|e| e.to_string())
     };
+    let started = Instant::now();
     let sound = spawn(sound_args)?;
     let mut pictures = spawn(frame_args)?;
-    let started = Instant::now();
     if let Some(mut out) = pictures.take_stdout() {
         let mut buffer = vec![0u8; (size.0 * size.1 * 4) as usize];
         let mut index = 0u32;

@@ -11,7 +11,9 @@
 //! **Signals and state:** none; the commands are only built here.
 //!
 //! **Invariants:** the video is only read; a clip never starts before the video or lasts less than
-//! a tenth of a second.
+//! a tenth of a second. The `pulse` output drops what the sound server still holds when FFmpeg
+//! exits, so the sound keeps a small server buffer (`PULSE_BUFFER_MS`) and ends with a silence
+//! pad (`SILENCE_PAD_S`) longer than it: only silence is dropped, and the clip is heard to its end.
 
 use std::path::Path;
 
@@ -37,13 +39,40 @@ impl Clip {
 /// The name the sound stream carries in the desktop's mixer.
 pub const STREAM_NAME: &str = "TBD Subtitles clip";
 
+/// Seconds of silence played after a clip's sound; longer than the server buffer, so the buffer
+/// holds only silence when FFmpeg exits.
+pub const SILENCE_PAD_S: u32 = 1;
+
+/// Milliseconds of sound the server holds ahead of playback; FFmpeg's `pulse` default is about
+/// two seconds, which FFmpeg writes ahead and exits before it plays.
+pub const PULSE_BUFFER_MS: u32 = 200;
+
+const _: () = assert!(
+    SILENCE_PAD_S * 1000 > PULSE_BUFFER_MS,
+    "the silence pad outlasts the server buffer"
+);
+
 fn seconds(value: f64) -> String {
     format!("{value:.3}")
 }
 
-/// FFmpeg arguments that play `clip` of audio track `audio_position` of `video` through `pulse`.
+/// The output half of a sound command: the silence pad, the small buffer and the stream name.
+fn to_pulse() -> [String; 7] {
+    [
+        "-af".into(),
+        format!("apad=pad_dur={SILENCE_PAD_S}"),
+        "-buffer_duration".into(),
+        PULSE_BUFFER_MS.to_string(),
+        "-f".into(),
+        "pulse".into(),
+        STREAM_NAME.into(),
+    ]
+}
+
+/// FFmpeg arguments that play `clip` of audio track `audio_position` of `video` through `pulse`,
+/// then `SILENCE_PAD_S` of silence.
 pub fn track_sound(video: &Path, audio_position: u32, clip: Clip) -> Vec<String> {
-    vec![
+    let mut args: Vec<String> = vec![
         "-nostdin".into(),
         "-hide_banner".into(),
         "-v".into(),
@@ -57,15 +86,15 @@ pub fn track_sound(video: &Path, audio_position: u32, clip: Clip) -> Vec<String>
         "-map".into(),
         format!("0:a:{audio_position}"),
         "-vn".into(),
-        "-f".into(),
-        "pulse".into(),
-        STREAM_NAME.into(),
-    ]
+    ];
+    args.extend(to_pulse());
+    args
 }
 
-/// FFmpeg arguments that play `clip` of a raw 16 kHz mono `f32` stem through `pulse`.
+/// FFmpeg arguments that play `clip` of a raw 16 kHz mono `f32` stem through `pulse`, then
+/// `SILENCE_PAD_S` of silence.
 pub fn stem_sound(stem: &Path, clip: Clip) -> Vec<String> {
-    vec![
+    let mut args: Vec<String> = vec![
         "-nostdin".into(),
         "-hide_banner".into(),
         "-v".into(),
@@ -82,10 +111,9 @@ pub fn stem_sound(stem: &Path, clip: Clip) -> Vec<String> {
         seconds(clip.duration_s),
         "-i".into(),
         stem.to_string_lossy().into_owned(),
-        "-f".into(),
-        "pulse".into(),
-        STREAM_NAME.into(),
-    ]
+    ];
+    args.extend(to_pulse());
+    args
 }
 
 /// The size of the preview frames for a video of `width` by `height`: `height` lines of the

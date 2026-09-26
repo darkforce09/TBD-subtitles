@@ -21,13 +21,22 @@ fn the_track_sound_goes_to_the_pulse_device() {
         joined.contains("-ss 9.500 -t 3.000 -i /v/a.mp4 -map 0:a:1"),
         "{joined}"
     );
-    assert!(joined.ends_with("-f pulse TBD Subtitles clip"), "{joined}");
+    assert!(
+        joined.ends_with("-vn -af apad=pad_dur=1 -buffer_duration 200 -f pulse TBD Subtitles clip"),
+        "{joined}"
+    );
 }
 
 #[test]
 fn a_stem_is_read_as_raw_16_khz_mono() {
     let joined = stem_sound(Path::new("/w/vocals_16k.f32"), Clip::around(1.0, 2.0, 0.0)).join(" ");
     assert!(joined.contains("-f f32le -ar 16000 -ac 1 -ss 1.000 -t 1.000 -i /w/vocals_16k.f32"));
+    assert!(
+        joined.ends_with(
+            "/w/vocals_16k.f32 -af apad=pad_dur=1 -buffer_duration 200 -f pulse TBD Subtitles clip"
+        ),
+        "{joined}"
+    );
 }
 
 #[test]

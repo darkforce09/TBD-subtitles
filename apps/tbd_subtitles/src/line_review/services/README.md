@@ -22,8 +22,10 @@ apps/tbd_subtitles/src/line_review/services/
 `review_editing::save` records where the text came from (an engine's tag, the settled text, or
 typed), drops `UNSURE`, refuses an empty text unless the line is dropped, and writes the whole file
 through a part file; taking back the last correction removes the file. `clip_player::play` runs
-both FFmpeg processes from a thread that waits for them, paces the frames at 12 per second from the
-clip's start, and stops both through one flag.
+both FFmpeg processes from a thread that waits for them, paces the frames at 12 per second from one
+start clock taken before either process spawns, and stops both through one flag. The sound runs
+about a second past the clip: `media_io::preview` ends it with a silence pad so the sound server
+plays the clip to its end before FFmpeg exits, and the clip stays playing until then.
 
 ## Boundaries
 
