@@ -2,8 +2,8 @@
 
 The `child_process` crate: the one way the app and the repository tools start an external program.
 Every child runs in its own process group under an optional deadline, with both pipes drained for
-its whole life, and its result tells a raw exit code apart from a signal, a timeout and a missing
-program.
+its whole life, dies with the thread that started it, and its result tells a raw exit code apart
+from a signal, a timeout and a missing program.
 
 ## Contents
 
@@ -33,10 +33,13 @@ waiting or piping broke), `Signalled` (the child died on a signal, which is neve
 is blocked reading its stdout, and a handle dropped without `wait` kills its group too, so an
 abandoned FFmpeg stream never keeps running.
 
-`libc` is there for three calls: `setsid`, with `setpgid(0, 0)` as the fallback, puts the child in
-a process group of its own between fork and exec, and `killpg` with `SIGKILL` kills that whole group
-when the deadline passes, so a forking program such as FFmpeg or `cargo` leaves nothing behind. The
-lookup helpers `which`, `retry` and `wait_for` apply the same rule: an answer never obtained is a
+`libc` supplies the process calls. Between fork and exec, `setsid`, with `setpgid(0, 0)` as the
+fallback, puts the child in a process group of its own, and `prctl(PR_SET_PDEATHSIG, SIGKILL)` asks
+the kernel to kill the child when the thread that started it ends; a child whose parent is already
+gone (`getppid` differs) gives up before exec. `killpg` with `SIGKILL` kills the whole group when
+the deadline passes, so a forking program such as FFmpeg or `cargo` leaves nothing behind, and a
+killed app leaves no GPU worker holding memory. A caller therefore starts a child only from a
+thread that lives until the child is reaped. The lookup helpers `which`, `retry` and `wait_for` apply the same rule: an answer never obtained is a
 `RunError`, never a quiet success. `src/README.md` describes each file.
 
 ## Getting started
@@ -45,7 +48,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p child_process   # the library alone
-cargo test -p child_process    # 24 unit tests; they run sh, cat, sleep and seq, about 3 s
+cargo test -p child_process    # 25 unit tests; they run sh, cat, sleep and seq, about 3 s
 ```
 
 The tests need a Unix shell on the `PATH`. The group-kill test sleeps 2.5 s after its timeout to
@@ -66,13 +69,16 @@ pairs and minus the `env_remove` names of its `Run`. Nothing else is read.
 
 ## Boundaries
 
-- Depends on: `std` and `libc` 0.2 without default features; no workspace crate. Unix only, through
-  `std::os::unix` process extensions.
+- Depends on: `std` and `libc` 0.2 without default features; no workspace crate. Linux only,
+  through `std::os::unix` process extensions and `prctl`.
 - Used by:
   - `tools/verification_core/`, whose `tools/verification_core/src/proc.rs` re-exports `Run`,
     `Output`, `Merged` and `RunError` and calls `which` for the repository gates;
-  - `crates/media_io/`, `crates/inference/` and `crates/pipeline/`, which declare it as a
-    dependency and call nothing from it yet.
+  - `crates/media_io/`: ffprobe and the shot scan through `Run`, the FFmpeg PCM stream through
+    `Run::spawn`, and `RunError` in its error type;
+  - `crates/inference/`: the `claude` CLI backend in `crates/inference/src/llm/claude_cli/mod.rs`;
+  - `crates/pipeline/`: the app's worker processes in `crates/pipeline/src/workers/mod.rs`;
+  - `tools/stack_spike/`: its own measured workers in `tools/stack_spike/src/measure/mod.rs`.
 - Rules:
   - the crate sits in layer 0 and depends on no workspace crate, and the repository tools may
     depend on it (`cargo gates crate-layering`, layer and tool tables in
@@ -85,7 +91,9 @@ pairs and minus the `env_remove` names of its `Run`. Nothing else is read.
     `merged_output_times_out_without_deadlocking_on_a_full_pipe`), and a streamed child is killed
     at its deadline even while its reader blocks (`a_deadline_kills_a_reader_blocked_child` in
     `crates/child_process/src/tests/running.rs`) and when its handle is dropped unwaited
-    (`dropping_an_unwaited_handle_kills_the_child`).
+    (`dropping_an_unwaited_handle_kills_the_child`);
+  - a child dies with the thread that started it
+    (`a_child_dies_with_the_thread_that_started_it`, same file).
 
 ## Related documentation
 

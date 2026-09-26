@@ -19,6 +19,9 @@
 //!    group.
 //! 3. A full pipe never deadlocks a captured child. Both streams are drained by dedicated threads
 //!    for the child's whole life.
+//! 4. A child never outlives the thread that started it: the kernel kills it (`PR_SET_PDEATHSIG`)
+//!    when that thread ends, so a killed app leaves no worker holding GPU memory. Start a child
+//!    only from a thread that stays alive until the child is reaped.
 //!
 //! Exit codes pass through raw: [`Run::status`] hands back the real code, because a caller may
 //! need an exact non-zero code. `runner.rs` spawns, isolates and reaps; `running.rs` hands a

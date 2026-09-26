@@ -25,7 +25,7 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
   ├─ status()         output(), then the code alone
   └─ spawn()          stdout to the caller, stderr drain thread, watchdog ──▶ Running ──wait──▶ Finished
         │
-        ├─ command()      pre_exec: setsid, or setpgid(0, 0) when that fails
+        ├─ command()      pre_exec: setsid (or setpgid(0, 0)), then PR_SET_PDEATHSIG=SIGKILL
         ├─ spawn()        NotFound ──▶ ProgramAbsent; any other error ──▶ Failed
         ├─ feed_stdin()   write the body once and close the pipe
         ├─ wait_within()  no deadline: wait; a deadline: try_wait every 20 ms,
@@ -37,10 +37,13 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
   environment changes, the deadline and the stdin body. `Run::display` renders the program and its
   arguments joined by spaces; it is the `program` in `Failed`, `Signalled` and `Timeout`, while
   `ProgramAbsent` carries the bare program name.
-- `runner.rs` builds the `Command`. Because `setsid` makes the child a group leader, its pid is its
-  process-group id, which `wait_within` hands to `killpg`. Stdin is a pipe only when the run carries
-  a body; otherwise it is `/dev/null`, so a child that reads stdin sees EOF instead of this
-  process's terminal. A closed stdin, when the child exits early, is not an error.
+- `runner.rs` builds the `Command`. The child asks the kernel for SIGKILL when the thread that
+  started it dies (`PR_SET_PDEATHSIG`), and gives up before exec if that parent is already gone,
+  so a caller starts a child only from a thread that lives until the child is reaped. Because
+  `setsid` makes the child a group leader, its pid is its process-group id, which `wait_within`
+  hands to `killpg`. Stdin is a pipe only when the run carries a body; otherwise it is `/dev/null`,
+  so a child that reads stdin sees EOF instead of this process's terminal. A closed stdin, when the
+  child exits early, is not an error.
 - `stream.rs` starts the drains before the wait and reads each pipe to EOF, so a child that fills
   one 64 KiB pipe buffer never blocks while the parent waits on the other. After a timeout the group
   is dead, both pipes are at EOF, and the drains join at once; after any other wait error the runner
@@ -61,20 +64,25 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
 ## Public surface
 
 - `Run`, with `new`, `arg`, `args`, `cwd`, `env`, `env_remove`, `timeout`, `stdin`, `display`,
-  `output`, `merged_output`, `status` and `spawn`: used by `tools/verification_core/src/proc.rs`, which
-  re-exports it for the repository gates.
-- `Output`, `Merged` and `RunError`: the answers, re-exported by the same file.
-- `Running` and `Finished`: the streamed child and its result, for FFmpeg streams and worker
-  processes.
+  `output`, `merged_output`, `status` and `spawn`: the one way `media_io`, `inference`, `pipeline`
+  and the tools start a program; `tools/verification_core/src/proc.rs` re-exports it for the
+  repository gates.
+- `Output`, `Merged` and `RunError`: the answers, re-exported by the same file; `media_io` wraps
+  `RunError` in its own error.
+- `Running` and `Finished`: the streamed child and its result, for the FFmpeg PCM stream in
+  `crates/media_io/src/pcm_stream/mod.rs` and the worker processes in
+  `crates/pipeline/src/workers/mod.rs` and `tools/stack_spike/src/measure/mod.rs`.
 - `which`, `retry` and `wait_for`: re-exported from `lookup.rs` at the crate root; the gates call
   `which` through `tools/verification_core/src/proc.rs`.
 
 ## Boundaries
 
 - Depends on: `std` (processes, `std::io::pipe`, threads and the `std::os::unix` process
-  extensions) and `libc` for `setsid`, `setpgid`, `killpg` and `SIGKILL`.
-- Used by: `tools/verification_core/src/proc.rs`; the product crates that declare the dependency
-  call nothing from it yet.
+  extensions) and `libc` for `setsid`, `setpgid`, `prctl`, `getpid`, `getppid`, `killpg` and
+  `SIGKILL`.
+- Used by: `tools/verification_core/src/proc.rs`; `crates/media_io/` (ffprobe, the shot scan and
+  the PCM stream), `crates/inference/src/llm/claude_cli/mod.rs`,
+  `crates/pipeline/src/workers/mod.rs` and `tools/stack_spike/src/measure/mod.rs`.
 - Rules:
   - a signal is `Signalled`, never an exit code (`signal_death_is_signalled_not_an_exit_code` and
     `merged_output_reports_absent_tools_and_signals_honestly` in `tests/runner.rs`);
@@ -84,7 +92,8 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
     `timeout_reports_timeout`);
   - a streamed child dies at its deadline and on drop
     (`a_deadline_kills_a_reader_blocked_child`, `dropping_an_unwaited_handle_kills_the_child` in
-    `tests/running.rs`);
+    `tests/running.rs`), and every child dies with the thread that started it
+    (`a_child_dies_with_the_thread_that_started_it`, same file);
   - no pipe deadlocks a run (`large_output_does_not_deadlock`,
     `merged_output_times_out_without_deadlocking_on_a_full_pipe`), and the shared pipe keeps the
     child's order (`merged_output_preserves_interleaving`);

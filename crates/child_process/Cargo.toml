@@ -10,5 +10,6 @@ rust-version = "1.95"
 publish = false
 
 [dependencies]
-# setsid, setpgid and killpg: a timeout kills the whole process tree, not only its leader.
+# setsid, setpgid and killpg: a timeout kills the whole process tree, not only its leader;
+# prctl(PR_SET_PDEATHSIG): a child dies with the thread that started it.
 libc = { version = "0.2", default-features = false }

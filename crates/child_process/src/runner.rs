@@ -163,16 +163,28 @@ impl Run {
 
         // Own process group, so a timeout can take the whole tree. See the module docs §2.
         //
+        // The child is also killed when the thread that started it dies, so a killed app never
+        // leaves a worker holding GPU memory or an FFmpeg decoding for nobody.
+        //
         // SAFETY: `pre_exec` runs between fork and exec, where only async-signal-safe calls are
-        // permitted. `setsid`/`setpgid` are both on that list and neither allocates.
+        // permitted. `setsid`, `setpgid`, `prctl` and `getppid` are all on that list and none
+        // allocates; `parent` is a plain integer copied into the closure.
+        let parent = unsafe { libc::getpid() };
         unsafe {
-            cmd.pre_exec(|| {
+            cmd.pre_exec(move || {
                 if libc::setsid() == -1 {
                     // Already a process-group leader (possible when the parent was itself
                     // spawned by a shell job-control setup); isolating the group still suffices.
                     if libc::setpgid(0, 0) == -1 {
                         return Err(std::io::Error::last_os_error());
                     }
+                }
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                // The parent died between the fork and the `prctl`: nobody will wait for us.
+                if libc::getppid() != parent {
+                    return Err(std::io::Error::from_raw_os_error(libc::ESRCH));
                 }
                 Ok(())
             });

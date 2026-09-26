@@ -57,3 +57,37 @@ fn the_raw_exit_code_passes_through() {
     let running = Run::new("sh").arg("-c").arg("exit 7").spawn().unwrap();
     assert_eq!(running.wait().unwrap().code, 7);
 }
+
+#[test]
+fn a_child_dies_with_the_thread_that_started_it() {
+    // `exec` keeps the pid, so the pid we hold is `sleep` itself.
+    let pid = std::thread::spawn(|| {
+        let running = Run::new("sh")
+            .arg("-c")
+            .arg("exec sleep 30")
+            .spawn()
+            .unwrap();
+        let pid = running.pid() as i32;
+        // Leak the handle: only the thread's end may stop the child.
+        std::mem::forget(running);
+        pid
+    })
+    .join()
+    .unwrap();
+    let dead = (0..100).any(|_| {
+        // A killed child stays a zombie until reaped; either way it no longer runs.
+        let state = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+        let running = !state.is_empty()
+            && state
+                .rsplit(')')
+                .next()
+                .is_some_and(|rest| !rest.trim_start().starts_with('Z'));
+        if running {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        !running
+    });
+    // SAFETY: reap the zombie so it does not outlive the test; the pid is our own child.
+    unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
+    assert!(dead, "the child outlived the thread that started it");
+}
