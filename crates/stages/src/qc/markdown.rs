@@ -68,6 +68,9 @@ pub fn render(
         "- Aligner offset from the backbone (signed median): {offset}"
     );
     let _ = writeln!(md, "- Unsure lines: {}; novel words: {}", s.unsure, s.novel);
+    if s.reviewed > 0 {
+        let _ = writeln!(md, "- Lines the owner corrected: {}", s.reviewed);
+    }
     let _ = writeln!(
         md,
         "- Heard speech with no cue: {:.1} s; voice with no cue, words heard or not (grunts, crowds): {:.1} s",

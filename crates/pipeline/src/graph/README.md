@@ -8,7 +8,7 @@ leaves. The run order is `StepName::ALL` in `crates/job_model/src/stage/step_nam
 
 ```text
 crates/pipeline/src/graph/
-├── mod.rs  `placement`, `uses_gpu`, `inputs`, `revision`, `settings`, `timeout` and `outputs`
+├── mod.rs  `placement`, `uses_gpu`, `loads_onnx_runtime`, `inputs`, `settings`, `outputs` and more
 └── tests/  unit tests for the order of inputs, the placements, the outputs and the settings
 ```
 
@@ -17,7 +17,10 @@ crates/pipeline/src/graph/
 `placement` puts voice activity, the diff sheet, cue building, the quality check and the output in
 the runner's own process; the Whisper steps in a worker of `tbd-subtitles-ggml`
 (`Binary::Ggml`); every other step in a worker of `tbd-subtitles` (`Binary::Main`). `uses_gpu`
-marks the steps that load a model onto the GPU, which get the CUDA environment and a VRAM monitor.
+marks the steps that load a model onto the GPU, which take the GPU lock and a VRAM monitor;
+`loads_onnx_runtime` adds the review step, which runs Parakeet-CTC on the CPU, to the steps that
+get the CUDA runtime's environment, and `reads_corrections` names it as the step whose
+fingerprint covers the owner's corrections.
 `settings` returns the part of `JobSettings` a step reads, so a changed cut score reruns cue
 building and nothing before it, and a changed output format reruns only the output. `revision`
 is 1 for every step but those listed in `REVISIONS` (cue building is at 2: a cue still too

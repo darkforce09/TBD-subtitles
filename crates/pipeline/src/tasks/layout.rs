@@ -6,8 +6,9 @@
 //! **Position:** called by `tasks::run` inside the job runner; calls `stages::{cues, qc, output}`
 //! and the subtitle writers.
 //!
-//! **Signals and state:** reads the outputs of the earlier steps; writes `cues.json`,
-//! `cues_dropped_sounds.json`, `qc.json`, `output.json` and the subtitle file beside the video.
+//! **Signals and state:** reads the outputs of the earlier steps (the words from `reviewed.json`,
+//! and the owner's corrections for the check); writes `cues.json`, `cues_dropped_sounds.json`,
+//! `qc.json`, `output.json` and the subtitle file beside the video.
 //!
 //! **Invariants:** the frame rate comes from the probe (24/1 when the video has none); the subtitle
 //! file is the only file written outside the work directory.
@@ -18,8 +19,8 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use job_model::job::OutputFormat;
 use job_model::outputs::{
-    AdjudicationPass, Aligned, EngineTranscript, OutputRecord, ShotChanges, SoundCues, SpeechPlan,
-    TimeSpan, Utterance,
+    AdjudicationPass, Aligned, Corrections, EngineTranscript, OutputRecord, ShotChanges, SoundCues,
+    SpeechPlan, TimeSpan, Utterance,
 };
 use stages::{cues, output, qc};
 use subtitle_formats::cue::{CueTrack, FrameRate};
@@ -31,7 +32,7 @@ use crate::work_dir;
 
 pub(super) fn cues(job: &Job) -> Result<TaskReport> {
     let probe = job.probe()?;
-    let aligned: Aligned = work_dir::read_json(&job.work.aligned())?;
+    let aligned: Aligned = work_dir::read_json(&job.work.reviewed())?;
     let sounds: SoundCues = work_dir::read_json(&job.work.sound_cues())?;
     let shots: ShotChanges = work_dir::read_json(&job.work.shots())?;
     let rate = probe
@@ -64,8 +65,16 @@ pub(super) fn cues(job: &Job) -> Result<TaskReport> {
 pub(super) fn qc(job: &Job) -> Result<TaskReport> {
     let probe = job.probe()?;
     let track: CueTrack = work_dir::read_json(&job.work.cues())?;
-    let aligned: Aligned = work_dir::read_json(&job.work.aligned())?;
-    let adjudicated: AdjudicationPass = work_dir::read_json(&job.work.adjudicated())?;
+    let aligned: Aligned = work_dir::read_json(&job.work.reviewed())?;
+    let corrections: Corrections = if job.work.review().exists() {
+        work_dir::read_json(&job.work.review())?
+    } else {
+        Corrections::default()
+    };
+    let adjudicated = settled(
+        work_dir::read_json::<AdjudicationPass>(&job.work.adjudicated())?,
+        &corrections,
+    );
     let sound_cues: SoundCues = work_dir::read_json(&job.work.sound_cues())?;
     let speech: SpeechPlan = work_dir::read_json(&job.work.vad())?;
     let parakeet: EngineTranscript = work_dir::read_json(&job.work.asr("parakeet"))?;
@@ -86,7 +95,7 @@ pub(super) fn qc(job: &Job) -> Result<TaskReport> {
         .map(|u| TimeSpan::new(u.start_s, u.end_s))
         .collect();
     let starts: HashMap<String, f64> = sheet.iter().map(|u| (u.id.clone(), u.start_s)).collect();
-    let result = qc::check(&qc::QcInput {
+    let mut result = qc::check(&qc::QcInput {
         track: &track,
         aligned: &aligned,
         adjudicated: &adjudicated,
@@ -97,6 +106,7 @@ pub(super) fn qc(job: &Job) -> Result<TaskReport> {
         utterance_starts: &starts,
         duration_s: probe.probe.duration_s,
     });
+    result.summary.reviewed = corrections.lines.len();
     let mut report = TaskReport {
         process_s: since(started),
         ..TaskReport::default()
@@ -116,6 +126,16 @@ pub(super) fn qc(job: &Job) -> Result<TaskReport> {
     );
     work_dir::write_json(&job.work.qc(), &result)?;
     Ok(report)
+}
+
+/// The adjudication as the owner left it: each corrected line's text and flags, and no novel or
+/// dropped-word finding on a line the owner settled.
+fn settled(mut pass: AdjudicationPass, corrections: &Corrections) -> AdjudicationPass {
+    pass.lines = super::review::corrected_lines(&pass.lines, corrections);
+    let open = |(id, _): &(String, String)| corrections.get(id).is_none();
+    pass.findings.novel.retain(open);
+    pass.findings.removed_locked.retain(open);
+    pass
 }
 
 pub(super) fn output(job: &Job) -> Result<TaskReport> {

@@ -27,7 +27,7 @@ with the prompt to paste. Update the prompt whenever the roadmap's next step cha
 ```text
 You're continuing TBD-subtitles: a Rust desktop app that makes English SDH subtitles for videos on
 my PC. The repo is /run/media/system/Disk_2/Projects/TBD-subtitles. M0 (workspace, gates), M0.5
-(stack spike) and the M1 pipeline are done: `tbd-subtitles process <video>` runs 17 resumable
+(stack spike) and the M1 pipeline are done: `tbd-subtitles process <video>` runs 18 resumable
 steps (GPU steps in workers of `tbd-subtitles` and `tbd-subtitles-ggml`) and I accepted the
 Dressrosa 11 pilot. Now do milestone M2, the desktop GUI.
 

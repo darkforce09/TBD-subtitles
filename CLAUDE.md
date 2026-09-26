@@ -9,7 +9,7 @@ Netflix's English rules. It runs locally on the owner's PC. A later milestone tr
 text that appears on screen. The first job is the Muhn Pace Dressrosa English dub in
 `/run/media/system/Main_storage/Media/one_pace/` (41 episodes; no dub subtitles exist anywhere).
 
-**Current state:** milestones M0, M0.5 and M1 are done. `tbd-subtitles process <video>` runs 17
+**Current state:** milestones M0, M0.5 and M1 are done. `tbd-subtitles process <video>` runs 18
 resumable steps, with GPU steps in workers of `tbd-subtitles` and `tbd-subtitles-ggml`, and
 writes the SRT, `report.md` and each step's time and memory. The owner accepted the Dressrosa 11
 pilot ([pilot run](/documentation/research/pilot_dressrosa_11.md)), and a 128.9-minute video ran

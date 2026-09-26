@@ -21,6 +21,10 @@ pub struct JobRecord {
     /// changes a step's output, so no fingerprint covers it.
     #[serde(default)]
     pub models_dir: Option<String>,
+    /// The SHA-256 of the owner's corrections (`review.json`) when this run started; `None` when
+    /// there are none. The review step's fingerprint covers it.
+    #[serde(default)]
+    pub corrections: Option<String>,
     /// Every step that finished, with what it was run on.
     #[serde(default)]
     pub steps: BTreeMap<StepName, StepRecord>,

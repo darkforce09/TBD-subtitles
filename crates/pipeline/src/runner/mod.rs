@@ -4,10 +4,11 @@
 //! **Role:** open or create the job's work directory and record, take its lock, walk
 //! `StepName::ALL`, run each stale step in process or in its worker, and record it.
 //!
-//! **Position:** called by the app's `process` subcommand (and later its window); uses `resume`,
+//! **Position:** called by the app's `process` subcommand and its window; uses `resume`,
 //! `workers`, `tasks` and `report`.
 //!
-//! **Signals and state:** writes `job.json` after every finished step; emits progress events.
+//! **Signals and state:** reads the owner's corrections for their digest; writes `job.json` after
+//! every finished step; emits progress events.
 //!
 //! **Invariants:** `job.json` always describes finished steps only, so a killed job resumes from
 //! the last one; one worker loads the GPU at a time (the shot scan uses none); a step starts only
@@ -23,6 +24,7 @@ use job_model::StepName;
 use job_model::job::{JobRecord, JobSettings, StepMeasure, StepRecord};
 use job_model::outputs::ProbeDecoded;
 use job_model::report::QcReport;
+use sha2::Digest;
 
 use crate::cancel::CancelToken;
 use crate::error::{Context, PipelineError, Result};
@@ -88,6 +90,7 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
             video_modified_s: 0,
             settings: options.settings.clone(),
             models_dir: None,
+            corrections: None,
             steps: Default::default(),
         },
     };
@@ -95,6 +98,7 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
     record.video_modified_s = modified_s;
     record.settings = options.settings.clone();
     record.models_dir = Some(options.models_dir.to_string_lossy().into_owned());
+    record.corrections = corrections_digest(&work);
     for step in &options.rerun {
         record.steps.remove(step);
     }
@@ -107,7 +111,7 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
 
     let cuda_env: OnceLock<std::result::Result<Vec<(String, String)>, String>> = OnceLock::new();
     let env_for = |step: StepName| -> Result<Vec<(String, String)>> {
-        if !graph::uses_gpu(step) {
+        if !graph::loads_onnx_runtime(step) {
             return Ok(Vec::new());
         }
         cuda_env
@@ -212,8 +216,19 @@ fn announce_duration(step: StepName, work: &WorkDir, progress: ProgressSink) {
     }
 }
 
-/// The CUDA runtime's environment for GPU workers, packaged beside the binaries or in the
-/// runtime folder.
+/// The SHA-256 of the owner's corrections, or `None` when the job has none.
+fn corrections_digest(work: &WorkDir) -> Option<String> {
+    let bytes = fs::read(work.review()).ok()?;
+    Some(
+        sha2::Sha256::digest(&bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect(),
+    )
+}
+
+/// The CUDA runtime's environment for ONNX Runtime workers, packaged beside the binaries or in
+/// the runtime folder.
 fn locate_cuda(binaries: &Binaries) -> Result<Vec<(String, String)>> {
     let runtime_dir =
         inference::model_store::runtime_dir().context("cannot find the runtime folder")?;

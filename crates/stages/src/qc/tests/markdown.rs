@@ -39,6 +39,7 @@ fn record() -> JobRecord {
         video_modified_s: 0,
         settings: JobSettings::with_glossary(vec![]),
         models_dir: None,
+        corrections: None,
         steps,
     }
 }

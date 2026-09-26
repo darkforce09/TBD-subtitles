@@ -18,6 +18,7 @@ fn record() -> JobRecord {
         video_modified_s: 5,
         settings: JobSettings::with_glossary(vec!["Luffy".into()]),
         models_dir: None,
+        corrections: None,
         steps: BTreeMap::new(),
     }
 }
@@ -140,4 +141,15 @@ fn the_stale_steps_are_the_invalid_ones_and_everything_that_reads_them() {
         vec![StepName::Cues, StepName::Qc, StepName::Output]
     );
     let _ = fs::remove_dir_all(work.root());
+}
+
+#[test]
+fn the_corrections_reach_the_review_step_alone() {
+    let mut a = record();
+    let before: Vec<String> = StepName::ALL.iter().map(|s| fingerprint(*s, &a)).collect();
+    a.corrections = Some("abc".into());
+    for (step, old) in StepName::ALL.iter().zip(&before) {
+        let changed = fingerprint(*step, &a) != *old;
+        assert_eq!(changed, *step == StepName::Review, "{step}");
+    }
 }

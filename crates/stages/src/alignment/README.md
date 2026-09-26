@@ -13,7 +13,7 @@ crates/stages/src/alignment/
 ├── checks.rs       an alignment against reference times: median start difference, share over 200 ms, runs
 ├── ctc_viterbi.rs  the best path of a known token sequence through a CTC grid, with each token's frames
 ├── mod.rs          `align_words_ctc`: displayed words ─▶ spoken tokens ─▶ Viterbi ─▶ word times
-├── run.rs          the `WordAligner` trait and `align_all`: blocks, fallbacks, the offset
+├── run.rs          `WordAligner`, `align_all` (blocks, fallbacks, offset), `realign_utterance`
 ├── spoken_form.rs  displayed words to spoken words: accents, digits, hyphens, symbols, punctuation
 ├── timing.rs       backbone times, interpolation, the pass checks and the signed median
 └── tests/          unit tests for blocks, Viterbi, the spoken form, the checks, timing and the run
@@ -49,7 +49,9 @@ any word still untimed ─▶ spread by characters between its neighbours ─▶
 
 `timing::signed_median` of aligner start minus backbone start, over words timed in passing
 blocks, is the job's offset. `checks::suspicious_runs` also counts words spread at even steps, for
-the aligner comparisons of the stack spike tools.
+the aligner comparisons of the stack spike tools. `run::realign_utterance` times one utterance the
+owner corrected, alone over its own span, with the same checks and the backbone's times as the
+fallback, and marks it settled; the pipeline's review step calls it.
 
 ## Boundaries
 
@@ -72,7 +74,10 @@ the aligner comparisons of the stack spike tools.
     `tests/timing.rs`);
   - a failed block falls back to utterances, then to the backbone, and every word gets a time in
     order (`a_failed_block_falls_back_to_utterances_then_to_the_backbone`,
-    `every_word_gets_a_time_in_order` in `tests/run.rs`).
+    `every_word_gets_a_time_in_order` in `tests/run.rs`);
+  - a corrected line is timed alone between its neighbours and settled, or keeps the backbone's
+    times (`a_corrected_line_is_timed_alone_between_its_neighbours`,
+    `a_corrected_line_the_aligner_fails_keeps_the_backbone_times`).
 
 ## Related documentation
 

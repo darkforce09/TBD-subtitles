@@ -20,7 +20,7 @@ shows a queue; its job view comes with the GUI milestone in the [roadmap](/docum
       tbd-subtitles worker <step>                 tbd-subtitles worker shot_scan
       probe_decode · separation · asr_parakeet    (FFmpeg scdet, CPU)
       sound_events · alignment · redecode_parakeet
-      adjudicate · readjudicate · sound_cues (claude)
+      review (CPU) · adjudicate · readjudicate · sound_cues (claude)
       tbd-subtitles-ggml worker <step>
       asr_whisper · redecode_whisper
                             │ reads and writes
@@ -98,6 +98,8 @@ work/<job id>/            <video file stem as a slug>-<8 hex of its path>
 ├── adjudicated.json      final text per utterance, flags and the checks' findings
 ├── sound_cues.json       candidates and the chosen, worded sound cues
 ├── aligned.json          final words with times and their timing source
+├── review.json           the owner's corrections, written by the window
+├── reviewed.json         the aligned words with the corrected lines timed again
 ├── cues.json             finished cues, in frames (and cues_dropped_sounds.json)
 ├── qc.json               the quality check
 ├── output.json           where the subtitle file went and what it replaced

@@ -52,6 +52,7 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
             video_modified_s: 0,
             settings: JobSettings::with_glossary(vec![]),
             models_dir: None,
+            corrections: None,
             steps,
         },
     );

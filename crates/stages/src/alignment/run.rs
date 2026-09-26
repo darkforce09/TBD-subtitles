@@ -97,6 +97,29 @@ pub fn align_all(
     result
 }
 
+/// Time kept utterance `index` alone, as the owner corrected it: the aligner over the
+/// utterance's own span (between the middles of the gaps to its neighbours), else the backbone's
+/// times matched to the new words, else interpolation. The result is never unsure.
+pub fn realign_utterance(
+    kept: &[Kept],
+    index: usize,
+    duration_s: f64,
+    aligner: &mut dyn WordAligner,
+    errors: &mut Vec<String>,
+) -> AlignedUtterance {
+    let k = &kept[index];
+    let reference = backbone_times(&k.words, &k.backbone);
+    let span = audio_span(kept, index..index + 1, duration_s);
+    let mut utterance = match attempt(aligner, span, &k.words, errors, &k.id) {
+        Some(times) if passes(&[(&times, (k.start_s, k.end_s), &reference)]) => {
+            finish(k, &times, TimingSource::CtcUtterance)
+        }
+        _ => finish(k, &reference, TimingSource::Backbone),
+    };
+    utterance.unsure = false;
+    utterance
+}
+
 /// One aligner call; an error is recorded and read as a failed alignment.
 fn attempt(
     aligner: &mut dyn WordAligner,

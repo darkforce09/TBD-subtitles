@@ -13,8 +13,10 @@ crates/pipeline/src/tasks/
 ├── llm.rs        adjudication and re-adjudication through `claude -p`, several processes at once
 ├── media.rs      probe and decode, the shot scan, and vocal separation with the chosen separator
 ├── mod.rs        `Job`, `TaskReport`, the dispatcher `run`, and `in_process` and `worker_main`
+├── review.rs     the owner's corrections timed again, each alone, on the CPU; other lines kept
 ├── sounds.rs     sound events with CED over both stems, and the sound cues the language model picks
-└── speech.rs     voice activity and chunk plan, Parakeet and Whisper, the diff sheet, re-decodes
+├── speech.rs     voice activity and chunk plan, Parakeet and Whisper, the diff sheet, re-decodes
+└── tests/        unit tests for the review task
 ```
 
 ## How it works

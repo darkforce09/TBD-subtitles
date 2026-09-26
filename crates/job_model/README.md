@@ -17,7 +17,7 @@ crates/job_model/
 ## How it works
 
 `StageName` is the one list of the eleven stages in run order, and `StepName` the one list of the
-seventeen steps they are made of, which the job runner runs, resumes and times one by one. Each
+eighteen steps they are made of, which the job runner runs, resumes and times one by one. Each
 has one name, used on the command line, in file names and in JSON: `Display`, `FromStr` and
 serde's `snake_case` all spell it. The app's `worker` subcommands and the `process` subcommand's
 `--rerun` option parse step names through `FromStr`.

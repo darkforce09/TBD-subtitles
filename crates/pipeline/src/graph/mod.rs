@@ -63,6 +63,17 @@ pub fn uses_gpu(step: StepName) -> bool {
     )
 }
 
+/// Whether the step's worker loads ONNX Runtime and so needs the runtime's environment: every
+/// GPU step, and the review step, which runs Parakeet-CTC on the CPU.
+pub fn loads_onnx_runtime(step: StepName) -> bool {
+    uses_gpu(step) || step == StepName::Review
+}
+
+/// Whether the step's fingerprint covers the owner's corrections.
+pub fn reads_corrections(step: StepName) -> bool {
+    step == StepName::Review
+}
+
 /// The steps whose outputs a step reads.
 pub fn inputs(step: StepName) -> &'static [StepName] {
     use StepName::*;
@@ -78,14 +89,15 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
         Readjudicate => &[DiffSheet, Adjudicate, RedecodeParakeet, RedecodeWhisper],
         SoundCues => &[AsrWhisper, DiffSheet, SoundEvents, Readjudicate],
         Alignment => &[ProbeDecode, Separation, DiffSheet, Readjudicate],
-        Cues => &[ProbeDecode, ShotScan, SoundCues, Alignment],
+        Review => &[ProbeDecode, Separation, DiffSheet, Readjudicate, Alignment],
+        Cues => &[ProbeDecode, ShotScan, SoundCues, Review],
         Qc => &[
             ProbeDecode,
             Vad,
             DiffSheet,
             Readjudicate,
             SoundCues,
-            Alignment,
+            Review,
             Cues,
         ],
         Output => &[Cues],
@@ -96,8 +108,8 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
 const REVISIONS: &[(StepName, u32)] = &[
     // A cue still too short shares a neighbour's cue or grows into its lead-out.
     (StepName::Cues, 2),
-    // Its findings name the utterance they are about.
-    (StepName::Qc, 2),
+    // Its findings name the utterance they are about, and the owner's corrections settle them.
+    (StepName::Qc, 3),
 ];
 
 /// The revision of a step's code; a change makes every earlier output of the step stale.
@@ -153,6 +165,7 @@ pub fn outputs(step: StepName, work: &WorkDir, video: &Path, format: OutputForma
         Readjudicate => vec![work.adjudicated()],
         SoundCues => vec![work.sound_cues()],
         Alignment => vec![work.aligned()],
+        Review => vec![work.reviewed()],
         Cues => vec![work.cues(), work.dropped_sounds()],
         Qc => vec![work.qc()],
         Output => vec![

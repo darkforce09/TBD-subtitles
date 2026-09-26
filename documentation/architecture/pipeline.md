@@ -56,6 +56,7 @@ and peak memory in the job report.
 | readjudicate | 6 | worker, `tbd-subtitles` (`claude` child) | `adjudicated.json` |
 | sound_cues | 6 | worker, `tbd-subtitles` (`claude` children) | `sound_cues.json` |
 | alignment | 7 | worker, `tbd-subtitles` (ONNX Runtime) | `aligned.json` |
+| review | 7 | worker, `tbd-subtitles` (ONNX Runtime on the CPU) | `reviewed.json` |
 | cues | 9 | job runner | `cues.json` |
 | qc | 10 | job runner | `qc.json` |
 | output | 11 | job runner | `<video base name>.srt` (or `.vtt`, `.ass`), `output.json` |
@@ -180,6 +181,14 @@ and peak memory in the job report.
   30 ms. It is signed because both time words on the same 80 ms grid, where an absolute median is
   one frame; the signed median shows a systematic shift. The quality check reports a larger
   offset.
+- **Review:** the owner's corrections from the window (`review.json`: each corrected utterance's
+  text, flags and where the text came from) are timed by the `review` step: each corrected
+  utterance alone, with Parakeet-CTC on the CPU between the middles of the gaps to its
+  neighbours, else the backbone's times; every other utterance keeps its times. The result,
+  `reviewed.json`, is what the cues and the quality check read; with no corrections it is
+  `aligned.json` as it stands. The quality check counts the corrected lines and drops their
+  unsure, novel-word and dropped-word findings. The step's fingerprint covers the corrections'
+  SHA-256, so a new correction reruns the review, the cues, the check and the output only.
 
 ## 8. Sound events
 

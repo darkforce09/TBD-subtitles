@@ -63,6 +63,7 @@ fn history_replaces_the_pilot_rate_of_each_step_it_measured() {
         video_modified_s: 0,
         settings: JobSettings::with_glossary(vec![]),
         models_dir: None,
+        corrections: None,
         steps: Default::default(),
     };
     record.steps.insert(

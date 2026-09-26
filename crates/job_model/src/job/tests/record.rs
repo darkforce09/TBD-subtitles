@@ -9,6 +9,7 @@ fn a_record_round_trips_through_json_with_steps_by_name() {
         video_modified_s: 1_700_000_000,
         settings: JobSettings::with_glossary(vec!["Luffy".to_string()]),
         models_dir: None,
+        corrections: None,
         steps: BTreeMap::new(),
     };
     record.steps.insert(

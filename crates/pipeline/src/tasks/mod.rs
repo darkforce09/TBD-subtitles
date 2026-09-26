@@ -18,6 +18,7 @@ mod alignment;
 mod layout;
 mod llm;
 mod media;
+mod review;
 mod sounds;
 mod speech;
 
@@ -120,6 +121,7 @@ pub fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<TaskRepo
         StepName::Readjudicate => llm::readjudicate(job, progress),
         StepName::SoundCues => sounds::sound_cues(job, progress),
         StepName::Alignment => alignment::alignment(job, progress),
+        StepName::Review => review::review(job),
         StepName::Cues => layout::cues(job),
         StepName::Qc => layout::qc(job),
         StepName::Output => layout::output(job),

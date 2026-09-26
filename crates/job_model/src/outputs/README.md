@@ -12,6 +12,7 @@ crates/job_model/src/outputs/
 ├── mod.rs           the module list and the re-exports
 ├── output.rs        what the output step left: the subtitle file, its backup, a retired format
 ├── probe.rs         the probe result, and the probe with its decoded audio track
+├── review.rs        the owner's corrections: each utterance's text, flags and where it came from
 ├── sheet.rs         a diff-sheet utterance: backbone words, locks, the sheet line, every hypothesis
 ├── shots.rs         the shot changes: every scdet cut with its time and score
 ├── sound_cues.rs    the sound-cue candidates, the chosen and worded cues, the refused answers
@@ -37,6 +38,8 @@ Each type is the file one step writes and the steps after it read:
 | `adjudicated.json` | `AdjudicationPass` | the second pass, merged with the first |
 | `sound_cues.json` | `SoundCues` | the sound-cue choice |
 | `aligned.json` | `Aligned` | forced alignment |
+| `review.json` | `Corrections` | the window's line review |
+| `reviewed.json` | `Aligned` | the review step |
 | `output.json` | `OutputRecord` | the output step |
 
 A `Line` is one adjudicated utterance as the model returns it: its id, its final text (`||` marks

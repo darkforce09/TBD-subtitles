@@ -131,3 +131,46 @@ fn every_word_gets_a_time_in_order() {
     assert_eq!(words.len(), 4);
     assert!(words.windows(2).all(|w| w[0].start_s <= w[1].start_s));
 }
+
+#[test]
+fn a_corrected_line_is_timed_alone_between_its_neighbours() {
+    let mut kept = vec![
+        kept_at("U1", 0, 1.0, 2.0, &["a", "b"]),
+        kept_at("U2", 1, 3.0, 4.0, &["c", "d", "e"]),
+        kept_at("U3", 2, 5.0, 6.0, &["f"]),
+    ];
+    kept[1].unsure = true;
+    let mut aligner = Scripted {
+        shift: 0.0,
+        refuse_words: 99,
+        calls: vec![],
+    };
+    let mut errors = vec![];
+    let u = realign_utterance(&kept, 1, 10.0, &mut aligner, &mut errors);
+    assert_eq!(aligner.calls.len(), 1);
+    let (span, words) = aligner.calls[0];
+    assert_eq!(words, 3);
+    assert!(span.start_s >= 2.5 && span.end_s <= 4.5, "{span:?}");
+    assert_eq!(u.id, "U2");
+    assert!(!u.unsure, "a corrected line is settled");
+    assert!(
+        u.words
+            .iter()
+            .all(|w| w.source == TimingSource::CtcUtterance)
+    );
+}
+
+#[test]
+fn a_corrected_line_the_aligner_fails_keeps_the_backbone_times() {
+    let kept = vec![kept_at("U1", 0, 1.0, 2.0, &["a", "b"])];
+    let mut aligner = Scripted {
+        shift: 0.0,
+        refuse_words: 2,
+        calls: vec![],
+    };
+    let mut errors = vec![];
+    let u = realign_utterance(&kept, 0, 10.0, &mut aligner, &mut errors);
+    assert_eq!(errors.len(), 1);
+    assert!(u.words.iter().all(|w| w.source == TimingSource::Backbone));
+    assert_eq!(u.words[0].start_s, 1.0);
+}

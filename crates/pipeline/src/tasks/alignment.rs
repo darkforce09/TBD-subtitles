@@ -29,10 +29,23 @@ use crate::work_dir;
 const RATE: f64 = 16_000.0;
 
 /// Parakeet-CTC over spans of the vocal stem.
-struct CtcAligner {
+pub(super) struct CtcAligner {
     model: ParakeetCtc,
     vocals: PathBuf,
-    model_s: f64,
+    pub(super) model_s: f64,
+}
+
+impl CtcAligner {
+    /// Parakeet-CTC from the job's models folder on `device`, over the job's vocal stem.
+    pub(super) fn open(job: &Job, device: Device) -> Result<CtcAligner> {
+        let model = ParakeetCtc::open(&job.models()?.join(parakeet_ctc::MODEL), device)
+            .context("load Parakeet-CTC")?;
+        Ok(CtcAligner {
+            model,
+            vocals: job.work.vocals(),
+            model_s: 0.0,
+        })
+    }
 }
 
 impl WordAligner for CtcAligner {
@@ -70,18 +83,12 @@ pub(super) fn alignment(job: &Job, progress: &dyn Fn(usize, usize)) -> Result<Ta
     let duration = job.probe()?.probe.duration_s;
     let kept = blocks::kept(&sheet, &adjudicated.lines);
     let load = Instant::now();
-    let model = ParakeetCtc::open(&job.models()?.join(parakeet_ctc::MODEL), Device::Cuda)
-        .context("load Parakeet-CTC")?;
+    let mut aligner = CtcAligner::open(job, Device::Cuda)?;
     let mut report = TaskReport {
         load_s: since(load),
         ..TaskReport::default()
     };
     let started = Instant::now();
-    let mut aligner = CtcAligner {
-        model,
-        vocals: job.work.vocals(),
-        model_s: 0.0,
-    };
     let aligned = run::align_all(&kept, duration, &mut aligner, progress);
     report.process_s = since(started);
     let words: Vec<_> = aligned.utterances.iter().flat_map(|u| &u.words).collect();

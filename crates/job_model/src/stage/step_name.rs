@@ -52,6 +52,8 @@ pub enum StepName {
     SoundCues,
     /// Force-align the final text against the vocal stem.
     Alignment,
+    /// Time again the lines the owner corrected, each alone, and keep every other line's times.
+    Review,
     /// Lay the words and sound cues out as subtitle cues.
     Cues,
     /// Check the cues and write the report.
@@ -62,7 +64,7 @@ pub enum StepName {
 
 impl StepName {
     /// Every step, in the order the job runner runs them.
-    pub const ALL: [StepName; 17] = [
+    pub const ALL: [StepName; 18] = [
         StepName::ProbeDecode,
         StepName::ShotScan,
         StepName::Separation,
@@ -77,6 +79,7 @@ impl StepName {
         StepName::Readjudicate,
         StepName::SoundCues,
         StepName::Alignment,
+        StepName::Review,
         StepName::Cues,
         StepName::Qc,
         StepName::Output,
@@ -99,6 +102,7 @@ impl StepName {
             StepName::Readjudicate => "readjudicate",
             StepName::SoundCues => "sound_cues",
             StepName::Alignment => "alignment",
+            StepName::Review => "review",
             StepName::Cues => "cues",
             StepName::Qc => "qc",
             StepName::Output => "output",
@@ -119,7 +123,7 @@ impl StepName {
             | StepName::RedecodeWhisper
             | StepName::Readjudicate
             | StepName::SoundCues => StageName::Adjudication,
-            StepName::Alignment => StageName::Alignment,
+            StepName::Alignment | StepName::Review => StageName::Alignment,
             StepName::Cues => StageName::Cues,
             StepName::Qc => StageName::Qc,
             StepName::Output => StageName::Output,

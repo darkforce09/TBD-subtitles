@@ -91,6 +91,14 @@ impl WorkDir {
     pub fn aligned(&self) -> PathBuf {
         self.at("aligned.json")
     }
+    /// The owner's corrections, written by the window.
+    pub fn review(&self) -> PathBuf {
+        self.at("review.json")
+    }
+    /// The aligned words with the corrected lines timed again.
+    pub fn reviewed(&self) -> PathBuf {
+        self.at("reviewed.json")
+    }
     pub fn cues(&self) -> PathBuf {
         self.at("cues.json")
     }

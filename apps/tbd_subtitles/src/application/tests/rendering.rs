@@ -223,6 +223,7 @@ fn a_finished_job_shows_its_report() {
         video_modified_s: 0,
         settings: job_model::job::JobSettings::with_glossary(vec![]),
         models_dir: None,
+        corrections: None,
         steps: Default::default(),
     };
     let qc = QcReport {

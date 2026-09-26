@@ -41,14 +41,18 @@ pub fn fingerprint(step: StepName, record: &JobRecord) -> String {
     let reads_video = graph::inputs(step).is_empty();
     let identity =
         reads_video.then(|| json!([record.video, record.video_size, record.video_modified_s]));
-    let text = json!({
+    let mut value = json!({
         "step": step,
         "revision": graph::revision(step),
         "settings": graph::settings(step, &record.settings),
         "video": identity,
         "inputs": inputs,
-    })
-    .to_string();
+    });
+    // Only the steps that read the corrections carry the key, so no other fingerprint changes.
+    if graph::reads_corrections(step) {
+        value["corrections"] = json!(record.corrections);
+    }
+    let text = value.to_string();
     Sha256::digest(text.as_bytes())
         .iter()
         .map(|b| format!("{b:02x}"))
