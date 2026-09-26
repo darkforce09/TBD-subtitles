@@ -34,6 +34,8 @@ use crate::job_queue::models::progress::Rates;
 use crate::job_queue::models::queue::{JobId, Queue};
 use crate::job_queue::services::job_runner::{self, JobRunner};
 use crate::job_queue::services::{queue_editing, queue_store, time_left};
+use crate::job_report::events::ReportEvent;
+use crate::job_report::models::report::JobReport;
 use crate::settings::models::page::SettingsPage;
 use crate::settings::services::job_settings;
 
@@ -55,6 +57,8 @@ pub(crate) struct TbdSubtitlesApp {
     rates: Rates,
     settings: SettingsPage,
     pending: background::Pending,
+    /// The selected finished job's report, read from its work directory.
+    report: Option<(JobId, Result<JobReport, String>)>,
 }
 
 impl TbdSubtitlesApp {
@@ -77,6 +81,7 @@ impl TbdSubtitlesApp {
             rates,
             settings,
             pending: background::Pending::default(),
+            report: None,
         };
         app.start_settings_threads();
         app.apply(vec![Action::QueueVideos(videos)]);
@@ -97,6 +102,7 @@ impl TbdSubtitlesApp {
                 Action::Queue(event) => self.apply_queue(event),
                 Action::ShowPage(page) => self.page = page,
                 Action::Settings(event) => self.apply_settings(event),
+                Action::Report(ReportEvent::Open(path)) => crate::core::portal::open(&path),
             }
         }
     }

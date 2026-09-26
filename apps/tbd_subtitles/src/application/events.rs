@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use crate::job_queue::events::JobQueueEvent;
+use crate::job_report::events::ReportEvent;
 use crate::settings::events::SettingsEvent;
 
 /// The page the right side of the window shows.
@@ -21,6 +22,7 @@ pub(crate) enum Action {
     Queue(JobQueueEvent),
     ShowPage(Page),
     Settings(SettingsEvent),
+    Report(ReportEvent),
 }
 
 impl From<JobQueueEvent> for Action {
@@ -32,5 +34,11 @@ impl From<JobQueueEvent> for Action {
 impl From<SettingsEvent> for Action {
     fn from(event: SettingsEvent) -> Action {
         Action::Settings(event)
+    }
+}
+
+impl From<ReportEvent> for Action {
+    fn from(event: ReportEvent) -> Action {
+        Action::Report(event)
     }
 }

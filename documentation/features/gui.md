@@ -9,7 +9,9 @@ command line, dropped onto the window or added through the desktop's chooser (fi
 for its videos without subtitles), each with a button that takes it out again. The Settings page
 edits `settings.toml`, lists and downloads the models, and checks the machine. Start runs the
 waiting jobs one at a time, with each step's progress and the time left; a running job can be
-cancelled and an ended one retried, and the queue is kept across windows.
+cancelled and an ended one retried, and the queue is kept across windows. A finished job shows
+its report: whether it passes the quality check, its findings with their times, its steps, and
+buttons that open the video, its folder and `report.md` through the desktop.
 
 ## Where it lives
 

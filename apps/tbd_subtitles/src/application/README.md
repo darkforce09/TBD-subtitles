@@ -27,7 +27,8 @@ runtime folder, holds the job runner (the pipeline's `run_job`) and wakes the wi
 thread (`request_repaint`); the tests build one over a scratch folder with a stand-in runner.
 `TbdSubtitlesApp` holds the page shown (Jobs or Settings), the queue loaded from `queue.json`,
 the job runner's thread, the running job's cancel token, the step rates for the time left, the
-settings page and `Pending`, the receiving end of every other thread it started. The videos passed
+settings page, the selected finished job's report and `Pending`, the receiving end of every
+other thread it started. The videos passed
 to `launch` enter the queue as the first `Action`; the machine checks and the work folder's
 measure start at once. While a job runs the window redraws every second.
 
@@ -39,7 +40,7 @@ frame_ui(&self)
   ├── dropped files ──▶ Action::QueueVideos
   ├── page tabs ──▶ Action::ShowPage
   ├── feature_views::queue_ui ──▶ JobQueueEvent ──▶ Action::Queue
-  └── the page: jobs_ui (the selected job) or settings_ui ──▶ Action::Queue / Action::Settings
+  └── the page: jobs_ui (progress, then the report) or settings_ui ──▶ Queue / Report / Settings
 apply(&mut self, actions)
   └── actions::queue (edits, Start, Pause, Cancel, the next job) or actions::settings
 ```

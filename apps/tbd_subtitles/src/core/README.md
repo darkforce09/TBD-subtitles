@@ -9,7 +9,7 @@ the composition modules and the features, and imports none of them.
 ```text
 apps/tbd_subtitles/src/core/
 ├── background.rs  `Wake`: how a thread asks the window for a frame
-├── format.rs      `size`: bytes as MiB or GiB
+├── format.rs      `size` and `duration`: bytes as MiB or GiB, seconds as hours, minutes, seconds
 ├── logging.rs     `initialise`: the global log subscriber, filtered by `RUST_LOG`, writing to stderr
 ├── mod.rs         the module tree
 ├── portal.rs      the desktop's file and folder chooser, and opening a file in its default program
@@ -35,7 +35,7 @@ from here, so the window looks the same across features.
 ## Public surface
 
 - `logging::initialise`, called by `apps/tbd_subtitles/src/main.rs`.
-- `background::Wake`; `portal::{choose, open, Choose, Chosen}`; `format::size`.
+- `background::Wake`; `portal::{choose, open, Choose, Chosen}`; `format::{size, duration}`.
 - `ui::{MUTED_TEXT, GOOD, CAUTION, BAD}`, the shared colours.
 
 ## Boundaries

@@ -2,12 +2,13 @@
 
 use std::time::Instant;
 
-use eframe::egui::{RichText, Ui};
+use eframe::egui::{RichText, ScrollArea, Ui};
 
 use super::{Action, TbdSubtitlesApp};
-use crate::core::ui::MUTED_TEXT;
+use crate::core::ui::{BAD, MUTED_TEXT};
 use crate::job_queue::models::view::JobQueueView;
 use crate::job_queue::ui::{progress_view_ui, queue_panel_ui};
+use crate::job_report::ui::report_view_ui;
 use crate::settings::ui::settings_page_ui;
 
 fn queue_view(app: &TbdSubtitlesApp) -> JobQueueView<'_> {
@@ -36,9 +37,22 @@ pub(super) fn jobs_ui(ui: &mut Ui, app: &TbdSubtitlesApp, actions: &mut Vec<Acti
         );
         return;
     };
-    let mut events = Vec::new();
-    progress_view_ui(ui, &queue_view(app), item, &mut events);
-    actions.extend(events.into_iter().map(Action::from));
+    ScrollArea::vertical().show(ui, |ui| {
+        let mut events = Vec::new();
+        progress_view_ui(ui, &queue_view(app), item, &mut events);
+        actions.extend(events.into_iter().map(Action::from));
+        match app.report.as_ref().filter(|(id, _)| *id == item.id) {
+            Some((_, Ok(report))) => {
+                let mut events = Vec::new();
+                report_view_ui(ui, report, &mut events);
+                actions.extend(events.into_iter().map(Action::from));
+            }
+            Some((_, Err(error))) => {
+                ui.label(RichText::new(format!("No report: {error}")).color(BAD));
+            }
+            None => {}
+        }
+    });
 }
 
 /// Draw the settings page and collect its events as actions.

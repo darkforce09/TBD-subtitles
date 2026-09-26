@@ -61,6 +61,7 @@ impl TbdSubtitlesApp {
         }
         self.save_queue();
         self.start_next();
+        self.refresh_report(false);
     }
 
     /// Whether a model or runtime archive a job needs is missing.
@@ -200,5 +201,6 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
         }
         app.save_queue();
         app.start_next();
+        app.refresh_report(true);
     }
 }

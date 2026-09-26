@@ -9,6 +9,7 @@ answers in before the next frame.
 apps/tbd_subtitles/src/application/actions/
 ├── mod.rs       the module list and the re-exports `application` uses
 ├── queue.rs     the queue's actions, starting the next job with its options, the runner's events
+├── report.rs    the selected finished job's report, read when it is selected or ends
 └── settings.rs  the settings page as the window opens, its actions, and its threads' answers
 ```
 

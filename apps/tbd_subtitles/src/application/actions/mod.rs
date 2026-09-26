@@ -1,6 +1,7 @@
 //! Applying actions after the frame, one module per feature.
 
 mod queue;
+mod report;
 mod settings;
 
 pub(super) use queue::poll_runner;

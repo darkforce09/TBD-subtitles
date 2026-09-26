@@ -1,1 +1,3 @@
-//! The job report logic: loading, checking and changing its data, with no rendering code.
+//! The report logic: reading a finished job's files into a `JobReport`, with no rendering code.
+
+pub(crate) mod report_loading;

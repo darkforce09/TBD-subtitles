@@ -1,43 +1,48 @@
 # Job report
 
-The feature that shows the report of a finished job: the quality-check results, the flagged
-lines with their timestamps, and the path of the subtitle file written. Its code is not written
-yet: each of its files holds only a module header.
+The feature that shows a finished job: whether it passes the quality check and why not, its counts,
+its subtitle file with buttons that open the video, its folder and `report.md` through the desktop,
+every finding with its time, and each step's time and memory.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/job_report/
-├── mod.rs     the module tree and the feature's header
-├── models/    the data the report views draw, with no rendering code
-├── services/  loading and checking the report data, with no rendering code
-└── ui/        the report panels, drawn from a borrowed view
+├── events.rs  `ReportEvent`: open a file or folder through the desktop
+├── mod.rs     the module tree
+├── models/    `JobReport`, the finished job as the view shows it
+├── services/  reading a job's `job.json`, `qc.json` and `output.json` into a `JobReport`
+└── ui/        the report view
 ```
 
 ## How it works
 
-The folder follows the layout every feature shares: `models/` and `services/` hold data and logic
-free of egui, and `ui/` draws from a view the application lends it and returns events for the
-application to apply after the frame. No code fills that layout yet, and the window does not show
-the feature.
+When the owner selects a finished job, or the selected job ends, the application reads its report
+through `services::report_loading::load`: the video's work directory is found as the pipeline
+names it (the canonical path's job id under the work folder), then `job.json` gives the steps'
+measures, `qc.json` the quality check and `output.json` the subtitle file. The view draws it under
+the job's progress on the Jobs page. Open asks the desktop portal, so the video opens in the
+desktop's default player (VLC) and the app starts no program.
 
 ## Public surface
 
-None: the folder declares `models`, `services` and `ui`, and none of them holds an item another
-module can use.
+- `models::report::JobReport`, `services::report_loading::load`, `ui::report_view_ui` and
+  `events::ReportEvent`, for the application.
 
 ## Boundaries
 
-- Depends on: nothing.
-- Used by: nothing; `apps/tbd_subtitles/src/main.rs` declares the module and no code calls it.
-- Rules: the folder keeps `models/mod.rs`, `services/mod.rs` and `ui/mod.rs`
-  (`module_roots_and_documentation_describe_the_entire_source_tree`); `models/` and `services/`
-  never name egui or eframe, and the feature never imports `application`, `cli` or another
-  feature's `ui` (`dependency_boundaries_and_external_test_placement_are_enforced`); both tests
-  are in `apps/tbd_subtitles/src/tests/architecture_rules.rs`.
+- Depends on: `job_model` (`JobRecord`, `OutputRecord`, `QcReport`), `pipeline::work_dir::job_id`,
+  `stages::output::subtitle_path`, `serde_json`, `crate::core`; `eframe` and `egui_extras` in `ui/`
+  only.
+- Used by: `crate::application` (`actions::report`, `feature_views`).
+- Rules: the folder keeps `models/mod.rs`, `services/mod.rs` and `ui/mod.rs`, `models/` and
+  `services/` never name egui or eframe, and the feature imports neither `application` nor `cli`
+  (`module_roots_and_documentation_describe_the_entire_source_tree`,
+  `dependency_boundaries_and_external_test_placement_are_enforced` in
+  `apps/tbd_subtitles/src/tests/architecture_rules.rs`); a finished job shows its report
+  (`a_finished_job_shows_its_report` in `apps/tbd_subtitles/src/application/tests/rendering.rs`).
 
 ## Related documentation
 
-- [Desktop GUI](/documentation/features/gui.md) — what the report shows when a job ends.
-- [System overview](/documentation/architecture/system_overview.md#job-work-directory) — the
-  job work directory and its `report.md`.
+- [Desktop GUI](/documentation/features/gui.md) — the report the window shows.
+- [Pipeline](/documentation/architecture/pipeline.md#10-quality-check) — the checks behind it.

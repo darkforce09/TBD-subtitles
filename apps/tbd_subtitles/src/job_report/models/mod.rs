@@ -1,1 +1,3 @@
-//! The data the job report views draw, with no rendering code.
+//! The data the report view draws, with no rendering code.
+
+pub(crate) mod report;
