@@ -9,7 +9,7 @@ leaves. The run order is `StepName::ALL` in `crates/job_model/src/stage/step_nam
 ```text
 crates/pipeline/src/graph/
 ├── mod.rs  `placement`, `uses_gpu`, `loads_onnx_runtime`, `inputs`, `settings`, `outputs` and more
-└── tests/  unit tests for the order of inputs, the placements, the outputs and the settings
+└── tests/  unit tests for the order of inputs, the placements, the outputs, the settings and revisions
 ```
 
 ## How it works
@@ -23,10 +23,12 @@ get the CUDA runtime's environment, and `reads_corrections` names it as the step
 fingerprint covers the owner's corrections.
 `settings` returns the part of `JobSettings` a step reads, so a changed cut score reruns cue
 building and nothing before it, and a changed output format reruns only the output. `revision`
-is 1 for every step but those listed in `REVISIONS` (cue building is at 2: a cue still too
-short shares a neighbour; the quality check is at 4: its findings name their utterance, and it
-checks the words of each Fix It change the owner has not checked again, reading the re-decodes
-for that), which makes outputs written by other code stale. `timeout` is 180 minutes for separation, 120 for
+is 1 for every step but those listed in `REVISIONS` (alignment and review are at 2: an utterance
+only another engine heard at its start or end is aligned where that engine heard it; cue building
+is at 3: a short cue joins its speaker's line of a dashed neighbour, or starts earlier into free
+time; the quality check is at 4: its findings name their utterance, and it checks the words of
+each Fix It change the owner has not checked again, reading the re-decodes for that), which makes
+outputs written by other code stale. `timeout` is 180 minutes for separation, 120 for
 Whisper, adjudication and the sound cues, and 60 for the rest. `outputs` lists the files a
 finished step leaves, the subtitle file beside the video, in the job's output format, among them.
 
@@ -45,7 +47,9 @@ finished step leaves, the subtitle file beside the video, in the job's output fo
   - every step leaves at least one file (`every_step_leaves_at_least_one_file`);
   - only the settings a step reads reach its fingerprint
     (`only_the_settings_a_step_reads_reach_its_fingerprint`);
-  - a change to what a step writes raises its revision (the module header).
+  - alignment and review read both transcripts (`alignment_and_review_read_both_transcripts`);
+  - a change to what a step writes raises its revision (the module header;
+    `changed_steps_carry_their_revision_and_the_rest_are_at_one`).
 
 ## Related documentation
 

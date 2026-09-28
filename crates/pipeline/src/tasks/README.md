@@ -39,7 +39,10 @@ fail and name `tbd-subtitles-ggml`. The output task writes the job's format (SRT
 moves the file of another format it wrote last time into `backup/`, and records both in
 `output.json` (`OutputRecord`). The quality check settles the findings of every corrected line;
 a Fix It change the owner has not checked has its words held again against every hypothesis, the
-re-decodes included, and the summary counts the owner's lines and Fix It's apart. The long tasks
+re-decodes included, and the summary counts the owner's lines and Fix It's apart. The alignment
+and review tasks read both engines' transcripts (Whisper's when it is there) for
+`sheet::heard_spans`, so a line is aligned where any engine heard its words; transcripts that cut
+other utterances than the sheet holds are an error. The long tasks
 report progress: probe and decode and separation in seconds of audio, the language-model tasks
 in batches.
 

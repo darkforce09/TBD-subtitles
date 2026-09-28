@@ -171,6 +171,11 @@ and peak memory in the job report.
 - Text is converted to spoken form before alignment ("III" → "the third", numbers to words,
   "Señor" → "Senor", hyphens to spaces) with an index map back to the displayed words.
 - Aligner: our CTC Viterbi over Parakeet-CTC-0.6B (fp32) frame probabilities, 80 ms frames.
+- An utterance's **recognition window** is its backbone words' span, widened to follow the engine
+  that heard the words: when the final line starts or ends with words the backbone lacks, the
+  window reaches back or on to where another engine heard the utterance's words (the diff sheet's
+  heard spans), but never into the neighbouring utterance's window. A heckle only Whisper heard
+  before an answer Parakeet heard is so aligned where Whisper heard it.
 - A block **passes** only if: no run of three or more zero-length or evenly spaced words (the
   signature of a silent aligner failure); every utterance lands within 1 s of its recognition
   window; the median difference from the backbone's word times is 0.2 s or less.
@@ -226,9 +231,10 @@ All times snapped to video frames. Full rules: [subtitle style rules](/documenta
   lines of one speaker share a cue in the same case. A cue too short for its room may take back
   the lead-out of the cue before, down to that cue's speech and minimum. A cue still under 20
   frames (a one-word interjection between two full cues) shares the cue before or after it, the
-  words broken again or dashed when a speaker change was marked, else grows into the time around
-  it; sharing wins over reading speed, since a fast cue is for review and a short one breaks a
-  rule.
+  words broken again or dashed when a speaker change was marked, or joins its speaker's line of a
+  dashed neighbour; else it grows into the time around it, and as a last resort starts earlier
+  than its speech, into free time no cue uses, only as far as 20 frames need. Sharing wins over
+  reading speed, since a fast cue is for review and a short one breaks a rule.
 - Sound cues take their own cue when there is a gap of 0.8 s or more, else their own line in the
   overlapping cue when it fits, else they are dropped.
 - Shot changes:

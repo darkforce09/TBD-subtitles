@@ -10,7 +10,8 @@
 //! CPU, so it runs beside a job that holds the GPU).
 //!
 //! **Signals and state:** reads `aligned.json`, `review.json`, `sheet.json`, `adjudicated.json`,
-//! `probe.json` and the vocal stem; writes `reviewed.json`.
+//! `probe.json`, both engines' transcripts (for where each line was heard) and the vocal stem;
+//! writes `reviewed.json`.
 //!
 //! **Invariants:** with no corrections, `reviewed.json` is `aligned.json` and no model loads; an
 //! uncorrected utterance keeps its words and times exactly; a line the owner drops leaves no
@@ -26,7 +27,7 @@ use job_model::outputs::{
 use stages::alignment::blocks;
 use stages::alignment::run::realign_utterance;
 
-use super::alignment::CtcAligner;
+use super::alignment::{CtcAligner, heard_spans};
 use super::{Job, TaskReport, since};
 use crate::error::Result;
 use crate::work_dir;
@@ -48,7 +49,8 @@ pub(super) fn review(job: &Job) -> Result<TaskReport> {
     let adjudicated: AdjudicationPass = work_dir::read_json(&job.work.adjudicated())?;
     let duration = job.probe()?.probe.duration_s;
     let lines = corrected_lines(&adjudicated.lines, &corrections);
-    let kept = blocks::kept(&sheet, &lines);
+    let spans = heard_spans(job, &sheet)?;
+    let kept = blocks::kept(&sheet, &lines, &spans);
     let load = Instant::now();
     let mut aligner = CtcAligner::open(job, Device::Cpu)?;
     report.load_s = since(load);

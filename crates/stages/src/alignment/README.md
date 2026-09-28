@@ -24,7 +24,12 @@ crates/stages/src/alignment/
 `blocks::kept` turns the final lines into the utterances to align: every line not flagged `LYRIC`
 or `DROP` and not empty, its `||` marks taken out of the text and kept as the indices where
 another speaker starts, with its `NARR` and `UNSURE` flags and the backbone engine's timed words.
-`plan_blocks` groups them into blocks: a block closes at a pause of 0.35 s once it is 20 s long or
+Its recognition window is the backbone's first to last word, widened where another engine heard
+the line's words: displayed words before the first that matches a backbone word move the start
+back to the heard span's start (`diff_sheet::sheet::heard_spans`), displayed words after the last
+match move the end on to the heard span's end, and a widened edge stops at the neighbouring kept
+window. A line only Whisper heard the start of, such as a heckle before an answer the backbone
+heard, is so aligned where Whisper heard it. `plan_blocks` groups them into blocks: a block closes at a pause of 0.35 s once it is 20 s long or
 would pass 60 s, at any gap before it would pass 90 s, and always where a lyric or dropped
 utterance lies between two kept ones. `audio_span` pads a block's speech by 0.3 s, never past the
 middle of the gap to its neighbour.
@@ -72,6 +77,11 @@ marks the line settled, and the pipeline's review step calls it.
   - lyric, dropped and empty lines are not kept, and a block closes at them
     (`lyric_dropped_and_empty_lines_are_not_kept`,
     `blocks_close_at_pauses_after_twenty_seconds_and_at_dropped_lines` in `tests/blocks.rs`);
+  - a window widens only where displayed words lead or trail the backbone, to where another
+    engine heard them, and never into a neighbouring kept window
+    (`a_line_only_another_engine_heard_the_start_of_is_aligned_where_it_heard_it`,
+    `a_line_the_backbone_covers_keeps_the_backbone_window`,
+    `a_widened_window_stops_at_the_next_kept_window`);
   - an alignment outside its window, far from the backbone or collapsed fails
     (`an_alignment_fails_outside_its_window_far_from_the_backbone_or_collapsed` in
     `tests/timing.rs`);

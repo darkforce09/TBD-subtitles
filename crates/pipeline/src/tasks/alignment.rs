@@ -1,25 +1,28 @@
 //! The alignment task: the final text timed against the vocal stem.
 //!
 //! **Role:** run Parakeet-CTC over each block of the vocal stem and CTC Viterbi over its grid, with
-//! the fallbacks of `stages::alignment::run`, and count the words per timing source.
+//! the fallbacks of `stages::alignment::run`, and count the words per timing source; each
+//! utterance is recognised where any engine heard the words its final line shows.
 //!
 //! **Position:** called by `tasks::run` inside a worker of the main binary (ONNX Runtime).
 //!
-//! **Signals and state:** reads `sheet.json`, `adjudicated.json`, `probe.json` and the vocal stem;
-//! writes `aligned.json`.
+//! **Signals and state:** reads `sheet.json`, `adjudicated.json`, `probe.json`, both engines'
+//! transcripts and the vocal stem; writes `aligned.json`.
 //!
 //! **Invariants:** the model loads once per job; a job where every aligner call failed is an error,
-//! not a job timed from the backbone alone.
+//! not a job timed from the backbone alone; the heard spans are cut like the sheet, one per
+//! utterance, and a sheet they do not match keeps the backbone's windows.
 
 use std::path::PathBuf;
 use std::time::Instant;
 
 use inference::onnx::Device;
 use inference::onnx::parakeet_ctc::{self, ParakeetCtc};
-use job_model::outputs::{AdjudicationPass, TimeSpan, TimingSource, Utterance};
+use job_model::outputs::{AdjudicationPass, EngineTranscript, TimeSpan, TimingSource, Utterance};
 use media_io::pcm_stream::read_f32_range;
 use stages::alignment::run::{self, WordAligner};
 use stages::alignment::{self, WordTimes, blocks};
+use stages::diff_sheet::sheet;
 
 use super::{Job, TaskReport, since};
 use crate::error::{Context, Result};
@@ -77,11 +80,30 @@ impl WordAligner for CtcAligner {
     }
 }
 
+/// Where any engine heard each utterance of `sheet`, cut from the transcripts as the diff-sheet
+/// step cut them: Parakeet as the backbone, Whisper, when its transcript is there, beside it.
+/// Empty, so every window stays the backbone's, when the cut does not match the sheet.
+pub(super) fn heard_spans(job: &Job, sheet: &[Utterance]) -> Result<Vec<(f64, f64)>> {
+    let parakeet: EngineTranscript = work_dir::read_json(&job.work.asr("parakeet"))?;
+    let whisper: Option<EngineTranscript> = work_dir::read_json(&job.work.asr("whisper")).ok();
+    let spans = sheet::heard_spans(&parakeet, &whisper.iter().collect::<Vec<_>>());
+    if spans.len() != sheet.len() {
+        tracing::warn!(
+            "the transcripts cut {} utterances, the sheet holds {}; aligning in the backbone's windows",
+            spans.len(),
+            sheet.len()
+        );
+        return Ok(Vec::new());
+    }
+    Ok(spans)
+}
+
 pub(super) fn alignment(job: &Job, progress: &dyn Fn(usize, usize)) -> Result<TaskReport> {
     let sheet: Vec<Utterance> = work_dir::read_json(&job.work.sheet())?;
     let adjudicated: AdjudicationPass = work_dir::read_json(&job.work.adjudicated())?;
     let duration = job.probe()?.probe.duration_s;
-    let kept = blocks::kept(&sheet, &adjudicated.lines);
+    let spans = heard_spans(job, &sheet)?;
+    let kept = blocks::kept(&sheet, &adjudicated.lines, &spans);
     let load = Instant::now();
     let mut aligner = CtcAligner::open(job, Device::Cuda)?;
     let mut report = TaskReport {

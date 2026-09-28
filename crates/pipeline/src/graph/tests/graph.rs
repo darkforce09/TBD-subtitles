@@ -20,6 +20,48 @@ fn every_step_reads_only_earlier_steps() {
 }
 
 #[test]
+fn alignment_and_review_read_both_transcripts() {
+    use StepName::*;
+    assert_eq!(
+        inputs(Alignment),
+        &[
+            ProbeDecode,
+            Separation,
+            AsrParakeet,
+            AsrWhisper,
+            DiffSheet,
+            Readjudicate
+        ]
+    );
+    assert_eq!(
+        inputs(Review),
+        &[
+            ProbeDecode,
+            Separation,
+            AsrParakeet,
+            AsrWhisper,
+            DiffSheet,
+            Readjudicate,
+            Alignment
+        ]
+    );
+}
+
+#[test]
+fn changed_steps_carry_their_revision_and_the_rest_are_at_one() {
+    use StepName::*;
+    assert_eq!(revision(Alignment), 2);
+    assert_eq!(revision(Review), 2);
+    assert_eq!(revision(Cues), 3);
+    assert_eq!(revision(Qc), 4);
+    for step in StepName::ALL {
+        if !matches!(step, Alignment | Review | Cues | Qc) {
+            assert_eq!(revision(step), 1, "{step}");
+        }
+    }
+}
+
+#[test]
 fn gpu_steps_run_in_workers_and_whisper_alone_in_the_ggml_binary() {
     for step in StepName::ALL {
         if uses_gpu(step) {

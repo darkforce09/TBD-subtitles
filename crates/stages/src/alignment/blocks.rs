@@ -1,22 +1,27 @@
 //! The kept utterances and the alignment blocks they are grouped into.
 //!
 //! **Role:** turn the final lines into displayed words per utterance (speaker changes out of the
-//! text and into indices; lyric and dropped lines left out), and group consecutive utterances
-//! into blocks of about 20–60 s that start and end at pauses, with the audio span each block is
-//! aligned over.
+//! text and into indices; lyric and dropped lines left out) with the window it is recognised in,
+//! and group consecutive utterances into blocks of about 20–60 s that start and end at pauses,
+//! with the audio span each block is aligned over.
 //!
-//! **Position:** used by `run.rs`; the sheet and lines come from the adjudication steps.
+//! **Position:** used by `run.rs`; the sheet and lines come from the adjudication steps, the
+//! heard spans from `diff_sheet::sheet::heard_spans`.
 //!
 //! **Signals and state:** none; pure.
 //!
 //! **Invariants:** a block never spans a lyric or dropped utterance; blocks cover the kept
 //! utterances in order, each exactly once; a block's audio span never reaches into a
-//! neighbouring block's speech.
+//! neighbouring block's speech; a window is the backbone's, widened only where displayed words
+//! the backbone lacks lead or trail it, only as far as another engine heard them, and never into
+//! the window of the kept utterance before or after it.
 
 use std::collections::HashMap;
 use std::ops::Range;
 
 use job_model::outputs::{Line, TimeSpan, TimedWord, Utterance};
+
+use crate::diff_sheet::align::{self, Step};
 
 /// A block is not closed before it is this long, unless an edge is forced.
 pub const MIN_BLOCK_S: f64 = 20.0;
@@ -35,7 +40,9 @@ pub struct Kept {
     pub id: String,
     /// Its position in the sheet.
     pub sheet_index: usize,
-    /// The recognition window: the backbone's first and last word times.
+    /// The recognition window: the backbone's first and last word times, widened to where
+    /// another engine heard displayed words the backbone lacks before its first or after its
+    /// last word, up to the neighbouring kept windows.
     pub start_s: f64,
     pub end_s: f64,
     /// The displayed words of the final text.
@@ -51,10 +58,13 @@ pub struct Kept {
 }
 
 /// The utterances to align: every sheet utterance with a final line that is not lyric, not
-/// dropped and not empty, in sheet order.
-pub fn kept(sheet: &[Utterance], lines: &[Line]) -> Vec<Kept> {
+/// dropped and not empty, in sheet order. `spans` holds, indexed like `sheet`, where any engine
+/// heard each utterance's words (`diff_sheet::sheet::heard_spans`); an empty slice leaves every
+/// window the backbone's.
+pub fn kept(sheet: &[Utterance], lines: &[Line], spans: &[(f64, f64)]) -> Vec<Kept> {
     let by_id: HashMap<&str, &Line> = lines.iter().map(|l| (l.id.as_str(), l)).collect();
     let mut out = Vec::new();
+    let mut heard = Vec::new();
     for (sheet_index, u) in sheet.iter().enumerate() {
         let Some(line) = by_id.get(u.id.as_str()) else {
             continue;
@@ -66,6 +76,7 @@ pub fn kept(sheet: &[Utterance], lines: &[Line]) -> Vec<Kept> {
         if words.is_empty() {
             continue;
         }
+        heard.push(heard_window(u, &words, spans.get(sheet_index).copied()));
         out.push(Kept {
             id: u.id.clone(),
             sheet_index,
@@ -79,7 +90,48 @@ pub fn kept(sheet: &[Utterance], lines: &[Line]) -> Vec<Kept> {
             backbone: u.words.clone(),
         });
     }
+    widen(&mut out, &heard);
     out
+}
+
+/// Widen each kept window to its `heard` window, but never into the window of the kept utterance
+/// before or after it, so no audio span reaches a neighbour's speech.
+fn widen(kept: &mut [Kept], heard: &[(f64, f64)]) {
+    for (i, &(start_s, end_s)) in heard.iter().enumerate() {
+        let floor = i
+            .checked_sub(1)
+            .map_or(f64::NEG_INFINITY, |p| kept[p].end_s);
+        let ceiling = kept.get(i + 1).map_or(f64::INFINITY, |next| next.start_s);
+        let k = &mut kept[i];
+        k.start_s = k.start_s.min(start_s.max(floor));
+        k.end_s = k.end_s.max(end_s.min(ceiling));
+    }
+}
+
+/// The window `u` showing `words` was heard in: the backbone's, its start moved back to
+/// `heard.0` when displayed words come before the first one that matches a backbone word, and its
+/// end moved on to `heard.1` when displayed words come after the last match.
+fn heard_window(u: &Utterance, words: &[String], heard: Option<(f64, f64)>) -> (f64, f64) {
+    let (mut start_s, mut end_s) = (u.start_s, u.end_s);
+    let Some(heard) = heard else {
+        return (start_s, end_s);
+    };
+    let backbone = align::normalise_all(u.words.iter().map(|w| w.text.as_str()));
+    let shown = align::normalise_all(words.iter().map(String::as_str));
+    let matched: Vec<usize> = align::align(&backbone, &shown)
+        .into_iter()
+        .filter_map(|step| match step {
+            Step::Match(_, j) => Some(j),
+            _ => None,
+        })
+        .collect();
+    if matched.first().is_none_or(|&j| j > 0) && !shown.is_empty() {
+        start_s = start_s.min(heard.0);
+    }
+    if matched.last().is_none_or(|&j| j + 1 < shown.len()) && !shown.is_empty() {
+        end_s = end_s.max(heard.1);
+    }
+    (start_s, end_s)
 }
 
 /// The words of a final text and the indices where `||` starts another speaker.

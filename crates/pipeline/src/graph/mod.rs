@@ -88,8 +88,23 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
         RedecodeParakeet | RedecodeWhisper => &[ProbeDecode, Separation, DiffSheet, Adjudicate],
         Readjudicate => &[DiffSheet, Adjudicate, RedecodeParakeet, RedecodeWhisper],
         SoundCues => &[AsrWhisper, DiffSheet, SoundEvents, Readjudicate],
-        Alignment => &[ProbeDecode, Separation, DiffSheet, Readjudicate],
-        Review => &[ProbeDecode, Separation, DiffSheet, Readjudicate, Alignment],
+        Alignment => &[
+            ProbeDecode,
+            Separation,
+            AsrParakeet,
+            AsrWhisper,
+            DiffSheet,
+            Readjudicate,
+        ],
+        Review => &[
+            ProbeDecode,
+            Separation,
+            AsrParakeet,
+            AsrWhisper,
+            DiffSheet,
+            Readjudicate,
+            Alignment,
+        ],
         Cues => &[ProbeDecode, ShotScan, SoundCues, Review],
         Qc => &[
             ProbeDecode,
@@ -108,8 +123,13 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
 
 /// Steps whose code changed what they write, with their revision; every other step is at 1.
 const REVISIONS: &[(StepName, u32)] = &[
-    // A cue still too short shares a neighbour's cue or grows into its lead-out.
-    (StepName::Cues, 2),
+    // An utterance only another engine heard at its start or end is aligned where that engine
+    // heard it.
+    (StepName::Alignment, 2),
+    (StepName::Review, 2),
+    // A short cue joins its speaker's line of a dashed neighbour, or starts earlier into free
+    // time.
+    (StepName::Cues, 3),
     // Its findings name the utterance they are about, and the owner's corrections settle them;
     // a Fix It change the owner has not checked has its words checked again.
     (StepName::Qc, 4),

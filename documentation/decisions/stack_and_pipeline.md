@@ -356,3 +356,30 @@ runbook](/documentation/runbooks/building_the_appimage.md)) at the cost of its s
 runtime archives the builder downloads, the same pins `cuda_runtime` already uses.
 
 **Supersedes:** none.
+
+### 2026-09-28 — Lines are aligned where any engine heard them; short cues join a dashed line or start early
+
+**Context:** Two lines of Dressrosa 12 came out wrong. In U0061, Parakeet heard only "Shut your
+filthy mouths!" (256.68–258.52 s); Whisper also heard the heckle before it, "Yeah, that's right!
+We want to see her suffer!" (254.12–256.58 s), and the final line kept both. The recognition
+window was Parakeet's alone, so the heckle was aligned about 2 s late with zero width. In U0314,
+"Oh?" lasted 0.2 s between "I think I'll pass on the Panties this time." and "Panties?", with
+"You say you'd like to see them?" after it: too short for a cue of its own, with no neighbour it
+could share and no time around it to grow into.
+
+**Decision:** The diff sheet gives each utterance its heard span: the earliest start and latest
+end of its backbone words and of every other engine's word lined up with it. When the final line
+starts or ends with words the backbone lacks, the alignment and review steps widen the
+utterance's recognition window back or on to that span, never into the neighbouring kept
+utterance's window; both steps read the two transcripts and are at revision 2. A dialogue cue
+under 20 frames joins its speaker's line of a neighbouring dashed cue (`-Oh? Panties?` /
+`-You say you'd like to see them?`), and as the last resort starts earlier than its speech, into
+free time no cue uses, only as far as the 20-frame minimum needs; cue building is at revision 3.
+
+**Consequences:** On Dressrosa 12, 37 of 415 kept windows widen, most by under a second; U0061's
+starts at 254.12 s. A window widened by Whisper's words can span a long stretch the backbone
+missed, so its fallback times spread over that stretch. A shared cue may hold two sentences of
+one speaker when one of them is a short interjection, and a cue may start before its speech; the
+[subtitle style rules](/documentation/architecture/subtitle_style_rules.md#speakers) say so.
+
+**Supersedes:** none.

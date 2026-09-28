@@ -21,7 +21,9 @@ implements them and the quality check verifies them.
 
 - Minimum duration **5/6 s (20 frames)**, maximum **7 s**.
 - In-time at speech onset minus 1 frame; out-time at the last word's end plus 12 frames (0.5 s),
-  then extended for minimum duration and reading speed.
+  then extended for minimum duration and reading speed. A short cue that can reach the minimum no
+  other way may start before its speech, into free time no cue uses, only as far as the minimum
+  needs.
 - At least **2 frames** between consecutive cues; gaps of 3 to 11 frames are closed to 2 frames
   ("chaining").
 - **Shot changes:** a cue whose speech starts within 12 frames after a cut starts on the cut; a
@@ -39,7 +41,13 @@ implements them and the quality check verifies them.
   -In a minute.
   ```
 
-- At most one sentence per speaker in a shared cue.
+- At most one sentence per speaker in a shared cue, but a short interjection too brief for a cue
+  of its own may join its speaker's line:
+
+  ```text
+  -Oh? Panties?
+  -You say you'd like to see them?
+  ```
 - Speaker labels in brackets (`[Law]`) only when the speaker cannot be identified from the
   picture; the app cannot see the picture, so it adds labels only for voices the language model
   identifies as off-screen from context, sparingly.

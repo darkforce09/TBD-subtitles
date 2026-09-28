@@ -83,3 +83,80 @@ fn pauses_and_sentence_ends_cut_utterances() {
     assert_eq!(texts, vec![vec!["Run!"], vec!["Now", "we"], vec!["wait"]]);
     assert_eq!(sheet[2].id, "U0003");
 }
+
+fn close(a: (f64, f64), b: (f64, f64)) -> bool {
+    (a.0 - b.0).abs() < 1e-9 && (a.1 - b.1).abs() < 1e-9
+}
+
+#[test]
+fn words_another_engine_heard_before_the_backbone_start_the_first_span() {
+    let p = transcript(
+        "p",
+        &[
+            ("Shut", 256.68),
+            ("your", 257.0),
+            ("filthy", 257.4),
+            ("mouths!", 258.22),
+        ],
+    );
+    let w = transcript(
+        "w",
+        &[
+            ("Yeah,", 254.12),
+            ("that's", 254.5),
+            ("right!", 254.9),
+            ("Shut", 256.68),
+            ("your", 257.0),
+            ("filthy", 257.4),
+            ("mouths!", 258.22),
+        ],
+    );
+    let spans = heard_spans(&p, &[&w]);
+    assert_eq!(spans.len(), 1);
+    assert!(close(spans[0], (254.12, 258.52)), "{spans:?}");
+    let sheet = build(&p, &[&w], &["P", "W"]);
+    assert!(
+        sheet[0].line.contains("| {W:+Yeah, that's right!} Shut"),
+        "{}",
+        sheet[0].line
+    );
+    assert!(close((sheet[0].start_s, sheet[0].end_s), (256.68, 258.52)));
+}
+
+#[test]
+fn words_another_engine_heard_after_the_backbone_end_the_span() {
+    let p = transcript("p", &[("It's", 1.0), ("closing", 1.3)]);
+    let w = transcript("w", &[("It's", 1.0), ("closing", 1.3), ("in!", 1.7)]);
+    assert!(close(heard_spans(&p, &[&w])[0], (1.0, 2.0)));
+}
+
+#[test]
+fn with_the_backbone_alone_each_span_is_the_backbone_span() {
+    let p = transcript(
+        "p",
+        &[("Run!", 0.0), ("Now", 0.6), ("we", 1.0), ("wait", 2.5)],
+    );
+    let spans = heard_spans(&p, &[]);
+    let expected = [(0.0, 0.3), (0.6, 1.3), (2.5, 2.8)];
+    assert_eq!(spans.len(), expected.len());
+    for (span, want) in spans.iter().zip(expected) {
+        assert!(close(*span, want), "{spans:?}");
+    }
+}
+
+#[test]
+fn there_is_one_span_per_utterance_of_the_sheet() {
+    let p = transcript(
+        "p",
+        &[("Run!", 0.0), ("Now", 0.6), ("we", 1.0), ("wait", 2.5)],
+    );
+    let w = transcript(
+        "w",
+        &[("Go,", 0.0), ("run!", 0.2), ("Now", 0.6), ("wait", 2.5)],
+    );
+    let spans = heard_spans(&p, &[&w]);
+    assert_eq!(spans.len(), build(&p, &[&w], &["P", "W"]).len());
+    assert_eq!(spans.len(), 3);
+    // Whisper's "Go," before the chunk and its later "run!" both widen the first utterance.
+    assert!(close(spans[0], (0.0, 0.5)), "{spans:?}");
+}
