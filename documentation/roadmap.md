@@ -77,8 +77,9 @@ budget. The batch of Dressrosa 12–48 moved to M2 at the owner's word: it runs 
   mockup's palettes, Adwaita Sans, Phosphor icons, the desktop's light or dark, X11), the queue's
   states, toolbar and sidebar, the detail pane, the overview, Check Lines and the Settings window.
 - [ ] Batch: Dressrosa 12–48 queued and run from the window, each with a report that passes QC.
-- [ ] Packaging: `cargo appimage` builds one self-contained AppImage (bundled CUDA, cuDNN, ONNX
-  Runtime and FFmpeg); host verification of the built image is still pending.
+- [x] Packaging: `cargo appimage` builds one self-contained AppImage (bundled CUDA, cuDNN, ONNX
+  Runtime and FFmpeg); it runs a full job on the host with only the NVIDIA driver, and opens
+  from Gear Lever.
 
 Details: [GUI](/documentation/features/gui.md), [building the
 AppImage](/documentation/runbooks/building_the_appimage.md).
