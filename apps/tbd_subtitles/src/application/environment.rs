@@ -1,9 +1,10 @@
-//! Where the window finds its files, how it runs jobs and Fix It, and how its threads reach it:
-//! the real paths and the pipeline when it runs, scratch paths and stand-in runners in the tests,
-//! which never touch the owner's home or start a worker or `claude`.
+//! Where the window finds its files, how it runs jobs and Fix It, how its threads reach it and
+//! how it reaches the desktop when it is away: the real paths, the pipeline and the desktop's
+//! notifications when it runs, scratch paths, stand-in runners and a log of notifications in the
+//! tests, which never touch the owner's home, start a worker or `claude`, or notify the desktop.
 //!
-//! **Role:** hold the paths, the job runner, Fix It's runner, the wake and the log the application
-//! uses.
+//! **Role:** hold the paths, the job runner, Fix It's runner, the wake, the notifier and the log
+//! the application uses.
 //!
 //! **Position:** built by `application::launch` (`real`) or by the tests (`scratch`); owned by
 //! `TbdSubtitlesApp`.
@@ -11,8 +12,9 @@
 //! **Signals and state:** reads the data and config folders' locations; the scratch one writes
 //! its settings file.
 //!
-//! **Invariants:** a test environment never names the owner's files, keeps a log of its own, and
-//! its Fix It refuses to run unless the test gives it a stand-in.
+//! **Invariants:** a test environment never names the owner's files, keeps a log of its own,
+//! records each notification in that log under the target `notification` instead of sending it,
+//! and its Fix It refuses to run unless the test gives it a stand-in.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -20,9 +22,17 @@ use std::sync::Arc;
 use crate::core::background::Wake;
 use crate::core::log_buffer::LogBuffer;
 use crate::core::logging;
+use crate::core::portal;
 use crate::job_queue::services::job_runner::{self, RunJob};
 use crate::job_report::services::fix_it::{self, FixVideo};
 use crate::settings::services::settings_file;
+
+/// Shows a desktop notification: its title, then its body.
+pub(crate) type Notify = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
+/// The log target a test environment records each notification under, as "title: body".
+#[cfg(test)]
+pub(crate) const NOTIFIED: &str = "notification";
 
 /// The paths, the job runner, the wake and the log the application uses.
 pub(crate) struct Environment {
@@ -42,6 +52,8 @@ pub(crate) struct Environment {
     pub(crate) run_job: RunJob,
     /// Runs Fix It on one video: the pipeline's, or a stand-in.
     pub(crate) fix_video: FixVideo,
+    /// Tells the desktop something finished while the window is away.
+    pub(crate) notify: Notify,
     /// Whether to start the machine checks and the size measure when the window opens.
     pub(crate) background: bool,
     /// The lines logged in this process, which the log window shows.
@@ -65,6 +77,7 @@ impl Environment {
             wake,
             run_job: job_runner::pipeline_runner(),
             fix_video: fix_it::pipeline_fix(),
+            notify: Arc::new(portal::notify),
             background: true,
             log: logging::console(),
             log_file: logging::window_log_path(),
@@ -84,6 +97,8 @@ impl Environment {
         if let Err(error) = settings_file::save(&settings_path, &settings) {
             panic!("the scratch settings could not be written: {error}");
         }
+        let log = Arc::new(LogBuffer::new());
+        let notified = log.clone();
         Environment {
             settings_path: root.join("config").join("settings.toml"),
             queue_path: root.join("data").join("queue.json"),
@@ -98,8 +113,13 @@ impl Environment {
                     "no Fix It in this test",
                 ))
             }),
+            notify: Arc::new(move |title, body| {
+                use crate::core::log_buffer::Fresh;
+                let line = Fresh::new(tracing::Level::INFO, NOTIFIED, format!("{title}: {body}"));
+                notified.push(line);
+            }),
             background: false,
-            log: Arc::new(LogBuffer::new()),
+            log,
             log_file: None,
         }
     }

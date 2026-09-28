@@ -17,13 +17,24 @@ fn lines(queue: &Queue) -> Vec<String> {
 
 /// Each row's status line, in sidebar order, finished jobs summed up by `summaries`.
 fn lines_with(queue: &Queue, summaries: &HashMap<JobId, RowSummary>) -> Vec<String> {
+    lines_fixing(queue, summaries, &HashMap::new())
+}
+
+/// As `lines_with`, with Fix It at step `fixing[video]` on each video it fixes.
+fn lines_fixing(
+    queue: &Queue,
+    summaries: &HashMap<JobId, RowSummary>,
+    fixing: &HashMap<PathBuf, usize>,
+) -> Vec<String> {
     let now = Instant::now();
     sidebar_rows::rows(queue)
         .iter()
         .map(|row| {
             let item = queue.get(row.id).expect("the row's job");
             let rates = time_left::pilot_rates();
-            status(row, item, queue, &rates, summaries.get(&row.id), now)
+            let summary = summaries.get(&row.id);
+            let step = fixing.get(&item.video).copied();
+            status(row, item, queue, &rates, summary, step, now)
         })
         .collect()
 }
@@ -115,6 +126,7 @@ fn finished_rows_give_their_verdict_and_lines_to_check_from_their_files() {
         problems,
         flagged,
         to_check,
+        fixed_by_claude: false,
     };
     let ids: Vec<JobId> = q.items.iter().map(|item| item.id).collect();
     let summaries = HashMap::from([
@@ -142,6 +154,45 @@ fn finished_rows_give_their_verdict_and_lines_to_check_from_their_files() {
         assert_eq!(fails_the_check(item, summaries.get(&item.id)), fails);
     }
     assert!(!fails_the_check(&q.items[0], None), "unread, it passes");
+}
+
+#[test]
+fn a_row_fixed_by_claude_says_so_and_a_row_being_fixed_gives_its_step() {
+    let mut q = queue(&["a", "b", "c", "d"]);
+    for item in &mut q.items {
+        item.state = JobState::FinishedBefore;
+    }
+    let fixed = |problems, to_check| RowSummary {
+        problems,
+        flagged: 38,
+        to_check,
+        fixed_by_claude: true,
+    };
+    let ids: Vec<JobId> = q.items.iter().map(|item| item.id).collect();
+    let summaries = HashMap::from([
+        (ids[0], fixed(0, 0)),
+        (ids[1], fixed(0, 2)),
+        (ids[2], fixed(1, 0)),
+        (ids[3], fixed(0, 0)),
+    ]);
+    let fixing = HashMap::from([(PathBuf::from("d"), 2)]);
+    assert_eq!(
+        lines_fixing(&q, &summaries, &fixing),
+        [
+            "Subtitles ready · fixed by Claude",
+            "Subtitles ready · 2 to check",
+            "Needs attention · 1 problem",
+            "Fixing with Claude · 2 of 4",
+        ],
+        "fixed by Claude only while it passes with nothing to check"
+    );
+    queue_review(&mut q, PathBuf::from("d"), 3);
+    let fixing = HashMap::from([(PathBuf::from("d"), 4)]);
+    assert_eq!(
+        lines_fixing(&q, &summaries, &fixing)[3],
+        "Fixing with Claude · 4 of 4",
+        "Fix It's correction run is its last step, not a plain update"
+    );
 }
 
 #[test]

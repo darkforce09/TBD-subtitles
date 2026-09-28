@@ -6,8 +6,8 @@ The decisions the desktop window led to: how it plays clips and hands videos to 
 where models live and how they arrive, when a job passes the quality check, how the owner's
 corrections are timed, how the window looks, which settings a job runs with, where Settings open,
 how correction runs show, how a job is tried again, how a failed language-model call is retried,
-how a change of the settings applies, what Fix It does, and what the log window shows, model
-calls too. The [decision log](/documentation/decisions/) says how entries are written.
+how a change of the settings applies, what Fix It does and how it shows it is done, and what the
+log window shows. The [decision log](/documentation/decisions/) says how entries are written.
 
 ### 2026-09-26 — Clips play through FFmpeg, not libmpv
 
@@ -471,3 +471,29 @@ stdout carries a second kind of line, which the `process` command ignores. The t
 `apps/tbd_subtitles/src/application/tests/rendering_console.rs`.
 
 **Supersedes:** none; it adds to "A log window shows everything the app does".
+
+### 2026-09-28 — Fix It finishes visibly
+
+**Context:** The owner pressed Fix It on Dressrosa 12, minimized the window, came back and could
+not tell it had finished: the Overview still said "Needs attention · 1 problem", and the only
+trace was a toast of 4.2 s. That last problem, two cues too short, broke a layout rule no
+correction could reach; the cue builder and the aligner fix it
+([short cues](/documentation/decisions/stack_and_pipeline.md#2026-09-28--lines-are-aligned-where-any-engine-heard-them-short-cues-join-a-dashed-line-or-start-early)).
+
+**Decision:** Fix It's progress runs through the correction run as its fourth step, and Fix It
+finishes when that run ends, or at once when Claude changed nothing. The file card then shows a
+green Result card under its heading, which the owner chose over a slim banner: the model, the
+lines changed and those already right, each problem cleared and each left, two example changes,
+what the owner kept or undid, and See Changes. An 8 s toast with See Changes says it too. A
+desktop notification through the portal, with a flashing taskbar entry, comes only when the
+window is not in front or is minimized, as the owner chose. Lines Claude changed or answered
+count as checked, so nothing is left to look at. Rejected: a toast alone, easy to miss.
+
+**Consequences:** The card reads `fix.json`: it shows while that record counts, never while Fix
+It runs or the subtitles update, and an older record, from before the problems were kept, shows
+no cleared list. The sidebar says "Subtitles ready · fixed by Claude" once the job passes with
+nothing to check, Fix It's button hides once every flagged finding is answered, and "Corrections
+you made" counts the owner's alone.
+
+**Supersedes:** none; it adds to "Fix It: a stronger model fixes the flagged lines in three
+passes".

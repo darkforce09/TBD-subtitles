@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use super::detail_view::DetailTab;
 use crate::core::toast::ToastId;
 use crate::job_queue::events::JobQueueEvent;
+use crate::job_queue::models::queue::JobId;
 use crate::job_report::events::ReportEvent;
 use crate::line_review::events::ReviewEvent;
 use crate::log_console::events::LogConsoleEvent;
@@ -24,6 +25,8 @@ pub(crate) enum Action {
     ShowLog(bool),
     /// The button of this toast was pressed: take the toast away and do what it offers.
     ToastButton(ToastId),
+    /// Select this finished job and open Check Lines on the lines Claude changed.
+    SeeFixChanges(JobId),
     Settings(SettingsEvent),
     Report(ReportEvent),
     Review(ReviewEvent),

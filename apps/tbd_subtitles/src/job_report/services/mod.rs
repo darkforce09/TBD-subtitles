@@ -3,5 +3,6 @@
 //! rendering code.
 
 pub(crate) mod fix_it;
+pub(crate) mod fix_result;
 pub(crate) mod line_counts;
 pub(crate) mod report_loading;

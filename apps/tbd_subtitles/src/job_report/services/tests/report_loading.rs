@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use job_model::job::{JobSettings, StepMeasure, StepRecord};
-use job_model::outputs::{Chosen, Correction};
+use job_model::outputs::{Chosen, Correction, FixVerdict, LineFix};
 use job_model::report::{QcCheck, QcFinding};
 
 use super::*;
@@ -95,8 +95,10 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
             problems: 0,
             flagged: 1,
             to_check: 1,
+            fixed_by_claude: false,
         })
     );
+    assert_eq!(report.fix_result, None, "no fix.json yet");
     let corrections = Corrections {
         lines: vec![Correction {
             id: "U0053".into(),
@@ -118,6 +120,106 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
     std::fs::write(job.join("review.json"), b"{").expect("broken");
     let error = summary(&video, &work_root).expect_err("broken review.json");
     assert!(error.contains("review.json"), "{error}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_current_fix_record_checks_the_lines_it_answered_and_a_stale_one_counts_for_nothing() {
+    let root = scratch("fixed");
+    let video = root.join("c.mp4");
+    std::fs::write(&video, b"video").expect("video");
+    let work_root = root.join("work");
+    let job = work_root.join(pipeline::work_dir::job_id(
+        &std::fs::canonicalize(&video).expect("c"),
+    ));
+    std::fs::create_dir_all(&job).expect("job");
+    let mut steps = BTreeMap::new();
+    steps.insert(
+        StepName::Readjudicate,
+        StepRecord {
+            fingerprint: "adjudication-1".into(),
+            finished_ns: 0,
+            measure: StepMeasure::default(),
+        },
+    );
+    write(
+        &job.join("job.json"),
+        &JobRecord {
+            video: video.to_string_lossy().into_owned(),
+            video_size: 5,
+            video_modified_s: 0,
+            settings: JobSettings::with_glossary(vec![]),
+            models_dir: None,
+            corrections: None,
+            steps,
+        },
+    );
+    let finding = |id: &str| QcFinding {
+        check: QcCheck::Unsure,
+        time_s: 1.0,
+        text: String::new(),
+        detail: String::new(),
+        utterance: Some(id.into()),
+    };
+    write(
+        &job.join("qc.json"),
+        &QcReport {
+            findings: vec![finding("U1"), finding("U2")],
+            ..QcReport::default()
+        },
+    );
+    let line = LineFix {
+        id: "U1".into(),
+        problems: Vec::new(),
+        checks: vec![QcCheck::Unsure],
+        before_text: "Go!".into(),
+        before_flags: Vec::new(),
+        after_text: "Go!".into(),
+        after_flags: Vec::new(),
+        steps: Vec::new(),
+        refused: Vec::new(),
+        removed: Vec::new(),
+        verdict: FixVerdict::Unchanged,
+        applied: false,
+    };
+    let mut record = FixRecord {
+        model: "opus".into(),
+        lines: vec![line],
+        adjudication: "adjudication-1".into(),
+        ..FixRecord::default()
+    };
+    write(&job.join("fix.json"), &record);
+    let report = load(&video, &work_root).expect("report");
+    assert_eq!(
+        (
+            report.lines.flagged,
+            report.lines.by_claude,
+            report.lines.to_check()
+        ),
+        (2, 1, 1),
+        "U1 was answered, U2 is left"
+    );
+    assert_eq!(report.fixable, 1, "Fix It asks about U2 alone");
+    let result = report.fix_result.as_ref().expect("a result");
+    assert_eq!(
+        (result.model.as_str(), result.already_right),
+        ("Claude Opus", 1)
+    );
+    let row = summary(&video, &work_root).expect("row");
+    assert_eq!(row, report.summary());
+    assert!(row.fixed_by_claude);
+    record.adjudication = "adjudication-0".into();
+    write(&job.join("fix.json"), &record);
+    let stale = load(&video, &work_root).expect("report");
+    assert_eq!(
+        (stale.lines.by_claude, stale.fixable, stale.fix_result),
+        (0, 2, None),
+        "a record of an earlier re-adjudication counts for nothing"
+    );
+    assert!(!summary(&video, &work_root).expect("row").fixed_by_claude);
+    std::fs::write(job.join("fix.json"), b"{").expect("broken");
+    let error = summary(&video, &work_root).expect_err("broken fix.json");
+    assert!(error.contains("fix.json"), "{error}");
     let _ = std::fs::remove_dir_all(&root);
 }
 

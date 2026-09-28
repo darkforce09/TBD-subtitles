@@ -3,15 +3,17 @@
 //! the drop overlay, the toasts, the Settings window, the log window, and the actions they asked
 //! for.
 //!
-//! **Role:** run `poll`, draw the frame from the borrowed state, and apply the actions it
-//! collected.
+//! **Role:** note egui's clock and whether the window is away, run `poll`, ask the desktop for
+//! the window's attention when `poll` wants it, draw the frame from the borrowed state, and apply
+//! the actions it collected.
 //!
 //! **Position:** `eframe::App::ui` of `TbdSubtitlesApp`; lays out the panels and calls
 //! `shortcuts`, `feature_views`, `settings_window`, `log_window`, the queue's drop overlay and the
 //! toasts.
 //!
-//! **Signals and state:** reads dropped files; asks for a frame each second while a job runs,
-//! when the next toast is due to go, and when the banner that says every model is on disk goes.
+//! **Signals and state:** reads dropped files and whether the window is focused or minimized;
+//! asks for a frame each second while a job runs, when the next toast is due to go, and when the
+//! banner that says every model is on disk goes.
 //!
 //! **Invariants:** `frame_ui` changes nothing; the toolbar is 52 px high and the sidebar 272 px
 //! wide; the banner spans the window under the toolbar while it shows; the toasts, the overlay
@@ -19,7 +21,9 @@
 
 use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Frame, Id, Margin, Panel, Ui};
+use eframe::egui::{
+    self, Context, Frame, Id, Margin, Panel, Ui, UserAttentionType, ViewportCommand,
+};
 
 use super::{Action, TbdSubtitlesApp, feature_views, log_window, settings_window, shortcuts};
 use crate::core::ui::palette::palette;
@@ -35,9 +39,36 @@ const RUNNING_REDRAW: Duration = Duration::from_secs(1);
 const TOOLBAR_HEIGHT: f32 = 52.0;
 const SIDEBAR_WIDTH: f32 = 272.0;
 
+/// What the window saw of itself at the last frame.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(super) struct Presence {
+    /// egui's time, in seconds.
+    pub(super) time: f64,
+    /// Whether the desktop reports the window unfocused or minimized; unknown is not away.
+    pub(super) away: bool,
+}
+
+impl Presence {
+    fn read(ctx: &Context) -> Presence {
+        ctx.input(|input| {
+            let viewport = input.viewport();
+            Presence {
+                time: input.time,
+                away: viewport.focused == Some(false) || viewport.minimized == Some(true),
+            }
+        })
+    }
+}
+
 impl eframe::App for TbdSubtitlesApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        self.presence = Presence::read(ui.ctx());
         self.poll();
+        if std::mem::take(&mut self.attention) {
+            let informational = UserAttentionType::Informational;
+            ui.ctx()
+                .send_viewport_cmd(ViewportCommand::RequestUserAttention(informational));
+        }
         theme::follow(ui.ctx(), self.scheme);
         let actions = self.frame_ui(ui);
         self.apply(actions);

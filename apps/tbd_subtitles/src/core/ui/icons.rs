@@ -51,6 +51,7 @@ pub(crate) const PAUSE: &str = egui_phosphor::regular::PAUSE;
 pub(crate) const PENCIL_SIMPLE: &str = egui_phosphor::regular::PENCIL_SIMPLE;
 pub(crate) const PLAY: &str = egui_phosphor::regular::PLAY;
 pub(crate) const PLUS: &str = egui_phosphor::regular::PLUS;
+pub(crate) const SEAL_CHECK: &str = egui_phosphor::regular::SEAL_CHECK;
 pub(crate) const SLIDERS: &str = egui_phosphor::regular::SLIDERS_HORIZONTAL;
 pub(crate) const STOP: &str = egui_phosphor::regular::STOP;
 pub(crate) const STOP_CIRCLE: &str = egui_phosphor::regular::STOP_CIRCLE;

@@ -98,8 +98,12 @@ impl TbdSubtitlesApp {
         self.toasts.push(kind, text, Instant::now());
     }
 
-    /// Show job `id` on the right, closing a review of another job.
+    /// Show job `id` on the right, closing a review of another job; another job ends the moment
+    /// Fix It just finished.
     fn select(&mut self, id: Option<JobId>) {
+        if self.queue.selected != id {
+            self.just_fixed = None;
+        }
         self.queue.selected = id;
         if self
             .review

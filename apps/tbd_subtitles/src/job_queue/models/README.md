@@ -11,7 +11,7 @@ apps/tbd_subtitles/src/job_queue/models/
 ├── queue.rs     `Queue`, `QueueItem`, `JobId`, `JobKind`, `JobState`, `Failure`, `JobResult`, `Move`, `Removed`
 ├── sidebar.rs   `Section`, `SidebarRow` and `ReviewFold`: the sidebar's rows
 ├── tests/       unit tests for the progress's kept, finished, current, shown and failed steps
-└── view.rs      `JobQueueView`, the queue, the rates, the finished rows' summaries and the clock
+└── view.rs      `JobQueueView`, the queue, the rates, the finished rows' summaries, Fix It, the clock
 ```
 
 ## How it works
@@ -42,8 +42,9 @@ can stop. A `SidebarRow` is one video in the sidebar: its job, its name, its `Se
 Up Next or Done), the correction runs folded into it, a `ReviewFold` while some of them wait or
 run (with the corrections they carry), its place in line, and whether it can be removed or
 dragged. The `JobQueueView` lent to the panels for one frame also carries each finished job's
-`RowSummary` (its problems and lines to check), which the application reads from the job's work
-folder.
+`RowSummary` (its problems, lines to check and whether Claude fixed it), which the application
+reads from the job's work folder, and each video Fix It fixes with its step of four
+(`fixing_step`: its three passes, then the correction run of its changes).
 
 ## Boundaries
 

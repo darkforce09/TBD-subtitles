@@ -7,12 +7,13 @@ The data the Overview and the sidebar's finished rows draw, with no rendering co
 ```text
 apps/tbd_subtitles/src/job_report/models/
 ├── finding_group.rs  `LineGroup`: the groups of line findings, Fix It's first, each with its words
-├── fixing.rs         `FixView`: Fix It hidden, ready, off with why, or running; its stage in words
+├── fix_result.rs     `FixResult`: what Fix It changed, left right, cleared and left, with examples
+├── fixing.rs         `FixView`: Fix It hidden, ready, off with why, running or updating; its steps
 ├── mod.rs            the module list
 ├── problem.rs        `Problem` and `Remedy`: a broken pass rule in plain words, its fix and its button
-├── report.rs         `JobReport`: the video, the files, the check, the corrections, problems, lines, steps
+├── report.rs         `JobReport`: the video, the files, the check, corrections, problems, lines, Fix It
 ├── summary.rs        `LineCounts` and `RowSummary`: lines worth a listen, checked, and a row's verdict
-└── tests/            unit tests for the groups, the problems' words and buttons, the Fix It stages
+└── tests/            unit tests for the groups, the problems' words and buttons, Fix It's steps and words
 ```
 
 ## How it works
@@ -27,15 +28,28 @@ language-model call) have no group. Each group has its title, the short name of 
 of Check Lines ("Word replaced", "Too fast"), and a plain explanation, as the mockup words them. A `Problem` is one pass rule a job breaks, titled in the owner's words ("1
 language-model call failed", "Only 91.2 % of subtitles are easy to read"), with its fix and, for
 speech with no subtitle, a failed call and reading speed, a `Remedy`: Show Nearby Lines (at the
-first stretch of speech with no subtitle, which the problem carries), Try Again or Show Lines.
+first stretch of speech with no subtitle, which the problem carries), Try Again or Show Lines;
+`cleared_title` says it in the past tense once Fix It cleared it ("1 subtitle broke a layout
+rule", "Only 91.2 % of subtitles were easy to read").
 `FixView` is Fix It on the Overview: hidden when it has nothing to ask about, ready with the
-model's name ("Claude Opus"), off with why, or running with its stage, its calls done and whether
-Stop was pressed; `stage_words` says the stage with its pass ("checking each change (3 of 3)").
-`JobReport::fixable` counts the findings Fix It would ask about. `LineCounts` holds the distinct
-lines worth a listen (the flagged ones, those the owner corrected and those Fix It changed),
-those the owner checked (corrected or kept) and the lines of each group; `RowSummary` is what a
-finished row and the header say: its problems, its lines worth a listen and those still to check. `JobReport::summary` gives a loaded
-report's.
+model's name ("Claude Opus"), off with why, running with its stage, its calls done and whether
+Stop was pressed, or updating while the correction run that puts its changes into the subtitles
+waits or runs. The window counts a run in four steps (`FIX_STEPS`): its three passes, then that
+correction run (`UPDATING_STEP`); `stage_words` says the stage with its step ("checking each
+change (3 of 4)") and `updating_words` the last ("updating the subtitles (4 of 4)").
+`FixResult` is what the latest Fix It runs did to a job: the model, the lines changed, the lines
+already right, turned down or left to the owner's own correction, the changes the owner kept or
+undid, the problems cleared and left, the first two changes' words and how many more changed;
+`change_words` says a change as the owner reads it at a glance (“Heaven dish” → “Cavendish”,
+Added “Uh,”, Removed “So”).
+`JobReport::fixable` counts the findings Fix It would ask about, and `JobReport::fix_result` holds
+the result while a Fix It record of the job as it stands answered a line. `LineCounts` holds the
+distinct lines worth a listen (the flagged ones, those the owner corrected and those Fix It
+changed), those the owner checked (corrected or kept), those Claude checked (its changes the owner
+has not kept or undone, and the flagged lines whose every finding it answered) and the lines of
+each group; the lines to check are the rest. `RowSummary` is what a finished row and the header
+say: its problems, its lines worth a listen, those still to check, and whether Claude fixed the
+job. `JobReport::summary` gives a loaded report's.
 
 ## Boundaries
 

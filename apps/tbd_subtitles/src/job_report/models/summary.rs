@@ -10,14 +10,19 @@ pub(crate) struct LineCounts {
     pub(crate) flagged: usize,
     /// Of those, the lines the owner corrected (in `review.json`).
     pub(crate) checked: usize,
+    /// Of those, the lines Claude settled and the owner did not: its changes the owner has not
+    /// kept or undone, and the lines whose every finding Fix It answered.
+    pub(crate) by_claude: usize,
     /// The distinct lines of each group that has any, in the groups' order.
     pub(crate) groups: Vec<(LineGroup, usize)>,
 }
 
 impl LineCounts {
-    /// The flagged lines the owner has not corrected yet.
+    /// The flagged lines neither the owner nor Claude has checked yet.
     pub(crate) fn to_check(&self) -> usize {
-        self.flagged.saturating_sub(self.checked)
+        self.flagged
+            .saturating_sub(self.checked)
+            .saturating_sub(self.by_claude)
     }
 }
 
@@ -28,8 +33,10 @@ pub(crate) struct RowSummary {
     pub(crate) problems: usize,
     /// The distinct lines worth a listen.
     pub(crate) flagged: usize,
-    /// Of those, the lines not corrected yet.
+    /// Of those, the lines not checked yet.
     pub(crate) to_check: usize,
+    /// Whether a Fix It run of the job as it stands answered at least one line.
+    pub(crate) fixed_by_claude: bool,
 }
 
 impl RowSummary {

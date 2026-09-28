@@ -50,9 +50,12 @@ tried again. Each row has a status mark and a status line ("Settling the words �
 4 min left", "Waiting · 2nd in line", "Failed at Hear the speech", "Cancelled · 9 finished steps
 kept"); a finished row gives its verdict and lines to check from its work folder, through the
 summary the application reads (`job_report::models::summary::RowSummary`): "Subtitles ready · 38
-to check" with the orange count 38 at its end, "Subtitles ready · all checked", or "Needs
+to check" with the orange count 38 at its end, "Subtitles ready · fixed by Claude" once Fix It
+answered its lines and none is left to check, "Subtitles ready · all checked", or "Needs
 attention · 1 problem" with a warning mark, so a row finished in an earlier window shows its real
-verdict; a click anywhere selects it, a red round ✕ on hover removes it, a waiting row drags to
+verdict; while Fix It fixes its video the row reads "Fixing with Claude · 2 of 4", through the
+correction run of its changes ("4 of 4"), with the working mark and no count; a click anywhere
+selects it, a red round ✕ on hover removes it, a waiting row drags to
 another place in line with a line showing where it lands, and a right click opens the menu of its
 state: Run Next, Move Up, Move Down; Cancel or Stop Updating Subtitles; Check Lines, Open in
 Player, Show in Folder, Copy Subtitle Path, Run Again with Current Settings; Try Again; Remove from

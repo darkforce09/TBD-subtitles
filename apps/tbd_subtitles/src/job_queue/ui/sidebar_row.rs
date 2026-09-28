@@ -13,7 +13,7 @@
 //! **Invariants:** a click anywhere on the row selects it, except on the ✕; only waiting full
 //! runs drag, and a drop lands before or after the row under the pointer, as the line shows;
 //! the ✕ shows only on a row that can leave the list, and stands in for the count while the
-//! pointer is on the row.
+//! pointer is on the row; a row whose video Fix It fixes shows the working mark and no count.
 
 use std::sync::Arc;
 
@@ -100,16 +100,18 @@ pub(crate) fn sidebar_row_ui(
         vec2(ICON, ICON),
     );
     let summary = view.summaries.get(&row.id);
+    let fixing = view.fixing_step(&item.video);
     paint_status(
         ui,
         icon_rect,
-        status_icon(row, item, summary, running),
+        status_icon(row, item, summary, running, fixing.is_some()),
         selected,
     );
     let show_remove = row.removable && pointer_in && ui.ctx().dragged_id().is_none();
     let text_left = icon_rect.right() + GAP;
     let mut text_right = rect.right() - RIGHT - if show_remove { REMOVE + GAP } else { 0.0 };
-    if let Some(count) = badge(row, item, summary).filter(|_| !show_remove) {
+    let badge = badge(row, item, summary).filter(|_| !show_remove && fixing.is_none());
+    if let Some(count) = badge {
         let right = pos2(rect.right() - RIGHT, rect.center().y);
         text_right = paint_badge(ui, right, count, selected).left() - GAP;
     }
@@ -122,7 +124,7 @@ pub(crate) fn sidebar_row_ui(
         (p.text, p.text2)
     };
     let name = line(ui, &row.name, 13.0, fade(name_colour), width);
-    let status = status_text::status(row, item, view.queue, view.rates, summary, view.now);
+    let status = status_text::status(row, item, view.queue, view.rates, summary, fixing, view.now);
     let status = line(ui, &status, 11.5, fade(status_colour), width);
     let content = name.size().y + 1.0 + status.size().y + running.map_or(0.0, |_| BAR_ROOM);
     let top = rect.center().y - content / 2.0;
@@ -220,26 +222,28 @@ fn drop_ui(
 }
 
 /// The status mark of `row`, whose job is `item` summed up by `summary`; `running` is a running
-/// job's share done.
+/// job's share done, and `fixing` whether Fix It fixes its video.
 fn status_icon(
     row: &SidebarRow,
     item: &QueueItem,
     summary: Option<&RowSummary>,
     running: Option<f32>,
+    fixing: bool,
 ) -> StatusIcon {
     match (&item.state, running) {
         (_, Some(share)) => StatusIcon::Running(share),
         (JobState::Waiting, _) => StatusIcon::Waiting,
         (JobState::Failed(_), _) => StatusIcon::Failed,
         (JobState::Cancelled { .. }, _) => StatusIcon::Cancelled,
-        _ if row.fold.is_some() => StatusIcon::Working,
+        _ if row.fold.is_some() || fixing => StatusIcon::Working,
         _ if status_text::fails_the_check(item, summary) => StatusIcon::Warning,
         _ => StatusIcon::Done,
     }
 }
 
 /// The count of lines to check a finished row shows at its end: only while it passes the quality
-/// check, has lines left to check and no correction run is pending.
+/// check, has lines left to check and no correction run is pending (nor Fix It, which the caller
+/// leaves out).
 fn badge(row: &SidebarRow, item: &QueueItem, summary: Option<&RowSummary>) -> Option<usize> {
     let finished = matches!(item.state, JobState::Finished(_) | JobState::FinishedBefore);
     summary

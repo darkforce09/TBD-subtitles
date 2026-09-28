@@ -3,9 +3,10 @@
 //!
 //! **Role:** write the status line of a sidebar row from its job's state ("Settling the words ·
 //! about 4 min left", "Waiting · 2nd in line", "Failed at Hear the speech", "Updating subtitles ·
-//! 2 corrections", "Subtitles ready · 38 to check", "Needs attention · 1 problem"); the detail
-//! pane's line of a job that has not finished ("25:59 video · running for 10 min 00 s"); and when
-//! a waiting job, or an ended one tried again, starts.
+//! 2 corrections", "Fixing with Claude · 2 of 4", "Subtitles ready · 38 to check", "Subtitles
+//! ready · fixed by Claude", "Needs attention · 1 problem"); the detail pane's line of a job that
+//! has not finished ("25:59 video · running for 10 min 00 s"); and when a waiting job, or an ended
+//! one tried again, starts.
 //!
 //! **Position:** called by the sidebar row for each row it draws, and by the queue's job cards
 //! and the application's detail header for the selected job.
@@ -17,7 +18,9 @@
 //! queue starts nothing after the next video; a job tried again is said to start at once only
 //! when its lane is idle, its video runs nothing else and every model is on disk; a finished
 //! job's verdict comes from its files when they were read, so a row finished in an earlier window
-//! shows its real verdict.
+//! shows its real verdict; while Fix It fixes a video, through its correction run, its finished
+//! row says so first; a job is said fixed by Claude only while it passes and nothing is left to
+//! check.
 
 use std::time::Instant;
 
@@ -27,16 +30,19 @@ use crate::job_queue::models::progress::{JobProgress, Rates};
 use crate::job_queue::models::queue::{Failure, JobKind, JobState, Queue, QueueItem};
 use crate::job_queue::models::sidebar::SidebarRow;
 use crate::job_queue::services::time_left;
+use crate::job_report::models::fixing::FIX_STEPS;
 use crate::job_report::models::summary::RowSummary;
 
 /// The status line of `row`, whose job is `item`; a finished job's `summary`, when its files
-/// were read, gives its verdict and its lines to check.
+/// were read, gives its verdict and its lines to check, and `fixing` the step of four Fix It is
+/// at on its video, while it fixes it.
 pub(crate) fn status(
     row: &SidebarRow,
     item: &QueueItem,
     queue: &Queue,
     rates: &Rates,
     summary: Option<&RowSummary>,
+    fixing: Option<usize>,
     now: Instant,
 ) -> String {
     match &item.state {
@@ -45,6 +51,9 @@ pub(crate) fn status(
         JobState::Failed(failure) => failed(failure),
         JobState::Cancelled { kept_steps } => cancelled(*kept_steps),
         JobState::Finished(_) | JobState::FinishedBefore => {
+            if let Some(step) = fixing {
+                return format!("Fixing with Claude · {step} of {FIX_STEPS}");
+            }
             match (row.fold, summary, &item.state) {
                 (Some(fold), _, _) => format!(
                     "Updating subtitles · {}",
@@ -53,6 +62,9 @@ pub(crate) fn status(
                 (None, Some(summary), _) if !summary.passes() => needs_attention(summary.problems),
                 (None, Some(summary), _) if summary.to_check > 0 => {
                     format!("Subtitles ready · {} to check", summary.to_check)
+                }
+                (None, Some(summary), _) if summary.fixed_by_claude => {
+                    "Subtitles ready · fixed by Claude".to_string()
                 }
                 (None, Some(summary), _) if summary.flagged > 0 => {
                     "Subtitles ready · all checked".to_string()

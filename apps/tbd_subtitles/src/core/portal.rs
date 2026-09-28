@@ -1,13 +1,14 @@
 //! The desktop portal: the desktop's own file and folder chooser, opening a file in the
-//! desktop's default program (VLC for the owner's videos), and showing a file in the file
-//! manager, over D-Bus.
+//! desktop's default program (VLC for the owner's videos), showing a file in the file manager,
+//! and the desktop's notifications, over D-Bus.
 //!
 //! **Role:** ask the XDG desktop portal on a thread of its own, so the window keeps drawing while
-//! the dialog is open, and hand the answer back through a channel.
+//! the dialog is open, and hand the answer back through a channel; a notification has no answer.
 //!
 //! **Position:** called by the application for the toolbar's "Add Videos…" and "Add Folder…",
-//! the settings' folder choosers, and the Overview's and the row menu's "Open in Player", "Show
-//! in Folder" and "Open Full Report"; uses `ashpd` (zbus, pure Rust).
+//! the settings' folder choosers, the Overview's and the row menu's "Open in Player", "Show in
+//! Folder" and "Open Full Report", and Fix It's finish while the window is away; uses `ashpd`
+//! (zbus, pure Rust).
 //!
 //! **Signals and state:** one thread and one D-Bus session connection per request; calls to
 //! `org.freedesktop.portal`. The connection closes when the request ends.
@@ -17,18 +18,23 @@
 //! No request shares a connection with another request or with the colour scheme watcher, so a
 //! request the desktop never answers holds up no other. Local files and folders go to the portal
 //! as file descriptors (`OpenFile`, `OpenDirectory`), never as `file://` URIs, which the portal
-//! refuses; the portal's answer to every request is read, never assumed.
+//! refuses; the portal's answer to every request is read, never assumed; a notification that
+//! fails is logged, never shown, since the window is away when one is sent.
 
 use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 
 use ashpd::desktop::file_chooser::{FileFilter, SelectedFiles};
+use ashpd::desktop::notification::{Notification, NotificationProxy};
 use ashpd::desktop::open_uri::OpenFileRequest;
 use ashpd::desktop::{ResponseError, open_uri::OpenDirectoryRequest};
 use ashpd::zbus::Connection;
 
 use crate::core::background::Wake;
+
+/// The id the window's notification goes by: a newer one replaces the one before.
+const NOTIFICATION_ID: &str = "tbd-subtitles-finished";
 
 /// What the owner chose, or why the portal could not ask.
 pub(crate) type Chosen = Result<Vec<PathBuf>, String>;
@@ -140,6 +146,26 @@ pub(crate) fn reveal(path: &Path, wake: Wake) -> Receiver<Opened> {
         wake();
     });
     answer
+}
+
+/// Show the desktop notification `title` with `body`, on a thread; a failure is logged.
+pub(crate) fn notify(title: &str, body: &str) {
+    let (title, body) = (title.to_string(), body.to_string());
+    std::thread::spawn(move || {
+        let sent = pollster::block_on(async {
+            let proxy = NotificationProxy::with_connection(connection().await?)
+                .await
+                .map_err(|e| e.to_string())?;
+            let notification = Notification::new(&title).body(body.as_str());
+            proxy
+                .add_notification(NOTIFICATION_ID, notification)
+                .await
+                .map_err(|e| e.to_string())
+        });
+        if let Err(error) = sent {
+            tracing::warn!(%title, %error, "the desktop could not show a notification");
+        }
+    });
 }
 
 /// The portal's answer to an open: done, or the owner closed its "open with" chooser, is fine;

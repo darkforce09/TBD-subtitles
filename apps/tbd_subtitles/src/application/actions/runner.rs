@@ -5,7 +5,8 @@
 //! build the job's options, empty its steps to run again once the pipeline has recorded them, and
 //! record how each job ends: finished, cancelled with the steps it kept, or failed at a step with
 //! the steps it kept, moving it ahead of the jobs that ended before it; tell the open line review
-//! when a review run of its video starts and ends.
+//! when a review run of its video starts and ends, and Fix It when one ends, once the summaries
+//! and the report are read again.
 //!
 //! **Position:** called by `application::TbdSubtitlesApp::apply` (through the queue and review
 //! actions) and before each frame; uses `job_queue::services` and the settings.
@@ -273,5 +274,9 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
         }
         app.refresh_report(true);
         app.refresh_review();
+        // Fix It finishes once the subtitles hold its changes, so its words count what is left.
+        for (video, ok) in &reviewed {
+            app.fix_run_ended(video, *ok);
+        }
     }
 }

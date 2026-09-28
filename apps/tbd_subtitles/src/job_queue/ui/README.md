@@ -33,10 +33,10 @@ a film strip, "No videos yet" and how to add some.
 
 `sidebar_row_ui` draws a row 48 px high (a running row is taller by its bar): the status mark (a
 clock, a progress ring, a check, a warning for a finished job that does not pass the quality
-check, a cross, a stop or a spinner for a correction run), the name and the status line from
-`status_text`, cut with an ellipsis, and a running job's thin bar; a finished row that passes and
-has lines left to check ends in the orange count of them (`core::ui::pill::paint_badge`, white on
-a selected row); a selected row is drawn on the accent with white text. A click anywhere selects
+check, a cross, a stop or a spinner for a correction run or while Fix It fixes the video), the
+name and the status line from `status_text`, cut with an ellipsis, and a running job's thin bar; a
+finished row that passes and has lines left to check ends in the orange count of them
+(`core::ui::pill::paint_badge`, white on a selected row), but not while Fix It fixes its video; a selected row is drawn on the accent with white text. A click anywhere selects
 it, a right click selects it and opens `row_menu_ui`; while the pointer is on a row that can
 leave the list, a red round ✕ takes the count's place and takes the row out. A waiting full run carries its id as egui's drag payload: over another
 waiting row a line shows whether it lands before or after it, and the drop asks to move it there.

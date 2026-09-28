@@ -22,7 +22,8 @@ change, with model downloads, and a log window (Ctrl+L) that shows everything th
 and the programs they start log, grouped by video and step, and every model call in full
 ([GUI](/documentation/features/gui.md)). Fix It has a stronger `claude` model (Opus by default,
 beside the run's Sonnet) fix a finished job's flagged lines in three passes, each change kept or
-undone by the owner ([Fix It](/documentation/features/fix_it.md)).
+undone by the owner, and the Overview shows its result when done
+([Fix It](/documentation/features/fix_it.md)).
 The owner runs it as a self-contained AppImage from Gear Lever, built by `cargo appimage`
 (section 4). Left is the batch of Dressrosa 12–48 run from the window, on the owner's go
 ([roadmap](/documentation/roadmap.md)).

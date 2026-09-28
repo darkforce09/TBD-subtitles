@@ -55,6 +55,21 @@ impl Problem {
         }
     }
 
+    /// The problem in a few words once it is gone, as the Fix It result lists it.
+    pub(crate) fn cleared_title(self) -> String {
+        match self {
+            Problem::Layout(1) => "1 subtitle broke a layout rule".to_string(),
+            Problem::Layout(n) => format!("{n} subtitles broke a layout rule"),
+            Problem::UncoveredSpeech(_) => "Speech with no subtitle".to_string(),
+            Problem::Offset => "The aligner's timing was off by 30 ms or more".to_string(),
+            Problem::FailedCall(1) => "1 language-model call failed".to_string(),
+            Problem::FailedCall(n) => format!("{n} language-model calls failed"),
+            Problem::ReadingSpeed(share) => {
+                format!("Only {:.1} % of subtitles were easy to read", share * 100.0)
+            }
+        }
+    }
+
     /// What to do about it.
     pub(crate) fn fix(self) -> &'static str {
         match self {

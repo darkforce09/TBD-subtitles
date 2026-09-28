@@ -13,9 +13,9 @@ has [Fix It](/documentation/glossary.md#fix-it) fix the flagged lines.
 apps/tbd_subtitles/src/job_report/
 ├── events.rs  `ReportEvent` and `LinesToCheck`: open, show, copy, Check Lines, Try Again, Fix It, Stop
 ├── mod.rs     the module tree
-├── models/    `JobReport`, `LineGroup`, `Problem` and `Remedy`, `LineCounts` and `RowSummary`
-├── services/  a job's files read into a `JobReport` or `RowSummary`; its counts; Fix It's thread
-└── ui/        the Overview: the file card, the lines card, Details and Step times
+├── models/    `JobReport`, `LineGroup`, `Problem`, `Remedy`, `FixResult`, `LineCounts`, `RowSummary`
+├── services/  a job's files read into a `JobReport` or `RowSummary`; its counts; Fix It's result, thread
+└── ui/        the Overview: the file card with Fix It's result, the lines card, Details and Step times
 ```
 
 ## How it works
@@ -23,26 +23,28 @@ apps/tbd_subtitles/src/job_report/
 When the owner selects a finished job, or the selected job ends, the application reads its report
 through `services::report_loading::load`: the video's work directory is found as the pipeline
 names it (the canonical path's job id under the work folder), then `job.json` gives the steps'
-measures, `qc.json` the quality check, `output.json` the subtitle file and `review.json` (when the
-owner corrected a line) the corrections. `services::line_counts` counts the lines worth a listen:
-each finding about a line falls in one `LineGroup` (Unsure what was said, Heard word replaced,
-Word no engine heard, Too fast to read, Loosely timed, Layout), a line counts once however many
-findings name it, and a line the owner corrected is worth a listen and checked, even once a
-correction run has settled its findings (then under no group), so "1 of 38 checked" holds across
-the run. The findings about the whole job
+measures, `qc.json` the quality check, `output.json` the subtitle file, `review.json` (when a line
+was corrected) the corrections and `fix.json` (when Fix It ran) what Fix It answered.
+`services::line_counts` counts the lines worth a listen: each finding about a line falls in one
+`LineGroup` (Unsure what was said, Heard word replaced, Word no engine heard, Too fast to read,
+Loosely timed, Layout), a line counts once however many findings name it, and a line the owner
+corrected is worth a listen and checked, even once a correction run has settled its findings (then
+under no group), so "1 of 38 checked" holds across the run; the lines Fix It changed, and those
+whose every finding it answered, count as checked by Claude. The findings about the whole job
 become `Problem`s, one per pass rule the job breaks (layout, speech with no subtitle, the
 aligner's offset, a failed language-model call, reading speed), so there are none exactly when
-`QcReport::passes` holds. `report_loading::summary` reads only `qc.json` and `review.json` for a
-row's `RowSummary` (its problems, lines worth a listen and lines to check), which the application
-keeps for every finished row: read when the window opens, after each run of its video and after
-each correction.
+`QcReport::passes` holds. `services::fix_result` sums up what Fix It did, from its record, the
+corrections and the problems now. `report_loading::summary` reads `qc.json`, `review.json` and
+`fix.json` for a row's `RowSummary` (its problems, lines worth a listen, lines to check and whether
+Claude fixed it), which the application keeps for every finished row: read when the window opens,
+after each run of its video and after each correction.
 
 The Overview draws the file card ("Subtitles saved next to the video", the green "Passes the
-quality check" or orange "Needs attention" pill, the problems with their buttons, the blue note
-while a correction run updates the file, the path, Open in Player, Show in Folder and Copy Path),
-the lines card ("38 lines worth a listen", the green bar of those checked, the blue Check Lines,
-and a row per group that opens Check Lines on it), and the closed disclosures Details and Step
-times. Open asks the desktop portal, so the video opens in the desktop's default player (VLC) and
+quality check" or orange "Needs attention" pill, the green Fix It result once Fix It has answered
+lines, the problems with their buttons, the blue notes while Fix It or a correction run updates the
+file, the path, Open in Player, Show in Folder and Copy Path), the lines card ("38 lines worth a
+listen", the green bar of those checked, the blue Check Lines, and a row per group that opens
+Check Lines on it), and the closed disclosures Details and Step times. Open asks the desktop portal, so the video opens in the desktop's default player (VLC) and
 the app starts no program. Try Again beside a failed language-model call runs the job again from
 adjudication (`StepName::Adjudicate`): every model call and every step after them. Check Lines on
 a group opens the line review on the lines to check narrowed to that group; Show Nearby Lines
@@ -50,20 +52,22 @@ opens it with every line shown, at the line nearest the first stretch of speech 
 
 ## Public surface
 
-- `models::{report, finding_group, problem, summary}`, `services::{report_loading, line_counts}`,
-  `ui::{OverviewView, overview_ui}` and `events::{ReportEvent, LinesToCheck}`, for the
-  application.
+- `models::{report, finding_group, fixing, problem, summary}`,
+  `services::{report_loading, line_counts, fix_it}`, `ui::{OverviewView, overview_ui}` and
+  `events::{ReportEvent, LinesToCheck}`, for the application.
+- `models::fixing::FIX_STEPS`, for the queue's status line of a video Fix It fixes.
 - `models::summary::RowSummary`, for the queue's sidebar rows; `crate::line_review` may import
   `models` too, for the groups of its lines.
 
 ## Boundaries
 
-- Depends on: `job_model` (`JobRecord`, `OutputRecord`, `Corrections`, `QcReport`, `QcCheck`,
-  `TimingSource`), `pipeline::work_dir::job_id`, `stages::output::subtitle_path`, `serde_json`,
-  `crate::core`; `eframe` in `ui/` only.
-- Used by: `crate::application` (`actions::report`, `feature_views`, `detail_view`);
-  `crate::job_queue` (`models::summary`, in `models::view`, `services::status_text` and
-  `ui::sidebar_row`).
+- Depends on: `job_model` (`JobRecord`, `OutputRecord`, `Corrections`, `FixRecord`, `QcReport`,
+  `QcCheck`, `TimingSource`), `pipeline::work_dir::{job_id, WorkDir}`, `pipeline::fix_it`,
+  `stages::output::subtitle_path`, `stages::fix_it`, `serde_json`, `crate::core`,
+  `crate::settings::models::claude_models`; `eframe` in `ui/` only.
+- Used by: `crate::application` (`actions::report`, `actions::fix_it`, `feature_views`,
+  `detail_view`); `crate::job_queue` (`models::summary` in `models::view`,
+  `services::status_text` and `ui::sidebar_row`; `models::fixing` in `services::status_text`).
 - Rules: the folder keeps `models/mod.rs`, `services/mod.rs` and `ui/mod.rs`, `models/` and
   `services/` never name egui or eframe, no other feature imports `ui/`, and the feature imports
   neither `application` nor `cli`

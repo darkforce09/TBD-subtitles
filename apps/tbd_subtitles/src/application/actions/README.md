@@ -7,7 +7,7 @@ answers in before the next frame.
 
 ```text
 apps/tbd_subtitles/src/application/actions/
-├── fix_it.rs       Fix It: its view, start and Stop, the lanes it holds, and what happens when it ends
+├── fix_it.rs       Fix It: its view and steps, start and Stop, the lanes it holds, its end and finish
 ├── log_console.rs  the log window: open, read lines and calls, views, filters, clear, log file
 ├── mod.rs          the module list and the re-exports `application` uses
 ├── queue.rs        the queue's actions: add, select, remove and undo, move, cancel, try and run again
@@ -63,7 +63,8 @@ failed and the steps it had finished (each with its seconds, or still valid), af
 step rates, the summaries of the rows of each video whose run ended, the report and an open review
 are read again and the next job of each lane starts. A review run's start, and its end first,
 before the next run starts, are passed to the open review of its video, whose saved lines go
-from Saved to Updating and on to Updated or Failed.
+from Saved to Updating and on to Updated or Failed; once everything is read again, a review run's
+end is passed to Fix It too (`fix_run_ended`).
 
 `report.rs` reads the selected finished job's report when it is selected or a job ends, and with
 it the job's row summary; `refresh_summaries` reads the summary of every finished row when the
@@ -81,10 +82,21 @@ runs or its correction run waits ("Wait until this video's subtitles are updated
 runs, the full lane holds a waiting run of that video, the review lane starts the first waiting
 correction run whose video is neither running nor being fixed, and the queue refuses to remove,
 try again or run again its row. `fix_view` gives the Overview its Fix It: hidden with nothing to
-ask about, ready, off with why, or running with its stage and Stop. When a run ends
-(`poll_fix`), the lines it changed are marked Saved in the open review or the parked one, one
-correction run of the video carries them, and a toast says how many lines changed, kept the
-owner's own correction, or whose calls failed; a stopped run says nothing changed.
+ask about, ready, off with why, running with its stage and Stop, or updating while its
+correction run waits or runs; `fix_steps` gives the sidebar each video Fix It fixes with its step
+of four. When a run ends (`poll_fix`) with changes, the lines it changed are marked Saved in the
+open review or the parked one, one correction run of the video carries them, and the run waits
+in `fix_followups`, saying nothing yet; when that correction run ends (`fix_run_ended`, from the
+runner once the summaries and the report are read again), or at once when nothing changed, the
+run finishes (`fix_finished`): a green toast for 8 s says what Claude did ("Dressrosa 12 is fixed:
+Claude changed 17 lines. The subtitles are ready.", "…; 1 problem is left for you.", or "Claude
+checked Dressrosa 12: every line was already right."), how many lines kept the owner's own
+correction and how many calls failed, with See Changes (`Action::SeeFixChanges`: the job
+selected and Check Lines opened on Changed by Claude) when lines changed; the job is marked just
+fixed (`just_fixed`, until another job is selected) for its result card; and while the window is
+unfocused or minimized (`presence`), the desktop gets a notification ("Dressrosa 12 is fixed",
+"Claude changed 17 lines. The subtitles are ready.") and the window asks for its attention. A
+correction run that fails or is stopped forgets the run; a stopped Fix It says nothing changed.
 
 `review.rs` opens the selected job's review on its lines to check, narrowed to a group when one
 is named, with the edits it had when it last closed, or says in a red toast why it cannot,
@@ -141,6 +153,11 @@ line); Open Log File opens the log file in the desktop's text editor through `op
   `use_edits_the_line_and_save_moves_on_while_the_subtitles_update`,
   `an_edit_waits_while_check_lines_is_closed` in
   `apps/tbd_subtitles/src/application/tests/rendering_review.rs`). Fix It runs one video at a time, holds
-  the runs of its video, and queues one correction run of its changes
-  (`fix_it_runs_on_the_video_and_queues_the_correction_run_that_times_its_changes` in
+  the runs of its video, and queues one correction run of its changes; it finishes once that run
+  ended, or at once with nothing changed, telling the desktop only while the window is away, and
+  a failed correction run finishes nothing
+  (`fix_it_runs_on_the_video_and_queues_the_correction_run_that_times_its_changes`,
+  `fix_it_finishes_once_its_changes_are_in_the_subtitles`,
+  `fix_it_with_nothing_to_change_finishes_at_once_and_leaves_the_desktop_alone_in_front`,
+  `a_failed_correction_run_finishes_nothing` in
   `apps/tbd_subtitles/src/application/tests/rendering_fix_it.rs`).

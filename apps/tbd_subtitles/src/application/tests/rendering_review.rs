@@ -26,7 +26,21 @@ fn reviewing(name: &str) -> (TbdSubtitlesApp, PathBuf) {
     app.apply(vec![Action::from(JobQueueEvent::Start)]);
     settle(&mut app);
     let job = work_dir(&root, &video);
-    std::fs::create_dir_all(&job).expect("job");
+    write_lines(&job);
+    write_qc(&job, &["U1", "U3"]);
+    let id = app.queue.items[0].id;
+    app.apply(vec![
+        Action::from(JobQueueEvent::Select(id)),
+        Action::ShowTab(DetailTab::CheckLines),
+    ]);
+    (app, root)
+}
+
+/// Write the three lines of a job into its work directory `job`, as Check Lines reads them:
+/// `sheet.json` with what each engine heard and `adjudicated.json` with the settled texts, U1
+/// "Blaver!" (unsure), U2 "Go!" and U3 "Franky!", 10, 12 and 14 s in, 1.5 s each.
+pub(super) fn write_lines(job: &Path) {
+    std::fs::create_dir_all(job).expect("job");
     let line = |id: &str, start: f64, p: &str, w: &str| {
         format!(
             r#"{{"id":"{id}","start_s":{start},"end_s":{},"words":[],"locked":[],"line":"{id}","hypotheses":[["P",["{p}"]],["W",["{w}"]]]}}"#,
@@ -44,13 +58,6 @@ fn reviewing(name: &str) -> (TbdSubtitlesApp, PathBuf) {
         "calls":1,"input_tokens":0,"output_tokens":0,"cost_usd":0.0}"#;
     std::fs::write(job.join("sheet.json"), sheet).expect("sheet");
     std::fs::write(job.join("adjudicated.json"), adjudicated).expect("adjudicated");
-    write_qc(&job, &["U1", "U3"]);
-    let id = app.queue.items[0].id;
-    app.apply(vec![
-        Action::from(JobQueueEvent::Select(id)),
-        Action::ShowTab(DetailTab::CheckLines),
-    ]);
-    (app, root)
 }
 
 /// Write the job's `qc.json` with the findings of `lines` only: U1 unsure, U3 a heard word
@@ -107,7 +114,7 @@ fn frames(
     actions
 }
 
-fn work_dir(root: &Path, video: &Path) -> PathBuf {
+pub(super) fn work_dir(root: &Path, video: &Path) -> PathBuf {
     root.join("work").join(pipeline::work_dir::job_id(
         &std::fs::canonicalize(video).expect("c"),
     ))

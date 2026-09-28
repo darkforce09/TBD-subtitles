@@ -9,17 +9,20 @@
 //! **Signals and state:** reads the owner's Dressrosa 11 and 15–17 work folders and copies their
 //! JSON files into a scratch folder; writes PNGs only to `$TBD_SNAPSHOTS`, never into the repo;
 //! the Check Lines scenes write Dressrosa 15's corrections into the scratch copy and decode still
-//! frames of its video with FFmpeg.
+//! frames of its video with FFmpeg; the Fix It scene writes Dressrosa 17's `fix.json` and
+//! corrections into the scratch copy through a stand-in Fix It.
 //!
 //! **Invariants:** the owner's work folders and videos are only read, and the settings file
 //! written is the scratch one; the app runs over the scratch copy with a stand-in runner, and a
 //! running, failed or cancelled job, a download and the machine checks are set by hand, so no job
-//! or download starts; the correction run of the Check Lines scenes waits until it is stopped.
+//! or download starts; the correction run of the Check Lines scenes waits until it is stopped;
+//! no `claude` runs.
 
 use std::path::Path;
 
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
+use job_model::report::QcCheck;
 
 use super::*;
 use crate::log_console::events::LogConsoleEvent;
@@ -57,6 +60,7 @@ fn window_snapshots() {
     detail_scenes(&root, &out, &videos);
     attention_scene(&root, &out, &videos);
     review_scenes(&root, &out, &videos);
+    fix_it_done_scene(&root, &out, &videos);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -164,6 +168,226 @@ fn review_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
     if let Some((_, token)) = &harness.state().review_cancel {
         token.cancel();
     }
+}
+
+/// Dressrosa 17's Overview just after Fix It finished, as the owner sees a whole finish: the owner
+/// kept its first flagged line as it was, and a stand-in Fix It answered every other one, so
+/// nothing is left to check; its result card, its toast and its row, with the pointer on no row.
+/// Both write into the scratch copy (`review.json`, `fix.json`), so the scene runs last; the
+/// correction run is the stand-in runner's.
+fn fix_it_done_scene(root: &Path, out: &Path, videos: &[PathBuf]) {
+    use crate::job_report::events::ReportEvent;
+    use job_model::outputs::{AdjudicationPass, Chosen, Correction, Corrections};
+    let job = scratch_work_folder(root, "17");
+    let read = |name: &str| std::fs::read_to_string(job.join(name)).expect(name);
+    let qc: QcReport = serde_json::from_str(&read("qc.json")).expect("qc.json parses");
+    let settled: AdjudicationPass =
+        serde_json::from_str(&read("adjudicated.json")).expect("adjudicated.json parses");
+    let first = flagged_lines(&qc)
+        .into_iter()
+        .next()
+        .expect("a flagged line");
+    let line = settled.lines.iter().find(|line| line.id == first);
+    let line = line.expect("the flagged line is settled");
+    let kept = Corrections {
+        lines: vec![Correction {
+            id: line.id.clone(),
+            text: line.t.clone(),
+            flags: line.f.clone(),
+            chosen: Chosen::Engine("adjudicated".into()),
+        }],
+    };
+    let kept = serde_json::to_string(&kept).expect("json");
+    std::fs::write(job.join("review.json"), kept).expect("review.json");
+    let _ = std::fs::remove_dir_all(root.join("data"));
+    let setup = all_finished(videos);
+    let mut harness = harness(root, move |app| {
+        setup(app);
+        app.env.fix_video = scene_fix();
+    });
+    let id = id_of(harness.state(), "17").expect("Dressrosa 17 is listed");
+    harness.state_mut().apply(vec![
+        Action::from(JobQueueEvent::Select(id)),
+        Action::from(ReportEvent::FixIt),
+    ]);
+    for _ in 0..500 {
+        harness.run_steps(1);
+        let app = harness.state();
+        if app.pending.fix.is_none() && app.fix_followups.is_empty() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    // Clear of the sidebar and the Overview's column.
+    harness.hover_at(egui::pos2(1200.0, 320.0));
+    shoot(&mut harness, out, "fix_it_done");
+}
+
+/// The scratch copy of the work folder of Dressrosa `episode` under `root`.
+fn scratch_work_folder(root: &Path, episode: &str) -> PathBuf {
+    let prefix = format!("muhn-pace-dressrosa-{episode}-");
+    std::fs::read_dir(root.join("work"))
+        .expect("the scratch work folder")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with(&prefix))
+        })
+        .unwrap_or_else(|| panic!("no scratch work folder {prefix}*"))
+}
+
+/// The lines `qc` flags, by id, each once, in id order.
+fn flagged_lines(qc: &QcReport) -> Vec<String> {
+    use crate::job_report::models::finding_group::LineGroup;
+    let mut ids: Vec<String> = qc
+        .findings
+        .iter()
+        .filter(|finding| LineGroup::of(finding.check).is_some())
+        .filter_map(|finding| finding.utterance.clone())
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+/// The heard word a `removed_locked` finding of line `id` names, and the word of `text` it stands
+/// for: the first word sharing its first three letters, not the same, with that word's own
+/// punctuation after it; `None` when there is none.
+fn heard_word(qc: &QcReport, id: &str, text: &str) -> Option<(String, String)> {
+    let fold = |word: &str| -> String {
+        word.chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+    qc.findings
+        .iter()
+        .filter(|f| f.check == QcCheck::RemovedLocked && f.utterance.as_deref() == Some(id))
+        .filter_map(|f| {
+            f.detail
+                .split_once(": ")
+                .map(|(_, heard)| heard.to_string())
+        })
+        .find_map(|heard| {
+            let heard = fold(&heard);
+            let word = text.split_whitespace().find(|word| {
+                let word = fold(word);
+                word != heard && word.len() > 3 && heard.get(..3) == word.get(..3)
+            })?;
+            let tail: String = word.chars().skip_while(|c| c.is_alphanumeric()).collect();
+            let mut spoken = heard.clone();
+            if let Some(first) = spoken.get(..1) {
+                spoken.replace_range(..1, &first.to_uppercase());
+            }
+            Some((format!("{spoken}{tail}"), word.to_string()))
+        })
+}
+
+/// The scene's Fix It, over the job's own check and settled lines: the first line not the
+/// owner's whose heard word it can restore, as a word replaced, and the four lines after it, as a
+/// word put in or taken out, are changed; every other line the owner has not checked is answered
+/// unchanged.
+fn scene_fix() -> crate::job_report::services::fix_it::FixVideo {
+    use job_model::outputs::{
+        AdjudicationPass, Chosen, Correction, Corrections, FixBefore, FixRecord, FixVerdict,
+        LineFix,
+    };
+    use pipeline::fix_it::FixOutcome;
+    Arc::new(|video, options, _progress| {
+        let job = options.work_root.join(pipeline::work_dir::job_id(
+            &std::fs::canonicalize(video).expect("the video"),
+        ));
+        let read = |name: &str| std::fs::read_to_string(job.join(name)).unwrap_or_default();
+        let qc: QcReport = serde_json::from_str(&read("qc.json")).expect("qc.json");
+        let settled: AdjudicationPass =
+            serde_json::from_str(&read("adjudicated.json")).expect("adjudicated.json");
+        let mut corrections: Corrections =
+            serde_json::from_str(&read("review.json")).unwrap_or_default();
+        let open: Vec<String> = flagged_lines(&qc)
+            .into_iter()
+            .filter(|id| !corrections.by_owner(id))
+            .collect();
+        let replaced = open
+            .iter()
+            .position(|id| {
+                let text = settled.lines.iter().find(|line| &line.id == id);
+                text.and_then(|line| heard_word(&qc, id, &line.t)).is_some()
+            })
+            .unwrap_or(0);
+        let mut lines = Vec::new();
+        for (i, id) in open.iter().enumerate() {
+            let Some(line) = settled.lines.iter().find(|line| &line.id == id) else {
+                continue;
+            };
+            let words: Vec<&str> = line.t.split_whitespace().collect();
+            let (before, after) = match i.checked_sub(replaced) {
+                Some(0) => match heard_word(&qc, id, &line.t) {
+                    Some((heard, word)) => (line.t.replacen(&word, &heard, 1), line.t.clone()),
+                    None => (line.t.clone(), format!("Uh, {}", line.t)),
+                },
+                Some(2 | 4) if words.len() > 1 => (line.t.clone(), words[1..].join(" ")),
+                Some(1..5) => (line.t.clone(), format!("Uh, {}", line.t)),
+                _ => (line.t.clone(), line.t.clone()),
+            };
+            let verdict = if before == after {
+                FixVerdict::Unchanged
+            } else {
+                FixVerdict::Accepted {
+                    why: "Both engines heard it.".into(),
+                }
+            };
+            lines.push(LineFix {
+                id: line.id.clone(),
+                problems: Vec::new(),
+                checks: Vec::new(),
+                before_text: before,
+                before_flags: line.f.clone(),
+                after_text: after,
+                after_flags: line.f.clone(),
+                steps: Vec::new(),
+                refused: Vec::new(),
+                removed: Vec::new(),
+                applied: verdict.writes_correction(),
+                verdict,
+            });
+        }
+        let mut before = FixBefore::of(&qc);
+        *before.counts.entry(QcCheck::TooShort).or_default() += 3;
+        for line in lines.iter().filter(|line| line.applied) {
+            corrections.set(Correction {
+                id: line.id.clone(),
+                text: line.after_text.clone(),
+                flags: line.after_flags.clone(),
+                chosen: Chosen::FixIt {
+                    model: options.model.clone(),
+                    why: line.why(),
+                },
+            });
+        }
+        let changed = lines
+            .iter()
+            .filter(|line| line.applied)
+            .map(|line| line.id.clone())
+            .collect();
+        let record = FixRecord {
+            model: options.model.clone(),
+            video: "[Muhn Pace] Dressrosa 17".into(),
+            lines,
+            before: Some(before),
+            ..FixRecord::default()
+        };
+        let corrections_json = serde_json::to_string(&corrections).expect("json");
+        std::fs::write(job.join("review.json"), corrections_json).expect("review.json");
+        let record_json = serde_json::to_string(&record).expect("json");
+        std::fs::write(job.join("fix.json"), record_json).expect("fix.json");
+        Ok(FixOutcome {
+            work_dir: job,
+            record,
+            changed,
+            kept_yours: Vec::new(),
+        })
+    })
 }
 
 /// Wait up to five seconds for the open line's still frame, so the scene shows it.

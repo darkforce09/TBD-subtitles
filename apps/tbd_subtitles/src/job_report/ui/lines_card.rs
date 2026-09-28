@@ -1,5 +1,5 @@
-//! The Overview's lines card: how many lines are worth a listen, a green bar of those checked,
-//! Check Lines, and a row per group that opens Check Lines on it.
+//! The Overview's lines card: how many lines are worth a listen, a green bar of those the owner
+//! and Claude checked, Check Lines, and a row per group that opens Check Lines on it.
 //!
 //! **Role:** draw the borrowed report's line counts and turn the button and the rows into
 //! `ReportEvent::CheckLines`.
@@ -9,7 +9,9 @@
 //! **Signals and state:** none.
 //!
 //! **Invariants:** a job with no line worth a listen shows a card saying so and no rows; a group
-//! with no line has no row; a row is named by its group's title for accessibility.
+//! with no line has no row; a row is named by its group's title for accessibility; a line counts
+//! as checked when the owner or Claude checked it, and once every line is, the card says who
+//! checked how many.
 
 use std::sync::Arc;
 
@@ -53,7 +55,8 @@ pub(super) fn lines_card_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<Re
         return;
     }
     let p = palette(ui);
-    let (n, done) = (lines.flagged, lines.checked.min(lines.flagged));
+    let n = lines.flagged;
+    let done = (lines.checked + lines.by_claude).min(n);
     let left = n - done;
     card(ui, false, |ui| {
         Frame::new()
@@ -65,15 +68,21 @@ pub(super) fn lines_card_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<Re
                     (
                         format!("{} worth a listen", format::plural(n, "line")),
                         "Nothing is required. Each of these already has the app's best reading \
-                         in the file. Listen, then keep it or correct it.",
+                         in the file. Listen, then keep it or correct it."
+                            .to_string(),
+                    )
+                } else if lines.by_claude > 0 {
+                    (
+                        format!("All {} checked", format::plural(n, "line")),
+                        checked_by(lines.by_claude, lines.checked),
                     )
                 } else {
                     (
                         format!("All {} checked", format::plural(n, "line")),
-                        "The subtitles are up to date with every check you made.",
+                        "The subtitles are up to date with every check you made.".to_string(),
                     )
                 };
-                head_ui(ui, (icons::EAR, p.accent), &title, line, |_| {});
+                head_ui(ui, (icons::EAR, p.accent), &title, &line, |_| {});
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 12.0;
                     let checked = format!("{done} of {n} checked");
@@ -105,6 +114,16 @@ pub(super) fn lines_card_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<Re
             group_row_ui(ui, *group, *count, i + 1 == rows, events);
         }
     });
+}
+
+/// "Claude checked 36 · you checked 2" for the lines `claude` and the `owner` checked, the owner's
+/// part left out while it has no line.
+fn checked_by(claude: usize, owner: usize) -> String {
+    if owner == 0 {
+        format!("Claude checked {claude}")
+    } else {
+        format!("Claude checked {claude} · you checked {owner}")
+    }
 }
 
 /// The row of `group` with its `count` of lines; `last` rounds its hover to the card's corners.

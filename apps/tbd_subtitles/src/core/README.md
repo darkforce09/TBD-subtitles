@@ -16,7 +16,7 @@ apps/tbd_subtitles/src/core/
 ├── log_buffer/      the log window's lines and model calls, and the `tracing` layers that fill them
 ├── logging.rs       `initialise` and `console`: the global subscriber: stderr, the log file, the buffer
 ├── mod.rs           the module tree
-├── portal.rs        the desktop's chooser, opening a file in its program, showing it in the file manager
+├── portal.rs        the desktop's chooser, opening a file, showing it in the file manager, notifications
 ├── steps.rs         the six stages the window shows, and each step's plain title
 ├── tests/           unit tests for the portal's file URIs, formats, stages, scheme, toasts, logging
 ├── toast.rs         `Toast`, `Toasts` and `ToastKind`: short messages at the bottom, with a button
@@ -54,7 +54,10 @@ with" chooser the owner closed is fine, anything else is a failure with its reas
 starts no program for it. Every request opens a session bus connection of its own and closes it
 when it ends: ashpd's shared connection holds a lock while it waits for the bus, so one request
 the desktop never answered would stall every later one without a message. `file_path` turns
-the chooser's `file://` URIs into paths, percent-decoded.
+the chooser's `file://` URIs into paths, percent-decoded. `notify` shows a desktop notification
+with a title and a body through the portal's `notification` interface, on a thread and a
+connection of its own, under one id so a newer one replaces the one before; it has no answer, and
+a failure is logged, since the window is away when it is sent (Fix It's finish).
 
 `color_scheme::watch` asks the same portal's `settings` interface on a thread of its own: it
 subscribes to changes of the colour scheme, sends the current one, then sends each change, waking
@@ -85,7 +88,7 @@ draws its own panels with them, so the window looks the same across features.
 ## Public surface
 
 - `logging::{initialise, window_log_path}`, called by `apps/tbd_subtitles/src/cli/mod.rs`.
-- `background::Wake`; `portal::{choose, open, reveal, Choose, Chosen, Opened}`;
+- `background::Wake`; `portal::{choose, open, reveal, notify, Choose, Chosen, Opened}`;
   `toast::{Toast, Toasts, ToastKind, ToastId, SHOWN}`.
 - `format::{size, duration, about, length, clock_tenths, ordinal, plural}`.
 - `steps::{STAGES, Stage, stage_of, step_title}`.

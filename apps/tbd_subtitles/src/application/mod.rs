@@ -9,8 +9,10 @@
 //! **Signals and state:** holds the queue, the toasts, the row removed last, the Settings window's
 //! tab while it is open, whether the log window is open with its lines and filter, the settings
 //! page, the desktop's colour scheme, the finished rows' summaries, the open line review with its
-//! clip and still frame, the edits of closed reviews, and the threads it waits on; reads files
-//! dropped onto the window; logs each action it applies, but the log window's own.
+//! clip and still frame, the edits of closed reviews, the Fix It runs waiting for their
+//! correction run and the video fixed last, whether the window is away, and the threads it waits
+//! on; reads files dropped onto the window; logs each action it applies, but the log window's
+//! own.
 //!
 //! **Invariants:** nothing changes state while a frame is drawn: every change is an [`Action`]
 //! applied after the frame, or a thread's answer folded in before it.
@@ -103,6 +105,14 @@ pub(crate) struct TbdSubtitlesApp {
     /// The unsaved line edits and the run states of each job whose review closed, until it opens
     /// again or the window closes.
     parked: HashMap<JobId, Parked>,
+    /// Each video whose Fix It run ended, until its changes are in the subtitles.
+    fix_followups: HashMap<PathBuf, actions::FixFollowup>,
+    /// The video Fix It finished last, with egui's time then, until another job is selected.
+    just_fixed: Option<(PathBuf, f64)>,
+    /// egui's clock and whether the window is away, as the last frame saw them.
+    presence: window::Presence,
+    /// Whether to ask the desktop for the window's attention at the next frame.
+    attention: bool,
 }
 
 impl TbdSubtitlesApp {
@@ -143,6 +153,10 @@ impl TbdSubtitlesApp {
             clip: None,
             still: None,
             parked: HashMap::new(),
+            fix_followups: HashMap::new(),
+            just_fixed: None,
+            presence: window::Presence::default(),
+            attention: false,
         };
         app.refresh_summaries(None);
         app.watch_scheme();
@@ -177,6 +191,7 @@ impl TbdSubtitlesApp {
                         self.apply(vec![action]);
                     }
                 }
+                Action::SeeFixChanges(id) => self.see_fix_changes(id),
                 Action::Settings(event) => self.apply_settings(event),
                 Action::Report(event) => self.apply_report(event),
                 Action::Review(event) => self.apply_review(event),

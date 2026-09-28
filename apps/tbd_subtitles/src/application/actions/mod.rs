@@ -8,7 +8,7 @@ mod review;
 mod runner;
 mod settings;
 
-pub(super) use fix_it::poll_fix;
+pub(super) use fix_it::{FixFollowup, poll_fix};
 pub(super) use log_console::poll_log;
 pub(super) use runner::poll_runner;
 pub(super) use settings::{new_settings_page, poll_settings};

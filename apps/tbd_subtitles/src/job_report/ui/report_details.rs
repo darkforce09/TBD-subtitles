@@ -93,7 +93,7 @@ pub(super) fn details_ui(ui: &mut Ui, report: &JobReport) {
             ),
             (
                 "Corrections you made",
-                report.corrections.lines.len().to_string(),
+                report.corrections.owner_count().to_string(),
             ),
         ];
         for (key, value) in rows {

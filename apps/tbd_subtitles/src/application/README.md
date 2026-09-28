@@ -11,7 +11,7 @@ apps/tbd_subtitles/src/application/
 ├── actions/            applying each feature's actions and folding its threads' answers in
 ├── background.rs       `Pending`: the threads the window waits on; files opened on the desktop
 ├── detail_view.rs      the selected job's header: title, line, Overview | Check Lines or Cancel
-├── environment.rs      `Environment`: files, job and Fix It runners, wake, log; scratch in tests
+├── environment.rs      `Environment`: files, job and Fix It runners, wake, notifier, log; scratch in tests
 ├── events.rs           `Action`, built from the features' events, and the tab to show
 ├── feature_views.rs    lends each feature its borrowed view and turns its events into actions
 ├── log_window.rs       the log window, a second native window near the main one's lower right
@@ -33,10 +33,12 @@ installs the theme from `core::ui::theme` (Adwaita Sans, the icon font, the mock
 and starts following the desktop's colour scheme through `core::color_scheme`, waiting up to
 250 ms for its first answer so the first frame already has the desktop's colours. Its
 `Environment` names the owner's settings file, the kept queue, the GPU lock and the runtime
-folder, holds the job runner (the pipeline's `run_job`) and Fix It's (`fix_video`), the process's
-log buffer and log file, and wakes the window from any thread (`request_repaint`); the tests build one over a scratch
-folder with a stand-in runner, a log buffer of its own and no log file, and a Fix It that refuses
-to run unless a test gives it one, and start no portal thread.
+folder, holds the job runner (the pipeline's `run_job`) and Fix It's (`fix_video`), the notifier
+(`notify`, the desktop's notifications through `core::portal::notify`), the process's log buffer
+and log file, and wakes the window from any thread (`request_repaint`); the tests build one over
+a scratch folder with a stand-in runner, a log buffer of its own and no log file, a Fix It that
+refuses to run unless a test gives it one, and a notifier that records each notification in that
+log under the target `notification`, and start no portal thread.
 `TbdSubtitlesApp` holds the queue loaded from `queue.json`, two job runners with the cancel token
 of the job each runs (one for full runs, one for the review runs that re-time the owner's
 corrections), the step rates for the time left, the settings page, the Settings window's tab while
@@ -46,19 +48,24 @@ every finished row's summary (its verdict and lines to check, read from its work
 window opens, after each run of its video and after each correction), its line review while open,
 the clip playing in it, the line its editor shows with that line's still frame,
 the unsaved edits and run states of each job whose review closed (`parked`, until it opens again;
-they are lost when the window closes), and `Pending`, the receiving end of every other thread it
-started (the choosers, the files the desktop was asked to open, the downloads and checks, and the
-Fix It run under way). The
+they are lost when the window closes), each Fix It run that ended until its changes are in the
+subtitles (`fix_followups`), the video Fix It finished last with egui's time then (`just_fixed`,
+until another job is selected), egui's clock and whether the window is unfocused or minimized as
+the last frame saw them (`presence`), whether to ask the desktop for the window's attention, and
+`Pending`, the receiving end of every other thread it started (the choosers, the files the
+desktop was asked to open, the downloads and checks, and the Fix It run under way). The
 videos passed to `launch` enter the queue as the first `Action`; the machine checks and the
 measures of the work and models folders start at once. While a job runs the window redraws every
 second; a playing clip wakes it at each frame and a still frame when it is decoded.
 
-Each frame runs in three steps:
+Each frame runs in these steps:
 
 ```text
+Presence::read         egui's clock, and whether the window is unfocused or minimized
 poll(&mut self)        the threads' answers: chooser paths, files opened, downloads, checks, sizes,
-                       job events, the colour scheme, new log lines while the log window is open;
-                       toasts whose time is up go
+                       job events, the colour scheme, the Fix It run, new log lines while the log
+                       window is open; toasts whose time is up go
+attention              RequestUserAttention when Fix It finished while the window was away
 theme::follow          light or dark, as the desktop reported
 frame_ui(&self)
   ├── dropped files ──▶ Action::QueueVideos
@@ -76,13 +83,16 @@ frame_ui(&self)
   └── log_window (while open) ──▶ LogConsole (Level, Search, Clear, OpenLogFile) / ShowLog(false)
 apply(&mut self, actions)
   ├── ShowTab: Overview closes the line review, Check Lines opens it
+  ├── SeeFixChanges (a Fix It toast's See Changes): the job selected, Check Lines on Changed by
+  │   Claude
   └── actions::queue (edits, Undo, Try Again, Run Again, Start, Pause, Cancel, toasts),
       actions::runner (the next job of each lane, its options, how it ended, a review run's start
-      and end for the status chip), actions::review (open on a group, edit, save or keep and
-      queue a review run, play, the still frame), actions::report or actions::settings (an edit
-      written at once, the tab, the download), actions::log_console (open, read, filter, clear,
-      open the log file); each action but the log window's own is logged at debug, cut to 160
-      characters
+      and end for the status chip and for Fix It), actions::review (open on a group, edit, save or
+      keep and queue a review run, play, the still frame), actions::report, actions::fix_it (start,
+      Stop, the correction run of its changes, its finish with a toast and, while the window is
+      away, a desktop notification) or actions::settings (an edit written at once, the tab, the
+      download), actions::log_console (open, read, filter, clear, open the log file); each action
+      but the log window's own is logged at debug, cut to 160 characters
 ```
 
 `frame_ui` borrows the state immutably and only collects actions; `apply` and `poll` are the only
@@ -186,6 +196,14 @@ everything onto disk (the frame asks for a redraw when it goes).
     starts at once and shows on its video's one row
     (`a_saved_correction_queues_a_review_run_that_runs_at_once`), and a full run waits while its
     video's review run runs (`a_full_run_waits_while_its_videos_review_run_runs`);
+  - Fix It counts its steps "1 of 4" to "4 of 4" on the Overview and the sidebar through its
+    correction run, and finishes only once that run ended: its green result card, a toast with See
+    Changes that opens Check Lines on Changed by Claude, "Subtitles ready · fixed by Claude", and
+    one desktop notification while the window is away; with nothing changed it finishes at once
+    and leaves the desktop alone while the window is in front; a failed correction run finishes
+    nothing (`fix_it_finishes_once_its_changes_are_in_the_subtitles`,
+    `fix_it_with_nothing_to_change_finishes_at_once_and_leaves_the_desktop_alone_in_front`,
+    `a_failed_correction_run_finishes_nothing` in `tests/rendering_fix_it.rs`);
   - Check Lines opens on the first line to check with its list, why, clip, readings, text box,
     flags and Looks Right; Use edits the line and Save moves on while the status chip goes from
     Updating subtitles… to Subtitles updated; Take Back, also from the Checked list and of the
@@ -223,7 +241,10 @@ everything onto disk (the frame asks for a redraw when it goes).
     Lines on its first line with its still frame, after Use, after Looks Right with its correction
     run updating, narrowed to "Heard word replaced", and with every line checked
     (`check_lines_first`, `after_use`, `after_looks_right`, `group_filter`, `all_checked`, whose
-    corrections go to the scratch copy), light and dark, at 1280 by 800, to `$TBD_SNAPSHOTS`:
+    corrections go to the scratch copy), and Dressrosa 17 just after a stand-in Fix It answered
+    every line the owner had not checked, with its result card, its toast and every line checked
+    (`fix_it_done`, whose `fix.json` and corrections go to the scratch copy), light and dark, at
+    1280 by 800, to `$TBD_SNAPSHOTS`:
     `TBD_SNAPSHOTS=<folder> cargo test -p tbd_subtitles -- --ignored window_snapshots`, on the
     host, since it renders with wgpu;
   - the log window opens from Ctrl+L and the toolbar, shows its lines under a header per step

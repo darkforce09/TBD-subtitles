@@ -51,12 +51,15 @@ Done, each in queue order (ended jobs stand newest first),
 and the waiting full runs are numbered by their place in line. `status_text::status` writes a
 row's line from its job: a running job's stage and time left ("Settling the words · about 4 min
 left", "Stopping…"), a waiting job's place, shown past the first only while the queue runs, where
-a failed job failed, the steps a cancelled one kept, "Updating subtitles · 2 corrections" while a
-correction run is pending; for a finished job whose files the application read, its summary's
-"Needs attention · 1 problem" when it does not pass the quality check, else "Subtitles ready · 38
-to check", "Subtitles ready · all checked" once every line worth a listen is checked, and
-"Subtitles ready" when none is; without a summary, "Needs attention" from the run's
-own result, else "Subtitles ready". `status_text::fails_the_check` says the same verdict for the
+a failed job failed, the steps a cancelled one kept; for a finished job, "Fixing with Claude · 2
+of 4" while Fix It fixes its video (its step of four, the correction run of its changes the
+fourth), else "Updating subtitles · 2 corrections" while a correction run is pending; for a
+finished job whose files the application read, its summary's "Needs attention · 1 problem" when
+it does not pass the quality check, else "Subtitles ready · 38 to check", "Subtitles ready ·
+fixed by Claude" once none is left to check and a Fix It run of the job as it stands answered
+lines, "Subtitles ready · all checked" once every line worth a listen is checked, and "Subtitles
+ready" when none is; without a summary, "Needs attention" from the run's own result, else
+"Subtitles ready". `status_text::fails_the_check` says the same verdict for the
 row's warning mark. `status_text::detail_line` writes the line under the detail pane's
 title for a job that has not finished: "25:59 video · running for 10 min 00 s" ("Running for 3 s"
 until the length is known), "Length known once it starts · 2nd in line", or the row's line of a
@@ -104,7 +107,8 @@ of them it kept, done in a time not known, and then keeps as many as it lists.
 ## Boundaries
 
 - Depends on: `crate::job_queue::models`; `crate::core::{background::Wake, format, steps}`;
-  `crate::job_report::models::summary::RowSummary` in `status_text.rs`; `pipeline`; `job_model`;
+  `crate::job_report::models::summary::RowSummary` and `crate::job_report::models::fixing::FIX_STEPS`
+  in `status_text.rs`; `pipeline`; `job_model`;
   `serde`, `serde_json` and `tracing` (`progress_log`, `job_runner`).
 - Used by: `crate::application` (`actions::{queue, review, runner}`, `mod.rs`, `detail_view`);
   `crate::job_queue::ui` (`time_left::estimate`, `queue_editing::{queue_control, subtitle_file}`,
@@ -138,7 +142,9 @@ of them it kept, done in a time not known, and then keeps as many as it lists.
     line past the first shows only while the queue runs
     (`waiting_rows_show_their_place_only_while_the_queue_runs` in `tests/status_text.rs`); a
     finished row gives its verdict and lines to check from its summary
-    (`finished_rows_give_their_verdict_and_lines_to_check_from_their_files`); the
+    (`finished_rows_give_their_verdict_and_lines_to_check_from_their_files`), says it was fixed
+    by Claude only while it passes with nothing to check, and gives Fix It's step while Fix It
+    fixes its video (`a_row_fixed_by_claude_says_so_and_a_row_being_fixed_gives_its_step`); the
     detail pane gives a running job's length and a waiting job's place, a waiting job says when it
     starts, and a job tried again starts at once only when its lane and video are idle
     (`the_detail_line_gives_a_running_jobs_length_and_a_waiting_jobs_place`,

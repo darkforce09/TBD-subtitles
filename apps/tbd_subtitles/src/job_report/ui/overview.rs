@@ -1,6 +1,6 @@
-//! A finished job's Overview: the file card, the lines card, then the Details and Step times
-//! disclosures, in the column the application gives it, 16 px apart; and the head the two cards
-//! share.
+//! A finished job's Overview: the file card with Fix It's result, the lines card, then the Details
+//! and Step times disclosures, in the column the application gives it, 16 px apart; and the head
+//! the two cards share.
 
 use eframe::egui::{Align, Color32, Label, Layout, RichText, TextStyle, Ui};
 
@@ -23,13 +23,16 @@ pub(crate) struct OverviewView<'a> {
     /// The corrections a correction run of the video is putting into the subtitles, while one
     /// waits or runs.
     pub(crate) updating: Option<usize>,
-    /// Fix It for this job: hidden, ready, off with why, or under way.
+    /// Fix It for this job: hidden, ready, off with why, under way, or its correction run.
     pub(crate) fix: FixView,
+    /// egui's time when Fix It finished on this job, while it has just finished: its result
+    /// shows it.
+    pub(crate) fixed_at: Option<f64>,
 }
 
 /// Draw the Overview of `view` and push what the owner asked for onto `events`.
 pub(crate) fn overview_ui(ui: &mut Ui, view: &OverviewView<'_>, events: &mut Vec<ReportEvent>) {
-    file_card_ui(ui, view.report, view.updating, &view.fix, events);
+    file_card_ui(ui, view, events);
     lines_card_ui(ui, view.report, events);
     details_ui(ui, view.report);
     step_times_ui(ui, view.report, events);

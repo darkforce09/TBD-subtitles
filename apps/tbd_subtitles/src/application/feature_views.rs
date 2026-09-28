@@ -42,6 +42,7 @@ fn queue_view(app: &TbdSubtitlesApp) -> JobQueueView<'_> {
         models_missing: app.models_missing(),
         rates: &app.rates,
         summaries: &app.summaries,
+        fixing: app.fix_steps(),
         now: Instant::now(),
     }
 }
@@ -155,10 +156,16 @@ fn body_ui(ui: &mut Ui, app: &TbdSubtitlesApp, item: &QueueItem, actions: &mut V
                 .find(|row| row.id == item.id)
                 .and_then(|row| row.fold)
                 .map(|fold| fold.corrections);
+            let fixed_at = app
+                .just_fixed
+                .as_ref()
+                .filter(|(video, _)| *video == item.video)
+                .map(|(_, at)| *at);
             let view = OverviewView {
                 report,
                 updating,
                 fix: app.fix_view(item.id, report),
+                fixed_at,
             };
             let mut events = Vec::new();
             overview_ui(ui, &view, &mut events);

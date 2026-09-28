@@ -71,8 +71,11 @@ list and the line editor side by side.
   (finished, failed or cancelled, newest first), each heading with its count and folding away on
   a click. A row has a status mark, the video's name and one line: "Waiting · 2nd in line",
   "Failed at Hear the speech", "Subtitles ready · 38 to check" (the count in orange),
-  "Needs attention · 1 problem", or "Updating subtitles · 1 correction" while a
-  [correction run](/documentation/glossary.md#correction-run) of its video runs. A job finished
+  "Needs attention · 1 problem", "Updating subtitles · 1 correction" while a
+  [correction run](/documentation/glossary.md#correction-run) of its video runs, "Fixing with
+  Claude · 2 of 4" with the working spinner while [Fix It](/documentation/features/fix_it.md)
+  runs, or "Subtitles ready · fixed by Claude" once a fixed job passes with nothing left to
+  check. A job finished
   in an earlier window shows the same line. A click selects a row, a waiting row
   drags to another place in line, and a right click opens the commands of its state: Run Next,
   Move Up, Move Down, Cancel, Stop Updating Subtitles, Check Lines, Open in Player, Show in Folder,
@@ -98,10 +101,13 @@ list and the line editor side by side.
 - **Toasts:** short messages at the bottom centre for what the window shows nowhere else, some
   with a button such as Undo; errors are red.
 - **Overview** (a finished job): the file card says "Subtitles saved next to the video" with the
-  pill "Passes the quality check" or "Needs attention", lists each whole-video problem with its
-  fix, shows a blue note while a correction run updates the file or
-  [Fix It](/documentation/features/fix_it.md) runs, the Fix It row with its button when Fix It has
-  findings to ask about, the path, and Open in Player (the desktop's default player, through the
+  pill "Passes the quality check" or "Needs attention"; right under it, once Fix It has run, the
+  green [Result card](/documentation/features/fix_it.md#the-result-card) ("Fixed by Claude
+  Opus", what it changed, cleared and left, See Changes). The card lists each whole-video problem
+  with its fix, shows a blue note while a correction run updates the file or
+  [Fix It](/documentation/features/fix_it.md) runs ("Fixing with Claude Opus · updating the
+  subtitles (4 of 4)…"), the Fix It row with its button while a flagged finding is one Claude has
+  not answered, the path, and Open in Player (the desktop's default player, through the
   desktop portal), Show in Folder and Copy Path, each confirmed in a toast (a red one when the
   desktop could not, or has not answered within 20 seconds). Each request to the desktop portal
   has a D-Bus connection of its own, so one the desktop never answers holds up no other. The
@@ -110,9 +116,11 @@ list and the line editor side by side.
   each start, since a launcher such as Gear Lever drops stderr; the [log window](#the-log-window)
   shows the same lines. The lines card says "38 lines worth
   a listen" with a green bar of those checked, Check Lines, and one row per finding group with its
-  explanation and count. Then Details (subtitles, easy to read, unsure lines, words no engine
-  heard, timing offset, speech and voice with no subtitle, words timed by the aligner, corrections
-  made) and Step times (each stage and step with its time, peak RAM and peak VRAM, and Open Full
+  explanation and count. A line Fix It changed or answered counts as checked; with none left, the
+  card says "All 38 lines checked" and "Claude checked 36 · you checked 2". Then Details
+  (subtitles, easy to read, unsure lines, words no engine heard, timing offset, speech and voice
+  with no subtitle, words timed by the aligner, and "Corrections you made", the owner's alone,
+  not Claude's) and Step times (each stage and step with its time, peak RAM and peak VRAM, and Open Full
   Report), both folded away at first.
 - **Check Lines** (a finished job):
 
@@ -265,20 +273,24 @@ every language-model call with what was sent and what came back.
 ### Overview to Check Lines
 
 ```text
-┌────────────────────────────────────────────────────────────────────────────────────────────┐
-│ [ Errors 1 | Warnings 2 | Info | Debug ]  [ Filter lines ]  [Copy] [Clear] [Open Log File] │
-├────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 04:12.300  INFO   job             Dressrosa 12: asr_parakeet: started                      │
-│ 04:12.310  DEBUG  child_process   tbd-subtitles[4242] started: … worker asr_parakeet …     │
-│ 04:13.020  DEBUG  child_process   tbd-subtitles[4242] … a line the worker wrote to stderr  │
-│ 05:40.870  INFO   job             Dressrosa 12: asr_parakeet: finished in 88.5 s, …        │
-│ 06:02.114  INFO   claude_cli      claude sonnet: 212 input lines answered in 41.3 s, …     │
-│ 06:02.500  WARN   child_process   ffprobe[4301] exited 1 after 0.05 s                      │
-├────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 6 lines                   Times since the window opened · keeps the newest 20000 lines     │
+┌─ file card ────────────────────────────────────────────────────────────────────────────────┐
+│ Subtitles saved next to the video                                        (Needs attention) │
+│ ┌ (seal) Fixed by Claude Opus ──────────────────────────── the Result card, after Fix It ┐ │
+│ │ 17 lines changed · 21 were already right · cleared, left, examples       [See Changes] │ │
+│ └────────────────────────────────────────────────────────────────────────────────────────┘ │
+│ each whole-video problem, with its fix                                                     │
+│ blue note: "Fixing with Claude Opus · updating the subtitles (4 of 4)…"                    │
+│ Fix It with Claude Opus · while Claude has not answered a flagged finding         [Fix It] │
+│ the path                                     [Open in Player] [Show in Folder] [Copy Path] │
 └────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ lines card ───────────────────────────────────────────────────────────────────────────────┐
+│ 38 lines worth a listen   ██████████░░░░░░░░░░                               [Check Lines] │
+│ with none left: "All 38 lines checked" · "Claude checked 36 · you checked 2"               │
+│ one row per finding group, with its explanation and count                                  │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
+  Details and Step times, folded away at first
+  [See Changes] ──▶ Check Lines on the Changed by Claude group
 ```
-
 
 An edit not saved, and the status chip of a saved line, stay while the window is open, also when
 Check Lines closes; a finding stays worth a listen until the correction run that settles it ends.
@@ -385,7 +397,7 @@ nothing.
 - Jobs: each job's [work directory](/documentation/glossary.md#work-directory)
   ([system overview](/documentation/architecture/system_overview.md#job-work-directory)). The
   window reads `job.json` and the step records for progress and the time left, `qc.json`,
-  `output.json` and `report.md` for the Overview, and `sheet.json`, `adjudicated.json`, the
+  `output.json`, `report.md` and `fix.json` for the Overview, and `sheet.json`, `adjudicated.json`, the
   re-decodes, `probe.json` and `audio/vocals_16k.f32` for Check Lines. It writes only
   `review.json`, the corrections the review step reads, under its lock `review.json.lock`, which
   Fix It takes too; Fix It also writes `fix.json` and, while it runs, `fix/calls/`. Each finished
@@ -463,7 +475,9 @@ nothing.
 - Settings apply as they change, with no Save
   ([settings apply as they change](/documentation/decisions/desktop_gui.md#2026-09-28--settings-apply-as-they-change)).
 - Fix It fixes the flagged lines in three passes, each change kept by the owner or undone
-  ([Fix It](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-a-stronger-model-fixes-the-flagged-lines-in-three-passes)).
+  ([Fix It](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-a-stronger-model-fixes-the-flagged-lines-in-three-passes)),
+  and shows its result in a Result card when the subtitles are updated
+  ([Fix It finishes visibly](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-finishes-visibly)).
 - A log window shows everything the app does, from one `tracing` buffer
   ([log window](/documentation/decisions/desktop_gui.md#2026-09-28--a-log-window-shows-everything-the-app-does)).
 - Model calls show whole in the log window, never in the log file
