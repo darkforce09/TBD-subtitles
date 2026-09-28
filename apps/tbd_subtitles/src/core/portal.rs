@@ -15,7 +15,9 @@
 //! **Invariants:** the app starts no program itself: the desktop opens the file; a dialog the
 //! owner closes answers with no paths, never an error; an open that fails answers with why.
 //! No request shares a connection with another request or with the colour scheme watcher, so a
-//! request the desktop never answers holds up no other.
+//! request the desktop never answers holds up no other. Local files and folders go to the portal
+//! as file descriptors (`OpenFile`, `OpenDirectory`), never as `file://` URIs, which the portal
+//! refuses; the portal's answer to every request is read, never assumed.
 
 use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
@@ -68,7 +70,9 @@ async fn ask(kind: Choose, title: &str) -> Chosen {
     let request = match kind {
         Choose::Videos => request.multiple(true).filter(
             FileFilter::new("Videos")
-                .mimetype("video/*")
+                .mimetype("video/mp4")
+                .mimetype("video/x-matroska")
+                .mimetype("video/webm")
                 .glob("*.mkv")
                 .glob("*.mp4"),
         ),
@@ -97,24 +101,13 @@ pub(crate) fn open(path: &Path, wake: Wake) -> Receiver<Opened> {
     let path = path.to_path_buf();
     std::thread::spawn(move || {
         let result = pollster::block_on(async {
-            let connection = connection().await?;
-            if path.is_dir() {
-                let folder = std::fs::File::open(&path).map_err(|e| e.to_string())?;
-                OpenDirectoryRequest::default()
-                    .connection(Some(connection))
-                    .send(&folder)
-                    .await
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            } else {
-                let uri = ashpd::Uri::parse(&file_uri(&path)).map_err(|e| e.to_string())?;
-                OpenFileRequest::default()
-                    .connection(Some(connection))
-                    .send_uri(&uri)
-                    .await
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }
+            let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+            let request = OpenFileRequest::default()
+                .connection(Some(connection().await?))
+                .send_file(&file)
+                .await
+                .map_err(|e| e.to_string())?;
+            answered(request.response())
         });
         if let Err(error) = &result {
             tracing::warn!(path = %path.display(), %error, "the desktop could not open it");
@@ -133,12 +126,12 @@ pub(crate) fn reveal(path: &Path, wake: Wake) -> Receiver<Opened> {
     std::thread::spawn(move || {
         let result = pollster::block_on(async {
             let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
-            OpenDirectoryRequest::default()
+            let request = OpenDirectoryRequest::default()
                 .connection(Some(connection().await?))
                 .send(&file)
                 .await
-                .map(|_| ())
-                .map_err(|e| e.to_string())
+                .map_err(|e| e.to_string())?;
+            answered(request.response())
         });
         if let Err(error) = &result {
             tracing::warn!(path = %path.display(), %error, "the file manager could not show it");
@@ -149,18 +142,13 @@ pub(crate) fn reveal(path: &Path, wake: Wake) -> Receiver<Opened> {
     answer
 }
 
-/// `file://` and the path, every byte outside the unreserved set and `/` percent-encoded.
-pub(crate) fn file_uri(path: &Path) -> String {
-    let mut uri = String::from("file://");
-    for byte in path.as_os_str().as_encoded_bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
-                uri.push(*byte as char)
-            }
-            _ => uri.push_str(&format!("%{byte:02X}")),
-        }
+/// The portal's answer to an open: done, or the owner closed its "open with" chooser, is fine;
+/// anything else says why.
+fn answered(response: Result<(), ashpd::Error>) -> Opened {
+    match response {
+        Ok(()) | Err(ashpd::Error::Response(ResponseError::Cancelled)) => Ok(()),
+        Err(error) => Err(error.to_string()),
     }
-    uri
 }
 
 /// The local path a `file://` URI names, percent-decoded; `None` for another scheme or host.

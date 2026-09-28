@@ -36,11 +36,14 @@ shows the desktop's own chooser for videos, a folder or a JSON file on a thread 
 sends the chosen paths back on a channel; `open` asks the desktop to open a file in its default
 program (VLC for the owner's videos) or a folder in the file manager, and `reveal` asks the file
 manager to show a file in the folder that holds it (Show in Folder), each on a thread that sends
-back whether the desktop did it (`Opened`), so the window can say when it could not. The app
+back whether the desktop did it (`Opened`), so the window can say when it could not. Both hand
+the portal a file descriptor (`OpenFile`, `OpenDirectory`): the portal refuses `file://` URIs
+for local files. The portal's answer to each request is read (`answered`): done or an "open
+with" chooser the owner closed is fine, anything else is a failure with its reason. The app
 starts no program for it. Every request opens a session bus connection of its own and closes it
 when it ends: ashpd's shared connection holds a lock while it waits for the bus, so one request
-the desktop never answered would stall every later one without a message. `file_uri` and `file_path` turn paths into `file://` URIs and back,
-percent-encoded.
+the desktop never answered would stall every later one without a message. `file_path` turns
+the chooser's `file://` URIs into paths, percent-decoded.
 
 `color_scheme::watch` asks the same portal's `settings` interface on a thread of its own: it
 subscribes to changes of the colour scheme, sends the current one, then sends each change, waking
@@ -88,8 +91,9 @@ draws its own panels with them, so the window looks the same across features.
   `services`.
 - Rules: `core` imports no feature and neither `application` nor `cli`
   (`dependency_boundaries_and_external_test_placement_are_enforced` in
-  `apps/tbd_subtitles/src/tests/architecture_rules.rs`); a video path survives the trip through a
-  `file://` URI (`a_video_path_becomes_a_file_uri_and_back` in `tests/portal.rs`); only a dark
+  `apps/tbd_subtitles/src/tests/architecture_rules.rs`); a chosen `file://` URI becomes its video path
+  (`a_chosen_video_uri_becomes_its_path` in `tests/portal.rs`); a portal refusal is a failure
+  (`the_portal_answer_decides_whether_an_open_failed`); only a dark
   preference makes the window dark (`only_a_dark_preference_makes_the_window_dark` in
   `tests/color_scheme.rs`); every step belongs to exactly one stage, in run order
   (`every_step_belongs_to_exactly_one_stage_in_order` in `tests/steps.rs`); at most three toasts

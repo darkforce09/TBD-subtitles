@@ -1,15 +1,27 @@
 use super::*;
 
 #[test]
-fn a_video_path_becomes_a_file_uri_and_back() {
-    let path =
-        Path::new("/run/media/system/Main_storage/Media/one_pace/[Muhn Pace] Dressrosa 12.mp4");
-    let uri = file_uri(path);
+fn a_chosen_video_uri_becomes_its_path() {
     assert_eq!(
-        uri,
-        "file:///run/media/system/Main_storage/Media/one_pace/%5BMuhn%20Pace%5D%20Dressrosa%2012.mp4"
+        file_path(
+            "file:///run/media/system/Main_storage/Media/one_pace/%5BMuhn%20Pace%5D%20Dressrosa%2012.mp4"
+        ),
+        Some(PathBuf::from(
+            "/run/media/system/Main_storage/Media/one_pace/[Muhn Pace] Dressrosa 12.mp4"
+        ))
     );
-    assert_eq!(file_path(&uri), Some(path.to_path_buf()));
+}
+
+#[test]
+fn the_portal_answer_decides_whether_an_open_failed() {
+    assert_eq!(answered(Ok(())), Ok(()));
+    assert_eq!(
+        answered(Err(ashpd::Error::Response(ResponseError::Cancelled))),
+        Ok(()),
+        "closing the desktop's \"open with\" chooser is no failure"
+    );
+    let refused = answered(Err(ashpd::Error::Response(ResponseError::Other)));
+    assert!(refused.is_err(), "a refusal is a failure: {refused:?}");
 }
 
 #[test]
