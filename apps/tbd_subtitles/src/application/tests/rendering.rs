@@ -18,6 +18,8 @@ use crate::settings::events::SettingsEvent;
 mod rendering_detail;
 #[path = "rendering_queue.rs"]
 mod rendering_queue;
+#[path = "rendering_report.rs"]
+mod rendering_report;
 #[path = "window_snapshots.rs"]
 mod window_snapshots;
 
@@ -441,82 +443,6 @@ fn an_edit_is_saved_only_by_save() {
             .expect("saved")
             .contains("33")
     );
-}
-
-#[test]
-fn a_finished_job_shows_its_report() {
-    let root = std::env::temp_dir().join(format!("tbd-app-report-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).expect("root");
-    let video = root.join("Dressrosa 12.mp4");
-    std::fs::write(&video, b"video").expect("video");
-    let mut app =
-        TbdSubtitlesApp::new(Environment::scratch(&root, stand_in()), vec![video.clone()]);
-    app.settings.items.iter_mut().for_each(|i| i.present = true);
-    app.apply(vec![Action::from(JobQueueEvent::Start)]);
-    settle(&mut app);
-    // What the pipeline leaves in the job's work directory.
-    let job = root.join("work").join(pipeline::work_dir::job_id(
-        &std::fs::canonicalize(&video).expect("c"),
-    ));
-    std::fs::create_dir_all(&job).expect("job");
-    let record = job_model::job::JobRecord {
-        video: video.to_string_lossy().into_owned(),
-        video_size: 5,
-        video_modified_s: 0,
-        settings: job_model::job::JobSettings::with_glossary(vec![]),
-        models_dir: None,
-        corrections: None,
-        steps: Default::default(),
-    };
-    let qc = QcReport {
-        findings: vec![job_model::report::QcFinding {
-            check: job_model::report::QcCheck::Unsure,
-            time_s: 246.8,
-            text: "Blaver!".into(),
-            detail: "U0053".into(),
-            utterance: Some("U0053".into()),
-        }],
-        ..QcReport::default()
-    };
-    std::fs::write(
-        job.join("job.json"),
-        serde_json::to_string(&record).expect("json"),
-    )
-    .expect("w");
-    std::fs::write(
-        job.join("qc.json"),
-        serde_json::to_string(&qc).expect("json"),
-    )
-    .expect("w");
-    let id = app.queue.items[0].id;
-    app.apply(vec![Action::from(JobQueueEvent::Select(id))]);
-    let (text, _) = render(&app);
-    for expected in [
-        "Dressrosa 12",
-        "0:00 video · finished in 0 s",
-        "Overview",
-        "Check Lines",
-        "Passes the quality check",
-        "Findings (1)",
-        "Blaver!",
-        "0:04:06.8",
-        "Open in the video player",
-    ] {
-        assert!(text.contains(expected), "{expected} not in {text}");
-    }
-    // The work folder has no lines to check.
-    app.apply(vec![Action::ShowTab(DetailTab::CheckLines)]);
-    assert_eq!(app.detail_tab(id), DetailTab::Overview);
-    assert!(
-        matches!(app.report, Some((_, Ok(_)))),
-        "the report stays: {:?}",
-        app.report
-    );
-    let (text, _) = render(&app);
-    assert!(text.contains("Check Lines cannot open"), "{text}");
-    assert!(text.contains("Findings (1)"), "{text}");
-    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]

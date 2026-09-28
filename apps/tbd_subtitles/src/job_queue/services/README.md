@@ -49,8 +49,12 @@ and the waiting full runs are numbered by their place in line. `status_text::sta
 row's line from its job: a running job's stage and time left ("Settling the words · about 4 min
 left", "Stopping…"), a waiting job's place, shown past the first only while the queue runs, where
 a failed job failed, the steps a cancelled one kept, "Updating subtitles · 2 corrections" while a
-correction run is pending, "Needs attention · 1 problem" for a job that does not pass the quality
-check, else "Subtitles ready". `status_text::detail_line` writes the line under the detail pane's
+correction run is pending; for a finished job whose files the application read, its summary's
+"Needs attention · 1 problem" when it does not pass the quality check, else "Subtitles ready · 38
+to check", "Subtitles ready · all checked" once every line worth a listen is checked, and
+"Subtitles ready" when none is; without a summary, "Needs attention" from the run's
+own result, else "Subtitles ready". `status_text::fails_the_check` says the same verdict for the
+row's warning mark. `status_text::detail_line` writes the line under the detail pane's
 title for a job that has not finished: "25:59 video · running for 10 min 00 s" ("Running for 3 s"
 until the length is known), "Length known once it starts · 2nd in line", or the row's line of a
 failed or cancelled job; `place_in_line` counts a waiting job's place among the waiting runs of its
@@ -91,7 +95,8 @@ of them it kept, done in a time not known, and then keeps as many as it lists.
 ## Boundaries
 
 - Depends on: `crate::job_queue::models`; `crate::core::{background::Wake, format, steps}`;
-  `pipeline`; `job_model`; `serde` and `serde_json`.
+  `crate::job_report::models::summary::RowSummary` in `status_text.rs`; `pipeline`; `job_model`;
+  `serde` and `serde_json`.
 - Used by: `crate::application` (`actions::{queue, review, runner}`, `mod.rs`, `detail_view`);
   `crate::job_queue::ui` (`time_left::estimate`, `queue_editing::{queue_control, subtitle_file}`,
   `sidebar_rows`, `status_text`, `stage_progress`).
@@ -122,7 +127,9 @@ of them it kept, done in a time not known, and then keeps as many as it lists.
   - every job is on one row, a correction run on its video's (`correction_runs_fold_into_their_videos_row`,
     `a_failed_or_lone_correction_run_keeps_its_own_row` in `tests/sidebar_rows.rs`), and a place in
     line past the first shows only while the queue runs
-    (`waiting_rows_show_their_place_only_while_the_queue_runs` in `tests/status_text.rs`); the
+    (`waiting_rows_show_their_place_only_while_the_queue_runs` in `tests/status_text.rs`); a
+    finished row gives its verdict and lines to check from its summary
+    (`finished_rows_give_their_verdict_and_lines_to_check_from_their_files`); the
     detail pane gives a running job's length and a waiting job's place, a waiting job says when it
     starts, and a job tried again starts at once only when its lane and video are idle
     (`the_detail_line_gives_a_running_jobs_length_and_a_waiting_jobs_place`,

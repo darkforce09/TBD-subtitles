@@ -6,13 +6,13 @@
 //! the dialog is open, and hand the answer back through a channel.
 //!
 //! **Position:** called by the application for the toolbar's "Add Videos…" and "Add Folder…",
-//! the settings' folder choosers, the report's "Open in VLC" and the row menu's "Open in Player"
-//! and "Show in Folder"; uses `ashpd` (zbus, pure Rust).
+//! the settings' folder choosers, and the Overview's and the row menu's "Open in Player", "Show
+//! in Folder" and "Open Full Report"; uses `ashpd` (zbus, pure Rust).
 //!
 //! **Signals and state:** one thread per request; D-Bus calls to `org.freedesktop.portal`.
 //!
 //! **Invariants:** the app starts no program itself: the desktop opens the file; a dialog the
-//! owner closes answers with no paths, never an error.
+//! owner closes answers with no paths, never an error; an open that fails answers with why.
 
 use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
@@ -74,9 +74,13 @@ async fn ask(kind: Choose, title: &str) -> Chosen {
     }
 }
 
+/// Whether the desktop did what it was asked, or why not.
+pub(crate) type Opened = Result<(), String>;
+
 /// Ask the desktop to open `path` (a file in its default program, a folder in the file manager),
-/// on a thread; a failure is logged.
-pub(crate) fn open(path: &Path) {
+/// on a thread; the answer arrives on the returned channel, then `wake` runs.
+pub(crate) fn open(path: &Path, wake: Wake) -> Receiver<Opened> {
+    let (send, answer) = channel();
     let path = path.to_path_buf();
     std::thread::spawn(move || {
         let result = pollster::block_on(async {
@@ -96,15 +100,19 @@ pub(crate) fn open(path: &Path) {
                     .map_err(|e| e.to_string())
             }
         });
-        if let Err(error) = result {
+        if let Err(error) = &result {
             tracing::warn!(path = %path.display(), %error, "the desktop could not open it");
         }
+        let _ = send.send(result);
+        wake();
     });
+    answer
 }
 
-/// Ask the file manager to show `path` in the folder that holds it, on a thread; a failure is
-/// logged.
-pub(crate) fn reveal(path: &Path) {
+/// Ask the file manager to show `path` in the folder that holds it, on a thread; the answer
+/// arrives on the returned channel, then `wake` runs.
+pub(crate) fn reveal(path: &Path, wake: Wake) -> Receiver<Opened> {
+    let (send, answer) = channel();
     let path = path.to_path_buf();
     std::thread::spawn(move || {
         let result = pollster::block_on(async {
@@ -115,10 +123,13 @@ pub(crate) fn reveal(path: &Path) {
                 .map(|_| ())
                 .map_err(|e| e.to_string())
         });
-        if let Err(error) = result {
+        if let Err(error) = &result {
             tracing::warn!(path = %path.display(), %error, "the file manager could not show it");
         }
+        let _ = send.send(result);
+        wake();
     });
+    answer
 }
 
 /// `file://` and the path, every byte outside the unreserved set and `/` percent-encoded.

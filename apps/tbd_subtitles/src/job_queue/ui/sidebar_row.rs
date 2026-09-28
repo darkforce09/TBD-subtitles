@@ -1,18 +1,19 @@
 //! One row of the sidebar: the video's status mark, its name, its status line and, while it
-//! runs, a thin progress bar; a red round ✕ on hover, dragging for waiting rows, and a
-//! right-click menu.
+//! runs, a thin progress bar; the orange count of lines to check on a finished row, a red round
+//! ✕ on hover, dragging for waiting rows, and a right-click menu.
 //!
 //! **Role:** draw a row from the borrowed queue and turn each click, drop and menu choice into a
 //! `JobQueueEvent`.
 //!
 //! **Position:** called by `sidebar` for each row shown; opens `row_menu` on a right click; the
-//! status line comes from `status_text`.
+//! status line comes from `status_text`, a finished row's verdict and count from its summary.
 //!
 //! **Signals and state:** the dragged row's id travels as egui's drag-and-drop payload.
 //!
 //! **Invariants:** a click anywhere on the row selects it, except on the ✕; only waiting full
 //! runs drag, and a drop lands before or after the row under the pointer, as the line shows;
-//! the ✕ shows only on a row that can leave the list.
+//! the ✕ shows only on a row that can leave the list, and stands in for the count while the
+//! pointer is on the row.
 
 use std::sync::Arc;
 
@@ -23,12 +24,14 @@ use eframe::egui::{
 
 use crate::core::ui::icons::{self, StatusIcon, paint_status};
 use crate::core::ui::palette::palette;
+use crate::core::ui::pill::paint_badge;
 use crate::job_queue::events::JobQueueEvent;
 use crate::job_queue::models::queue::{JobId, JobState, QueueItem};
 use crate::job_queue::models::sidebar::SidebarRow;
 use crate::job_queue::models::view::JobQueueView;
 use crate::job_queue::services::{status_text, time_left};
 use crate::job_queue::ui::row_menu::row_menu_ui;
+use crate::job_report::models::summary::RowSummary;
 
 /// A row's height; a running row is taller by its bar.
 const ROW_HEIGHT: f32 = 48.0;
@@ -96,10 +99,20 @@ pub(crate) fn sidebar_row_ui(
         pos2(rect.left() + LEFT + ICON / 2.0, rect.center().y),
         vec2(ICON, ICON),
     );
-    paint_status(ui, icon_rect, status_icon(row, item, running), selected);
+    let summary = view.summaries.get(&row.id);
+    paint_status(
+        ui,
+        icon_rect,
+        status_icon(row, item, summary, running),
+        selected,
+    );
     let show_remove = row.removable && pointer_in && ui.ctx().dragged_id().is_none();
     let text_left = icon_rect.right() + GAP;
-    let text_right = rect.right() - RIGHT - if show_remove { REMOVE + GAP } else { 0.0 };
+    let mut text_right = rect.right() - RIGHT - if show_remove { REMOVE + GAP } else { 0.0 };
+    if let Some(count) = badge(row, item, summary).filter(|_| !show_remove) {
+        let right = pos2(rect.right() - RIGHT, rect.center().y);
+        text_right = paint_badge(ui, right, count, selected).left() - GAP;
+    }
     let width = (text_right - text_left).max(10.0);
     let (name_colour, status_colour) = if selected {
         (Color32::WHITE, Color32::WHITE)
@@ -109,7 +122,7 @@ pub(crate) fn sidebar_row_ui(
         (p.text, p.text2)
     };
     let name = line(ui, &row.name, 13.0, fade(name_colour), width);
-    let status = status_text::status(row, item, view.queue, view.rates, view.now);
+    let status = status_text::status(row, item, view.queue, view.rates, summary, view.now);
     let status = line(ui, &status, 11.5, fade(status_colour), width);
     let content = name.size().y + 1.0 + status.size().y + running.map_or(0.0, |_| BAR_ROOM);
     let top = rect.center().y - content / 2.0;
@@ -206,17 +219,33 @@ fn drop_ui(
     }
 }
 
-/// The status mark of `row`, whose job is `item`; `running` is a running job's share done.
-fn status_icon(row: &SidebarRow, item: &QueueItem, running: Option<f32>) -> StatusIcon {
+/// The status mark of `row`, whose job is `item` summed up by `summary`; `running` is a running
+/// job's share done.
+fn status_icon(
+    row: &SidebarRow,
+    item: &QueueItem,
+    summary: Option<&RowSummary>,
+    running: Option<f32>,
+) -> StatusIcon {
     match (&item.state, running) {
         (_, Some(share)) => StatusIcon::Running(share),
         (JobState::Waiting, _) => StatusIcon::Waiting,
         (JobState::Failed(_), _) => StatusIcon::Failed,
         (JobState::Cancelled { .. }, _) => StatusIcon::Cancelled,
         _ if row.fold.is_some() => StatusIcon::Working,
-        (JobState::Finished(result), _) if !result.failures.is_empty() => StatusIcon::Warning,
+        _ if status_text::fails_the_check(item, summary) => StatusIcon::Warning,
         _ => StatusIcon::Done,
     }
+}
+
+/// The count of lines to check a finished row shows at its end: only while it passes the quality
+/// check, has lines left to check and no correction run is pending.
+fn badge(row: &SidebarRow, item: &QueueItem, summary: Option<&RowSummary>) -> Option<usize> {
+    let finished = matches!(item.state, JobState::Finished(_) | JobState::FinishedBefore);
+    summary
+        .filter(|summary| finished && row.fold.is_none() && summary.passes())
+        .map(|summary| summary.to_check)
+        .filter(|count| *count > 0)
 }
 
 /// `text` on one line of at most `width`, cut with an ellipsis.

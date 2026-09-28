@@ -1,22 +1,29 @@
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use job_model::StepName;
 
 use super::*;
 use crate::job_queue::models::progress::StepState;
-use crate::job_queue::models::queue::{Failure, JobResult};
+use crate::job_queue::models::queue::{Failure, JobId, JobResult};
 use crate::job_queue::services::queue_editing::{add_videos, queue_review};
 use crate::job_queue::services::sidebar_rows;
 
-/// Each row's status line, in sidebar order.
+/// Each row's status line, in sidebar order, with no finished job's files read.
 fn lines(queue: &Queue) -> Vec<String> {
+    lines_with(queue, &HashMap::new())
+}
+
+/// Each row's status line, in sidebar order, finished jobs summed up by `summaries`.
+fn lines_with(queue: &Queue, summaries: &HashMap<JobId, RowSummary>) -> Vec<String> {
     let now = Instant::now();
     sidebar_rows::rows(queue)
         .iter()
         .map(|row| {
             let item = queue.get(row.id).expect("the row's job");
-            status(row, item, queue, &time_left::pilot_rates(), now)
+            let rates = time_left::pilot_rates();
+            status(row, item, queue, &rates, summaries.get(&row.id), now)
         })
         .collect()
 }
@@ -85,6 +92,56 @@ fn a_row_with_waiting_corrections_is_updating() {
     queue_review(&mut q, PathBuf::from("a"));
     queue_review(&mut q, PathBuf::from("a"));
     assert_eq!(lines(&q), ["Updating subtitles · 2 corrections"]);
+}
+
+#[test]
+fn finished_rows_give_their_verdict_and_lines_to_check_from_their_files() {
+    let mut q = queue(&["a", "b", "c", "d", "e"]);
+    for item in q
+        .items
+        .iter_mut()
+        .filter(|item| item.video != Path::new("d"))
+    {
+        item.state = JobState::FinishedBefore;
+    }
+    q.items[3].state = JobState::Finished(JobResult {
+        subtitles: PathBuf::from("d.srt"),
+        work_dir: PathBuf::from("work"),
+        failures: Vec::new(),
+        findings: 3,
+        wall_s: 60.0,
+    });
+    let summary = |problems, flagged, to_check| RowSummary {
+        problems,
+        flagged,
+        to_check,
+    };
+    let ids: Vec<JobId> = q.items.iter().map(|item| item.id).collect();
+    let summaries = HashMap::from([
+        (ids[0], summary(0, 40, 38)),
+        (ids[1], summary(0, 12, 0)),
+        (ids[2], summary(2, 40, 38)),
+        (ids[3], summary(1, 0, 0)),
+        (ids[4], summary(0, 0, 0)),
+    ]);
+    let mut shown = lines_with(&q, &summaries);
+    shown.sort();
+    assert_eq!(
+        shown,
+        [
+            "Needs attention · 1 problem",
+            "Needs attention · 2 problems",
+            "Subtitles ready",
+            "Subtitles ready · 38 to check",
+            "Subtitles ready · all checked",
+        ],
+        "a row finished in an earlier window shows its real verdict; with no line worth a \
+         listen there is nothing to check"
+    );
+    for (item, fails) in q.items.iter().zip([false, false, true, true, false]) {
+        assert_eq!(fails_the_check(item, summaries.get(&item.id)), fails);
+    }
+    assert!(!fails_the_check(&q.items[0], None), "unread, it passes");
 }
 
 #[test]

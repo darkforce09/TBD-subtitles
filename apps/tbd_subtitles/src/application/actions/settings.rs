@@ -143,7 +143,13 @@ impl TbdSubtitlesApp {
                     self.start_checks();
                 }
             }
-            SettingsEvent::OpenWorkFolder => portal::open(&self.settings.work_folder),
+            SettingsEvent::OpenWorkFolder => {
+                // The settings page says nothing about the answer; a failure is logged.
+                drop(portal::open(
+                    &self.settings.work_folder,
+                    self.env.wake.clone(),
+                ));
+            }
         }
     }
 

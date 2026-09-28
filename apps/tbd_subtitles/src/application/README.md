@@ -9,7 +9,7 @@ that draws them.
 ```text
 apps/tbd_subtitles/src/application/
 ├── actions/            applying each feature's actions and folding its threads' answers in
-├── background.rs       `Pending`: the threads the window waits on, and the chooser's answers
+├── background.rs       `Pending`: the threads the window waits on; files opened on the desktop
 ├── detail_view.rs      the selected job's header: title, line, Overview | Check Lines or Cancel
 ├── environment.rs      `Environment`: the settings file, the runtime folder, the wake; scratch in tests
 ├── events.rs           `Action`, built from the features' events, and the tab to show
@@ -37,16 +37,19 @@ runner, and start no portal thread. `TbdSubtitlesApp` holds the queue loaded fro
 two job runners with the cancel token of the job each runs (one for full runs, one for the review
 runs that re-time the owner's corrections), the step rates for the time left, the settings page,
 whether the Settings window is open, the toasts, the row removed last (for Undo), the desktop's
-colour scheme, the selected finished job's report, its line review while open, the clip playing in
-it, and `Pending`, the receiving end of every other thread it started. The videos passed to `launch`
-enter the queue as the first `Action`; the machine checks and the work folder's measure start at
-once. While a job runs the window redraws every second; a playing clip wakes it at each frame.
+colour scheme, the selected finished job's report, every finished row's summary (its verdict and
+lines to check, read from its work folder when the window opens, after each run of its video and
+after each correction), its line review while open, the clip playing in it, and `Pending`, the
+receiving end of every other thread it started (the choosers, the files the desktop was asked to
+open, the downloads and checks). The videos passed to `launch` enter the queue as the first
+`Action`; the machine checks and the work folder's measure start at once. While a job runs the
+window redraws every second; a playing clip wakes it at each frame.
 
 Each frame runs in three steps:
 
 ```text
-poll(&mut self)        the threads' answers: chooser paths, downloads, checks, sizes, job events,
-                       the colour scheme; toasts whose time is up go
+poll(&mut self)        the threads' answers: chooser paths, files opened, downloads, checks, sizes,
+                       job events, the colour scheme; toasts whose time is up go
 theme::follow          light or dark, as the desktop reported
 frame_ui(&self)
   ├── dropped files ──▶ Action::QueueVideos
@@ -54,7 +57,7 @@ frame_ui(&self)
   ├── toolbar (52 px) ──▶ JobQueueEvent ──▶ Action::Queue; the gear ──▶ Action::ShowSettings
   ├── sidebar (272 px) ──▶ JobQueueEvent ──▶ Action::Queue
   ├── the selected job: jobs_ui (the empty card, the hint, or the header over the job's cards,
-  │   its report or its lines to check) ──▶ Queue / ShowTab / Report / Review
+  │   its Overview or its lines to check) ──▶ Queue / ShowTab / Report / Review
   ├── the drop overlay while files hover; the toasts ──▶ Action::ToastButton
   └── settings_window (while open) ──▶ Settings / ShowSettings(false)
 apply(&mut self, actions)
@@ -67,9 +70,11 @@ apply(&mut self, actions)
 `frame_ui` borrows the state immutably and only collects actions; `apply` and `poll` are the only
 places the state changes, between frames. A chooser opens through `core::portal` on its own
 thread; its answer goes into the queue or the settings draft, and a chooser that fails says so in
-a red toast. Toasts are added in `apply` (a removed row's "Removed … Its files stay on disk." with
-Undo for 6 s, the pause, Try Again and Run Again, a copied path) and drawn at the bottom centre;
-their button's action is applied as it was given.
+a red toast. Open in Player, Show in Folder and Open Full Report ask the portal on a thread too:
+a toast says what opens ("Opening … in your video player."), and a red one says so when the
+desktop answers that it could not. Toasts are added in `apply` (a removed row's "Removed … Its
+files stay on disk." with Undo for 6 s, the pause, Try Again and Run Again, a copied path, a file
+opening) and drawn at the bottom centre; their button's action is applied as it was given.
 
 The right side is the detail pane. With no job selected it shows a list mark, "Select a video" and
 "Its progress, subtitles and lines to check show here."; with a job selected, `detail_view` draws
@@ -77,7 +82,9 @@ its header across the top (24 px from the sides, 16 px above and 14 px below, a 
 the name in the 22 px title style, cut with an ellipsis, and a 12 px line under it, which for a
 finished job comes from its report ("25:59 video · finished in 4 min 37 s") and for any other
 from `status_text::detail_line`. On the right a finished job has the segmented Overview | Check
-Lines, a running job the red Cancel, or a grey "Stopping…" pill with a spinner once cancelled.
+Lines, Check Lines followed by its row summary's lines to check in small grey figures, or a green
+check once none is left (nothing when no line is worth a listen); a running job the red Cancel,
+or a grey "Stopping…" pill with a spinner once cancelled.
 `DetailTab` is not kept apart: Check Lines shows exactly while a line review of the selected job
 is loaded (`detail_tab`), and `Action::ShowTab` closes the review for Overview or opens it at the
 first flagged line for Check Lines; a review that cannot open says why in a red toast and leaves
@@ -85,7 +92,8 @@ the report on Overview, and a review closes once its job is no longer finished (
 again), so the job's current view shows. Under the header Check Lines shows the line review; anything
 else scrolls in a column at most 800 px wide, 20 px below the header and 24 px from the sides, its
 cards 16 px apart: the queue's cards for a job that has not finished (`progress_view_ui`), or the
-finished job's report (or why it has none).
+finished job's Overview (`job_report::ui::overview_ui`, told how many corrections a correction run
+of its video is putting in while one waits or runs), or why it has no report.
 
 The shortcuts are read before anything is drawn: Ctrl+Shift+O (matched first) adds a folder,
 Ctrl+O videos, Ctrl+, opens Settings; Delete removes the selected row and ↑ and ↓ move through the
@@ -129,8 +137,12 @@ draws it as a window inside the main one.
     (`started_jobs_run_one_after_another_and_the_queue_is_kept`,
     `a_cancelled_job_keeps_its_finished_steps_and_can_be_retried`,
     `a_failed_job_records_its_step_and_the_steps_it_kept`), a finished job shows its header with
-    Overview and Check Lines over its report and keeps it when its lines cannot open
-    (`a_finished_job_shows_its_report`), Check Lines opens the line review, Overview closes it,
+    Overview and Check Lines over its Overview and keeps it when its lines cannot open, a failed
+    language-model call needs attention and Try Again reruns the calls, and a job finished in an
+    earlier window shows its verdict and lines to check (`a_finished_job_shows_its_report`,
+    `a_failed_language_model_call_needs_attention_and_try_again_reruns_the_calls`,
+    `a_job_finished_in_an_earlier_window_shows_its_verdict_and_lines_to_check` in
+    `tests/rendering_report.rs`), Check Lines opens the line review, Overview closes it,
     and so does running the job again, and a saved correction queues a review run that
     starts at once and shows on its video's one row
     (`a_saved_correction_queues_a_review_run_that_runs_at_once`), and a full run waits while its
@@ -151,11 +163,13 @@ draws it as a window inside the main one.
   - the tests never write the owner's files (`Environment::scratch`), and read them only in the
     ignored snapshot test `window_snapshots` (`tests/window_snapshots.rs`), which copies the JSON
     files of the Dressrosa 11 and 15–17 work folders into a scratch folder and writes PNGs of the
-    finished queue, the Dressrosa 15 report, its lines to check, the Settings window, the first
-    run, a running queue, a waiting row's menu, the Undo toast, the running Dressrosa 16's detail,
-    the waiting 17's card, and the cards of 19 failed and 20 cancelled (`running_detail`,
-    `waiting_card`, `failed_card`, `cancelled_card`), light and dark, at 1280 by 800, to
-    `$TBD_SNAPSHOTS`:
+    finished queue, the Dressrosa 15 Overview, then scrolled to its open Details and Step times
+    (`overview_d15`), its lines to check, the Settings window, the first run, a running queue
+    whose done rows show their counts, a waiting row's menu, the Undo toast, the running Dressrosa
+    16's detail, the waiting 17's card, the cards of 19 failed and 20 cancelled
+    (`running_detail`, `waiting_card`, `failed_card`, `cancelled_card`), and Dressrosa 16 with a
+    failed language-model call added to its check (`needs_attention`), light and dark, at 1280 by
+    800, to `$TBD_SNAPSHOTS`:
     `TBD_SNAPSHOTS=<folder> cargo test -p tbd_subtitles -- --ignored window_snapshots`, on the
     host, since it renders with wgpu;
   - no feature imports this module

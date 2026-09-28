@@ -1,24 +1,26 @@
 //! The threads the window waits on, and folding their answers in before each frame.
 //!
 //! **Role:** hold the receiving end of every thread the application started (the desktop's
-//! chooser, the model download, the machine checks, the work folder's size, the desktop's colour
-//! scheme) and apply what they sent; let the toasts whose time is up go.
+//! chooser, the files the desktop was asked to open, the model download, the machine checks, the
+//! work folder's size, the desktop's colour scheme) and apply what they sent; let the toasts
+//! whose time is up go.
 //!
 //! **Position:** owned by `TbdSubtitlesApp`; polled by `window` before each frame; the settings
 //! part lives in `actions::settings`.
 //!
 //! **Signals and state:** channels only; each thread wakes the window after it sends.
 //!
-//! **Invariants:** at most one chooser is open at a time, and a chooser that fails says so in a
-//! red toast; a closed channel ends the wait.
+//! **Invariants:** at most one chooser is open at a time, and a chooser or an open that fails
+//! says so in a red toast; a closed channel ends the wait.
 
+use std::path::Path;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
 use super::TbdSubtitlesApp;
 use super::actions::{poll_runner, poll_settings};
 use crate::core::color_scheme::{self, Scheme};
-use crate::core::portal::{self, Choose, Chosen};
+use crate::core::portal::{self, Choose, Chosen, Opened};
 use crate::core::toast::ToastKind;
 use crate::settings::events::PathField;
 use crate::settings::models::machine::Check;
@@ -36,6 +38,17 @@ pub(crate) enum Chooser {
     QueueFolder,
 }
 
+/// What the desktop is asked to do with a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Opening {
+    /// Play a video in the desktop's video player.
+    Play,
+    /// Show a file in the file manager, in its folder.
+    Reveal,
+    /// Open a text file in the desktop's text editor.
+    Read,
+}
+
 /// The threads the application waits on.
 #[derive(Default)]
 pub(crate) struct Pending {
@@ -44,6 +57,9 @@ pub(crate) struct Pending {
     pub(crate) checks: Option<Receiver<Vec<Check>>>,
     pub(crate) work_size: Option<Receiver<u64>>,
     pub(crate) scheme: Option<Receiver<Scheme>>,
+    /// The desktop's answers to the files it was asked to open, each with the words a failure
+    /// starts with.
+    pub(crate) opens: Vec<(String, Receiver<Opened>)>,
 }
 
 impl TbdSubtitlesApp {
@@ -53,7 +69,55 @@ impl TbdSubtitlesApp {
         poll_runner(self);
         self.poll_chooser();
         self.poll_scheme();
+        self.poll_opens();
         self.toasts.expire(Instant::now());
+    }
+
+    /// Ask the desktop to do `how` with `path`, saying so in a toast; a failure comes back as a
+    /// red toast.
+    pub(crate) fn open_with_desktop(&mut self, how: Opening, path: &Path) {
+        let name = path.file_name().map_or_else(
+            || path.display().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        let wake = self.env.wake.clone();
+        let (answer, doing, failed) = match how {
+            Opening::Play => (
+                portal::open(path, wake),
+                format!("Opening {name} in your video player."),
+                format!("{name} could not open"),
+            ),
+            Opening::Reveal => (
+                portal::reveal(path, wake),
+                format!("Showing {name} in your file manager."),
+                format!("The file manager could not show {name}"),
+            ),
+            Opening::Read => (
+                portal::open(path, wake),
+                format!("Opening {name} in your text editor."),
+                format!("{name} could not open"),
+            ),
+        };
+        self.toast(ToastKind::Info, doing);
+        self.pending.opens.push((failed, answer));
+    }
+
+    /// Say in a red toast when the desktop could not open a file; forget the answered requests.
+    fn poll_opens(&mut self) {
+        let mut failures = Vec::new();
+        self.pending
+            .opens
+            .retain(|(failed, answer)| match answer.try_recv() {
+                Ok(Ok(())) | Err(TryRecvError::Disconnected) => false,
+                Ok(Err(error)) => {
+                    failures.push(format!("{failed}: {error}"));
+                    false
+                }
+                Err(TryRecvError::Empty) => true,
+            });
+        for failure in failures {
+            self.toast(ToastKind::Error, failure);
+        }
     }
 
     /// Follow the desktop's colour scheme, waiting briefly for its first answer so the first

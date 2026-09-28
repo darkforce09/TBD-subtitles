@@ -32,11 +32,13 @@ egui's memory), and `row_order` gives the rows the arrow keys move through. With
 a film strip, "No videos yet" and how to add some.
 
 `sidebar_row_ui` draws a row 48 px high (a running row is taller by its bar): the status mark (a
-clock, a progress ring, a check, a warning, a cross, a stop or a spinner for a correction run), the
-name and the status line from `status_text`, cut with an ellipsis, and a running job's thin bar; a
-selected row is drawn on the accent with white text. A click anywhere selects it, a right click
-selects it and opens `row_menu_ui`; while the pointer is on a row that can leave the list, a red
-round ✕ takes it out. A waiting full run carries its id as egui's drag payload: over another
+clock, a progress ring, a check, a warning for a finished job that does not pass the quality
+check, a cross, a stop or a spinner for a correction run), the name and the status line from
+`status_text`, cut with an ellipsis, and a running job's thin bar; a finished row that passes and
+has lines left to check ends in the orange count of them (`core::ui::pill::paint_badge`, white on
+a selected row); a selected row is drawn on the accent with white text. A click anywhere selects
+it, a right click selects it and opens `row_menu_ui`; while the pointer is on a row that can
+leave the list, a red round ✕ takes the count's place and takes the row out. A waiting full run carries its id as egui's drag payload: over another
 waiting row a line shows whether it lands before or after it, and the drop asks to move it there.
 `row_menu_ui` lists the commands of the row's state, with the ones that cannot apply disabled: Run
 Next, Move Up and Move Down for a waiting row; Cancel for a running one, and Stop Updating
@@ -81,7 +83,8 @@ Remove from List.
 ## Boundaries
 
 - Depends on: `crate::job_queue::{events, models, services}`; `crate::core::{format, steps, ui}`;
-  `eframe`; `job_model::StepName`.
+  `crate::job_report::models::summary::RowSummary` in `sidebar_row.rs`; `eframe`;
+  `job_model::StepName`.
 - Used by: `crate::application` (`feature_views`, `window`, `shortcuts`).
 - Rules: no module outside the feature but `application` may import this folder
   (`dependency_boundaries_and_external_test_placement_are_enforced` in

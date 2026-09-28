@@ -77,6 +77,25 @@ fn selected_text_and_its_marks_read_on_the_selection() {
 }
 
 #[test]
+fn pill_and_badge_text_reads_on_its_tint() {
+    for (scheme, p) in schemes() {
+        // Pills stand on cards; the orange count also stands on the sidebar.
+        let drawn = [
+            ("good", p.good, p.good_tint, "card", p.card),
+            ("warn", p.warn, p.warn_tint, "card", p.card),
+            ("warn", p.warn, p.warn_tint, "sidebar", p.sidebar),
+        ];
+        for (name, text, tint, surface, background) in drawn {
+            let ratio = contrast(text, background.blend(tint));
+            assert!(
+                ratio >= 4.5,
+                "{scheme}: {name} on its tint over {surface} is {ratio:.2}"
+            );
+        }
+    }
+}
+
+#[test]
 fn white_reads_on_the_accent_fill() {
     for (scheme, p) in schemes() {
         let ratio = contrast(Color32::WHITE, p.accent_fill);

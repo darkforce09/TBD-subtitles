@@ -27,8 +27,11 @@ pub(crate) const ARROW_LINE_UP: &str = egui_phosphor::regular::ARROW_LINE_UP;
 pub(crate) const ARROW_UP: &str = egui_phosphor::regular::ARROW_UP;
 pub(crate) const CARET_DOWN: &str = egui_phosphor::regular::CARET_DOWN;
 pub(crate) const CARET_RIGHT: &str = egui_phosphor::regular::CARET_RIGHT;
+pub(crate) const CHECK: &str = egui_phosphor::regular::CHECK;
+pub(crate) const CLOCK: &str = egui_phosphor::regular::CLOCK;
 pub(crate) const COPY: &str = egui_phosphor::regular::COPY;
 pub(crate) const EAR: &str = egui_phosphor::regular::EAR;
+pub(crate) const FILE_TEXT: &str = egui_phosphor::regular::FILE_TEXT;
 pub(crate) const FILM_STRIP: &str = egui_phosphor::regular::FILM_STRIP;
 pub(crate) const FOLDER: &str = egui_phosphor::regular::FOLDER;
 pub(crate) const FOLDER_PLUS: &str = egui_phosphor::regular::FOLDER_PLUS;
@@ -37,11 +40,14 @@ pub(crate) const INFO: &str = egui_phosphor::regular::INFO;
 pub(crate) const LIST: &str = egui_phosphor::regular::LIST;
 pub(crate) const MONITOR_PLAY: &str = egui_phosphor::regular::MONITOR_PLAY;
 pub(crate) const PAUSE: &str = egui_phosphor::regular::PAUSE;
+pub(crate) const PENCIL_SIMPLE: &str = egui_phosphor::regular::PENCIL_SIMPLE;
 pub(crate) const PLAY: &str = egui_phosphor::regular::PLAY;
 pub(crate) const PLUS: &str = egui_phosphor::regular::PLUS;
 pub(crate) const STOP_CIRCLE: &str = egui_phosphor::regular::STOP_CIRCLE;
+pub(crate) const SUBTITLES: &str = egui_phosphor::regular::SUBTITLES;
+pub(crate) const WARNING: &str = egui_phosphor::regular::WARNING;
+pub(crate) const WAVEFORM: &str = egui_phosphor::regular::WAVEFORM;
 pub(crate) const X: &str = egui_phosphor::regular::X;
-const CLOCK: &str = egui_phosphor::regular::CLOCK;
 
 /// The font a glyph is drawn in, `size` px high: the icon font ahead of every text font.
 pub(crate) fn font(size: f32) -> FontId {

@@ -1,6 +1,7 @@
 //! The detail pane's header: the selected job's name as the page title, the line under it, and
-//! on the right the Overview | Check Lines switch of a finished job or the Cancel of a running
-//! one; and the hint while no job is selected.
+//! on the right the Overview | Check Lines switch of a finished job (with its count of lines to
+//! check, or a check once none is left) or the Cancel of a running one; and the hint while no job
+//! is selected.
 //!
 //! **Role:** draw the header from the borrowed state and ask for the tab or the cancel as
 //! actions.
@@ -26,7 +27,7 @@ use crate::core::ui::button::Button;
 use crate::core::ui::fonts;
 use crate::core::ui::icons::{self, StatusIcon, status_icon};
 use crate::core::ui::palette::palette;
-use crate::core::ui::segmented::segmented;
+use crate::core::ui::segmented::{Tally, segmented};
 use crate::core::ui::theme::TITLE;
 use crate::job_queue::events::JobQueueEvent;
 use crate::job_queue::models::queue::{JobId, JobState, QueueItem};
@@ -102,9 +103,17 @@ pub(super) fn header_ui(
 fn right_ui(ui: &mut Ui, app: &TbdSubtitlesApp, item: &QueueItem, actions: &mut Vec<Action>) {
     match &item.state {
         JobState::Finished(_) | JobState::FinishedBefore => {
+            let tally = app
+                .summaries
+                .get(&item.id)
+                .filter(|summary| summary.flagged > 0)
+                .map(|summary| match summary.to_check {
+                    0 => Tally::Done,
+                    n => Tally::Count(n),
+                });
             let tabs = [
-                (DetailTab::Overview, "Overview"),
-                (DetailTab::CheckLines, "Check Lines"),
+                (DetailTab::Overview, "Overview", None),
+                (DetailTab::CheckLines, "Check Lines", tally),
             ];
             if let Some(tab) = segmented(ui, app.detail_tab(item.id), &tabs) {
                 actions.push(Action::ShowTab(tab));

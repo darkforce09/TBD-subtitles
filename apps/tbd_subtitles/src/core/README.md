@@ -31,8 +31,10 @@ target names and with colour only when stderr is a terminal.
 shows the desktop's own chooser for videos, a folder or a JSON file on a thread of its own and
 sends the chosen paths back on a channel; `open` asks the desktop to open a file in its default
 program (VLC for the owner's videos) or a folder in the file manager, and `reveal` asks the file
-manager to show a file in the folder that holds it (Show in Folder). The app starts no program
-for it. `file_uri` and `file_path` turn paths into `file://` URIs and back, percent-encoded.
+manager to show a file in the folder that holds it (Show in Folder), each on a thread that sends
+back whether the desktop did it (`Opened`), so the window can say when it could not. The app
+starts no program for it. `file_uri` and `file_path` turn paths into `file://` URIs and back,
+percent-encoded.
 
 `color_scheme::watch` asks the same portal's `settings` interface on a thread of its own: it
 subscribes to changes of the colour scheme, sends the current one, then sends each change, waking
@@ -41,7 +43,7 @@ preference", and "no preference" is light. A desktop without the portal leaves t
 
 `format` writes the numbers every view shows: sizes as MiB or GiB, durations as `4 min 05 s`, a
 time left loosely (`about 4 min`, `under 2 min`, `a few seconds`), a video's length as `25:59`
-(`1:02:03` from an hour on), video times as `h:mm:ss` or `h:mm:ss.d`, places in line (`2nd`) and
+(`1:02:03` from an hour on), video times as `h:mm:ss`, places in line (`2nd`) and
 counts with their noun (`2 corrections`).
 
 `steps` groups the eighteen pipeline steps into the six stages the window shows, from "Read the
@@ -56,20 +58,20 @@ oldest out. The application adds them in `apply`, lets them expire in `poll`, an
 with its action when its button is pressed.
 
 `ui` holds the look and the widgets every feature shares: the palette, the fonts and the theme
-built from them, the buttons, cards, disclosures, progress bars and segmented controls, the icons
-and status marks, and the toasts' drawing. Each feature
+built from them, the buttons, cards, disclosures, pills and badges, progress bars and segmented
+controls, the icons and status marks, and the toasts' drawing. Each feature
 draws its own panels with them, so the window looks the same across features.
 
 ## Public surface
 
 - `logging::initialise`, called by `apps/tbd_subtitles/src/main.rs`.
-- `background::Wake`; `portal::{choose, open, reveal, Choose, Chosen}`;
+- `background::Wake`; `portal::{choose, open, reveal, Choose, Chosen, Opened}`;
   `toast::{Toast, Toasts, ToastKind, ToastId, SHOWN}`.
-- `format::{size, duration, about, length, clock, clock_tenths, ordinal, plural}`.
+- `format::{size, duration, about, length, clock, ordinal, plural}`.
 - `steps::{STAGES, Stage, stage_of, step_title}`.
 - `color_scheme::{Scheme, watch}`.
 - `ui::theme::{install, follow}`, `ui::fonts`, `ui::palette::palette`, the shared colours, and
-  the widgets `ui::{button, card, disclosure, icons, progress, segmented, toast}`.
+  the widgets `ui::{button, card, disclosure, icons, pill, progress, segmented, toast}`.
 
 ## Boundaries
 

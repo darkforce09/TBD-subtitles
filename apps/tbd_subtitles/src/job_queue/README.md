@@ -47,7 +47,11 @@ video's row, which then reads "Updating subtitles · 2 corrections" and offers S
 Subtitles while it runs; one that failed or was cancelled keeps a row of its own, so it can be
 tried again. Each row has a status mark and a status line ("Settling the words · about
 4 min left", "Waiting · 2nd in line", "Failed at Hear the speech", "Cancelled · 9 finished steps
-kept"); a click anywhere selects it, a red round ✕ on hover removes it, a waiting row drags to
+kept"); a finished row gives its verdict and lines to check from its work folder, through the
+summary the application reads (`job_report::models::summary::RowSummary`): "Subtitles ready · 38
+to check" with the orange count 38 at its end, "Subtitles ready · all checked", or "Needs
+attention · 1 problem" with a warning mark, so a row finished in an earlier window shows its real
+verdict; a click anywhere selects it, a red round ✕ on hover removes it, a waiting row drags to
 another place in line with a line showing where it lands, and a right click opens the menu of its
 state: Run Next, Move Up, Move Down; Cancel or Stop Updating Subtitles; Check Lines, Open in
 Player, Show in Folder, Copy Subtitle Path, Run Again with Current Settings; Try Again; Remove from
@@ -83,8 +87,8 @@ after every change: a job running when the window closed waits again next time.
 ## Boundaries
 
 - Depends on: `pipeline` (`run_job`, `JobOptions`, `Progress`, `CancelToken`), `job_model`,
-  `crate::core` (`background`, `format`, `steps`, `ui`), `serde` and `serde_json`; `eframe::egui`
-  in `ui/` only.
+  `crate::core` (`background`, `format`, `steps`, `ui`), `crate::job_report::models::summary`
+  (a finished row's verdict and count), `serde` and `serde_json`; `eframe::egui` in `ui/` only.
 - Used by: `crate::application` (`actions::{queue, review, runner}`, `feature_views`, `window`,
   `shortcuts`).
 - Rules:
@@ -109,7 +113,10 @@ after every change: a job running when the window closed waits again next time.
     `pause_and_resume_stay_reachable_while_a_model_is_missing` in
     `services/tests/queue_editing.rs`); a correction run shows on its video's row, and the newest
     ended job comes first (`correction_runs_fold_into_their_videos_row`,
-    `done_rows_list_the_newest_ended_first` in `services/tests/sidebar_rows.rs`);
+    `done_rows_list_the_newest_ended_first` in `services/tests/sidebar_rows.rs`); a finished row
+    gives its verdict and lines to check from its files
+    (`finished_rows_give_their_verdict_and_lines_to_check_from_their_files` in
+    `services/tests/status_text.rs`);
   - a full run waits while a review run of its video runs
     (`a_full_run_waits_while_its_videos_review_run_runs` in
     `apps/tbd_subtitles/src/application/tests/rendering.rs`);

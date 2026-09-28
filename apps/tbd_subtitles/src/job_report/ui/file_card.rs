@@ -1,0 +1,207 @@
+//! The Overview's file card: the subtitles saved next to the video, whether they pass the quality
+//! check, each problem in plain words with its fix, the correction run under way, the path, and
+//! the buttons that open the video, show the file and copy its path.
+//!
+//! **Role:** draw the borrowed report's verdict and problems and turn the buttons into
+//! `ReportEvent`s.
+//!
+//! **Position:** the first card of `overview`; its head is `overview::head_ui`.
+//!
+//! **Signals and state:** none, but for copying the subtitle path to the clipboard.
+//!
+//! **Invariants:** the pill says "Passes the quality check" exactly when there is no problem; a
+//! problem's button is drawn only when it has a remedy; Try Again reruns the language-model
+//! calls, never the steps before them; the path shows its folder and file, the whole path on
+//! hover.
+
+use std::path::Path;
+
+use eframe::egui::{
+    Align, Color32, CornerRadius, FontFamily, FontId, Frame, Label, Layout, Margin, RichText, Ui,
+};
+
+use crate::core::format;
+use crate::core::ui::button::{Button, ButtonSize};
+use crate::core::ui::card::{card, well_text};
+use crate::core::ui::fonts;
+use crate::core::ui::icons::{self, StatusIcon, status_icon};
+use crate::core::ui::palette::palette;
+use crate::core::ui::pill::{Tone, pill};
+use crate::job_report::events::{LinesToCheck, ReportEvent};
+use crate::job_report::models::finding_group::LineGroup;
+use crate::job_report::models::problem::{Problem, Remedy};
+use crate::job_report::models::report::JobReport;
+use crate::job_report::ui::overview::head_ui;
+
+/// The space between a note's mark and its text, and the space inside it.
+const NOTE_GAP: f32 = 10.0;
+const NOTE_MARGIN: Margin = Margin {
+    left: 12,
+    right: 12,
+    top: 10,
+    bottom: 10,
+};
+
+/// Draw the file card of `report`; `updating` counts the corrections of a correction run of the
+/// video while one waits or runs.
+pub(super) fn file_card_ui(
+    ui: &mut Ui,
+    report: &JobReport,
+    updating: Option<usize>,
+    events: &mut Vec<ReportEvent>,
+) {
+    let p = palette(ui);
+    let passes = report.problems.is_empty();
+    card(ui, true, |ui| {
+        let (colour, line) = if passes {
+            (
+                p.good_icon,
+                "The file already holds the app's best reading of every line, and it passes the \
+                 quality check.",
+            )
+        } else {
+            (
+                p.warn_icon,
+                "The file holds the app's best reading of every line, but the quality check \
+                 found problems.",
+            )
+        };
+        head_ui(
+            ui,
+            (icons::SUBTITLES, colour),
+            "Subtitles saved next to the video",
+            line,
+            |ui| {
+                if passes {
+                    pill(ui, Tone::Good, icons::CHECK, "Passes the quality check");
+                } else {
+                    pill(ui, Tone::Warn, icons::WARNING, "Needs attention");
+                }
+            },
+        );
+        if let Some(corrections) = updating {
+            updating_ui(ui, corrections);
+        }
+        for problem in &report.problems {
+            problem_ui(ui, *problem, events);
+        }
+        let full = report.subtitles.display().to_string();
+        ui.scope(|ui| well_text(ui, &short_path(&report.subtitles), false))
+            .response
+            .on_hover_text(full);
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            let open = Button::new("Open in Player").icon(icons::MONITOR_PLAY);
+            if open.show(ui).clicked() {
+                events.push(ReportEvent::OpenVideo(report.video.clone()));
+            }
+            let folder = Button::new("Show in Folder").icon(icons::FOLDER);
+            if folder.show(ui).clicked() {
+                events.push(ReportEvent::ShowInFolder(report.subtitles.clone()));
+            }
+            if Button::new("Copy Path")
+                .icon(icons::COPY)
+                .show(ui)
+                .clicked()
+            {
+                ui.ctx().copy_text(report.subtitles.display().to_string());
+                events.push(ReportEvent::Copied);
+            }
+        });
+    });
+}
+
+/// `…/<folder>/<file>`: the file and the folder that holds it, as the mockup shows the path; the
+/// whole path when it has no folder.
+fn short_path(path: &Path) -> String {
+    match (path.parent().and_then(Path::file_name), path.file_name()) {
+        (Some(folder), Some(file)) => {
+            format!("…/{}/{}", folder.to_string_lossy(), file.to_string_lossy())
+        }
+        _ => path.display().to_string(),
+    }
+}
+
+/// The blue note while a correction run puts `corrections` into the file.
+fn updating_ui(ui: &mut Ui, corrections: usize) {
+    let p = palette(ui);
+    let title = format!(
+        "Updating subtitles with your {}…",
+        format::plural(corrections, "correction")
+    );
+    let line = "Each corrected line is timed again, then the file is rewritten. This takes a few \
+                seconds.";
+    let body = |ui: &mut Ui| {
+        ui.add(Label::new(RichText::new(line).size(12.0).color(p.text2)).wrap());
+    };
+    note_ui(ui, p.accent_tint, StatusIcon::Working, &title, |_| {}, body);
+}
+
+/// One problem on the recessed well: its warning mark, its title and fix, and its button.
+fn problem_ui(ui: &mut Ui, problem: Problem, events: &mut Vec<ReportEvent>) {
+    let p = palette(ui);
+    let button = |ui: &mut Ui| {
+        let Some(remedy) = problem.remedy() else {
+            return;
+        };
+        let mut button = Button::new(remedy.label()).size(ButtonSize::Small);
+        if remedy == Remedy::TryAgain {
+            button = button.icon(icons::ARROW_CLOCKWISE);
+        }
+        if button.show(ui).clicked() {
+            events.push(match remedy {
+                Remedy::TryAgain => ReportEvent::TryAgain,
+                Remedy::ShowNearbyLines(at) => ReportEvent::CheckLines(LinesToCheck::Near(at)),
+                Remedy::ShowTooFastLines => {
+                    ReportEvent::CheckLines(LinesToCheck::Group(LineGroup::TooFast))
+                }
+            });
+        }
+    };
+    note_ui(
+        ui,
+        p.well,
+        StatusIcon::Warning,
+        &problem.title(),
+        button,
+        |ui| {
+            ui.add(Label::new(RichText::new(problem.fix()).size(12.0).color(p.text2)).wrap());
+        },
+    );
+}
+
+/// A note on `fill`, radius 8: an 18 px `mark`, `title` in semibold over what `body` draws, and
+/// what `aside` draws at the top right.
+fn note_ui(
+    ui: &mut Ui,
+    fill: Color32,
+    mark: StatusIcon,
+    title: &str,
+    aside: impl FnOnce(&mut Ui),
+    body: impl FnOnce(&mut Ui),
+) {
+    let p = palette(ui);
+    Frame::new()
+        .fill(fill)
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(NOTE_MARGIN)
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal_top(|ui| {
+                ui.spacing_mut().item_spacing.x = NOTE_GAP;
+                status_icon(ui, mark, 18.0, false);
+                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                    aside(ui);
+                    ui.vertical(|ui| {
+                        ui.set_width(ui.available_width());
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        let semibold = FontId::new(13.0, FontFamily::Name(fonts::SEMIBOLD.into()));
+                        ui.add(
+                            Label::new(RichText::new(title).font(semibold).color(p.text)).wrap(),
+                        );
+                        body(ui);
+                    });
+                });
+            });
+        });
+}

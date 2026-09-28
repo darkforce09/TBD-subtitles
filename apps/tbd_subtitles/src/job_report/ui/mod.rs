@@ -1,5 +1,8 @@
-//! The report view.
+//! The Overview of a finished job: its file card, its lines card and its two disclosures.
 
-mod report_view;
+mod file_card;
+mod lines_card;
+mod overview;
+mod report_details;
 
-pub(crate) use report_view::report_view_ui;
+pub(crate) use overview::{OverviewView, overview_ui};

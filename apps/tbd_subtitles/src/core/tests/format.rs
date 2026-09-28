@@ -27,8 +27,6 @@ fn video_times_read_as_clocks() {
     assert_eq!(clock(246.8), "0:04:06");
     assert_eq!(clock(3725.0), "1:02:05");
     assert_eq!(clock(-1.0), "0:00:00");
-    assert_eq!(clock_tenths(246.8), "0:04:06.8");
-    assert_eq!(clock_tenths(3599.96), "1:00:00.0");
 }
 
 #[test]

@@ -49,6 +49,7 @@ fn window_snapshots() {
     first_run_scene(&root.join("first-run"), &out);
     queue_scenes(&root, &out, &videos);
     detail_scenes(&root, &out, &videos);
+    attention_scene(&root, &out, &videos);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -69,23 +70,79 @@ fn harness(
         })
 }
 
-/// Every video finished: the list, the Dressrosa 15 report, its lines to check and the settings.
+/// Every video finished: the list, the Dressrosa 15 Overview, then with Details and Step times
+/// open, its lines to check and the settings.
 fn finished_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
+    let mut harness = harness(root, all_finished(videos));
+    shoot(&mut harness, out, "queue");
+    harness.get_by_label("[Muhn Pace] Dressrosa 15").click();
+    shoot(&mut harness, out, "report");
+    // Step times first, while the closed Details leaves it on screen.
+    harness.get_by_label("Step times").click();
+    harness.run_steps(2);
+    harness.get_by_label("Details").click();
+    harness.run_steps(2);
+    // Down to the open Details, with Step times under it.
+    for _ in 0..7 {
+        harness.get_by_label("Details").scroll_down();
+        harness.run_steps(1);
+    }
+    shoot(&mut harness, out, "overview_d15");
+    // The header's tab, above the lines card's button of the same name.
+    harness
+        .get_all_by_label("Check Lines")
+        .min_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
+        .expect("the header offers Check Lines")
+        .click();
+    shoot(&mut harness, out, "review");
+    harness.get_by_label("Settings").click();
+    shoot(&mut harness, out, "settings");
+}
+
+/// The setup of a window with `videos` all finished in an earlier window, their rows summed up
+/// from their work folders.
+fn all_finished(videos: &[PathBuf]) -> impl FnOnce(&mut TbdSubtitlesApp) + use<> {
     let videos = videos.to_vec();
-    let mut harness = harness(root, move |app| {
+    move |app| {
         app.settings.items.iter_mut().for_each(|i| i.present = true);
         app.apply(vec![Action::QueueVideos(videos)]);
         for item in &mut app.queue.items {
             item.state = JobState::FinishedBefore;
         }
+        app.refresh_summaries(None);
+    }
+}
+
+/// Every video finished, Dressrosa 16 with a failed language-model call added to its check: the
+/// needs-attention Overview. It changes the scratch copy of 16's `qc.json`, so it runs last.
+fn attention_scene(root: &Path, out: &Path, videos: &[PathBuf]) {
+    let qc_path = std::fs::read_dir(root.join("work"))
+        .expect("the scratch work folder")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name().is_some_and(|name| {
+                name.to_string_lossy()
+                    .starts_with("muhn-pace-dressrosa-16-")
+            })
+        })
+        .expect("Dressrosa 16's work folder")
+        .join("qc.json");
+    let mut qc: QcReport =
+        serde_json::from_str(&std::fs::read_to_string(&qc_path).expect("qc.json"))
+            .expect("qc.json parses");
+    qc.findings.push(job_model::report::QcFinding {
+        check: job_model::report::QcCheck::FailedCall,
+        time_s: 0.0,
+        text: String::new(),
+        detail: "batch 7 of 12: the model answered with no JSON".into(),
+        utterance: None,
     });
-    shoot(&mut harness, out, "queue");
-    harness.get_by_label("[Muhn Pace] Dressrosa 15").click();
-    shoot(&mut harness, out, "report");
-    harness.get_by_label("Check Lines").click();
-    shoot(&mut harness, out, "review");
-    harness.get_by_label("Settings").click();
-    shoot(&mut harness, out, "settings");
+    std::fs::write(&qc_path, serde_json::to_string(&qc).expect("json")).expect("qc.json");
+    let _ = std::fs::remove_dir_all(root.join("data"));
+    let mut harness = harness(root, all_finished(videos));
+    harness.get_by_label("[Muhn Pace] Dressrosa 16").click();
+    shoot(&mut harness, out, "needs_attention");
 }
 
 /// The first window: no videos, the models still missing.
@@ -190,6 +247,7 @@ fn running_queue(app: &mut TbdSubtitlesApp, queued: Vec<PathBuf>) {
     app.queue.running = true;
     // The full lane holds the running job, with no thread behind it.
     app.cancel = running.map(|id| (id, CancelToken::new()));
+    app.refresh_summaries(None);
 }
 
 /// The job of Dressrosa `episode`.

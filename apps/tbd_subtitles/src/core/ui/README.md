@@ -2,8 +2,8 @@
 
 The look every feature's UI shares, taken from the approved mockup: the light and dark palettes,
 the fonts, the theme built from them, and the widgets drawn the same everywhere (buttons, cards,
-disclosures, progress bars, segmented controls, icons and status marks, toasts), so panels drawn
-by different features look alike.
+disclosures, pills and count badges, progress bars, segmented controls, icons and status marks,
+toasts), so panels drawn by different features look alike.
 
 ## Contents
 
@@ -16,8 +16,9 @@ apps/tbd_subtitles/src/core/ui/
 ├── icons.rs       the Phosphor glyphs by name, `font`, and the painted status marks (`StatusIcon`)
 ├── mod.rs         the module tree
 ├── palette.rs     `Palette`, `LIGHT` and `DARK` from the mockup's tokens; `palette(ui)` picks one
-├── progress.rs    `bar` and `paint_bar`: the rounded progress bar, 4 px or 6 px thick
-├── segmented.rs   `segmented`: a row of segments with the chosen one raised
+├── pill.rs        `pill` (a state on its tint, green or orange) and `paint_badge` (the orange count)
+├── progress.rs    `bar`, `good_bar` and `paint_bar`: the rounded progress bar, blue or green
+├── segmented.rs   `segmented`: a row of segments with the chosen one raised, each with its `Tally`
 ├── tests/         unit tests for the palette's contrast, the font families and the theme's visuals
 ├── theme.rs       `install`: text styles, spacing, radii, borders, shadow, visuals; `follow`: light or dark
 └── toast.rs       `toasts_ui`: the toasts at the bottom centre, each with its mark, text and button
@@ -49,8 +50,10 @@ started keeps its style.
 
 Each feature takes the colours of text that carries meaning from `palette(ui)`: `text2` for
 secondary text, `good`, `warn` and `bad` for states; the toolbar and the sidebar have their own
-greys, and icons their brighter `good_icon`, `warn_icon`, `bad_icon` and the quiet `text3`. The
-accent is macOS blue as mocked; KDE's accent colour is not followed.
+greys, icons their brighter `good_icon`, `warn_icon`, `bad_icon` and the quiet `text3`, and pills
+the translucent `good_tint` and `warn_tint` (the mockup's 12 % and 13 % in light eased to 10 % and
+9 %, so their text reads at 4.5). The accent is macOS blue as mocked; KDE's accent colour is not
+followed.
 
 `button::Button` paints the mockup's button from the palette: a bordered control, the blue
 primary one with white text, or the danger one with red text (Cancel, Remove from List), 24, 28
@@ -74,17 +77,23 @@ row 42 px high: a chevron that points right, or down while open, a semibold labe
 row for accessibility, and a grey note on the right; a click opens or closes it, kept in egui's
 memory under the caller's id. `progress::bar` draws a bar of a given width filled to a share, 4 px
 high, or 6 px thick, the track in the separator grey and the fill in `accent_fill`, named as a
-progress indicator; `paint_bar` paints one into a given rectangle. `segmented::segmented` draws a
+progress indicator; `good_bar` fills a 4 px bar with `good_icon` for a share of things done (the
+lines checked); `paint_bar` paints one into a given rectangle. `segmented::segmented` draws a
 row of 24 px segments in a 2 px `seg_bg` well, radius 8, the chosen one raised in `seg_on` with a
-small shadow; each segment is named with whether it is chosen, and a click on another returns its
-value.
+small shadow; a segment's `Tally` follows its label 6 px on, a count in 11 px semibold grey or a
+green check; each segment is named by its label with whether it is chosen, and a click on another
+returns its value. `pill::pill` draws a 20 px pill, radius 10, a 14 px glyph and 11.5 px semibold
+text in `good` or `warn` on its tint, named by its text; `pill::paint_badge` paints the 18 px
+count of a sidebar row (at least 22 px wide, radius 9, 11 px bold `warn` on `warn_tint`, white on
+translucent white on a selected row) ending at a given point, and gives back the space it took.
 
 ## Public surface
 
 - `theme::{install, follow, TITLE}`; `fonts::{definitions, install, SEMIBOLD, BOLD, ICONS}`;
   `palette::{palette, Palette, LIGHT, DARK}`; `button::{Button, ButtonSize, icon_button}`;
   `card::{card, card_head, card_text, well_text}`; `disclosure::disclosure`;
-  `progress::{bar, paint_bar}`; `segmented::segmented`;
+  `pill::{pill, paint_badge, Tone}`; `progress::{bar, good_bar, paint_bar}`;
+  `segmented::{segmented, Tally}`;
   `icons::{font, StatusIcon, status_icon, paint_status}` and the glyph names; `toast::toasts_ui`.
 
 ## Boundaries
@@ -100,9 +109,10 @@ value.
     `apps/tbd_subtitles/src/tests/architecture_rules.rs`); a feature may use this folder though it
     may not use another feature's `ui`;
   - every text colour reads at a contrast of at least 4.5 on the surfaces it is drawn on (text on
-    a chosen segment too), the accent and the warning colour read on the selection, white reads
-    on the accent fill, and table stripes show (`every_text_colour_reads_on_every_surface`,
-    `control_text_reads_on_controls_and_tracks`,
+    a chosen segment, a pill and a count badge too), the accent and the warning colour read on the
+    selection, white reads on the accent fill, and table stripes show
+    (`every_text_colour_reads_on_every_surface`, `control_text_reads_on_controls_and_tracks`,
+    `pill_and_badge_text_reads_on_its_tint`,
     `selected_text_and_its_marks_read_on_the_selection`, `white_reads_on_the_accent_fill`,
     `table_stripes_show_on_the_window` in `tests/palette.rs`);
   - a focused text field's ring stands out from its fill at 3:1 or more, selected text reads on

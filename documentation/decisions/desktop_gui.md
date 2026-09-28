@@ -5,7 +5,7 @@
 The decisions the desktop window led to: how it plays clips and hands videos to other programs,
 where models live and how they arrive, when a job passes the quality check, how the owner's
 corrections are timed, how the window looks, which settings a job runs with, where Settings open,
-how correction runs show, and how a job is tried again. The
+how correction runs show, how a job is tried again, and how a failed language-model call is. The
 [decision log](/documentation/decisions/) says how entries are written.
 
 ### 2026-09-26 — Clips play through FFmpeg, not libmpv
@@ -274,5 +274,29 @@ the running full run finishes, and Resume Queue turns it on again.
 **Consequences:** A job that failed can be tried again at once without starting the whole queue.
 The toolbar tells Pause After This Video and Resume Queue apart through the queue's pausing
 state, which lasts until the full lane is idle and is not kept across windows.
+
+**Supersedes:** none.
+
+### 2026-09-28 — A failed language-model call is retried by running adjudication again
+
+**Context:** The quality check fails a job when a language-model call failed (`failed_call`): the
+lines of that batch may be missing their settled words. The Overview names the problem ("1
+language-model call failed") and the approved mockup puts Try Again beside it. The job has
+finished, so there is no failed step to resume from, and the pipeline knows no single batch to
+call again: adjudication, the second look at unsure lines and the sound cues each make their own
+calls, and every step after them builds on what the calls returned.
+
+**Decision:** Try Again beside a failed language-model call is Try Again from adjudication: the
+finished job goes back to waiting, first in line and keeping its own settings, with
+`StepName::Adjudicate` as its step to run again, and starts at once when its lane is idle. The
+pipeline runs adjudication again and, as always, every step that reads a step run again: the
+second listen to the unsure lines, the second look and the sound cues (so every model call runs
+again), then the timing, the review step, the cues, the check and the subtitle file. The steps
+before adjudication (the decoding, the voices, both speech engines, the sounds) stay valid and are
+not run.
+
+**Consequences:** A retry costs the model calls of the whole job, not only the failed batch, and
+the second listen to the unsure lines on the GPU; it needs no new pipeline option. The owner's corrections in `review.json`
+are applied again by the review step, as after any run.
 
 **Supersedes:** none.

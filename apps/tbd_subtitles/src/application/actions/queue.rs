@@ -3,8 +3,8 @@
 //! cancelling a running job.
 //!
 //! **Role:** turn each `JobQueueEvent` into a change of the queue, tell the owner what happened
-//! in a toast where the window shows nothing else, keep `queue.json` in step, and let the runner
-//! start what may start next.
+//! in a toast where the window shows nothing else (a file the desktop opens too), keep
+//! `queue.json` in step, and let the runner start what may start next.
 //!
 //! **Position:** called by `application::TbdSubtitlesApp::apply`; uses `job_queue::services`;
 //! `runner.rs` starts the jobs.
@@ -23,8 +23,8 @@ use std::time::{Duration, Instant};
 
 use job_model::StepName;
 
+use crate::application::background::Opening;
 use crate::application::{Action, TbdSubtitlesApp};
-use crate::core::portal;
 use crate::core::steps::{STAGES, stage_of};
 use crate::core::toast::ToastKind;
 use crate::job_queue::events::JobQueueEvent;
@@ -58,8 +58,8 @@ impl TbdSubtitlesApp {
                 self.select(Some(id));
                 self.open_review(None);
             }
-            JobQueueEvent::Reveal(path) => portal::reveal(&path),
-            JobQueueEvent::OpenVideo(path) => portal::open(&path),
+            JobQueueEvent::Reveal(path) => self.open_with_desktop(Opening::Reveal, &path),
+            JobQueueEvent::OpenVideo(path) => self.open_with_desktop(Opening::Play, &path),
             JobQueueEvent::Copied => self.toast(ToastKind::Success, "Subtitle path copied"),
             JobQueueEvent::Start => {
                 self.queue.running = true;

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use job_model::job::{JobSettings, StepMeasure, StepRecord};
+use job_model::outputs::{Chosen, Correction};
 use job_model::report::{QcCheck, QcFinding};
 
 use super::*;
@@ -70,6 +71,13 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
     let report = load(&video, &work_root).expect("report");
     assert_eq!(report.qc, qc);
     assert_eq!(
+        report.corrections,
+        Corrections::default(),
+        "no review.json yet"
+    );
+    assert_eq!(report.lines.to_check(), 1);
+    assert!(report.problems.is_empty());
+    assert_eq!(
         report.subtitles,
         std::fs::canonicalize(&video)
             .expect("c")
@@ -81,6 +89,35 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
         [StepName::ProbeDecode, StepName::ShotScan, StepName::Cues]
     );
     assert_eq!(report.total_s(), 5.5, "the shot scan runs alongside");
+    assert_eq!(
+        summary(&video, &work_root),
+        Ok(RowSummary {
+            problems: 0,
+            flagged: 1,
+            to_check: 1,
+        })
+    );
+    let corrections = Corrections {
+        lines: vec![Correction {
+            id: "U0053".into(),
+            text: "Flavor!".into(),
+            flags: Vec::new(),
+            chosen: Chosen::Engine("W".into()),
+        }],
+    };
+    write(&job.join("review.json"), &corrections);
+    let report = load(&video, &work_root).expect("report");
+    assert_eq!(report.corrections, corrections);
+    assert_eq!((report.lines.flagged, report.lines.checked), (1, 1));
+    assert_eq!(report.summary(), summary(&video, &work_root).expect("row"));
+    assert_eq!(
+        report.summary().to_check,
+        0,
+        "the corrected line is checked"
+    );
+    std::fs::write(job.join("review.json"), b"{").expect("broken");
+    let error = summary(&video, &work_root).expect_err("broken review.json");
+    assert!(error.contains("review.json"), "{error}");
     let _ = std::fs::remove_dir_all(&root);
 }
 

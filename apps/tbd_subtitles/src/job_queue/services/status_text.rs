@@ -3,17 +3,21 @@
 //!
 //! **Role:** write the status line of a sidebar row from its job's state ("Settling the words ·
 //! about 4 min left", "Waiting · 2nd in line", "Failed at Hear the speech", "Updating subtitles ·
-//! 2 corrections"); the detail pane's line of a job that has not finished ("25:59 video · running
-//! for 10 min 00 s"); and when a waiting job, or an ended one tried again, starts.
+//! 2 corrections", "Subtitles ready · 38 to check", "Needs attention · 1 problem"); the detail
+//! pane's line of a job that has not finished ("25:59 video · running for 10 min 00 s"); and when
+//! a waiting job, or an ended one tried again, starts.
 //!
 //! **Position:** called by the sidebar row for each row it draws, and by the queue's job cards
 //! and the application's detail header for the selected job.
 //!
-//! **Signals and state:** none; reads the row, its job, the queue and the step rates.
+//! **Signals and state:** none; reads the row, its job, the queue, the step rates and a finished
+//! job's summary (`job_report::models::summary`).
 //!
 //! **Invariants:** a place in line past the first shows only while the queue runs, since a paused
 //! queue starts nothing after the next video; a job tried again is said to start at once only
-//! when its lane is idle, its video runs nothing else and every model is on disk.
+//! when its lane is idle, its video runs nothing else and every model is on disk; a finished
+//! job's verdict comes from its files when they were read, so a row finished in an earlier window
+//! shows its real verdict.
 
 use std::time::Instant;
 
@@ -23,13 +27,16 @@ use crate::job_queue::models::progress::{JobProgress, Rates};
 use crate::job_queue::models::queue::{Failure, JobKind, JobState, Queue, QueueItem};
 use crate::job_queue::models::sidebar::SidebarRow;
 use crate::job_queue::services::time_left;
+use crate::job_report::models::summary::RowSummary;
 
-/// The status line of `row`, whose job is `item`.
+/// The status line of `row`, whose job is `item`; a finished job's `summary`, when its files
+/// were read, gives its verdict and its lines to check.
 pub(crate) fn status(
     row: &SidebarRow,
     item: &QueueItem,
     queue: &Queue,
     rates: &Rates,
+    summary: Option<&RowSummary>,
     now: Instant,
 ) -> String {
     match &item.state {
@@ -37,18 +44,41 @@ pub(crate) fn status(
         JobState::Waiting => format!("Waiting{}", place_words(row.place, queue)),
         JobState::Failed(failure) => failed(failure),
         JobState::Cancelled { kept_steps } => cancelled(*kept_steps),
-        JobState::Finished(_) | JobState::FinishedBefore => match (row.fold, &item.state) {
-            (Some(fold), _) => format!(
-                "Updating subtitles · {}",
-                format::plural(fold.corrections, "correction")
-            ),
-            (None, JobState::Finished(result)) if !result.failures.is_empty() => format!(
-                "Needs attention · {}",
-                format::plural(result.failures.len(), "problem")
-            ),
-            _ => "Subtitles ready".to_string(),
-        },
+        JobState::Finished(_) | JobState::FinishedBefore => {
+            match (row.fold, summary, &item.state) {
+                (Some(fold), _, _) => format!(
+                    "Updating subtitles · {}",
+                    format::plural(fold.corrections, "correction")
+                ),
+                (None, Some(summary), _) if !summary.passes() => needs_attention(summary.problems),
+                (None, Some(summary), _) if summary.to_check > 0 => {
+                    format!("Subtitles ready · {} to check", summary.to_check)
+                }
+                (None, Some(summary), _) if summary.flagged > 0 => {
+                    "Subtitles ready · all checked".to_string()
+                }
+                (None, None, JobState::Finished(result)) if !result.failures.is_empty() => {
+                    needs_attention(result.failures.len())
+                }
+                _ => "Subtitles ready".to_string(),
+            }
+        }
     }
+}
+
+/// Whether finished job `item` fails the quality check: by its `summary` when its files were
+/// read, else by the run's own result.
+pub(crate) fn fails_the_check(item: &QueueItem, summary: Option<&RowSummary>) -> bool {
+    match (summary, &item.state) {
+        (Some(summary), _) => !summary.passes(),
+        (None, JobState::Finished(result)) => !result.failures.is_empty(),
+        _ => false,
+    }
+}
+
+/// "Needs attention · 2 problems".
+fn needs_attention(problems: usize) -> String {
+    format!("Needs attention · {}", format::plural(problems, "problem"))
 }
 
 /// The line under the detail pane's title for `item`: a running job's length and time so far, a

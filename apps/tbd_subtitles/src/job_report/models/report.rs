@@ -1,13 +1,17 @@
-//! A finished job's report as the window shows it: the quality check, the files, and each step's
-//! time and memory.
+//! A finished job's report as the window shows it: the quality check with its problems and its
+//! lines worth a listen, the owner's corrections, the files, and each step's time and memory.
 
 use std::path::PathBuf;
 
 use job_model::StepName;
 use job_model::job::StepMeasure;
+use job_model::outputs::Corrections;
 use job_model::report::QcReport;
 
-/// Everything the report view shows about one job.
+use crate::job_report::models::problem::Problem;
+use crate::job_report::models::summary::{LineCounts, RowSummary};
+
+/// Everything the Overview shows about one job.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct JobReport {
     pub(crate) video: PathBuf,
@@ -17,6 +21,12 @@ pub(crate) struct JobReport {
     /// `report.md` in the work directory.
     pub(crate) report_file: PathBuf,
     pub(crate) qc: QcReport,
+    /// The owner's corrections, from `review.json`; none before the first.
+    pub(crate) corrections: Corrections,
+    /// Why it does not pass the quality check; empty when it passes.
+    pub(crate) problems: Vec<Problem>,
+    /// Its lines worth a listen, and how many the owner checked.
+    pub(crate) lines: LineCounts,
     /// Each finished step with its measure, in run order.
     pub(crate) steps: Vec<(StepName, StepMeasure)>,
 }
@@ -29,5 +39,14 @@ impl JobReport {
             .filter(|(step, _)| *step != StepName::ShotScan)
             .map(|(_, measure)| measure.wall_s)
             .sum()
+    }
+
+    /// What its sidebar row and the header's Check Lines say.
+    pub(crate) fn summary(&self) -> RowSummary {
+        RowSummary {
+            problems: self.problems.len(),
+            flagged: self.lines.flagged,
+            to_check: self.lines.to_check(),
+        }
     }
 }

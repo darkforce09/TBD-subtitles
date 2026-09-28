@@ -65,6 +65,10 @@ pub(crate) struct Palette {
     pub(crate) good_icon: Color32,
     pub(crate) warn_icon: Color32,
     pub(crate) bad_icon: Color32,
+    /// The pale green behind a good pill (translucent).
+    pub(crate) good_tint: Color32,
+    /// The pale orange behind a warning pill and a count of lines to check (translucent).
+    pub(crate) warn_tint: Color32,
     /// Laid over a control while the pointer is on it.
     pub(crate) hover: Color32,
     /// Laid over a control while it is pressed.
@@ -108,6 +112,10 @@ pub(crate) static LIGHT: Palette = Palette {
     good_icon: Color32::from_rgb(0x28, 0xA7, 0x45),
     warn_icon: Color32::from_rgb(0xE8, 0x84, 0x00),
     bad_icon: Color32::from_rgb(0xE5, 0x30, 0x2A),
+    // The mockup's 12 % tint, eased to 10 % so the green text on it reads at 4.5.
+    good_tint: Color32::from_rgba_unmultiplied_const(0x28, 0xA7, 0x45, 26),
+    // The mockup's 13 % tint, eased to 9 % so the orange count reads at 4.5 on the sidebar.
+    warn_tint: Color32::from_rgba_unmultiplied_const(0xE8, 0x84, 0x00, 23),
     hover: Color32::from_rgba_unmultiplied_const(0, 0, 0, 13),
     press: Color32::from_rgba_unmultiplied_const(0, 0, 0, 23),
     shadow: Color32::from_rgba_unmultiplied_const(0, 0, 0, 41),
@@ -140,6 +148,8 @@ pub(crate) static DARK: Palette = Palette {
     good_icon: Color32::from_rgb(0x34, 0xC7, 0x59),
     warn_icon: Color32::from_rgb(0xFF, 0x9F, 0x0A),
     bad_icon: Color32::from_rgb(0xFF, 0x45, 0x3A),
+    good_tint: Color32::from_rgba_unmultiplied_const(0x34, 0xC7, 0x59, 41),
+    warn_tint: Color32::from_rgba_unmultiplied_const(0xFF, 0x9F, 0x0A, 41),
     hover: Color32::from_rgba_unmultiplied_const(255, 255, 255, 15),
     press: Color32::from_rgba_unmultiplied_const(255, 255, 255, 26),
     shadow: Color32::from_rgba_unmultiplied_const(0, 0, 0, 128),

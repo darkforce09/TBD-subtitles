@@ -16,9 +16,13 @@ job's header names it with its length and time, and its cards show the stage at 
 the running video ends. A running job can be cancelled and an ended one tried again, a failed job
 names the stage and step it failed at with the raw message, a failed or cancelled one says how
 many finished steps it kept and when Try Again would start it, and the queue is kept across
-windows. A finished job's Overview shows its report: whether it passes the quality check, its
-findings with their times, its steps, and buttons that open the video, its folder and `report.md`
-through the desktop. Its Check Lines tab opens the line review: the flagged
+windows. A finished job's Overview says the subtitles are saved next to the video and whether
+they pass the quality check, each problem in plain words with its fix (Try Again beside a failed
+language-model call), how many lines are worth a listen in their groups and how many are checked,
+the check's numbers and each step's time and memory, with buttons that open the video, show the
+file in its folder, copy its path and open `report.md` through the desktop; its sidebar row says
+"Subtitles ready · 38 to check" with an orange count, or "Needs attention · 1 problem", even for
+a job finished in an earlier window. Its Check Lines tab opens the line review: the flagged
 lines (or every line), each with its clip (the video's sound or the voices alone, and a small
 picture), what every engine heard, the text and its flags. The owner picks a reading or types the
 line, and Save and time again writes `review.json` and starts a review run at once, which
@@ -43,7 +47,9 @@ The video's row shows the review run ("Updating subtitles · 1 correction") unti
    button is Start Queue, Pause After This Video or Resume Queue, and says why Start Queue is off
    ("Download the models first", "Nothing is waiting"); it counts full runs only. The sidebar has
    one row per video, a review run folded into its video's row, with a status mark and line
-   ("Waiting · 2nd in line", "Failed at Hear the speech"), the newest ended first in Done; a click
+   ("Waiting · 2nd in line", "Failed at Hear the speech", "Subtitles ready · 38 to check",
+   "Needs attention · 1 problem"; a finished row that passes ends in the orange count of its lines
+   to check), the newest ended first in Done; a click
    selects a row, ↑ and ↓ move through them, a waiting row drags to another place in line, and a
    right click opens the commands of its state: Run Next, Move Up, Move Down, Cancel, Stop
    Updating Subtitles, Check Lines, Open in Player, Show in Folder, Copy Subtitle Path, Run Again
@@ -59,7 +65,8 @@ The video's row shows the review run ("Updating subtitles · 1 correction") unti
 2. **Progress.** The selected job's header gives its name, its length and how long it ran
    ("25:59 video · running for 10 min 00 s", "25:59 video · finished in 4 min 37 s") or its place
    in line, and on the right Cancel (then "Stopping…") for a running job or Overview | Check Lines
-   for a finished one. A running job's card says what its stage does ("Settling the words"), the
+   for a finished one, Check Lines with its count of lines to check (a green check once none is
+   left). A running job's card says what its stage does ("Settling the words"), the
    step at work ("Now: Language model settles the words · step 9 of 18"), a bar of the share
    done, the time left ("about 4 min left", "Working out the time left…" until the length is
    known) and the time so far; under it the six stages, each done with its time, running with its
@@ -70,9 +77,21 @@ The video's row shows the review run ("Updating subtitles · 1 correction") unti
    finished steps kept and when Try Again starts it, with Try Again and Show in Folder, over its
    stages; a cancelled job's card gives the finished steps kept and when Try Again starts it, with
    Try Again and Remove from List.
-3. **Report.** When a job ends, under its Overview tab: the quality-check results, flagged lines
-   (`UNSURE`, `NOVEL`) with timestamps, and the output file's path. A button opens the video in the desktop's default
-   player (VLC) through the desktop portal.
+3. **Report.** When a job ends, under its Overview tab. The file card: "Subtitles saved next to
+   the video" with the pill "Passes the quality check" or "Needs attention"; each broken pass rule
+   in plain words with its fix ("1 language-model call failed" with Try Again, which runs the
+   language-model calls and every step after them again; "Speech with no subtitle" with Show
+   Nearby Lines, which opens every line at the one nearest the first stretch; "Only 91.2 % of subtitles are easy to read" with Show Lines; layout; the
+   aligner's offset); a blue note while a correction run updates the file; the path; Open in
+   Player (the desktop's default player, VLC, through the desktop portal), Show in Folder and Copy
+   Path, each saying in a toast what it did, and in a red one when the desktop could not. The
+   lines card: "38 lines worth a listen", a green bar of those checked, Check Lines, and a row per
+   group (Unsure what was said, Heard word replaced, Word no engine heard, Too fast to read,
+   Loosely timed, Layout) with its explanation and count, which opens Check Lines at the group's
+   earliest line. Then Details (subtitles, easy to read, unsure lines, words no engine heard,
+   timing offset, speech and voice with no subtitle, words timed by the aligner, corrections made)
+   and Step times (each stage and step with its time, peak RAM and peak VRAM, and Open Full
+   Report), both folded away at first.
 4. **Review.** Under a finished job's Check Lines tab, for each flagged line: play the clip (sound and a small picture, both from
    FFmpeg), see every engine's hypothesis, pick one or type a correction; the line is re-aligned
    and the subtitle file rewritten. Corrections never touch lines that were not flagged unless
@@ -89,8 +108,10 @@ The video's row shows the review run ("Updating subtitles · 1 correction") unti
 
 - Settings: `~/.config/tbd-subtitles/settings.toml`.
 - Jobs: the work directory of each job ([system overview](/documentation/architecture/system_overview.md#job-work-directory));
-  the GUI reads `job.json`, `report.md` and the stage outputs, and listens to the runner's
-  progress events.
+  the GUI reads `job.json`, `qc.json`, `output.json`, `review.json`, `report.md` and the stage
+  outputs, and listens to the runner's progress events. Each finished row's verdict and lines to
+  check are read from `qc.json` and `review.json` when the window opens and after each run and
+  correction of its video.
 
 ## Design
 
@@ -104,7 +125,8 @@ Mono for monospace text (egui's fonts when they are missing), Phosphor icons, ti
 15, body 13 and caption 11, controls 28 px high with radius 6, cards and windows with radius 10,
 1 px borders and one soft shadow, and selections in a light accent tint with accent text. The
 detail pane is built as mocked: the header with the 22 px title, cards in a column at most 800 px
-wide, a segmented control, disclosures, thick and thin progress bars and the stage marks. The
+wide, a segmented control with a count, disclosures, pills, thick and thin progress bars and the
+stage marks, and the Overview's cards. The
 window follows the desktop's light or dark colour scheme as KDE sets it, through the desktop
 portal, and switches when it changes; KDE's accent colour is not followed. Code layout follows the TBD-Reforger desktop-app pattern: one folder per feature with
 `models/`, `services/` and `ui/`, where the UI draws from a borrowed view and returns events that
@@ -141,4 +163,6 @@ can be compared with the mockup.
   correction runs on their video's row
   ([one row per video](/documentation/decisions/desktop_gui.md#2026-09-28--correction-runs-show-in-their-videos-row)),
   and Try Again that starts at once
-  ([Try Again](/documentation/decisions/desktop_gui.md#2026-09-28--try-again-resumes-after-the-kept-steps-and-starts-at-once-when-nothing-runs)).
+  ([Try Again](/documentation/decisions/desktop_gui.md#2026-09-28--try-again-resumes-after-the-kept-steps-and-starts-at-once-when-nothing-runs)),
+  which reruns adjudication for a failed language-model call
+  ([a failed call is retried](/documentation/decisions/desktop_gui.md#2026-09-28--a-failed-language-model-call-is-retried-by-running-adjudication-again)).

@@ -9,8 +9,8 @@
 //! **Position:** called by `application::TbdSubtitlesApp::apply` (through the queue and review
 //! actions) and before each frame; uses `job_queue::services` and the settings.
 //!
-//! **Signals and state:** the queue, the running jobs' cancel tokens, the step rates; writes
-//! `queue.json` after every change.
+//! **Signals and state:** the queue, the running jobs' cancel tokens, the step rates, and the
+//! summaries of the rows of a video whose run ended; writes `queue.json` after every change.
 //!
 //! **Invariants:** at most one full run and one review run run at once, each on its own runner;
 //! no job starts while a model is missing; a job started at once (Try Again, Run Again) leaves
@@ -181,6 +181,7 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
         events.push(event);
     }
     let (mut ended, mut recorded) = (false, false);
+    let mut ended_videos = Vec::new();
     for event in events {
         match event {
             RunnerEvent::Progress(id, progress) => {
@@ -223,6 +224,7 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
                             JobState::Failed(Failure::new(step, error.to_string(), finished))
                         }
                     };
+                    ended_videos.push(item.video.clone());
                 }
                 queue_editing::newest_ended_first(&mut app.queue, id);
                 for lane in [&mut app.cancel, &mut app.review_cancel] {
@@ -243,6 +245,9 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
         }
         app.save_queue();
         app.start_next();
+        for video in &ended_videos {
+            app.refresh_summaries(Some(video));
+        }
         app.refresh_report(true);
         app.refresh_review();
     }

@@ -49,8 +49,6 @@ egui-phosphor = { version = "0.14", default-features = false, features = ["regul
 # files can be dropped onto the window and Settings can be placed over it. eframe does not
 # re-export winit; the version matches eframe's.
 winit = { version = "=0.30.13", default-features = false }
-# Tables in the settings, queue and report views.
-egui_extras = { version = "0.36", default-features = false }
 # The desktop window. glow (OpenGL) is the renderer: wgpu fails to create a surface on the owner's
 # Wayland desktop. wayland and x11 cover both session types.
 eframe = { version = "0.36", default-features = false, features = ["glow", "wayland", "x11", "default_fonts"] }

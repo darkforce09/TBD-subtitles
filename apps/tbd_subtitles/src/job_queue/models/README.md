@@ -11,7 +11,7 @@ apps/tbd_subtitles/src/job_queue/models/
 ├── queue.rs     `Queue`, `QueueItem`, `JobId`, `JobKind`, `JobState`, `Failure`, `JobResult`, `Move`, `Removed`
 ├── sidebar.rs   `Section`, `SidebarRow` and `ReviewFold`: the sidebar's rows
 ├── tests/       unit tests for the progress's kept, finished, current, shown and failed steps
-└── view.rs      `JobQueueView`, the queue, the rates and the clock lent for one frame
+└── view.rs      `JobQueueView`, the queue, the rates, the finished rows' summaries and the clock
 ```
 
 ## How it works
@@ -41,11 +41,14 @@ where it was. A `ReviewFold` also names the correction run running now, which th
 can stop. A `SidebarRow` is one video in the sidebar: its job, its name, its `Section` (Now,
 Up Next or Done), the correction runs folded into it, a `ReviewFold` while some of them wait or
 run (with the corrections they carry), its place in line, and whether it can be removed or
-dragged.
+dragged. The `JobQueueView` lent to the panels for one frame also carries each finished job's
+`RowSummary` (its problems and lines to check), which the application reads from the job's work
+folder.
 
 ## Boundaries
 
-- Depends on: `job_model::StepName`; `std`.
+- Depends on: `job_model::StepName`; `crate::job_report::models::summary::RowSummary` in
+  `view.rs`; `std`.
 - Used by: `crate::job_queue::{services, ui}` and `crate::application`.
 - Rules: nothing here names egui or eframe
   (`dependency_boundaries_and_external_test_placement_are_enforced` in

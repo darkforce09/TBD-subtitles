@@ -147,11 +147,14 @@ impl TbdSubtitlesApp {
     }
 
     /// Queue a review run of job `job`'s video; it starts at once unless a full run of the same
-    /// video is running.
+    /// video is running. The corrections file changed, so the video's rows count their lines to check again and
+    /// the Overview reads its report again.
     fn queue_review_run(&mut self, job: JobId) {
         let Some(video) = self.queue.get(job).map(|item| item.video.clone()) else {
             return;
         };
+        self.refresh_summaries(Some(&video));
+        self.refresh_report(true);
         queue_editing::queue_review(&mut self.queue, video);
         self.save_queue();
         self.start_next();

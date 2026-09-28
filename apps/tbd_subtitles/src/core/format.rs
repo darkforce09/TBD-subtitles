@@ -59,18 +59,6 @@ pub(crate) fn clock(seconds: f64) -> String {
     format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
 }
 
-/// A video time as `h:mm:ss.d`, as `report.md` writes it.
-pub(crate) fn clock_tenths(seconds: f64) -> String {
-    let tenths = (seconds.max(0.0) * 10.0).round() as u64;
-    format!(
-        "{}:{:02}:{:02}.{}",
-        tenths / 36_000,
-        tenths / 600 % 60,
-        tenths / 10 % 60,
-        tenths % 10
-    )
-}
-
 /// A place in line: `1st`, `2nd`, `3rd`, `4th`, `11th`, `21st`.
 pub(crate) fn ordinal(n: usize) -> String {
     let suffix = match (n % 10, n % 100) {

@@ -10,9 +10,9 @@
 //! **Signals and state:** none; reads the state and pushes actions.
 //!
 //! **Invariants:** a feature sees only its borrowed view; with no job in the queue the right side
-//! shows the empty list's card; a selected job shows its header over its cards, its report or
-//! its lines to check (only while it is finished), the cards and the report in a column at most
-//! 800 px wide.
+//! shows the empty list's card; a selected job shows its header over its cards, its Overview or
+//! its lines to check (only while it is finished), the cards and the Overview in a column at most
+//! 800 px wide, 16 px apart.
 
 use std::time::Instant;
 
@@ -23,8 +23,9 @@ use super::{Action, TbdSubtitlesApp};
 use crate::core::ui::palette::palette;
 use crate::job_queue::models::queue::{JobState, QueueItem};
 use crate::job_queue::models::view::JobQueueView;
+use crate::job_queue::services::sidebar_rows;
 use crate::job_queue::ui as job_queue_ui;
-use crate::job_report::ui::report_view_ui;
+use crate::job_report::ui::{OverviewView, overview_ui};
 use crate::line_review::ui::{ReviewView, review_view_ui};
 use crate::settings::ui::settings_page_ui;
 
@@ -37,6 +38,7 @@ fn queue_view(app: &TbdSubtitlesApp) -> JobQueueView<'_> {
         queue: &app.queue,
         models_missing: app.models_missing(),
         rates: &app.rates,
+        summaries: &app.summaries,
         now: Instant::now(),
     }
 }
@@ -118,7 +120,7 @@ pub(super) fn jobs_ui(ui: &mut Ui, app: &TbdSubtitlesApp, actions: &mut Vec<Acti
         });
 }
 
-/// The selected job's body: a finished job's report, else the queue's cards for its state.
+/// The selected job's body: a finished job's Overview, else the queue's cards for its state.
 fn body_ui(ui: &mut Ui, app: &TbdSubtitlesApp, item: &QueueItem, actions: &mut Vec<Action>) {
     if !matches!(item.state, JobState::Finished(_) | JobState::FinishedBefore) {
         let mut events = Vec::new();
@@ -128,9 +130,14 @@ fn body_ui(ui: &mut Ui, app: &TbdSubtitlesApp, item: &QueueItem, actions: &mut V
     }
     match app.report.as_ref().filter(|(id, _)| *id == item.id) {
         Some((_, Ok(report))) => {
-            ui.spacing_mut().item_spacing.y = 6.0;
+            let updating = sidebar_rows::rows(&app.queue)
+                .into_iter()
+                .find(|row| row.id == item.id)
+                .and_then(|row| row.fold)
+                .map(|fold| fold.corrections);
+            let view = OverviewView { report, updating };
             let mut events = Vec::new();
-            report_view_ui(ui, report, &mut events);
+            overview_ui(ui, &view, &mut events);
             actions.extend(events.into_iter().map(Action::from));
         }
         Some((_, Err(error))) => {

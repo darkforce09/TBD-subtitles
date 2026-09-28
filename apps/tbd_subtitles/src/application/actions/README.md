@@ -9,7 +9,7 @@ answers in before the next frame.
 apps/tbd_subtitles/src/application/actions/
 ├── mod.rs       the module list and the re-exports `application` uses
 ├── queue.rs     the queue's actions: add, select, remove and undo, move, cancel, try and run again
-├── report.rs    the selected finished job's report, read when it is selected or ends
+├── report.rs    the selected job's report, the finished rows' summaries, and the Overview's requests
 ├── review.rs    the line review: open, edit, save and queue a review run, play clips, reload
 ├── runner.rs    starting the next job of each lane with its options, and the runners' events
 └── settings.rs  the settings page as the window opens, its actions, and its threads' answers
@@ -35,8 +35,10 @@ not start (in red, with the reason), runs next ("from Hear the speech", while th
 a correction run), is first in line waiting for Start Queue, or waits for the models; a video with
 another run waiting or running is not put back ("… is already in the list."). Run Again compares the settings saved now
 with the ones in the job's `job.json` first, and when they are the same queues nothing and says
-so. Check Lines selects the job and opens its review; Show in Folder, Open in Player and a copied
-subtitle path go to the desktop portal or a toast. `runner.rs` keeps two lanes, each with its own runner: full runs start one after another
+so. Check Lines selects the job and opens its review; Show in Folder and Open in Player go to the
+desktop portal through `open_with_desktop`, which says so in a toast and, when the desktop answers
+that it could not, in a red one; a copied subtitle path says so in a toast. `runner.rs` keeps two
+lanes, each with its own runner: full runs start one after another
 while the queue runs, and review runs start as soon as one waits. Both lanes run in this one
 process, so the job lock does not keep them apart: a review run waits while a full run of its
 video runs, and the full lane waits while a review run of its next video runs. A pause ends once the full
@@ -47,12 +49,21 @@ as `JobOptions.rerun`; starting marks the job as keeping its settings. The runne
 into the queue: progress into the running job (its first event empties the steps to run again,
 which the pipeline has recorded by then, so a job failing before it keeps them), the end into a
 finished job, a cancelled one with the finished steps it kept, or a failed one with the step that
-failed and the steps it had finished (each with its seconds, or still valid), after which the step rates, the report and an open review are read
-again and the next job of each lane starts.
+failed and the steps it had finished (each with its seconds, or still valid), after which the
+step rates, the summaries of the rows of each video whose run ended, the report and an open review
+are read again and the next job of each lane starts.
 
-`report.rs` reads the selected finished job's report when it is selected or a job ends.
-`review.rs` opens the selected job's review at the line a finding names (or its first flagged
-line), or says in a red toast why it cannot, leaving the report as it is; closes it once its job
+`report.rs` reads the selected finished job's report when it is selected or a job ends, and with
+it the job's row summary; `refresh_summaries` reads the summary of every finished row when the
+window opens, and of a video's rows after each of its runs and each saved or taken-back
+correction (a row whose files cannot be read has none). It applies the Overview's events: Open in
+Player, Show in Folder and Open Full Report through `open_with_desktop`, the copied path's toast,
+Check Lines on the lines worth a listen, on every line at the one nearest the first speech with
+no subtitle (Show Nearby Lines), or on a group, which
+opens at the group's earliest line; and Try Again beside a failed language-model call, which is
+Try Again from `StepName::Adjudicate`: every model call and the steps after them run again.
+`review.rs` opens the selected job's review at the line it is asked for (a group's earliest) or its
+first flagged line, or says in a red toast why it cannot, leaving the report as it is; closes it once its job
 is no longer finished (after every queue event, so a job tried or run again shows as it is now);
 applies the owner's picks, typing and flags to the draft, and on Save or Take back writes
 `review.json` and queues a review run of the video, or adds the correction to the one that
@@ -65,7 +76,7 @@ sound or the vocal stem; opening another line, Stop and closing the review stop 
   services); `crate::job_report::services`; `crate::line_review` (events,
   services); `pipeline` (`JobOptions`, `CancelToken`, `workers::Binaries`); `media_io::preview`
   (`Clip`); `crate::core::{portal, steps, toast}`; `crate::application` (`TbdSubtitlesApp`,
-  `Action`, `Environment`, `background::Chooser`).
+  `Action`, `Environment`, `background::{Chooser, Opening}`).
 - Used by: `crate::application`, in `apply` and `poll`.
 - Rules: one download and one check run at a time, and a chooser's answer changes only the draft
   (the header of `settings.rs`); a saved correction always queues one review run, and no run of a
@@ -78,4 +89,8 @@ sound or the vocal stem; opening another line, Stop and closing the review stop 
   or run again starts at once without turning the queue on, and Run Again with the settings a job
   ran with queues nothing (the header of `queue.rs`,
   `run_again_with_the_settings_it_ran_with_runs_nothing` in
-  `apps/tbd_subtitles/src/application/tests/rendering_queue.rs`).
+  `apps/tbd_subtitles/src/application/tests/rendering_queue.rs`); Try Again from the Overview
+  reruns the language-model calls, and a row finished in an earlier window shows its summary
+  (`a_failed_language_model_call_needs_attention_and_try_again_reruns_the_calls`,
+  `a_job_finished_in_an_earlier_window_shows_its_verdict_and_lines_to_check` in
+  `apps/tbd_subtitles/src/application/tests/rendering_report.rs`).
