@@ -43,6 +43,18 @@ fn a_version_check_shows_the_first_line_or_the_reason() {
 }
 
 #[test]
+fn with_source_prefixes_bundled_versus_path() {
+    assert_eq!(
+        with_source(true, "ffmpeg version 8.1"),
+        "bundled: ffmpeg version 8.1"
+    );
+    assert_eq!(
+        with_source(false, "ffmpeg version 8.1"),
+        "on PATH: ffmpeg version 8.1"
+    );
+}
+
+#[test]
 fn clip_sound_needs_the_pulse_output_device() {
     let with = " DE alsa            ALSA audio output\n DE pulse           Pulse audio output\n";
     assert_eq!(pulse_output(Ok(with.into())).state, CheckState::Ok);

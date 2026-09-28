@@ -75,10 +75,7 @@ pub fn run_worker(
     if !binary.exists() {
         return Err(PipelineError::new(
             context,
-            format!(
-                "{} is missing; build it as the development environment runbook says",
-                binary.display()
-            ),
+            format!("{} is missing from the app's own folder", binary.display()),
         ));
     }
     let measure_file = work.worker_measure(step);

@@ -7,8 +7,8 @@
 //! still frame on a thread of its own.
 //!
 //! **Position:** called by the application's review actions; builds its command lines with
-//! `media_io::preview` and runs them through `child_process`; the review's clip view reads
-//! `PAD_S` and a clip's place.
+//! `media_io::preview` and runs them through `child_process`, using the FFmpeg bundled beside the
+//! app when there is one; the review's clip view reads `PAD_S` and a clip's place.
 //!
 //! **Signals and state:** one thread per clip and per still; the clip's two FFmpeg children,
 //! killed through a shared stop flag; the newest frame behind a mutex; the moment the sound
@@ -25,6 +25,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use child_process::Run;
+use media_io::Programs;
 use media_io::preview::{self, Clip};
 
 use crate::core::background::Wake;
@@ -124,7 +125,8 @@ pub(crate) fn play(request: ClipRequest, wake: Wake) -> ClipPlayer {
         player.began.clone(),
     );
     std::thread::spawn(move || {
-        if let Err(error) = run(&request, &stop, &frame, &began, &wake) {
+        let ffmpeg = Programs::beside_current_exe().ffmpeg;
+        if let Err(error) = run(&ffmpeg, &request, &stop, &frame, &began, &wake) {
             tracing::warn!(%error, "the clip could not play");
         }
         playing.store(false, Ordering::SeqCst);
@@ -134,11 +136,12 @@ pub(crate) fn play(request: ClipRequest, wake: Wake) -> ClipPlayer {
 }
 
 fn spawn(
+    ffmpeg: &str,
     args: Vec<String>,
     deadline: Duration,
     stop: &Arc<AtomicBool>,
 ) -> Result<child_process::Running, String> {
-    Run::new("ffmpeg")
+    Run::new(ffmpeg)
         .args(args)
         .timeout(deadline)
         .cancel_on(stop.clone())
@@ -147,6 +150,7 @@ fn spawn(
 }
 
 fn run(
+    ffmpeg: &str,
     request: &ClipRequest,
     stop: &Arc<AtomicBool>,
     slot: &Mutex<Option<Frame>>,
@@ -160,11 +164,11 @@ fn run(
     let size = preview::frame_size(request.picture.0, request.picture.1, LINES);
     let frame_args = preview::frames(&request.video, request.clip, size, FPS);
     let started = Instant::now();
-    let sound = spawn(sound_args, DEADLINE, stop)?;
+    let sound = spawn(ffmpeg, sound_args, DEADLINE, stop)?;
     if let Ok(mut began) = began.lock() {
         *began = Some(Instant::now());
     }
-    let mut pictures = spawn(frame_args, DEADLINE, stop)?;
+    let mut pictures = spawn(ffmpeg, frame_args, DEADLINE, stop)?;
     if let Some(mut out) = pictures.take_stdout() {
         let mut buffer = vec![0u8; (size.0 * size.1 * 4) as usize];
         let mut index = 0u32;
@@ -236,12 +240,14 @@ pub(crate) fn still(video: PathBuf, picture: (u32, u32), at_s: f64, wake: Wake) 
         still.frame.clone(),
     );
     std::thread::spawn(move || {
+        let ffmpeg = Programs::beside_current_exe().ffmpeg;
         let size = preview::frame_size(picture.0, picture.1, LINES);
         let one_frame = Clip {
             start_s: at_s.max(0.0),
             duration_s: 1.0 / f64::from(FPS),
         };
         match spawn(
+            &ffmpeg,
             preview::frames(&video, one_frame, size, FPS),
             STILL_DEADLINE,
             &stop,

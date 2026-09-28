@@ -30,7 +30,7 @@ pub(super) fn probe_decode(job: &Job, progress: StepProgress) -> Result<TaskRepo
     audio_folder(job)?;
     let started = Instant::now();
     let decoded = stages::probe_decode::probe_and_decode(
-        &Programs::default(),
+        &Programs::beside_current_exe(),
         &job.video(),
         job.settings().audio_track,
         &job.work.mix(),
@@ -57,8 +57,13 @@ pub(super) fn probe_decode(job: &Job, progress: StepProgress) -> Result<TaskRepo
 
 pub(super) fn shot_scan(job: &Job) -> Result<TaskReport> {
     let started = Instant::now();
-    let shots = shot_changes::scan(&Programs::default(), &job.video(), false, MEDIA_DEADLINE)
-        .context("shot scan")?;
+    let shots = shot_changes::scan(
+        &Programs::beside_current_exe(),
+        &job.video(),
+        false,
+        MEDIA_DEADLINE,
+    )
+    .context("shot scan")?;
     let mut report = TaskReport {
         process_s: since(started),
         ..TaskReport::default()
@@ -76,7 +81,7 @@ pub(super) fn separation(job: &Job, progress: StepProgress) -> Result<TaskReport
     audio_folder(job)?;
     let probe = job.probe()?;
     let root = job.models()?;
-    let programs = Programs::default();
+    let programs = Programs::beside_current_exe();
     let (vocals, background) = (job.work.vocals(), job.work.background());
     let request = SeparationRequest {
         programs: &programs,

@@ -5,8 +5,9 @@
 //! failure with its reason, never a pass.
 //!
 //! **Position:** called by the application on a thread when the settings view opens and when the
-//! owner asks again; uses `pipeline::measure::gpu_monitor` (NVML), `inference::cuda_runtime` and
-//! `child_process` for the programs' versions.
+//! owner asks again; uses `pipeline::measure::gpu_monitor` (NVML), `inference::cuda_runtime`,
+//! `media_io::Programs` (bundled FFmpeg beside the app, else `PATH`) and `child_process` for the
+//! programs' versions.
 //!
 //! **Signals and state:** loads NVML; runs `ffmpeg -version`, `ffmpeg -devices`,
 //! `ffprobe -version` and `claude --version` with short deadlines; reads the runtime folder.
@@ -19,6 +20,8 @@ use std::time::Duration;
 
 use child_process::Run;
 use inference::cuda_runtime::CudaRuntime;
+use inference::llm::claude_cli;
+use media_io::Programs;
 use pipeline::measure::gpu_monitor::{self, DeviceInfo};
 
 use crate::core::background::Wake;
@@ -34,13 +37,14 @@ const QUERY_DEADLINE: Duration = Duration::from_secs(20);
 /// Run every check. `exe_dir` is the running binary's folder, where the Whisper worker and a
 /// packaged `cuda/` folder sit; `runtime_dir` is the runtime folder.
 pub(crate) fn run_all(exe_dir: Option<&Path>, runtime_dir: &Path) -> Vec<Check> {
+    let programs = exe_dir.map(Programs::beside).unwrap_or_default();
     vec![
         gpu(gpu_monitor::device_info()),
         cuda_runtime(exe_dir, runtime_dir),
-        program("FFmpeg", "ffmpeg", "-version"),
-        pulse_output(query("ffmpeg", "-devices")),
-        program("ffprobe", "ffprobe", "-version"),
-        program("claude CLI", "claude", "--version"),
+        ffmpeg_program("FFmpeg", &programs.ffmpeg, programs.bundled),
+        pulse_output(query(&programs.ffmpeg, "-devices")),
+        ffmpeg_program("ffprobe", &programs.ffprobe, programs.bundled),
+        program("claude CLI", &claude_cli::resolve_program(), "--version"),
         whisper_worker(exe_dir),
     ]
 }
@@ -137,7 +141,7 @@ fn query(program: &str, argument: &str) -> Result<String, String> {
 
 fn program(name: &'static str, program: &str, argument: &str) -> Check {
     // `claude` knows no `-hide_banner`; FFmpeg and ffprobe print a banner without it.
-    let output = if program == "claude" {
+    let output = if name == "claude CLI" {
         Run::new(program)
             .arg(argument)
             .timeout(QUERY_DEADLINE)
@@ -152,6 +156,22 @@ fn program(name: &'static str, program: &str, argument: &str) -> Check {
         query(program, argument)
     };
     version_check(name, output)
+}
+
+/// FFmpeg or ffprobe's version check, noting in its detail whether the copy run was the one
+/// bundled beside the app or one found on `PATH`.
+fn ffmpeg_program(name: &'static str, program: &str, bundled: bool) -> Check {
+    let mut check = version_check(name, query(program, "-version"));
+    if check.state == CheckState::Ok {
+        check.detail = with_source(bundled, &check.detail);
+    }
+    check
+}
+
+/// Prefix a passing check's detail with which copy of the program answered.
+fn with_source(bundled: bool, detail: &str) -> String {
+    let source = if bundled { "bundled" } else { "on PATH" };
+    format!("{source}: {detail}")
 }
 
 /// A program's check from its version output.

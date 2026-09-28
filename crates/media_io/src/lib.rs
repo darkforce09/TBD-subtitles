@@ -17,6 +17,7 @@ pub mod probe;
 pub mod shot_changes;
 
 use std::fmt;
+use std::path::Path;
 
 use child_process::RunError;
 
@@ -25,6 +26,8 @@ use child_process::RunError;
 pub struct Programs {
     pub ffmpeg: String,
     pub ffprobe: String,
+    /// Whether these are the app's own bundled copies, not bare names resolved on `PATH`.
+    pub bundled: bool,
 }
 
 impl Default for Programs {
@@ -32,6 +35,37 @@ impl Default for Programs {
         Programs {
             ffmpeg: "ffmpeg".to_string(),
             ffprobe: "ffprobe".to_string(),
+            bundled: false,
+        }
+    }
+}
+
+impl Programs {
+    /// The FFmpeg pair bundled at `<exe_dir>/ffmpeg/{ffmpeg,ffprobe}`, if both are there, else the
+    /// bare names on `PATH`.
+    pub fn beside(exe_dir: &Path) -> Programs {
+        let dir = exe_dir.join("ffmpeg");
+        let ffmpeg = dir.join("ffmpeg");
+        let ffprobe = dir.join("ffprobe");
+        if ffmpeg.is_file() && ffprobe.is_file() {
+            Programs {
+                ffmpeg: ffmpeg.to_string_lossy().into_owned(),
+                ffprobe: ffprobe.to_string_lossy().into_owned(),
+                bundled: true,
+            }
+        } else {
+            Programs::default()
+        }
+    }
+
+    /// [`Programs::beside`] the running binary's folder, or the bare names if it cannot be found.
+    pub fn beside_current_exe() -> Programs {
+        match std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(Path::to_path_buf))
+        {
+            Some(dir) => Programs::beside(&dir),
+            None => Programs::default(),
         }
     }
 }
@@ -80,3 +114,7 @@ impl From<RunError> for MediaError {
         MediaError::Run(e)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/lib.rs"]
+mod tests;

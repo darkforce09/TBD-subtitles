@@ -8,7 +8,9 @@
 //! `child_process` with a deadline.
 //!
 //! **Signals and state:** runs in an empty working folder with only project settings, so the
-//! owner's user-level hooks, plugins and MCP servers never reach the prompt.
+//! owner's user-level hooks, plugins and MCP servers never reach the prompt. Resolves `claude` on
+//! `PATH`, or `$HOME/.local/bin/claude`, since a desktop-launched app often lacks the shell's
+//! `PATH`.
 //!
 //! **Invariants:** no tool is enabled (`--tools ""`), no session is saved, and an answer without
 //! `structured_output` is an error, never an empty success.
@@ -32,12 +34,27 @@ pub struct ClaudeCli {
 impl ClaudeCli {
     pub fn new(model: &str, cwd: PathBuf) -> ClaudeCli {
         ClaudeCli {
-            program: "claude".to_string(),
+            program: resolve_program(),
             model: model.to_string(),
             timeout: Duration::from_secs(600),
             cwd,
         }
     }
+}
+
+/// The `claude` CLI: on `PATH` if found there, else `$HOME/.local/bin/claude` if that file
+/// exists, else the bare name (so a failure to run it still names what was tried).
+pub fn resolve_program() -> String {
+    if let Ok(path) = child_process::which("claude") {
+        return path.to_string_lossy().into_owned();
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let candidate = PathBuf::from(home).join(".local/bin/claude");
+        if candidate.is_file() {
+            return candidate.to_string_lossy().into_owned();
+        }
+    }
+    "claude".to_string()
 }
 
 impl LanguageModel for ClaudeCli {
