@@ -10,6 +10,7 @@ its open work and the decisions behind it. A feature not yet built says so in it
 ```text
 documentation/features/
 ├── automation.md               watch folders, the Dolphin right-click entry, single-instance hand-off
+├── fix_it.md                   a stronger model fixes a finished job's flagged lines; keep or undo each
 ├── gui.md                      the desktop window: job queue, progress, reports, review of flagged lines
 └── japanese_onscreen_text.md   translated subtitles for Japanese text shown on screen
 ```

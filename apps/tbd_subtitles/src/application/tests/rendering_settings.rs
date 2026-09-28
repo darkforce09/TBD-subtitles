@@ -67,6 +67,9 @@ fn each_settings_tab_shows_its_settings_under_the_tab_bar_and_over_the_footer() 
             "Model",
             "Claude Sonnet (default)",
             "Processes at once",
+            "Fix It model",
+            "Claude Opus (default)",
+            "Fix It reads the whole video, fixes the flagged lines",
         ],
     );
     let text = render_tab(&mut app, SettingsTab::Models);

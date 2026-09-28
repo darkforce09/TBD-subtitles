@@ -9,13 +9,17 @@
 //!
 //! **Signals and state:** reads the work directory; writes nothing.
 //!
-//! **Invariants:** an utterance appears once, in sheet order; a missing re-decode or correction
-//! file means none, a missing sheet or adjudication is an error naming the file.
+//! **Invariants:** an utterance appears once, in sheet order; a line Fix It changed that the owner
+//! has not checked is in the Changed by Claude group, first, with what the app had and why; a
+//! missing re-decode or correction file means none, a missing sheet or adjudication is an error
+//! naming the file.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
-use job_model::outputs::{AdjudicationPass, Corrections, ProbeDecoded, Redecode, Utterance};
+use job_model::outputs::{
+    AdjudicationPass, Chosen, Corrections, ProbeDecoded, Redecode, Utterance,
+};
 use job_model::report::{QcCheck, QcFinding, QcReport};
 
 use crate::job_report::models::finding_group::LineGroup;
@@ -54,6 +58,15 @@ pub(crate) fn load(video: &Path, work_dir: &Path) -> Result<ReviewSession, Strin
         .map(|l| (l.id.as_str(), (l.t.as_str(), l.f.as_slice())))
         .collect();
     let mut groups: HashMap<&str, BTreeMap<LineGroup, String>> = HashMap::new();
+    for correction in &corrections.lines {
+        if let Chosen::FixIt { why, .. } = &correction.chosen {
+            let had = settled.get(correction.id.as_str()).map_or("", |(t, _)| *t);
+            groups.entry(correction.id.as_str()).or_default().insert(
+                LineGroup::ChangedByFixIt,
+                format!("The app had “{had}”. {why}"),
+            );
+        }
+    }
     for finding in &qc.findings {
         if let (Some(id), Some(group)) = (&finding.utterance, LineGroup::of(finding.check)) {
             groups

@@ -83,3 +83,37 @@ fn a_result_without_structured_output_is_an_error() {
     assert!(parse(r#"{"is_error":true,"result":"limit reached"}"#).is_err());
     assert!(parse("not json").is_err());
 }
+
+#[test]
+fn a_cancellable_run_hands_back_the_whole_stdout() {
+    // The `PATH` tests above clear it for a moment.
+    let _guard = HOME_LOCK.lock().unwrap();
+    let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let run = Run::new("echo").arg("hello").cancel_on(flag);
+    let (code, stdout, _) = run_cancellable(run).unwrap();
+    assert_eq!((code, stdout.as_str()), (0, "hello\n"));
+}
+
+#[test]
+fn a_set_cancel_flag_stops_the_call() {
+    let _guard = HOME_LOCK.lock().unwrap();
+    let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let setter = flag.clone();
+    let started = std::time::Instant::now();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(100));
+        setter.store(true, std::sync::atomic::Ordering::SeqCst);
+    });
+    let run = Run::new("sleep").arg("20").cancel_on(flag);
+    let error = run_cancellable(run).unwrap_err();
+    assert_eq!(error.0, "cancelled");
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
+#[test]
+fn a_backend_with_a_cancel_flag_keeps_it() {
+    let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let cli = ClaudeCli::new("opus", std::env::temp_dir()).with_cancel(flag);
+    assert!(cli.cancel.is_some());
+    assert_eq!(cli.name(), "claude-cli/opus");
+}

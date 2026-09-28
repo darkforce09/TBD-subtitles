@@ -12,8 +12,8 @@
 //! **Signals and state:** none; plain data.
 //!
 //! **Invariants:** lines are in sheet order; a line is flagged exactly when the quality check put
-//! it in some group, and worth a listen while flagged, corrected, or taken back with its run not
-//! ended; a draft is kept only while it differs from the line's saved text or flags; each line has
+//! it in some group or Fix It changed it, and worth a listen while flagged, corrected, or taken
+//! back with its run not ended; a draft is kept only while it differs from the line's saved text or flags; each line has
 //! at most one run state, the newest last.
 
 use std::collections::BTreeMap;
@@ -115,6 +115,8 @@ pub(crate) enum LineStatus {
     Kept,
     /// Saved with another text or other flags.
     Corrected,
+    /// Changed by Fix It; the owner has not kept or undone it yet.
+    FixIt,
     /// Worth a listen and not checked.
     ToCheck,
     /// Neither flagged nor checked.
@@ -176,6 +178,12 @@ impl ReviewSession {
 
     pub(crate) fn correction(&self, id: &str) -> Option<&Correction> {
         self.corrections.get(id)
+    }
+
+    /// Whether line `id` holds a Fix It change the owner has not kept or undone.
+    pub(crate) fn unchecked_fix(&self, id: &str) -> bool {
+        self.correction(id)
+            .is_some_and(|c| c.chosen.is_unchecked_fix())
     }
 
     /// The text and flags `line` has saved: its correction, else the language model's text and

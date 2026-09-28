@@ -13,7 +13,7 @@
 //!
 //! **Invariants:** a row shows a line's text as it stands now, draft included, cut after two
 //! lines; an edited row says so before anything else, a checked row says how, and a row to check
-//! names its groups.
+//! names its groups, a row Fix It changed with a wand and Claude's chip first.
 
 use std::sync::Arc;
 
@@ -277,6 +277,15 @@ fn row_ui(ui: &mut Ui, session: &ReviewSession, line: &ReviewLine, selected: boo
                 p.good_icon,
             );
         }
+        LineStatus::FixIt => {
+            painter.text(
+                mark,
+                Align2::CENTER_CENTER,
+                icons::MAGIC_WAND,
+                icons::font(13.0),
+                p.accent,
+            );
+        }
         LineStatus::ToCheck => {
             painter.circle_filled(mark, 3.5, p.warn_icon);
         }
@@ -307,17 +316,21 @@ fn row_ui(ui: &mut Ui, session: &ReviewSession, line: &ReviewLine, selected: boo
 }
 
 /// A row's chips, laid out with their fill and text colour: "Edited, not saved" for an edited
-/// line, "Looks right" or "Corrected" for a checked one, else one per group.
+/// line, "Looks right" or "Corrected" for a checked one, else one per group, Claude's in the
+/// accent colour.
 fn chips(ui: &Ui, line: &ReviewLine, status: LineStatus) -> Vec<(Arc<Galley>, Color32, Color32)> {
     let p = palette(ui);
     let words: Vec<(&str, Color32, Color32)> = match status {
         LineStatus::Edited => vec![("Edited, not saved", p.accent_tint, p.accent)],
         LineStatus::Kept => vec![("Looks right", p.good_tint, p.good)],
         LineStatus::Corrected => vec![("Corrected", p.good_tint, p.good)],
-        LineStatus::ToCheck | LineStatus::Plain => line
+        LineStatus::FixIt | LineStatus::ToCheck | LineStatus::Plain => line
             .groups
             .iter()
-            .map(|(group, _)| (group.chip(), p.warn_tint, p.warn))
+            .map(|(group, _)| match group {
+                LineGroup::ChangedByFixIt => (group.chip(), p.accent_tint, p.accent),
+                _ => (group.chip(), p.warn_tint, p.warn),
+            })
             .collect(),
     };
     words

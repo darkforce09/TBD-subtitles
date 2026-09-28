@@ -143,7 +143,11 @@ fn body_ui(ui: &mut Ui, app: &TbdSubtitlesApp, item: &QueueItem, actions: &mut V
                 .find(|row| row.id == item.id)
                 .and_then(|row| row.fold)
                 .map(|fold| fold.corrections);
-            let view = OverviewView { report, updating };
+            let view = OverviewView {
+                report,
+                updating,
+                fix: app.fix_view(item.id, report),
+            };
             let mut events = Vec::new();
             overview_ui(ui, &view, &mut events);
             actions.extend(events.into_iter().map(Action::from));

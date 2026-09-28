@@ -7,6 +7,7 @@ use eframe::egui::{Align, Color32, Label, Layout, RichText, TextStyle, Ui};
 use crate::core::ui::icons;
 use crate::core::ui::palette::palette;
 use crate::job_report::events::ReportEvent;
+use crate::job_report::models::fixing::FixView;
 use crate::job_report::models::report::JobReport;
 use crate::job_report::ui::file_card::file_card_ui;
 use crate::job_report::ui::lines_card::lines_card_ui;
@@ -22,11 +23,13 @@ pub(crate) struct OverviewView<'a> {
     /// The corrections a correction run of the video is putting into the subtitles, while one
     /// waits or runs.
     pub(crate) updating: Option<usize>,
+    /// Fix It for this job: hidden, ready, off with why, or under way.
+    pub(crate) fix: FixView,
 }
 
 /// Draw the Overview of `view` and push what the owner asked for onto `events`.
 pub(crate) fn overview_ui(ui: &mut Ui, view: &OverviewView<'_>, events: &mut Vec<ReportEvent>) {
-    file_card_ui(ui, view.report, view.updating, events);
+    file_card_ui(ui, view.report, view.updating, &view.fix, events);
     lines_card_ui(ui, view.report, events);
     details_ui(ui, view.report);
     step_times_ui(ui, view.report, events);

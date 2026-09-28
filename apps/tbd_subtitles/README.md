@@ -2,7 +2,7 @@
 
 The `tbd_subtitles` crate, which builds the `tbd-subtitles` binary: the eframe desktop window that
 queues and runs videos, the headless `process` command that runs a job from video to subtitle
-file, and the `worker` subcommand that runs one step of a job in its own
+file, the headless `fix` command that runs Fix It on a finished video, and the `worker` subcommand that runs one step of a job in its own
 [worker process](/documentation/glossary.md#worker-process). The owner runs it on the host PC.
 
 ## Contents

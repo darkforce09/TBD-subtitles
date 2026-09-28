@@ -24,7 +24,9 @@ fingerprint covers the owner's corrections.
 `settings` returns the part of `JobSettings` a step reads, so a changed cut score reruns cue
 building and nothing before it, and a changed output format reruns only the output. `revision`
 is 1 for every step but those listed in `REVISIONS` (cue building is at 2: a cue still too
-short shares a neighbour; the quality check is at 2: its findings name their utterance), which makes outputs written by other code stale. `timeout` is 180 minutes for separation, 120 for
+short shares a neighbour; the quality check is at 4: its findings name their utterance, and it
+checks the words of each Fix It change the owner has not checked again, reading the re-decodes
+for that), which makes outputs written by other code stale. `timeout` is 180 minutes for separation, 120 for
 Whisper, adjudication and the sound cues, and 60 for the rest. `outputs` lists the files a
 finished step leaves, the subtitle file beside the video, in the job's output format, among them.
 

@@ -18,8 +18,11 @@ pub(crate) enum ReviewEvent {
     Discard,
     /// Save the open line's edit as a correction and time it again.
     Save,
-    /// Keep the open line as the language model has it, and time it again.
+    /// Keep the open line as it is saved (the language model's reading, or Fix It's change), and
+    /// time it again.
     LooksRight,
+    /// Put the language model's reading back in place of Fix It's change, and time it again.
+    UndoChange,
     /// Take back this line's correction.
     Revert(String),
     /// Edit the next, or the previous, line shown.

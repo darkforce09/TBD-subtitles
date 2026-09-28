@@ -9,15 +9,17 @@ job's work directory, from the probe result to the aligned words.
 crates/job_model/src/outputs/
 ├── adjudication.rs  the model's lines, the checks' findings, one pass, the unsure heard again
 ├── aligned.rs       the final words with their times and timing source, per kept utterance
+├── fix_it.rs        Fix It's record: the brief, each line asked about, its changes and verdict
 ├── mod.rs           the module list and the re-exports
 ├── output.rs        what the output step left: the subtitle file, its backup, a retired format
 ├── probe.rs         the probe result, and the probe with its decoded audio track
-├── review.rs        the owner's corrections: each utterance's text, flags and where it came from
+├── review.rs        the corrections: each utterance's text, flags and where it came from
 ├── sheet.rs         a diff-sheet utterance: backbone words, locks, the sheet line, every hypothesis
 ├── shots.rs         the shot changes: every scdet cut with its time and score
 ├── sound_cues.rs    the sound-cue candidates, the chosen and worded cues, the refused answers
 ├── sound_events.rs  a sound event: class, stem, times and peak probability
 ├── speech.rs        the speech plan: speech regions and the chunks the engines transcribe
+├── tests/           unit tests for the Fix It record and the corrections' JSON and ownership
 └── words.rs         an engine's transcript: timed words per chunk, with the engine and its input
 ```
 
@@ -38,7 +40,8 @@ Each type is the file one step writes and the steps after it read:
 | `adjudicated.json` | `AdjudicationPass` | the second pass, merged with the first |
 | `sound_cues.json` | `SoundCues` | the sound-cue choice |
 | `aligned.json` | `Aligned` | forced alignment |
-| `review.json` | `Corrections` | the window's line review |
+| `review.json` | `Corrections` | the window's line review, and Fix It |
+| `fix.json` | `FixRecord` | Fix It |
 | `reviewed.json` | `Aligned` | the review step |
 | `output.json` | `OutputRecord` | the output step |
 
@@ -48,6 +51,14 @@ a speaker change) and its flags (`NARR`, `LYRIC`, `DROP`, `UNSURE`). An `Aligned
 `SoundCandidate` is an `effect`, a `voice`, a Whisper `tag` or a `song`; a `SoundCue` is a chosen
 candidate at the candidate's times with its bracketed text. The cue track in `cues.json` is
 `subtitle_formats::cue::CueTrack`, and the quality check's `qc.json` is `crate::report::QcReport`.
+
+A `Correction` says where its text came from in `Chosen`: an engine's hypothesis, text the owner
+typed, a Fix It change the owner has not checked yet (`fix_it`, with the model and its reason), or
+one the owner kept (`kept_fix_it`). Every choice but an unchecked Fix It change is the owner's
+(`Correction::by_owner`). A `FixRecord` keeps one Fix It run: the brief the model worked out from
+the video's names and lines, and for each line asked about its problems, each change that passed
+the guard (`FixStep`), the proposals refused, the heard words left out, the `FixVerdict` and
+whether the correction was applied.
 
 ## Boundaries
 

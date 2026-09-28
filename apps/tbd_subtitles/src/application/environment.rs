@@ -1,11 +1,23 @@
-//! Where the window finds its files, how it runs jobs and how its threads reach it: the real
-//! paths and the pipeline when it runs, scratch paths and a stand-in runner in the tests, which
-//! never touch the owner's home or start a worker.
+//! Where the window finds its files, how it runs jobs and Fix It, and how its threads reach it:
+//! the real paths and the pipeline when it runs, scratch paths and stand-in runners in the tests,
+//! which never touch the owner's home or start a worker or `claude`.
+//!
+//! **Role:** hold the paths, the job runner, Fix It's runner and the wake the application uses.
+//!
+//! **Position:** built by `application::launch` (`real`) or by the tests (`scratch`); owned by
+//! `TbdSubtitlesApp`.
+//!
+//! **Signals and state:** reads the data and config folders' locations; the scratch one writes
+//! its settings file.
+//!
+//! **Invariants:** a test environment never names the owner's files, and its Fix It refuses to run
+//! unless the test gives it a stand-in.
 
 use std::path::PathBuf;
 
 use crate::core::background::Wake;
 use crate::job_queue::services::job_runner::{self, RunJob};
+use crate::job_report::services::fix_it::{self, FixVideo};
 use crate::settings::services::settings_file;
 
 /// The paths, the job runner and the wake the application uses.
@@ -24,6 +36,8 @@ pub(crate) struct Environment {
     pub(crate) wake: Wake,
     /// Runs one job: the pipeline, or a stand-in.
     pub(crate) run_job: RunJob,
+    /// Runs Fix It on one video: the pipeline's, or a stand-in.
+    pub(crate) fix_video: FixVideo,
     /// Whether to start the machine checks and the size measure when the window opens.
     pub(crate) background: bool,
 }
@@ -42,6 +56,7 @@ impl Environment {
                 .and_then(|exe| exe.parent().map(PathBuf::from)),
             wake,
             run_job: job_runner::pipeline_runner(),
+            fix_video: fix_it::pipeline_fix(),
             background: true,
         })
     }
@@ -67,6 +82,12 @@ impl Environment {
             exe_dir: None,
             wake: crate::core::background::no_wake(),
             run_job,
+            fix_video: std::sync::Arc::new(|_, _, _| {
+                Err(pipeline::PipelineError::new(
+                    "Fix It",
+                    "no Fix It in this test",
+                ))
+            }),
             background: false,
         }
     }

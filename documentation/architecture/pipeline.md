@@ -184,10 +184,13 @@ and peak memory in the job report.
 - **Review:** the owner's corrections from the window (`review.json`: each corrected utterance's
   text, flags and where the text came from) are timed by the `review` step: each corrected
   utterance alone, with Parakeet-CTC on the CPU between the middles of the gaps to its
-  neighbours, else the backbone's times; every other utterance keeps its times. The result,
+  neighbours, else the aligner's earlier times carried over to the words that stayed or replaced
+  others, else the backbone's times; every other utterance keeps its times. The result,
   `reviewed.json`, is what the cues and the quality check read; with no corrections it is
   `aligned.json` as it stands. The quality check counts the corrected lines and drops their
-  unsure, novel-word and dropped-word findings. The step's fingerprint covers the corrections'
+  unsure, novel-word and dropped-word findings; for a [Fix It](#fix-it) change the owner has not
+  kept, it checks the words again against every hypothesis, the re-decodes included, and counts
+  the line apart. The step's fingerprint covers the corrections'
   SHA-256, so a new correction reruns the review, the cues, the check and the output only.
 
 ## 8. Sound events
@@ -257,6 +260,23 @@ and one row per step with its time, load, processing, peak RAM, peak child RAM a
   `backup/`, so one subtitle file stays beside the video. `output.json` records the path, the
   backup and the moved file.
 - The job report stays in the work directory; the GUI shows it.
+
+## Fix It
+
+On a finished job, at the owner's request, a stronger `claude` model (Opus by default) fixes
+the lines the quality check flagged. It is not a step of the run: `pipeline::fix_it` reads the
+job's `sheet.json` with the re-decodes, `adjudicated.json` with the corrections in place,
+`review.json`, `qc.json`, `reviewed.json` and the backbone's words, and refuses a job whose
+check or output has not finished or whose corrections changed since its last run.
+`stages::fix_it` then runs three passes, each with no tools: a brief of the whole video from its
+file and folder names, the glossary and every line (show, episode, cast, scenes, speech habits,
+lines out of place); fixes one family at a time (words, then timing and layout, then reading
+speed), each answer held by a guard that refuses any word no engine heard near the line; and a
+judge that accepts or turns down each changed line against the line before it. Kept changes go
+into `review.json` as `fix_it` corrections, never over one of the owner's, and `fix.json` records
+the run; each answered call waits in `fix/calls/` until the run ends, so a stopped run resumes
+without paying again. The caller then runs the job again, and as for any correction only the
+review step and the steps after it run. Details: [Fix It](/documentation/features/fix_it.md).
 
 ## Related documentation
 

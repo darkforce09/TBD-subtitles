@@ -2,7 +2,8 @@
 //!
 //! **Role:** hold the receiving end of every thread the application started (the desktop's
 //! chooser, the files the desktop was asked to open, the model download, the machine checks, the
-//! sizes of the work and models folders, the desktop's colour scheme) and apply what they sent;
+//! sizes of the work and models folders, the desktop's colour scheme, the Fix It run) and apply
+//! what they sent;
 //! let the toasts whose time is up go.
 //!
 //! **Position:** owned by `TbdSubtitlesApp`; polled by `window` before each frame; the settings
@@ -19,10 +20,12 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
 use super::TbdSubtitlesApp;
-use super::actions::{poll_runner, poll_settings};
+use super::actions::{poll_fix, poll_runner, poll_settings};
 use crate::core::color_scheme::{self, Scheme};
 use crate::core::portal::{self, Choose, Chosen, Opened};
 use crate::core::toast::ToastKind;
+use crate::job_queue::models::queue::JobId;
+use crate::job_report::services::fix_it::Fixing;
 use crate::settings::events::PathField;
 use crate::settings::models::machine::Check;
 use crate::settings::services::model_downloads::Downloading;
@@ -65,6 +68,8 @@ pub(crate) struct Pending {
     pub(crate) scheme: Option<Receiver<Scheme>>,
     /// The desktop's answers to the files it was asked to open.
     pub(crate) opens: Vec<OpenRequest>,
+    /// The Fix It run under way, with the job it fixes.
+    pub(crate) fix: Option<(JobId, Fixing)>,
 }
 
 /// A file the desktop was asked to open, waiting for its answer.
@@ -91,6 +96,7 @@ impl TbdSubtitlesApp {
     pub(crate) fn poll(&mut self) {
         poll_settings(self);
         poll_runner(self);
+        poll_fix(self);
         self.poll_chooser();
         self.poll_scheme();
         self.poll_opens(Instant::now());

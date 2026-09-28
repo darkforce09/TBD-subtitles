@@ -253,3 +253,85 @@ fn what_the_owner_did_is_carried_over_to_the_lines_read_again() {
         "U3 has the draft's text saved now"
     );
 }
+
+/// Fix It's change of `id`, written to the work folder as Fix It writes it.
+fn fixed_by_claude(s: &mut ReviewSession, id: &str, text: &str) {
+    let fix = Correction {
+        id: id.into(),
+        text: text.into(),
+        flags: Vec::new(),
+        chosen: Chosen::FixIt {
+            model: "opus".into(),
+            why: "Both engines heard it.".into(),
+        },
+    };
+    let work = pipeline::work_dir::WorkDir::new(&s.work_dir);
+    let (corrections, ()) =
+        pipeline::work_dir::update_corrections(&work, |c| c.set(fix)).expect("write");
+    s.corrections = corrections;
+}
+
+#[test]
+fn a_fix_it_change_waits_to_be_checked_and_keep_change_makes_it_the_owner_s() {
+    let mut s = session("keep-fix");
+    fixed_by_claude(&mut s, "U3", "Franky!");
+    let line = s.line("U3").expect("U3").clone();
+    assert_eq!(status(&s, &line), LineStatus::FixIt);
+    assert!(line_filter::shown(&s).iter().any(|l| l.id == "U3"));
+    open(&mut s, "U3");
+    looks_right(&mut s).expect("keep");
+    let kept = s.correction("U3").expect("kept");
+    assert_eq!(kept.text, "Franky!");
+    assert!(matches!(&kept.chosen, Chosen::KeptFixIt { model, .. } if model == "opus"));
+    assert_eq!(status(&s, &line), LineStatus::Corrected);
+    assert_eq!(s.run("U3"), Some(RunState::Saved));
+    s.list = LineList::Checked;
+    assert!(line_filter::shown(&s).iter().any(|l| l.id == "U3"));
+    let _ = std::fs::remove_dir_all(&s.work_dir);
+}
+
+#[test]
+fn undo_change_puts_the_language_model_s_reading_back_as_the_owner_s() {
+    let mut s = session("undo-fix");
+    fixed_by_claude(&mut s, "U3", "Franky!");
+    open(&mut s, "U3");
+    undo_change(&mut s).expect("undo");
+    let undone = s.correction("U3").expect("undone");
+    assert_eq!(undone.text, "Frankie!");
+    assert_eq!(undone.chosen, Chosen::Engine("adjudicated".into()));
+    assert!(s.corrections.by_owner("U3"));
+    let _ = std::fs::remove_dir_all(&s.work_dir);
+}
+
+#[test]
+fn a_save_keeps_a_fix_it_change_written_meanwhile() {
+    let mut s = session("meanwhile");
+    // Fix It writes to the file while the review holds the older corrections.
+    let old = s.corrections.clone();
+    fixed_by_claude(&mut s, "U3", "Franky!");
+    s.corrections = old;
+    open(&mut s, "U1");
+    edit_text(&mut s, "Brave!".into());
+    save(&mut s).expect("save");
+    assert_eq!(s.corrections.lines.len(), 2);
+    assert!(s.unchecked_fix("U3"));
+    let on_disk: Corrections = serde_json::from_str(
+        &std::fs::read_to_string(s.work_dir.join("review.json")).expect("file"),
+    )
+    .expect("json");
+    assert_eq!(on_disk, s.corrections);
+    let _ = std::fs::remove_dir_all(&s.work_dir);
+}
+
+#[test]
+fn lines_fix_it_changed_are_marked_saved_for_their_run() {
+    let mut runs = vec![("U1".to_string(), RunState::Updated)];
+    mark_fixed(&mut runs, &["U1".to_string(), "U3".to_string()]);
+    assert_eq!(
+        runs,
+        [
+            ("U1".to_string(), RunState::Saved),
+            ("U3".to_string(), RunState::Saved)
+        ]
+    );
+}

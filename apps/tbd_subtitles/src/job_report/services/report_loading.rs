@@ -46,6 +46,7 @@ pub(crate) fn load(video: &Path, work_root: &Path) -> Result<JobReport, String> 
         report_file: work_dir.join("report.md"),
         problems: line_counts::problems(&qc),
         lines: line_counts::line_counts(&qc, &corrections),
+        fixable: line_counts::fixable(&qc, &corrections),
         video,
         work_dir,
         subtitles,

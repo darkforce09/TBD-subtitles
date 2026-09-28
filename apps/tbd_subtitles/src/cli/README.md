@@ -1,17 +1,20 @@
 # Command line
 
 The subcommands of the `tbd-subtitles` binary: `gui` opens the window, `process` runs a job for
-each video from probe to subtitle file without a window, and `worker` runs one step of a job in
-its own [worker process](/documentation/glossary.md#worker-process). People run the first two;
-`worker` is the entry point the job runner starts.
+each video from probe to subtitle file without a window, `fix` runs
+[Fix It](/documentation/glossary.md#fix-it) on a finished video and the correction run after it,
+and `worker` runs one step of a job in its own
+[worker process](/documentation/glossary.md#worker-process). People run the first three; `worker`
+is the entry point the job runner starts.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/cli/
+├── fix_command.rs      the `fix` options over the settings file, Fix It, the correction run, the printout
 ├── mod.rs              `Cli` and its subcommands in clap, and the dispatch to each runner
 ├── process_command.rs  the `process` options over the settings file, the run and its printout
-├── tests/              parsing, the process settings, the worker step check and the refusals
+├── tests/              parsing, the process and fix settings, the worker step check and the refusals
 └── worker_command.rs   the `worker` runner and its step check: every step but the Whisper ones
 ```
 
@@ -29,6 +32,7 @@ clap itself prints the usage and exits 2 on a usage error, including a step refu
 tbd-subtitles [COMMAND] ──▶ Cli::parse ──▶ dispatch
    (none) | gui [VIDEOS]...          ──▶ crate::application::launch(videos)
    process <VIDEOS>... [OPTIONS]     ──▶ process_command::run ──▶ pipeline::run_job, per video
+   fix <VIDEO> [OPTIONS]             ──▶ fix_command::run ──▶ pipeline::fix_it::fix_video, run_job
    worker <STEP> <JOB_DIR>           ──▶ worker_command::run  ──▶ pipeline::tasks::worker_main
 ```
 
@@ -77,6 +81,20 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
   with the reason; 2 on a usage error, including no video and a `--rerun` value that is no step.
 - Example: `distrobox-host-exec target/release/tbd-subtitles process "Dressrosa 08.mp4" --rerun cues`
 
+### fix
+
+- Synopsis: `tbd-subtitles fix <VIDEO> [--settings <FILE>] [--work-root <DIR>] [--model <MODEL>] [--processes <N>]`
+- Does: runs Fix It on the video's finished job with the Fix It model (`opus` unless the settings
+  or `--model` say another), printing each pass as it goes, then the brief (show, episode, cast),
+  each line asked about with its verdict, its change and any refused proposal, and the calls with
+  their cost. When it changed a line, it runs the job again with the job's own settings, so the
+  review step and the steps after it put the changes into the subtitle file, and prints the
+  quality line as `process` does. `--processes` sets how many `claude` calls run at once.
+- Exit codes: 0 done, changed or not; 1 a missing video, an unreadable settings file, a job that
+  is not finished or whose corrections are not in its subtitles yet, a brief that could not be
+  made, or a correction run that failed; 2 on a usage error, including no video.
+- Example: `distrobox-host-exec target/release/tbd-subtitles fix "[Muhn Pace] Dressrosa 12.mp4"`
+
 ### worker
 
 - Synopsis: `tbd-subtitles worker <STEP> <JOB_DIR>`.
@@ -92,7 +110,7 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
 
 - Depends on: `crate::application::launch`; `crate::core::logging`; `pipeline` (`run_job`, `JobOptions`,
   `progress::Progress`, `workers::Binaries`, `work_dir::default_root`, `graph::placement`,
-  `tasks::worker_main`) from `crates/pipeline/`; `job_model::StepName` and `job_model::job` from
+  `tasks::worker_main`, `fix_it::fix_video`) from `crates/pipeline/`; `job_model::StepName` and `job_model::job` from
   `crates/job_model/`; `crate::settings::{models, services}` (the settings file and the job
   settings it makes); `clap` and `anyhow`.
 - Used by: `apps/tbd_subtitles/src/main.rs`, which calls `run`; the job runner in

@@ -15,7 +15,7 @@ crates/stages/src/alignment/
 ├── mod.rs          `align_words_ctc`: displayed words ─▶ spoken tokens ─▶ Viterbi ─▶ word times
 ├── run.rs          `WordAligner`, `align_all` (blocks, fallbacks, offset), `realign_utterance`
 ├── spoken_form.rs  displayed words to spoken words: accents, digits, hyphens, symbols, punctuation
-├── timing.rs       backbone times, interpolation, the pass checks and the signed median
+├── timing.rs       backbone times, carried times, interpolation, the pass checks, the signed median
 └── tests/          unit tests for blocks, Viterbi, the spoken form, the checks, timing and the run
 ```
 
@@ -49,9 +49,12 @@ any word still untimed ─▶ spread by characters between its neighbours ─▶
 
 `timing::signed_median` of aligner start minus backbone start, over words timed in passing
 blocks, is the job's offset. `checks::suspicious_runs` also counts words spread at even steps, for
-the aligner comparisons of the stack spike tools. `run::realign_utterance` times one utterance the
-owner corrected, alone over its own span, with the same checks and the backbone's times as the
-fallback, and marks it settled; the pipeline's review step calls it.
+the aligner comparisons of the stack spike tools. `run::realign_utterance` times one corrected
+utterance alone over its own span, with the same checks; when the aligner fails it, the times
+the aligner gave the line before carry over (`timing::carried_times`: a word that stayed keeps
+its time, words that replaced others share their span, a new word is spread between its
+neighbours), and only a line the aligner never timed falls back to the backbone's times; it
+marks the line settled, and the pipeline's review step calls it.
 
 ## Boundaries
 

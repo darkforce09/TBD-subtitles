@@ -9,8 +9,9 @@
 //!
 //! **Signals and state:** none; reads the session.
 //!
-//! **Invariants:** the list keeps sheet order; a line to check is worth a listen and not
-//! corrected, a checked line is corrected; the counts ignore the group and the search; the editor
+//! **Invariants:** the list keeps sheet order; a line to check is worth a listen and not settled
+//! by the owner (a Fix It change waits there until kept or undone), a checked line is settled by
+//! the owner; the counts ignore the group and the search; the editor
 //! shows the open line while the list shows it, else the list's first; a typed time too large to
 //! count is no time.
 
@@ -64,7 +65,7 @@ pub(crate) fn shown(session: &ReviewSession) -> Vec<&ReviewLine> {
 
 /// Whether `line` belongs in `list`.
 fn listed(session: &ReviewSession, line: &ReviewLine, list: LineList) -> bool {
-    let corrected = session.correction(&line.id).is_some();
+    let corrected = session.corrections.by_owner(&line.id);
     match list {
         LineList::ToCheck => session.worth(line) && !corrected,
         LineList::Checked => corrected,

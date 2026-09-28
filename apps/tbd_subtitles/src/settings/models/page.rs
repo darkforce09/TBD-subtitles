@@ -58,6 +58,7 @@ pub(crate) enum Field {
     Separator,
     Whisper,
     Model,
+    FixModel,
     Processes,
     CutScore,
 }

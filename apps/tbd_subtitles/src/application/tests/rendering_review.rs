@@ -500,3 +500,56 @@ fn take_back_stays_on_its_line_in_check_lines_while_the_subtitles_update() {
     }
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn a_fix_it_change_shows_claude_s_box_and_keep_change_makes_it_the_owner_s() {
+    let (mut app, root) = reviewing("review-fix-it");
+    let video = app.queue.items[0].video.clone();
+    let job = work_dir(&root, &video);
+    let fixed = Corrections {
+        lines: vec![job_model::outputs::Correction {
+            id: "U3".into(),
+            text: "Frankie!".into(),
+            flags: Vec::new(),
+            chosen: Chosen::FixIt {
+                model: "opus".into(),
+                why: "Both engines heard Frankie.".into(),
+            },
+        }],
+    };
+    let json = serde_json::to_string(&fixed).expect("json");
+    std::fs::write(job.join("review.json"), json).expect("review.json");
+    // Check Lines reads the lines again when it opens.
+    app.apply(vec![
+        Action::ShowTab(DetailTab::Overview),
+        Action::ShowTab(DetailTab::CheckLines),
+        Action::from(ReviewEvent::Open("U3".into())),
+    ]);
+    let (text, _) = render(&app);
+    for expected in [
+        "Claude Opus changed this line",
+        "The app had “Franky!”. Both engines heard Frankie.",
+        "Keep Change",
+        "Undo Change",
+        "Claude",
+    ] {
+        assert!(text.contains(expected), "{expected} not in {text}");
+    }
+    assert!(!text.contains("Take Back"), "{text}");
+    app.apply(vec![Action::from(ReviewEvent::LooksRight)]);
+    let saved: Corrections = serde_json::from_str(
+        &std::fs::read_to_string(job.join("review.json")).expect("review.json"),
+    )
+    .expect("json");
+    let kept = saved.get("U3").expect("U3");
+    assert_eq!(kept.text, "Frankie!");
+    assert!(matches!(&kept.chosen, Chosen::KeptFixIt { model, .. } if model == "opus"));
+    assert!(
+        app.queue
+            .items
+            .iter()
+            .any(|item| item.kind == crate::job_queue::models::queue::JobKind::Review),
+        "keeping the change queues a correction run"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

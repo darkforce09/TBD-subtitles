@@ -19,6 +19,10 @@ pub(crate) enum ReportEvent {
     CheckLines(LinesToCheck),
     /// Run the job's language-model calls again, and every step after them.
     TryAgain,
+    /// Have the Fix It model fix the job's flagged lines.
+    FixIt,
+    /// Stop the Fix It run of the job.
+    StopFix,
 }
 
 /// The lines Check Lines opens on.

@@ -91,3 +91,23 @@ fn clock_reads_hours_minutes_seconds_and_tenths() {
     assert_eq!(clock(0.0), "0:00:00.0");
     assert_eq!(clock(3725.46), "1:02:05.5");
 }
+
+#[test]
+fn the_report_counts_the_owner_s_lines_and_fix_it_s_apart() {
+    let report = QcReport {
+        summary: QcSummary {
+            cues: 1,
+            cps_ok_share: 1.0,
+            reviewed: 2,
+            fixed: 5,
+            ..QcSummary::default()
+        },
+        findings: Vec::new(),
+    };
+    let md = render(&report, &record(), "/v/x.srt", &[]);
+    assert!(md.contains("- Lines the owner corrected: 2\n"), "{md}");
+    assert!(
+        md.contains("- Lines Fix It changed, not checked yet: 5\n"),
+        "{md}"
+    );
+}

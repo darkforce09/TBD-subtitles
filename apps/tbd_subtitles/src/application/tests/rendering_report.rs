@@ -10,7 +10,7 @@ use super::*;
 use crate::job_report::events::ReportEvent;
 
 /// A scratch folder of its own for test `name`.
-fn scratch(name: &str) -> PathBuf {
+pub(super) fn scratch(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("tbd-app-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("root");
@@ -30,7 +30,12 @@ fn finished(root: &Path, name: &str) -> (TbdSubtitlesApp, PathBuf) {
 
 /// What the pipeline leaves in `video`'s work directory under `root`: `job.json`, `qc.json`, and
 /// the owner's `review.json` when there are `corrections`.
-fn write_job(root: &Path, video: &Path, qc: &QcReport, corrections: Option<&Corrections>) {
+pub(super) fn write_job(
+    root: &Path,
+    video: &Path,
+    qc: &QcReport,
+    corrections: Option<&Corrections>,
+) {
     let job = root.join("work").join(pipeline::work_dir::job_id(
         &std::fs::canonicalize(video).expect("c"),
     ));
@@ -55,7 +60,7 @@ fn json(value: &impl serde::Serialize) -> String {
     serde_json::to_string(value).expect("json")
 }
 
-fn finding(check: QcCheck, time_s: f64, line: Option<&str>) -> QcFinding {
+pub(super) fn finding(check: QcCheck, time_s: f64, line: Option<&str>) -> QcFinding {
     QcFinding {
         check,
         time_s,
@@ -66,7 +71,7 @@ fn finding(check: QcCheck, time_s: f64, line: Option<&str>) -> QcFinding {
 }
 
 /// A check with ten cues, all easy to read, and `findings`.
-fn check(findings: Vec<QcFinding>) -> QcReport {
+pub(super) fn check(findings: Vec<QcFinding>) -> QcReport {
     QcReport {
         summary: QcSummary {
             cues: 10,

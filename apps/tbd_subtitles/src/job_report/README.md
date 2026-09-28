@@ -4,16 +4,17 @@ The feature that shows a finished job's Overview: its subtitle file and whether 
 quality check, each problem in plain words with its fix, its lines worth a listen in the groups
 the owner recognises, the check's numbers and each step's time and memory; and the summary its
 sidebar row and header show. From it the owner opens the video, the file's folder and
-`report.md` through the desktop, opens Check Lines, or tries a failed language-model call again.
+`report.md` through the desktop, opens Check Lines, tries a failed language-model call again, or
+has [Fix It](/documentation/glossary.md#fix-it) fix the flagged lines.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/job_report/
-├── events.rs  `ReportEvent` and `LinesToCheck`: open, show, copy, Check Lines, Try Again
+├── events.rs  `ReportEvent` and `LinesToCheck`: open, show, copy, Check Lines, Try Again, Fix It, Stop
 ├── mod.rs     the module tree
 ├── models/    `JobReport`, `LineGroup`, `Problem` and `Remedy`, `LineCounts` and `RowSummary`
-├── services/  reading a job's files into a `JobReport` or a `RowSummary`; counting its lines and problems
+├── services/  a job's files read into a `JobReport` or `RowSummary`; its counts; Fix It's thread
 └── ui/        the Overview: the file card, the lines card, Details and Step times
 ```
 

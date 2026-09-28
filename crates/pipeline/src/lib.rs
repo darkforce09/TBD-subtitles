@@ -15,6 +15,7 @@
 
 pub mod cancel;
 pub mod error;
+pub mod fix_it;
 pub mod graph;
 pub mod measure;
 pub mod models;

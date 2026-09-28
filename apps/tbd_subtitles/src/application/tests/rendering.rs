@@ -16,6 +16,8 @@ use crate::settings::events::SettingsEvent;
 
 #[path = "rendering_detail.rs"]
 mod rendering_detail;
+#[path = "rendering_fix_it.rs"]
+mod rendering_fix_it;
 #[path = "rendering_queue.rs"]
 mod rendering_queue;
 #[path = "rendering_report.rs"]
@@ -386,7 +388,7 @@ fn a_job_failing_before_it_starts_keeps_its_steps_to_run_again() {
 fn a_full_run_waits_while_its_videos_review_run_runs() {
     let mut app = app("guard", vec![PathBuf::from("a.mp4")]);
     app.settings.items.iter_mut().for_each(|i| i.present = true);
-    let review = queue_editing::queue_review(&mut app.queue, PathBuf::from("a.mp4"));
+    let review = queue_editing::queue_review(&mut app.queue, PathBuf::from("a.mp4"), 1);
     // The review lane holds the review run, with no thread behind it.
     if let Some(item) = app.queue.get_mut(review) {
         item.state = JobState::Running(Box::new(JobProgress::new(Instant::now())));

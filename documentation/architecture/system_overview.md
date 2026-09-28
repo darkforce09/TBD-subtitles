@@ -100,7 +100,9 @@ work/<job id>/            <video file stem as a slug>-<8 hex of its path>
 ├── adjudicated.json      final text per utterance, flags and the checks' findings
 ├── sound_cues.json       candidates and the chosen, worded sound cues
 ├── aligned.json          final words with times and their timing source
-├── review.json           the owner's corrections, written by the window
+├── review.json           the corrections: the owner's, written by the window, and Fix It's
+├── review.json.lock      the lock the two writers of review.json take in turn
+├── fix.json, fix/        Fix It's last run; its answered calls until a run finishes
 ├── reviewed.json         the aligned words with the corrected lines timed again
 ├── cues.json             finished cues, in frames (and cues_dropped_sounds.json)
 ├── qc.json               the quality check
@@ -126,8 +128,9 @@ No model conversion ever happens locally.
 
 The settings file `~/.config/tbd-subtitles/settings.toml` (TOML; `XDG_CONFIG_HOME` moves it)
 holds the owner's choices: the models folder, the work folder, the glossary (the built-in One
-Piece glossary by default), the separator and Whisper model, the language-model backend, model
-and process count, the cut score and the output format. A missing file means the defaults; an
+Piece glossary by default), the separator and Whisper model, the language-model backend, the
+model a run asks and the one Fix It asks, the process count, the cut score and the output
+format. A missing file means the defaults; an
 unknown key or a bad value stops the run with its name. The window edits the file and the command
 line reads it; `tbd-subtitles process --help` lists the options that win over it for one run,
 plus the audio track and the steps to run again. The job record keeps the job's settings in

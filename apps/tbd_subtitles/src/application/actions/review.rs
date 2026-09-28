@@ -122,6 +122,7 @@ impl TbdSubtitlesApp {
             }
             ReviewEvent::Save => Some(review_editing::save(session).map(drop)),
             ReviewEvent::LooksRight => Some(review_editing::looks_right(session).map(drop)),
+            ReviewEvent::UndoChange => Some(review_editing::undo_change(session).map(drop)),
             // A line with no correction has nothing to take back, and no run to queue.
             ReviewEvent::Revert(id) => match review_editing::revert(session, &id) {
                 Ok(false) => None,
@@ -211,7 +212,7 @@ impl TbdSubtitlesApp {
         };
         self.refresh_summaries(Some(&video));
         self.refresh_report(true);
-        queue_editing::queue_review(&mut self.queue, video);
+        queue_editing::queue_review(&mut self.queue, video, 1);
         self.save_queue();
         self.start_next();
     }

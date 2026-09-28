@@ -1,8 +1,8 @@
 //! Word times without the aligner, and the checks an aligned block or utterance must pass.
 //!
-//! **Role:** map the backbone engine's word times onto the displayed words; spread words no
-//! source timed between their timed neighbours; and judge an alignment against the recognition
-//! window and the backbone.
+//! **Role:** map the backbone engine's word times onto the displayed words; carry an utterance's
+//! earlier aligned times over to its corrected words; spread words no source timed between their
+//! timed neighbours; and judge an alignment against the recognition window and the backbone.
 //!
 //! **Position:** used by `run.rs`.
 //!
@@ -11,7 +11,7 @@
 //! **Invariants:** interpolated times stay inside their neighbours and keep word order; a check
 //! never passes an alignment it could not measure against at least one rule.
 
-use job_model::outputs::TimedWord;
+use job_model::outputs::{AlignedWord, TimedWord, TimingSource};
 
 use super::checks;
 use crate::diff_sheet::align::{self, Step};
@@ -33,6 +33,92 @@ pub fn backbone_times(display: &[String], backbone: &[TimedWord]) -> Vec<Option<
         }
     }
     times
+}
+
+/// The aligner's earlier times of an utterance carried over to its corrected words, when the
+/// aligner cannot time the corrected line alone: a word that stayed keeps its time and source; a
+/// run of words that replaced a run of aligner-timed words shares out that run's span by
+/// characters; a new word with nothing replaced gets none, to be spread between its neighbours.
+/// `None` when the aligner timed no word of `before`.
+pub fn carried_times(words: &[String], before: &[AlignedWord]) -> Option<Carried> {
+    if !before.iter().any(by_aligner) {
+        return None;
+    }
+    let old: Vec<String> = before.iter().map(|w| align::normalise(&w.text)).collect();
+    let new: Vec<String> = words.iter().map(|w| align::normalise(w)).collect();
+    let mut carried = Carried {
+        times: vec![None; words.len()],
+        sources: vec![None; words.len()],
+    };
+    let (mut i, mut j) = (0, 0);
+    for (mi, mj) in common_words(&old, &new) {
+        carried.share(words, &before[i..mi], j..mj);
+        carried.share(words, &before[mi..=mi], mj..mj + 1);
+        (i, j) = (mi + 1, mj + 1);
+    }
+    carried.share(words, &before[i..], j..new.len());
+    Some(carried)
+}
+
+/// Whether the aligner timed `word`.
+fn by_aligner(word: &AlignedWord) -> bool {
+    matches!(word.source, TimingSource::Ctc | TimingSource::CtcUtterance)
+}
+
+/// Each corrected word's carried time and its source; `None` for a word that carries none.
+pub struct Carried {
+    pub times: Vec<Option<(f64, f64)>>,
+    pub sources: Vec<Option<TimingSource>>,
+}
+
+impl Carried {
+    /// Share the span of `replaced`, every word of it timed by the aligner, among the words of
+    /// `words` in `run`, by characters; nothing when either side is empty.
+    fn share(&mut self, words: &[String], replaced: &[AlignedWord], run: std::ops::Range<usize>) {
+        if run.is_empty() || replaced.is_empty() || !replaced.iter().all(by_aligner) {
+            return;
+        }
+        let (from, to) = (replaced[0].start_s, replaced[replaced.len() - 1].end_s);
+        let weights: Vec<f64> = words[run.clone()]
+            .iter()
+            .map(|w| w.chars().count().max(1) as f64)
+            .collect();
+        let total: f64 = weights.iter().sum();
+        let mut at = from;
+        for (j, weight) in run.zip(weights) {
+            let next = at + (to - from) * weight / total;
+            self.times[j] = Some((at, next));
+            self.sources[j] = Some(replaced[0].source);
+            at = next;
+        }
+    }
+}
+
+/// The pairs `(i, j)` of a longest run of words `a[i] == b[j]` both lists share, in order.
+fn common_words(a: &[String], b: &[String]) -> Vec<(usize, usize)> {
+    let (n, m) = (a.len(), b.len());
+    let mut longest = vec![vec![0usize; m + 1]; n + 1];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            longest[i][j] = if a[i] == b[j] {
+                longest[i + 1][j + 1] + 1
+            } else {
+                longest[i + 1][j].max(longest[i][j + 1])
+            };
+        }
+    }
+    let (mut i, mut j, mut pairs) = (0, 0, Vec::new());
+    while i < n && j < m {
+        if a[i] == b[j] {
+            pairs.push((i, j));
+            (i, j) = (i + 1, j + 1);
+        } else if longest[i + 1][j] >= longest[i][j + 1] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    pairs
 }
 
 /// Fill each `None` by spreading the untimed run evenly, by characters, between the end of the

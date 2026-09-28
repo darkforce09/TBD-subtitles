@@ -21,6 +21,10 @@ use sha2::{Digest, Sha256};
 
 use crate::error::{Context, Result};
 
+mod corrections;
+
+pub use corrections::{corrections_digest, read_corrections, update_corrections};
+
 /// One job's folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkDir {
@@ -91,9 +95,21 @@ impl WorkDir {
     pub fn aligned(&self) -> PathBuf {
         self.at("aligned.json")
     }
-    /// The owner's corrections, written by the window.
+    /// The corrections, written by the window and by Fix It.
     pub fn review(&self) -> PathBuf {
         self.at("review.json")
+    }
+    /// The lock the writers of `review.json` take in turn.
+    pub fn corrections_lock(&self) -> PathBuf {
+        self.at("review.json.lock")
+    }
+    /// Fix It's record of its last run.
+    pub fn fix_record(&self) -> PathBuf {
+        self.at("fix.json")
+    }
+    /// Fix It's answered model calls, kept until a run finishes.
+    pub fn fix_calls(&self) -> PathBuf {
+        self.at("fix/calls")
     }
     /// The aligned words with the corrected lines timed again.
     pub fn reviewed(&self) -> PathBuf {

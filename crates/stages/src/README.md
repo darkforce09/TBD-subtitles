@@ -13,6 +13,7 @@ crates/stages/src/
 ├── asr/           each speech engine over the chunk plan: words with times and confidences
 ├── cues/          aligned words and sound cues laid out as cues snapped to frames and shot changes
 ├── diff_sheet/    every engine's words aligned to the backbone engine's, as the sheet to adjudicate
+├── fix_it/        on a finished job, a stronger model fixes the flagged lines in three passes
 ├── lib.rs         the crate root: the module list and the crate header
 ├── output/        the subtitle file written beside the video, backing up the file it replaces
 ├── probe_decode/  ffprobe the video, choose its audio track, stream the mix into the work directory
@@ -43,6 +44,9 @@ their checks, the re-decode of unsure lines, the sound-cue choice and the glossa
 the blocks, the CTC Viterbi aligner, its checks and its fallbacks; `cues/` the layout and timing
 passes; `qc/` the checks and `report.md`; `output/` the installation beside the video.
 
+`fix_it/` is not a stage of the run: it works on a finished job when the owner presses Fix It,
+reading the quality check's findings and writing corrections that a correction run then times.
+
 ## Public surface
 
 - One public module per stage, named as the stage is named on the command line, for the step
@@ -58,6 +62,7 @@ passes; `qc/` the checks and `report.md`; `output/` the installation beside the 
   - `cues`: `build` and `FrameRules`;
   - `qc`: `check`, `QcInput` and `markdown::render`;
   - `output`: `install` and `subtitle_path`.
+- `fix_it`: `run` and `items::asks_about`, for `crates/pipeline/src/fix_it/` and the window.
 
 ## Boundaries
 
@@ -68,8 +73,9 @@ passes; `qc/` the checks and `report.md`; `output/` the installation beside the 
   `crates/pipeline/src/runner/mod.rs` and `crates/pipeline/src/report/mod.rs`; the app's `process`
   subcommand (the glossary); the stack spike tools in `tools/stack_spike/`,
   `tools/stack_spike_ggml/` and `tools/stack_spike_llm/`.
-- Rules: each module is named exactly as its stage's `StageName::as_str` name, and a stage's output
-  is complete or absent, never partial (the crate header in `lib.rs`).
+- Rules: each stage module is named exactly as its stage's `StageName::as_str` name (`fix_it/`
+  runs outside the stages), and a stage's output is complete or absent, never partial (the crate
+  header in `lib.rs`).
 
 ## Related documentation
 

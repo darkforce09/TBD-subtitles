@@ -4,8 +4,8 @@
 //! **Role:** run `claude -p` with the system prompt, the JSON Schema and the user message on
 //! stdin, and read `structured_output`, token counts and cost from its JSON result.
 //!
-//! **Position:** a [`LanguageModel`] for the adjudication stage; runs the program through
-//! `child_process` with a deadline.
+//! **Position:** a [`LanguageModel`] for the adjudication stage and Fix It; runs the program
+//! through `child_process` with a deadline, and with a cancel flag when one is given.
 //!
 //! **Signals and state:** runs in an empty working folder with only project settings, so the
 //! owner's user-level hooks, plugins and MCP servers never reach the prompt. Resolves `claude` on
@@ -13,12 +13,16 @@
 //! `PATH`.
 //!
 //! **Invariants:** no tool is enabled (`--tools ""`), no session is saved, and an answer without
-//! `structured_output` is an error, never an empty success.
+//! `structured_output` is an error, never an empty success; once the cancel flag is set, the
+//! running `claude` is killed with its process group and the call is an error.
 
+use std::io::Read;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use child_process::Run;
+use child_process::{Run, RunError};
 
 use super::{Completion, LanguageModel, LlmError};
 
@@ -29,6 +33,8 @@ pub struct ClaudeCli {
     pub timeout: Duration,
     /// An empty folder to run in, so no project instructions are picked up.
     pub cwd: PathBuf,
+    /// Once set, the running call is killed and fails.
+    pub cancel: Option<Arc<AtomicBool>>,
 }
 
 impl ClaudeCli {
@@ -38,7 +44,14 @@ impl ClaudeCli {
             model: model.to_string(),
             timeout: Duration::from_secs(600),
             cwd,
+            cancel: None,
         }
+    }
+
+    /// The same backend, stopped once `flag` is set.
+    pub fn with_cancel(mut self, flag: Arc<AtomicBool>) -> ClaudeCli {
+        self.cancel = Some(flag);
+        self
     }
 }
 
@@ -69,7 +82,7 @@ impl LanguageModel for ClaudeCli {
         schema: &serde_json::Value,
     ) -> Result<Completion, LlmError> {
         std::fs::create_dir_all(&self.cwd).map_err(|e| LlmError(e.to_string()))?;
-        let out = Run::new(&self.program)
+        let run = Run::new(&self.program)
             .args(["-p", "--output-format", "json", "--json-schema"])
             .arg(schema.to_string())
             .args([
@@ -87,18 +100,38 @@ impl LanguageModel for ClaudeCli {
             .arg(&self.model)
             .cwd(&self.cwd)
             .stdin(user)
-            .timeout(self.timeout)
-            .output()
-            .map_err(|e| LlmError(e.to_string()))?;
-        if out.code != 0 {
+            .timeout(self.timeout);
+        let (code, stdout, stderr) = match &self.cancel {
+            Some(flag) => run_cancellable(run.cancel_on(flag.clone()))?,
+            None => {
+                let out = run.output().map_err(|e| LlmError(e.to_string()))?;
+                (out.code, out.stdout, out.stderr)
+            }
+        };
+        if code != 0 {
             return Err(LlmError(format!(
-                "claude exited {}: {}{}",
-                out.code,
-                out.stderr.trim(),
-                out.stdout.chars().take(500).collect::<String>()
+                "claude exited {code}: {}{}",
+                stderr.trim(),
+                stdout.chars().take(500).collect::<String>()
             )));
         }
-        parse(&out.stdout)
+        parse(&stdout)
+    }
+}
+
+/// Run `run` under its watchdog, which kills it once the cancel flag is set: the exit code, the
+/// whole stdout and the stderr.
+fn run_cancellable(run: Run) -> Result<(i32, String, String), LlmError> {
+    let mut running = run.spawn().map_err(|e| LlmError(e.to_string()))?;
+    let mut stdout = String::new();
+    if let Some(mut pipe) = running.take_stdout() {
+        // A killed group closes the pipe, so the read ends and `wait` names the cause.
+        let _ = pipe.read_to_string(&mut stdout);
+    }
+    match running.wait() {
+        Ok(finished) => Ok((finished.code, stdout, finished.stderr)),
+        Err(RunError::Cancelled { .. }) => Err(LlmError("cancelled".into())),
+        Err(e) => Err(LlmError(e.to_string())),
     }
 }
 

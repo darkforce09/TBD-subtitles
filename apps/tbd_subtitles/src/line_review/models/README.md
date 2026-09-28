@@ -24,8 +24,9 @@ taken back with its run not ended, so the set holds when a correction run drops 
 the lines it settles. `Parked` is what a closed review keeps: its drafts and its runs. `saved` gives a line's text and flags as saved (its
 correction, else the language model's without `UNSURE`), `current` the draft over them, `kept`
 whether its correction is the language model's reading unchanged (Looks Right), and `run_shown`
-the run state the editor's header shows: the open line's, else the newest. `LineStatus` names
-what a row says: edited, kept, corrected, to check, or nothing.
+the run state the editor's header shows: the open line's, else the newest; `unchecked_fix` whether
+its correction is a Fix It change the owner has not kept or undone. `LineStatus` names what a row
+says: edited, changed by Fix It, kept, corrected, to check, or nothing.
 
 ## Boundaries
 

@@ -1,5 +1,5 @@
 //! The Engines tab: the vocal separation, the second speech engine, the language model with its
-//! processes at once, and the shot cut score.
+//! processes at once, Fix It's model, and the shot cut score.
 //!
 //! **Role:** draw the saved settings of this tab as a form, and turn each change into an `Edit`
 //! of the saved settings with that one change.
@@ -9,9 +9,10 @@
 //! **Signals and state:** none; reads the borrowed page and returns events.
 //!
 //! **Invariants:** a list sends its choice at once; a model name kept in `settings.toml` that the
-//! model list does not offer is shown as its own choice until another is picked; the steppers
-//! send each press at once and a typed number only when it is finite and within 1–16 processes or
-//! a score of 1–100; the lists fill their column.
+//! model list does not offer is shown as its own choice until another is picked; each model list
+//! marks its own default (Sonnet for a run, Opus for Fix It); the steppers send each press at
+//! once and a typed number only when it is finite and within 1–16 processes or a score of 1–100;
+//! the lists fill their column.
 
 use eframe::egui::{RichText, Ui};
 use job_model::job::{Separator, WhisperModel};
@@ -20,28 +21,9 @@ use super::form;
 use crate::core::ui::palette::palette;
 use crate::settings::events::SettingsEvent;
 use crate::settings::models::app_settings::AppSettings;
+use crate::settings::models::claude_models::{self, CLAUDE_MODELS};
 use crate::settings::models::page::{Field, SettingsPage};
 use crate::settings::services::page_editing::{CUT_SCORES, PROCESSES};
-
-/// The `claude` models offered: the name `claude --model` takes, its label and its help line.
-const CLAUDE_MODELS: [(&str, &str, &str); 4] = [
-    (
-        "sonnet",
-        "Claude Sonnet (default)",
-        "Balanced speed and accuracy.",
-    ),
-    (
-        "opus",
-        "Claude Opus",
-        "More careful choices; slower and uses more of your plan.",
-    ),
-    ("fable", "Claude Fable", "The most capable model; slowest."),
-    (
-        "haiku",
-        "Claude Haiku (fast)",
-        "Fastest and cheapest; more mistakes.",
-    ),
-];
 
 /// Draw the Engines tab from `page` and push what the owner asked for onto `events`; while the
 /// window is `closing`, a number still being typed is sent.
@@ -115,21 +97,10 @@ pub(super) fn engines_ui(
     });
     form::row(ui, "Model", |ui| {
         let current = &saved.language_model.model;
-        let mut options: Vec<(String, String)> = CLAUDE_MODELS
-            .iter()
-            .map(|(name, label, _)| (name.to_string(), label.to_string()))
-            .collect();
-        let known = CLAUDE_MODELS.iter().find(|(name, _, _)| name == current);
-        if known.is_none() {
-            options.push((current.clone(), current.clone()));
-        }
-        if let Some(model) = form::choice(ui, "model", current, &options, ui.available_width()) {
+        if let Some(model) = model_choice(ui, "model", current, "sonnet") {
             edit(&|s| s.language_model.model.clone_from(&model));
         }
-        form::help(
-            ui,
-            known.map_or("A model name from settings.toml.", |(_, _, how)| how),
-        );
+        form::help(ui, model_help(current));
         form::field_error(ui, page, Field::Model);
     });
     form::row(ui, "Processes at once", |ui| {
@@ -140,6 +111,20 @@ pub(super) fn engines_ui(
         }
         form::help(ui, "How many requests run side by side (1–16).");
         form::field_error(ui, page, Field::Processes);
+    });
+    form::divider(ui);
+    form::row(ui, "Fix It model", |ui| {
+        let current = &saved.language_model.fix_model;
+        if let Some(model) = model_choice(ui, "fix model", current, "opus") {
+            edit(&|s| s.language_model.fix_model.clone_from(&model));
+        }
+        form::help(ui, model_help(current));
+        form::help(
+            ui,
+            "Fix It reads the whole video, fixes the flagged lines, and checks each change \
+             against what the engines heard.",
+        );
+        form::field_error(ui, page, Field::FixModel);
     });
     form::divider(ui);
     form::row(ui, "Shot cut score", |ui| {
@@ -153,4 +138,30 @@ pub(super) fn engines_ui(
         );
         form::field_error(ui, page, Field::CutScore);
     });
+}
+
+/// A list of the `claude` models with `current` shown, `default` marked, and a name the list
+/// lacks as its own choice; the model chosen, when it differs.
+fn model_choice(ui: &mut Ui, id: &str, current: &String, default: &str) -> Option<String> {
+    let mut options: Vec<(String, String)> = CLAUDE_MODELS
+        .iter()
+        .map(|m| {
+            let tag = if m.name == default { "default" } else { m.tag };
+            let label = if tag.is_empty() {
+                m.label.to_string()
+            } else {
+                format!("{} ({tag})", m.label)
+            };
+            (m.name.to_string(), label)
+        })
+        .collect();
+    if claude_models::find(current).is_none() {
+        options.push((current.clone(), current.clone()));
+    }
+    form::choice(ui, id, current, &options, ui.available_width())
+}
+
+/// The help line under a model list.
+fn model_help(current: &str) -> &'static str {
+    claude_models::find(current).map_or("A model name from settings.toml.", |m| m.how)
 }

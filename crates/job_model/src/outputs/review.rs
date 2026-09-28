@@ -1,5 +1,16 @@
-//! The owner's corrections, `review.json`: written by the window's line review, read by the
+//! The corrections, `review.json`: written by the window's line review and by Fix It, read by the
 //! review step and the quality check.
+//!
+//! **Role:** hold each corrected utterance's text and flags and where its text came from: an
+//! engine, the owner's typing, or Fix It, checked by the owner or not.
+//!
+//! **Position:** written through `pipeline::work_dir::update_corrections`; read by the review
+//! step, the quality check, Fix It and the window.
+//!
+//! **Signals and state:** none; plain data.
+//!
+//! **Invariants:** at most one correction per utterance; a correction is the owner's unless it is
+//! a Fix It change the owner has not kept; a file written before Fix It reads unchanged.
 
 use serde::{Deserialize, Serialize};
 
@@ -11,6 +22,17 @@ pub enum Chosen {
     Engine(String),
     /// Text the owner typed.
     Typed,
+    /// Fix It's change, not checked by the owner yet: the `claude` model that made it and why.
+    FixIt { model: String, why: String },
+    /// A Fix It change the owner kept; it is the owner's from then on.
+    KeptFixIt { model: String, why: String },
+}
+
+impl Chosen {
+    /// Whether Fix It wrote it and the owner has not kept it yet.
+    pub fn is_unchecked_fix(&self) -> bool {
+        matches!(self, Chosen::FixIt { .. })
+    }
 }
 
 /// One corrected utterance.
@@ -29,6 +51,11 @@ pub struct Correction {
 impl Correction {
     pub fn has_flag(&self, flag: &str) -> bool {
         self.flags.iter().any(|f| f == flag)
+    }
+
+    /// Whether the line is the owner's: chosen, typed, kept as it was, or a kept Fix It change.
+    pub fn by_owner(&self) -> bool {
+        !self.chosen.is_unchecked_fix()
     }
 }
 
@@ -57,4 +84,23 @@ impl Corrections {
         self.lines.retain(|c| c.id != id);
         self.lines.len() != before
     }
+
+    /// Whether the owner settled line `id`; a Fix It change the owner has not kept does not count.
+    pub fn by_owner(&self, id: &str) -> bool {
+        self.get(id).is_some_and(Correction::by_owner)
+    }
+
+    /// How many lines the owner settled.
+    pub fn owner_count(&self) -> usize {
+        self.lines.iter().filter(|c| c.by_owner()).count()
+    }
+
+    /// How many Fix It changes wait for the owner.
+    pub fn unchecked_fix_count(&self) -> usize {
+        self.lines.len() - self.owner_count()
+    }
 }
+
+#[cfg(test)]
+#[path = "tests/review.rs"]
+mod tests;

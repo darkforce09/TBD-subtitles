@@ -74,6 +74,8 @@ adjudicated.json ◀─ merge ◀─ readjudicate ◀─ with_alternatives ◀�
   `job_model::outputs` (`Line`, `Findings`, `Redecode`, `SoundCandidate`, `SoundCue`,
   `SoundCues`), `serde`, `serde_json`.
 - Used by: `crates/pipeline/src/tasks/` (`llm.rs`, `speech.rs`, `sounds.rs`),
+  `crates/stages/src/fix_it/` (the checks, for its guard), `crates/pipeline/src/fix_it/` (the
+  re-decoded alternatives),
   `apps/tbd_subtitles/src/cli/process_command.rs` (the glossary), `tools/stack_spike/` and
   `tools/stack_spike_llm/`.
 - Rules:

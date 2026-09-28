@@ -95,6 +95,8 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
             ProbeDecode,
             Vad,
             DiffSheet,
+            RedecodeParakeet,
+            RedecodeWhisper,
             Readjudicate,
             SoundCues,
             Review,
@@ -108,8 +110,9 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
 const REVISIONS: &[(StepName, u32)] = &[
     // A cue still too short shares a neighbour's cue or grows into its lead-out.
     (StepName::Cues, 2),
-    // Its findings name the utterance they are about, and the owner's corrections settle them.
-    (StepName::Qc, 3),
+    // Its findings name the utterance they are about, and the owner's corrections settle them;
+    // a Fix It change the owner has not checked has its words checked again.
+    (StepName::Qc, 4),
 ];
 
 /// The revision of a step's code; a change makes every earlier output of the step stale.

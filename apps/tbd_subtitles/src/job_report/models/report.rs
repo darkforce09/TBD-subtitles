@@ -21,12 +21,14 @@ pub(crate) struct JobReport {
     /// `report.md` in the work directory.
     pub(crate) report_file: PathBuf,
     pub(crate) qc: QcReport,
-    /// The owner's corrections, from `review.json`; none before the first.
+    /// The corrections, from `review.json`: the owner's and Fix It's; none before the first.
     pub(crate) corrections: Corrections,
     /// Why it does not pass the quality check; empty when it passes.
     pub(crate) problems: Vec<Problem>,
     /// Its lines worth a listen, and how many the owner checked.
     pub(crate) lines: LineCounts,
+    /// How many of its findings Fix It would ask about; none hides the Fix It button.
+    pub(crate) fixable: usize,
     /// Each finished step with its measure, in run order.
     pub(crate) steps: Vec<(StepName, StepMeasure)>,
 }

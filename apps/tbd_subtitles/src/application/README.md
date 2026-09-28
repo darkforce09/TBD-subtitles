@@ -11,7 +11,7 @@ apps/tbd_subtitles/src/application/
 ├── actions/            applying each feature's actions and folding its threads' answers in
 ├── background.rs       `Pending`: the threads the window waits on; files opened on the desktop
 ├── detail_view.rs      the selected job's header: title, line, Overview | Check Lines or Cancel
-├── environment.rs      `Environment`: the settings file, the runtime folder, the wake; scratch in tests
+├── environment.rs      `Environment`: the files, the job and Fix It runners, the wake; scratch in tests
 ├── events.rs           `Action`, built from the features' events, and the tab to show
 ├── feature_views.rs    lends each feature its borrowed view and turns its events into actions
 ├── mod.rs              `TbdSubtitlesApp`, `apply`, and `launch`, which opens the window
@@ -32,8 +32,9 @@ theme from `core::ui::theme` (Adwaita Sans, the icon font, the mockup's palettes
 following the desktop's colour scheme through `core::color_scheme`, waiting up to 250 ms for its
 first answer so the first frame already has the desktop's colours. Its `Environment` names the
 owner's settings file, the kept queue, the GPU lock and the runtime folder, holds the job runner
-(the pipeline's `run_job`) and wakes the window from any thread (`request_repaint`); the tests
-build one over a scratch folder with a stand-in runner, and start no portal thread.
+(the pipeline's `run_job`) and Fix It's (`fix_video`), and wakes the window from any thread
+(`request_repaint`); the tests build one over a scratch folder with a stand-in runner and a Fix
+It that refuses to run unless a test gives it one, and start no portal thread.
 `TbdSubtitlesApp` holds the queue loaded from `queue.json`, two job runners with the cancel token
 of the job each runs (one for full runs, one for the review runs that re-time the owner's
 corrections), the step rates for the time left, the settings page, the Settings window's tab while
@@ -43,7 +44,8 @@ work folder when the window opens, after each run of its video and after each co
 review while open, the clip playing in it, the line its editor shows with that line's still frame,
 the unsaved edits and run states of each job whose review closed (`parked`, until it opens again;
 they are lost when the window closes), and `Pending`, the receiving end of every other thread it
-started (the choosers, the files the desktop was asked to open, the downloads and checks). The
+started (the choosers, the files the desktop was asked to open, the downloads and checks, and the
+Fix It run under way). The
 videos passed to `launch` enter the queue as the first `Action`; the machine checks and the
 measures of the work and models folders start at once. While a job runs the window redraws every
 second; a playing clip wakes it at each frame and a still frame when it is decoded.

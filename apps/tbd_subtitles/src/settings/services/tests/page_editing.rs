@@ -216,4 +216,8 @@ fn only_the_models_folder_and_the_engines_make_the_models_list_stale() {
     model.language_model.model = "opus".into();
     assert_eq!(stale(&before, &model), Stale::default());
     assert_eq!(changed_field(&before, &model), Some(Field::Model));
+    let mut fix = before.clone();
+    fix.language_model.fix_model = "fable".into();
+    assert_eq!(stale(&before, &fix), Stale::default());
+    assert_eq!(changed_field(&before, &fix), Some(Field::FixModel));
 }

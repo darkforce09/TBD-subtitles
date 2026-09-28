@@ -10,6 +10,7 @@ measurements, the progress events and the report.
 crates/pipeline/src/
 ├── cancel.rs  `CancelToken`: the shared flag that stops a running job and its worker
 ├── error.rs   `PipelineError`: what was being done, why it failed or that it was cancelled
+├── fix_it/    Fix It on a finished job: the model's kept changes written into the corrections
 ├── graph/     the step table: inputs, placement, GPU use, revision, settings, timeout and outputs
 ├── lib.rs     the crate root: the module list, the crate header and the `run_job` re-exports
 ├── measure/   peak VRAM of a worker through NVML, peak RAM of a process and its children
@@ -47,6 +48,12 @@ which prints `progress <done> <total>` lines and writes `steps/<step>.worker.jso
 `measure::gpu_monitor` sampled. `report` renders `report.md` after every run. Every fallible call
 returns `PipelineError`.
 
+`fix_it` works beside the runner, on a finished job: it reads the job's outputs, runs
+`stages::fix_it` with a `claude` backend the cancel token stops, keeps each answered call in
+`fix/calls/`, writes `fix.json`, and puts the kept changes into `review.json` through
+`work_dir::update_corrections`. The caller then runs the job again, and the corrections' digest
+makes only the review step and the steps after it run.
+
 ## Public surface
 
 - `run_job`, `JobOptions`, `JobOutcome`, `CancelToken`, `PipelineError` and `Result`, re-exported
@@ -58,6 +65,8 @@ returns `PipelineError`.
   the GPU lock file.
 - `models::{required, missing, default_dir}`: the model folders a job needs, for the window's
   models view and the check before a job starts.
+- `fix_it::{fix_video, FixOptions, FixProgress, FixStage, FixOutcome}`: Fix It, for the window
+  and the `fix` subcommand; `work_dir::update_corrections`: the window's line review.
 - `measure::gpu_monitor` and `measure::memory`: used by `tools/stack_spike/`.
 
 ## Boundaries

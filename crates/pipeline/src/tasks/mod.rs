@@ -22,6 +22,8 @@ mod review;
 mod sounds;
 mod speech;
 
+pub(crate) use review::corrected_lines;
+
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};

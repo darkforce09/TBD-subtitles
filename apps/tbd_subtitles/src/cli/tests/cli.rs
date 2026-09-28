@@ -151,3 +151,37 @@ fn options_win_over_the_settings_file() {
     assert_eq!(chosen.models_dir, Some(std::path::PathBuf::from("/models")));
     assert_eq!(chosen.language_model.model, "opus");
 }
+
+fn fix_args(args: &[&str]) -> fix_command::FixArgs {
+    match parse(args).unwrap().command {
+        Some(Command::Fix(args)) => args,
+        other => panic!("expected fix, got {other:?}"),
+    }
+}
+
+#[test]
+fn fix_needs_a_video_and_asks_opus_unless_told_otherwise() {
+    assert!(parse(&["fix"]).is_err());
+    let chosen = fix_command::merged(AppSettings::default(), &fix_args(&["fix", "a.mp4"]));
+    assert_eq!(chosen.language_model.fix_model, "opus");
+    assert_eq!(chosen.language_model.model, "sonnet");
+}
+
+#[test]
+fn fix_options_win_over_the_settings_file() {
+    let args = fix_args(&[
+        "fix",
+        "a.mp4",
+        "--model",
+        "fable",
+        "--processes",
+        "3",
+        "--work-root",
+        "/big/work",
+    ]);
+    let chosen = fix_command::merged(AppSettings::default(), &args);
+    assert_eq!(chosen.language_model.fix_model, "fable");
+    assert_eq!(chosen.language_model.processes, 3);
+    assert_eq!(chosen.work_root, Some(PathBuf::from("/big/work")));
+    assert_eq!(args.video, PathBuf::from("a.mp4"));
+}

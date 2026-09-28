@@ -6,12 +6,14 @@
 //! **Position:** called by `tasks::run` inside the job runner; calls `stages::{cues, qc, output}`
 //! and the subtitle writers.
 //!
-//! **Signals and state:** reads the outputs of the earlier steps (the words from `reviewed.json`,
-//! and the owner's corrections for the check); writes `cues.json`, `cues_dropped_sounds.json`,
+//! **Signals and state:** reads the outputs of the earlier steps (the words from `reviewed.json`;
+//! for the check, the corrections, and the re-decodes so Fix It's words are held against every
+//! hypothesis); writes `cues.json`, `cues_dropped_sounds.json`,
 //! `qc.json`, `output.json` and the subtitle file beside the video.
 //!
 //! **Invariants:** the frame rate comes from the probe (24/1 when the video has none); the subtitle
-//! file is the only file written outside the work directory.
+//! file is the only file written outside the work directory; a Fix It change the owner has not
+//! checked has its words checked again, and is counted apart from the owner's corrections.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -19,9 +21,10 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use job_model::job::OutputFormat;
 use job_model::outputs::{
-    AdjudicationPass, Aligned, Corrections, EngineTranscript, OutputRecord, ShotChanges, SoundCues,
-    SpeechPlan, TimeSpan, Utterance,
+    AdjudicationPass, Aligned, Corrections, EngineTranscript, Line, OutputRecord, Redecode,
+    ShotChanges, SoundCues, SpeechPlan, TimeSpan, Utterance,
 };
+use stages::adjudication::{checks, redecode};
 use stages::{cues, output, qc};
 use subtitle_formats::cue::{CueTrack, FrameRate};
 use subtitle_formats::writers::{ass, srt, vtt};
@@ -71,9 +74,18 @@ pub(super) fn qc(job: &Job) -> Result<TaskReport> {
     } else {
         Corrections::default()
     };
+    let sheet: Vec<Utterance> = work_dir::read_json(&job.work.sheet())?;
+    let redecoded = |engine: &str| work_dir::read_json::<Redecode>(&job.work.redecode(engine)).ok();
+    let (again_p, again_w) = (redecoded("parakeet"), redecoded("whisper"));
+    let alternatives: Vec<(&str, &Redecode)> = [("p", &again_p), ("w", &again_w)]
+        .into_iter()
+        .filter_map(|(tag, r)| r.as_ref().map(|r| (tag, r)))
+        .collect();
     let adjudicated = settled(
         work_dir::read_json::<AdjudicationPass>(&job.work.adjudicated())?,
         &corrections,
+        &redecode::with_alternatives(&sheet, &alternatives),
+        &job.glossary(),
     );
     let sound_cues: SoundCues = work_dir::read_json(&job.work.sound_cues())?;
     let speech: SpeechPlan = work_dir::read_json(&job.work.vad())?;
@@ -81,7 +93,6 @@ pub(super) fn qc(job: &Job) -> Result<TaskReport> {
     // The backbone times words closely; Whisper stretches and shifts them, and hears laughs the
     // language model rightly drops.
     let heard = qc::coverage::heard_spans(&[&parakeet]);
-    let sheet: Vec<Utterance> = work_dir::read_json(&job.work.sheet())?;
     let started = Instant::now();
     let dropped_ids: Vec<&str> = adjudicated
         .lines
@@ -106,7 +117,8 @@ pub(super) fn qc(job: &Job) -> Result<TaskReport> {
         utterance_starts: &starts,
         duration_s: probe.probe.duration_s,
     });
-    result.summary.reviewed = corrections.lines.len();
+    result.summary.reviewed = corrections.owner_count();
+    result.summary.fixed = corrections.unchecked_fix_count();
     let mut report = TaskReport {
         process_s: since(started),
         ..TaskReport::default()
@@ -128,13 +140,34 @@ pub(super) fn qc(job: &Job) -> Result<TaskReport> {
     Ok(report)
 }
 
-/// The adjudication as the owner left it: each corrected line's text and flags, and no novel or
-/// dropped-word finding on a line the owner settled.
-fn settled(mut pass: AdjudicationPass, corrections: &Corrections) -> AdjudicationPass {
+/// The adjudication as the corrections left it: each corrected line's text and flags; no novel or
+/// dropped-word finding on a corrected line, since the owner settled it or its Fix It change is
+/// listed for the owner; and the words of each Fix It change the owner has not checked held
+/// again against what the engines heard (`sheet`, with the re-decoded alternatives).
+fn settled(
+    mut pass: AdjudicationPass,
+    corrections: &Corrections,
+    sheet: &[Utterance],
+    glossary: &[&str],
+) -> AdjudicationPass {
     pass.lines = super::review::corrected_lines(&pass.lines, corrections);
     let open = |(id, _): &(String, String)| corrections.get(id).is_none();
     pass.findings.novel.retain(open);
     pass.findings.removed_locked.retain(open);
+    let unchecked: Vec<Line> = pass
+        .lines
+        .iter()
+        .filter(|l| {
+            corrections
+                .get(&l.id)
+                .is_some_and(|c| c.chosen.is_unchecked_fix())
+        })
+        .cloned()
+        .collect();
+    if !unchecked.is_empty() {
+        let again = checks::check(sheet, &unchecked, glossary);
+        pass.findings.novel.extend(again.novel);
+    }
     pass
 }
 
@@ -188,3 +221,7 @@ pub(super) fn output(job: &Job) -> Result<TaskReport> {
     work_dir::write_json(&job.work.output_record(), &record)?;
     Ok(report)
 }
+
+#[cfg(test)]
+#[path = "tests/layout.rs"]
+mod tests;

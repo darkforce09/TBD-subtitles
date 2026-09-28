@@ -27,6 +27,8 @@ apps/tbd_subtitles/src/settings/services/
 unreadable file, broken TOML, an unknown key or a bad value, is a `SettingsError` naming the file
 and the key. `save` writes the whole file through a part file and a rename.
 `job_settings::job_settings` reads the glossary the settings name and fills a `JobSettings`;
+`job_settings::glossary_name` names the glossary as Fix It tells the model (`one_piece`, `none`,
+or a glossary file's name without its extension);
 `models_dir` and `work_root` give the named folders, else the defaults of `pipeline`.
 `page_editing::apply` takes the saved settings with one field changed and writes them at once,
 returning what they made stale (the models list when the models folder or an engine changed, the

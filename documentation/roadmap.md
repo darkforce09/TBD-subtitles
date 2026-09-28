@@ -80,9 +80,12 @@ budget. The batch of Dressrosa 12–48 moved to M2 at the owner's word: it runs 
 - [x] Packaging: `cargo appimage` builds one self-contained AppImage (bundled CUDA, cuDNN, ONNX
   Runtime and FFmpeg); it runs a full job on the host with only the NVIDIA driver, and opens
   from Gear Lever.
+- [x] Fix It: on a finished job, a stronger `claude` model (Opus by default, chosen in Settings,
+  Engines) reads the whole video, fixes its flagged lines and checks each change; the owner keeps
+  or undoes each in Check Lines.
 
-Details: [GUI](/documentation/features/gui.md), [building the
-AppImage](/documentation/runbooks/building_the_appimage.md).
+Details: [GUI](/documentation/features/gui.md), [Fix It](/documentation/features/fix_it.md),
+[building the AppImage](/documentation/runbooks/building_the_appimage.md).
 
 **Acceptance:** the owner processes a new video from the GUI alone and fixes a flagged line in it;
 episodes 12–48 have subtitles, made from the GUI, that pass QC.

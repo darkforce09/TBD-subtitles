@@ -131,9 +131,13 @@ pub struct QcSummary {
     #[serde(default)]
     pub voice_without_cue_s: f64,
     pub video_s: f64,
-    /// Lines the owner corrected; their unsure, novel and dropped-word findings are settled.
+    /// Lines the owner corrected or kept; their unsure, novel and dropped-word findings are
+    /// settled.
     #[serde(default)]
     pub reviewed: usize,
+    /// Lines Fix It changed that the owner has not checked yet; their words are checked again.
+    #[serde(default)]
+    pub fixed: usize,
 }
 
 /// The quality check's whole result.

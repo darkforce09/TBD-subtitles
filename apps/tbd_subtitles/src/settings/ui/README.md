@@ -8,7 +8,7 @@ and the banner while a model is missing or downloads. They return events and cha
 
 ```text
 apps/tbd_subtitles/src/settings/ui/
-├── engines_tab.rs      vocal separation, second speech engine, language model, processes, cut score
+├── engines_tab.rs      separation, second engine, language model, processes, Fix It model, cut score
 ├── form.rs             the forms' rows, help and error lines, divider, path well, list, field, stepper
 ├── general_tab.rs      the models and work folders with their sizes, subtitle format, glossary
 ├── machine_tab.rs      each machine check with its mark and detail, and Check Again
@@ -35,10 +35,11 @@ dropped. General shows the models folder with its size on disk, the work folder
 with its size and Open, Choose… and, for a folder set by hand, Default (the models folder's
 buttons are off while a download runs: "Stop the download first"); each folder on one line, the
 home as `~` and cut in the middle when too long, the whole path on hover; SRT | WebVTT | ASS; and
-the glossary with its count of names. Engines shows the separator, the Whisper model and the
-`claude` model (Sonnet, Opus, Fable or Haiku, or a name kept in `settings.toml`) in lists as wide
-as their column, with help that follows the choice, processes at once (1–16) and the shot cut
-score (1–100). Models lists the rows of
+the glossary with its count of names. Engines shows the separator, the Whisper model, the
+`claude` model a run asks and the one Fix It asks (Sonnet, Opus, Fable or Haiku, or a name kept
+in `settings.toml`; each list marks its own default, Sonnet and Opus) in lists as wide as their
+column, with help that follows the choice, processes at once (1–16) and the shot cut score
+(1–100). Models lists the rows of
 `model_list::rows` (Name, Kind, Size, Status: On disk, Missing, or a bar with its share), then
 Download Missing (size), or Stop with "Downloading … of …. A stopped file resumes next time.",
 or "Everything a job needs is on disk." This Computer lists each check with ✓, ⚠ or ✗ (a spinner

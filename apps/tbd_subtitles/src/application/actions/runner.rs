@@ -16,8 +16,8 @@
 //! **Invariants:** at most one full run and one review run run at once, each on its own runner;
 //! no job starts while a model is missing; a job started at once (Try Again, Run Again) leaves
 //! the queue off, and a pause ends once the full lane is idle; a run of a video never starts
-//! while a run of the other kind of the same video runs, and a waiting full run holds its lane
-//! meanwhile; a job takes the settings saved now until it has started once, and its own
+//! while a run of the other kind of the same video runs or Fix It fixes it, and a waiting full
+//! run holds its lane meanwhile; a job takes the settings saved now until it has started once, and its own
 //! `job.json` settings after that, as a review run always does.
 
 use std::path::Path;
@@ -37,8 +37,8 @@ use crate::settings::services::job_settings;
 
 impl TbdSubtitlesApp {
     /// Hand the next job of each lane to its runner: the first waiting full run when the queue
-    /// runs, no full run does and no review run of its video does; the first waiting review run
-    /// when no review run does and no full run of its video does.
+    /// runs, no full run does, and no review run or Fix It of its video does; the first waiting
+    /// review run whose video no full run and no Fix It holds, when no review run runs.
     pub(crate) fn start_next(&mut self) {
         if self.cancel.is_none() {
             self.queue.pausing = false;
@@ -48,14 +48,15 @@ impl TbdSubtitlesApp {
         }
         if self.queue.running && self.cancel.is_none() {
             match queue_editing::next_waiting(&self.queue, JobKind::Full) {
-                Some(id) if self.video_running(id, JobKind::Review) => {}
+                Some(id) if self.video_running(id, JobKind::Review) || self.video_fixing(id) => {}
                 Some(id) => self.cancel = self.start(id),
                 None => self.queue.running = false,
             }
         }
+        let startable = |id| !self.video_running(id, JobKind::Full) && !self.video_fixing(id);
         if self.review_cancel.is_none()
-            && let Some(id) = queue_editing::next_waiting(&self.queue, JobKind::Review)
-            && !self.video_running(id, JobKind::Full)
+            && let Some(id) =
+                queue_editing::first_startable(&self.queue, JobKind::Review, startable)
         {
             self.review_cancel = self.start(id);
         }
@@ -69,7 +70,8 @@ impl TbdSubtitlesApp {
         }
         match self.queue.get(id).map(|item| item.kind) {
             Some(JobKind::Full) => {
-                if self.cancel.is_none() && !self.video_running(id, JobKind::Review) {
+                let held = self.video_running(id, JobKind::Review) || self.video_fixing(id);
+                if self.cancel.is_none() && !held {
                     self.cancel = self.start(id);
                 }
             }

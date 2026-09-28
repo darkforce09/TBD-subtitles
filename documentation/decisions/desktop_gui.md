@@ -344,3 +344,52 @@ marked right. The tests hold it: `a_valid_edit_is_written_at_once`,
 `apps/tbd_subtitles/src/application/tests/rendering_settings.rs`.
 
 **Supersedes:** the Save and Revert of 2026-09-28 — Settings open in a window of their own.
+
+### 2026-09-28 — Fix It: a stronger model fixes the flagged lines in three passes
+
+**Context:** A finished job lists its problems and the lines worth a listen, and the owner fixed
+each by hand in Check Lines. The owner asked for a button that fixes them automatically with a
+stronger model than the run's (Opus beside the run's Sonnet), chosen in Settings, Engines. The
+owner was wary of blind cutting (is a repeat a stray, or part of the sentence?) and asked for
+passes: the whole video read for context first, then the fixes, then a check of each fixed line
+against the unfixed one in the show's context; and for that context to come without the owner
+typing anything, and without the model overthinking. Law 8 holds: every subtitle word comes from
+what a speech engine heard.
+
+**Decision:** Fix It asks about every finding but the aligner's offset and failed calls, in three
+passes of `claude -p` with no tools. The first reads the video's file and folder names, the
+glossary and every line, and uses the model's own knowledge of the series for a brief (show,
+episode, cast, scenes, speech habits that are meant, and lines out of place); no setting holds
+context and nothing is looked up online. The second fixes one family at a time (words, timing and
+layout, reading speed), each answer held by a guard: no word no engine heard in the line or next
+to it and not in the glossary, no empty line unless dropped, no sheet notation, a reason, and for
+reading speed words taken out only. The third, a judge, accepts a change only when it reads right
+against the line before it; nothing else is kept. A kept change becomes a correction marked
+`fix_it` with the model and the reason, and the existing correction run times it. The owner's
+corrections always win: Fix It never asks about a line the owner settled, and the window and Fix
+It change `review.json` only under its lock, each reading it from disk. Each Fix It change waits
+in a Changed by Claude group of Check Lines: Keep Change makes it the owner's (`kept_fix_it`),
+Undo Change saves the language model's reading as the owner's. The quality check checks the words
+of a change the owner has not kept again, and counts such lines apart. Fix It runs on a thread of
+the window, one video at a time, never beside a run of its video; it keeps each answered call in
+`fix/calls/`, so Stop, or a closed window, loses nothing that was paid for. `tbd-subtitles fix`
+runs it without a window. The Fix It model is `fix_model` in `settings.toml`, `opus` by default.
+
+**Consequences:** Removing heard words is no longer the owner's alone: Fix It may take out
+filler, stutters, empty repeats and strays, but only through the judge, and every such line is
+listed for the owner with what the app had. A batch of Fix Its cannot be queued; it is one button
+per video. The quality check reads the re-decodes now, so its revision went to 4 and existing jobs
+run their check and output again on their next run, in seconds. On Dressrosa 12 the aligner could not time
+three changed lines alone and the backbone's times moved one subtitle 0.6 s late, so the review
+step now carries a corrected line's earlier aligned times over to the words that stayed or
+replaced others, for the owner's corrections too, and keeps the backbone's times for lines the
+aligner never timed. A run of Opus uses the owner's
+plan beside any Sonnet run of another video. The tests hold it:
+`a_word_no_engine_heard_is_refused_and_the_line_stays` and
+`only_the_judge_s_accepted_changes_are_kept` in `crates/stages/src/fix_it/tests/fix_it.rs`,
+`a_correction_the_owner_saves_during_the_run_wins` in `crates/pipeline/src/fix_it/tests/fix_it.rs`,
+`owner_lines_are_settled_and_fix_it_lines_are_checked_again` in
+`crates/pipeline/src/tasks/tests/layout.rs`, and
+`apps/tbd_subtitles/src/application/tests/rendering_fix_it.rs`.
+
+**Supersedes:** none; it adds a writer of `review.json` beside the owner's line review.

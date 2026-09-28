@@ -3,22 +3,24 @@
 //!
 //! **Role:** fold the checks about lines into six groups the owner recognises: unsure lines,
 //! heard words replaced, words no engine heard, lines too fast to read, loosely timed lines and
-//! layout.
+//! layout; and a seventh, first, for the lines Fix It changed that the owner has not checked.
 //!
 //! **Position:** read by `services::line_counts` to count lines per group, by the lines card for
 //! each group's row, and by the line review for a line's chips and its group filter.
 //!
 //! **Signals and state:** none; constants only.
 //!
-//! **Invariants:** every check about a line has exactly one group; the checks about the whole
-//! job (heard speech with no cue, the aligner's offset, a failed language-model call) have none,
-//! and are problems instead.
+//! **Invariants:** every check about a line has exactly one group, never the Fix It group, which
+//! comes from the corrections; the checks about the whole job (heard speech with no cue, the
+//! aligner's offset, a failed language-model call) have none, and are problems instead.
 
 use job_model::report::QcCheck;
 
 /// A group of line findings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum LineGroup {
+    /// Changed by Fix It, and not kept or undone by the owner yet.
+    ChangedByFixIt,
     /// The language model could not settle what was said.
     Unsure,
     /// A word both engines heard that the subtitles do not use (`removed_locked`).
@@ -35,7 +37,8 @@ pub(crate) enum LineGroup {
 
 impl LineGroup {
     /// Every group, in the order the lines card lists them.
-    pub(crate) const ALL: [LineGroup; 6] = [
+    pub(crate) const ALL: [LineGroup; 7] = [
+        LineGroup::ChangedByFixIt,
         LineGroup::Unsure,
         LineGroup::HeardWordReplaced,
         LineGroup::NovelWord,
@@ -67,6 +70,7 @@ impl LineGroup {
     /// The group's title on its row.
     pub(crate) fn title(self) -> &'static str {
         match self {
+            LineGroup::ChangedByFixIt => "Changed by Claude",
             LineGroup::Unsure => "Unsure what was said",
             LineGroup::HeardWordReplaced => "Heard word replaced",
             LineGroup::NovelWord => "Word no engine heard",
@@ -79,6 +83,7 @@ impl LineGroup {
     /// The group's short name on a line's chip in the Check Lines list.
     pub(crate) fn chip(self) -> &'static str {
         match self {
+            LineGroup::ChangedByFixIt => "Claude",
             LineGroup::Unsure => "Unsure",
             LineGroup::HeardWordReplaced => "Word replaced",
             LineGroup::NovelWord => "Word no engine heard",
@@ -91,6 +96,10 @@ impl LineGroup {
     /// What the group means, in plain words, under its title.
     pub(crate) fn explanation(self) -> &'static str {
         match self {
+            LineGroup::ChangedByFixIt => {
+                "Fix It changed these lines, and its last check accepted each change. Listen, \
+                 then keep it or undo it."
+            }
             LineGroup::Unsure => {
                 "The two speech engines disagreed, and a second listen to the voices alone \
                  didn't settle it. The app's best guess is in the file."

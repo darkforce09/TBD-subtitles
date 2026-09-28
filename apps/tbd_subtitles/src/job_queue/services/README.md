@@ -37,9 +37,11 @@ other ended job, so the Done section lists the newest first and `queue.json` kee
 the queue runs, Resume Queue ("Pauses after Dressrosa 16") once paused with a full run running,
 both even while a model is missing, else Start Queue (with the reason it is off: "Download the
 models first", "Nothing is waiting", "Add videos to start"). `next_waiting(queue, kind)` names the
-job that runs next in a lane: full runs in queue order, review runs in theirs; `queue_review`
-queues a video's review run carrying one correction, or adds the correction to the one that
-already waits.
+job that runs next in a lane: full runs in queue order, review runs in theirs;
+`first_startable(queue, kind, startable)` the first waiting one the application lets start (the
+review lane skips a video a full run or Fix It holds); `queue_review` queues a video's review run
+carrying the corrections it is given (one per save, or every line a Fix It run changed), or adds
+them to the one that already waits.
 
 `sidebar_rows::rows` builds the sidebar: a correction run that waits, runs or finished folds into
 the row of its video's newest finished full run (else its last full run), naming the one running

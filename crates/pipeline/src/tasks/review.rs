@@ -2,8 +2,9 @@
 //! kept.
 //!
 //! **Role:** apply `review.json` to the final text, time each corrected utterance alone with
-//! Parakeet-CTC on the CPU (falling back to the backbone's times), leave every other aligned
-//! utterance as it is, and write the result as `reviewed.json`.
+//! Parakeet-CTC on the CPU (falling back to its earlier aligned times where its words stayed,
+//! then to the backbone's times), leave every other aligned utterance as it is, and write the
+//! result as `reviewed.json`.
 //!
 //! **Position:** called by `tasks::run` inside a worker of the main binary (ONNX Runtime on the
 //! CPU, so it runs beside a job that holds the GPU).
@@ -70,6 +71,7 @@ pub(super) fn review(job: &Job) -> Result<TaskReport> {
                     duration,
                     &mut aligner,
                     &mut errors,
+                    before.get(k.id.as_str()).copied(),
                 ));
                 retimed += 1;
             }
@@ -88,7 +90,7 @@ pub(super) fn review(job: &Job) -> Result<TaskReport> {
 }
 
 /// The final lines with each correction's text and flags in place of the model's.
-pub(super) fn corrected_lines(lines: &[Line], corrections: &Corrections) -> Vec<Line> {
+pub(crate) fn corrected_lines(lines: &[Line], corrections: &Corrections) -> Vec<Line> {
     lines
         .iter()
         .map(|line| match corrections.get(&line.id) {

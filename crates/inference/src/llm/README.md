@@ -2,8 +2,9 @@
 
 The language-model backends behind one trait: a system prompt, a user message and a JSON Schema
 in, a JSON value out. The adjudication stage uses them to settle the
-[diff sheet](/documentation/glossary.md#diff-sheet). Both backends are written: the `claude -p` CLI,
-and a local model through mistral.rs behind the `mistralrs` feature.
+[diff sheet](/documentation/glossary.md#diff-sheet), and [Fix It](/documentation/glossary.md#fix-it)
+uses them to fix the lines the quality check flagged. Both backends are written: the `claude -p`
+CLI, and a local model through mistral.rs behind the `mistralrs` feature.
 
 ## Contents
 
@@ -24,9 +25,11 @@ matching the schema returns `LlmError`, never an empty answer.
 
 - Depends on: `serde_json`; `child_process` in `claude_cli/`; `mistralrs` and `tokio` in
   `mistral_rs/` (optional).
-- Used by: `crates/stages/src/adjudication/`, `tools/stack_spike/` and `tools/stack_spike_llm/`.
-- Rules: a backend never sees timings (the adjudication prompt carries none; the header in
-  `crates/stages/src/adjudication/mod.rs`).
+- Used by: `crates/stages/src/adjudication/`, `crates/stages/src/fix_it/`, `crates/pipeline/`,
+  `tools/stack_spike/` and `tools/stack_spike_llm/`.
+- Rules: a backend never sees a word's time: the adjudication prompt carries each utterance's
+  start and length only, and Fix It adds the gaps around a flagged line (the headers in
+  `crates/stages/src/adjudication/mod.rs` and `crates/stages/src/fix_it/mod.rs`).
 
 ## Related documentation
 

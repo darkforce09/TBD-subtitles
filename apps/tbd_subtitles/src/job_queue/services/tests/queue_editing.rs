@@ -63,7 +63,7 @@ fn a_running_job_cannot_be_removed() {
 fn a_removed_row_goes_back_where_it_was_with_its_correction_runs() {
     let mut q = queue(&["a", "b", "c"]);
     q.items[1].state = JobState::FinishedBefore;
-    let review = queue_review(&mut q, PathBuf::from("b"));
+    let review = queue_review(&mut q, PathBuf::from("b"), 1);
     q.selected = Some(1);
     let removed = remove(&mut q, 1).expect("removed");
     assert_eq!(order(&q), ["a", "c"], "the row and its correction run");
@@ -90,7 +90,7 @@ fn removing_the_last_row_selects_the_one_before() {
 fn a_row_whose_correction_run_runs_stays() {
     let mut q = queue(&["a"]);
     q.items[0].state = JobState::FinishedBefore;
-    let review = queue_review(&mut q, PathBuf::from("a"));
+    let review = queue_review(&mut q, PathBuf::from("a"), 1);
     if let Some(item) = q.get_mut(review) {
         item.state = running();
     }
@@ -184,7 +184,7 @@ fn the_queue_control_counts_only_full_runs() {
     );
     add_videos(&mut q, [PathBuf::from("[Muhn Pace] Dressrosa 16.mp4")]);
     q.items[0].state = JobState::FinishedBefore;
-    queue_review(&mut q, PathBuf::from("[Muhn Pace] Dressrosa 16.mp4"));
+    queue_review(&mut q, PathBuf::from("[Muhn Pace] Dressrosa 16.mp4"), 1);
     assert_eq!(
         queue_control(&q, false),
         QueueControl::Start {
@@ -298,8 +298,8 @@ fn a_folder_stands_for_its_videos_without_subtitles() {
 #[test]
 fn review_runs_wait_in_their_own_lane_and_are_queued_once() {
     let mut q = queue(&["a"]);
-    let first = queue_review(&mut q, PathBuf::from("b"));
-    assert_eq!(queue_review(&mut q, PathBuf::from("b")), first);
+    let first = queue_review(&mut q, PathBuf::from("b"), 1);
+    assert_eq!(queue_review(&mut q, PathBuf::from("b"), 1), first);
     assert_eq!(
         q.get(first).map(|i| i.corrections),
         Some(2),

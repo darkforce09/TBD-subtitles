@@ -146,7 +146,7 @@ fn a_corrected_line_is_timed_alone_between_its_neighbours() {
         calls: vec![],
     };
     let mut errors = vec![];
-    let u = realign_utterance(&kept, 1, 10.0, &mut aligner, &mut errors);
+    let u = realign_utterance(&kept, 1, 10.0, &mut aligner, &mut errors, None);
     assert_eq!(aligner.calls.len(), 1);
     let (span, words) = aligner.calls[0];
     assert_eq!(words, 3);
@@ -169,8 +169,79 @@ fn a_corrected_line_the_aligner_fails_keeps_the_backbone_times() {
         calls: vec![],
     };
     let mut errors = vec![];
-    let u = realign_utterance(&kept, 0, 10.0, &mut aligner, &mut errors);
+    let u = realign_utterance(&kept, 0, 10.0, &mut aligner, &mut errors, None);
     assert_eq!(errors.len(), 1);
     assert!(u.words.iter().all(|w| w.source == TimingSource::Backbone));
     assert_eq!(u.words[0].start_s, 1.0);
+}
+
+fn aligned_word(text: &str, start_s: f64, end_s: f64, source: TimingSource) -> AlignedWord {
+    AlignedWord {
+        text: text.into(),
+        start_s,
+        end_s,
+        source,
+    }
+}
+
+#[test]
+fn a_corrected_line_the_aligner_fails_keeps_its_earlier_aligned_times_where_its_words_stayed() {
+    // "Oh, Heaven dish!" became "Hey, oh, Cavendish!": a name heard as two words, and a new word.
+    let kept = vec![kept_at("U1", 0, 1.0, 3.0, &["Hey,", "oh,", "Cavendish!"])];
+    let before = AlignedUtterance {
+        id: "U1".into(),
+        words: vec![
+            aligned_word("Oh,", 1.2, 1.4, TimingSource::Ctc),
+            aligned_word("Heaven", 1.5, 1.9, TimingSource::Ctc),
+            aligned_word("dish!", 1.9, 2.4, TimingSource::Ctc),
+        ],
+        speaker_starts: vec![],
+        new_speaker: false,
+        narrator: false,
+        unsure: false,
+    };
+    let mut aligner = Scripted {
+        shift: 0.0,
+        refuse_words: 3,
+        calls: vec![],
+    };
+    let mut errors = vec![];
+    let u = realign_utterance(&kept, 0, 10.0, &mut aligner, &mut errors, Some(&before));
+    let sources: Vec<TimingSource> = u.words.iter().map(|w| w.source).collect();
+    assert_eq!(
+        sources,
+        [
+            TimingSource::Interpolated,
+            TimingSource::Ctc,
+            TimingSource::Ctc
+        ]
+    );
+    assert_eq!((u.words[1].start_s, u.words[1].end_s), (1.2, 1.4));
+    // The name takes the span of both words it replaced.
+    assert_eq!((u.words[2].start_s, u.words[2].end_s), (1.5, 2.4));
+    assert!(u.words[0].end_s <= 1.2);
+}
+
+#[test]
+fn a_line_the_aligner_never_timed_falls_back_to_the_backbone() {
+    let kept = vec![kept_at("U1", 0, 1.0, 2.0, &["a", "b"])];
+    let before = AlignedUtterance {
+        id: "U1".into(),
+        words: vec![
+            aligned_word("a", 1.0, 1.4, TimingSource::Backbone),
+            aligned_word("b", 1.5, 1.9, TimingSource::Interpolated),
+        ],
+        speaker_starts: vec![],
+        new_speaker: false,
+        narrator: false,
+        unsure: false,
+    };
+    let mut aligner = Scripted {
+        shift: 0.0,
+        refuse_words: 2,
+        calls: vec![],
+    };
+    let mut errors = vec![];
+    let u = realign_utterance(&kept, 0, 10.0, &mut aligner, &mut errors, Some(&before));
+    assert!(u.words.iter().all(|w| w.source == TimingSource::Backbone));
 }

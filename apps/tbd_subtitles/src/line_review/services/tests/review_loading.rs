@@ -163,3 +163,33 @@ fn why_a_line_is_flagged_names_the_word_or_the_number() {
         "Layout: line over 42 characters."
     );
 }
+
+#[test]
+fn a_line_fix_it_changed_is_in_claude_s_group_first_with_what_the_app_had() {
+    let dir = job("fix-it");
+    write(
+        &dir.join("review.json"),
+        &Corrections {
+            lines: vec![job_model::outputs::Correction {
+                id: "U1".into(),
+                text: "Brave!".into(),
+                flags: Vec::new(),
+                chosen: Chosen::FixIt {
+                    model: "opus".into(),
+                    why: "Heard again as Brave.".into(),
+                },
+            }],
+        },
+    );
+    let session = load(Path::new("/v/a.mp4"), &dir).expect("load");
+    let line = session.line("U1").expect("U1");
+    assert_eq!(
+        line.groups[0],
+        (
+            LineGroup::ChangedByFixIt,
+            "The app had “Blaver!”. Heard again as Brave.".to_string()
+        )
+    );
+    assert!(session.unchecked_fix("U1"));
+    let _ = std::fs::remove_dir_all(&dir);
+}

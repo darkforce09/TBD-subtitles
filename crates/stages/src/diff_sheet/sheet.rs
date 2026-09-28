@@ -224,7 +224,8 @@ fn render(
 }
 
 /// `m:ss.d`, as the sheet shows times.
-fn clock(seconds: f64) -> String {
+/// A time as the sheet writes it: `m:ss.d`.
+pub fn clock(seconds: f64) -> String {
     let tenths = (seconds * 10.0).round() as u64;
     format!("{}:{:02}.{}", tenths / 600, (tenths / 10) % 60, tenths % 10)
 }

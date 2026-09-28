@@ -1,0 +1,116 @@
+//! Fix It on a thread of its own: the pipeline's `fix_video` run for one video, its progress and
+//! its outcome sent back to the window, and Stop.
+//!
+//! **Role:** start one Fix It run, forward each progress step, keep the latest, and hand over the
+//! outcome once the run ends.
+//!
+//! **Position:** started and polled by the application's Fix It actions; the run is
+//! `pipeline::fix_it::fix_video`, or a stand-in in the tests.
+//!
+//! **Signals and state:** one thread per run and one channel back; the run's `CancelToken`.
+//!
+//! **Invariants:** the thread lives until its run ends, so the `claude` processes it starts die
+//! with it and never outlive it; after Stop the run ends as cancelled and changes nothing; the
+//! window wakes after each message.
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::mpsc::{Receiver, channel};
+
+use pipeline::fix_it::{FixOptions, FixOutcome, FixProgress};
+use pipeline::{CancelToken, PipelineError};
+
+use crate::core::background::Wake;
+
+/// How Fix It is run: the pipeline's `fix_video`, or a stand-in in the tests.
+pub(crate) type FixVideo = Arc<
+    dyn Fn(&Path, &FixOptions, &(dyn Fn(FixProgress) + Sync)) -> Result<FixOutcome, PipelineError>
+        + Send
+        + Sync,
+>;
+
+/// The pipeline's own Fix It.
+pub(crate) fn pipeline_fix() -> FixVideo {
+    Arc::new(|video, options, progress| pipeline::fix_it::fix_video(video, options, progress))
+}
+
+/// What the thread sends back.
+#[derive(Debug)]
+enum FixEvent {
+    Progress(FixProgress),
+    Ended(Box<Result<FixOutcome, PipelineError>>),
+}
+
+/// One Fix It run under way.
+pub(crate) struct Fixing {
+    pub(crate) video: PathBuf,
+    /// The model as the window names it, such as "Claude Opus".
+    pub(crate) model: String,
+    /// The latest progress; none before the first.
+    pub(crate) progress: Option<FixProgress>,
+    /// Stop was pressed.
+    pub(crate) stopping: bool,
+    events: Receiver<FixEvent>,
+    cancel: CancelToken,
+}
+
+/// Start Fix It on `video` with `options` through `run`; `model` is the model's name as the window
+/// shows it.
+pub(crate) fn start(
+    run: FixVideo,
+    video: PathBuf,
+    options: FixOptions,
+    model: String,
+    wake: Wake,
+) -> Fixing {
+    let (sender, events) = channel();
+    let cancel = options.cancel.clone();
+    let path = video.clone();
+    std::thread::spawn(move || {
+        let progress = |step: FixProgress| {
+            let _ = sender.send(FixEvent::Progress(step));
+            wake();
+        };
+        let outcome = run(&path, &options, &progress);
+        let _ = sender.send(FixEvent::Ended(Box::new(outcome)));
+        wake();
+    });
+    Fixing {
+        video,
+        model,
+        progress: None,
+        stopping: false,
+        events,
+        cancel,
+    }
+}
+
+impl Fixing {
+    /// Stop the run: no call starts and the running `claude` processes are killed.
+    pub(crate) fn stop(&mut self) {
+        self.stopping = true;
+        self.cancel.cancel();
+    }
+
+    /// Fold in what the thread sent; the outcome once the run ended. A thread gone without an
+    /// outcome ended in a failure.
+    pub(crate) fn poll(&mut self) -> Option<Result<FixOutcome, PipelineError>> {
+        loop {
+            match self.events.try_recv() {
+                Ok(FixEvent::Progress(step)) => self.progress = Some(step),
+                Ok(FixEvent::Ended(outcome)) => return Some(*outcome),
+                Err(std::sync::mpsc::TryRecvError::Empty) => return None,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    return Some(Err(PipelineError::new(
+                        "Fix It",
+                        "the run ended unexpectedly",
+                    )));
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "tests/fix_it.rs"]
+mod tests;

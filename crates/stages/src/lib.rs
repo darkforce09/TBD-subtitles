@@ -17,6 +17,7 @@ pub mod alignment;
 pub mod asr;
 pub mod cues;
 pub mod diff_sheet;
+pub mod fix_it;
 pub mod output;
 pub mod probe_decode;
 pub mod qc;

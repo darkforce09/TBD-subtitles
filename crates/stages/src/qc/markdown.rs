@@ -71,6 +71,9 @@ pub fn render(
     if s.reviewed > 0 {
         let _ = writeln!(md, "- Lines the owner corrected: {}", s.reviewed);
     }
+    if s.fixed > 0 {
+        let _ = writeln!(md, "- Lines Fix It changed, not checked yet: {}", s.fixed);
+    }
     let _ = writeln!(
         md,
         "- Heard speech with no cue: {:.1} s; voice with no cue, words heard or not (grunts, crowds): {:.1} s",

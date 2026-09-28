@@ -57,12 +57,12 @@ fn places_count_the_waiting_full_runs_in_order() {
 fn correction_runs_fold_into_their_videos_row() {
     let mut q = queue(&["/v/a.mp4", "/v/b.mp4"]);
     q.items[0].state = JobState::FinishedBefore;
-    let first = queue_review(&mut q, PathBuf::from("/v/a.mp4"));
+    let first = queue_review(&mut q, PathBuf::from("/v/a.mp4"), 1);
     if let Some(item) = q.get_mut(first) {
         item.state = running();
     }
-    let second = queue_review(&mut q, PathBuf::from("/v/a.mp4"));
-    queue_review(&mut q, PathBuf::from("/v/a.mp4"));
+    let second = queue_review(&mut q, PathBuf::from("/v/a.mp4"), 1);
+    queue_review(&mut q, PathBuf::from("/v/a.mp4"), 1);
     let rows = rows(&q);
     assert_eq!(rows.len(), 2, "one row per video: {rows:?}");
     let done = &rows[1];
@@ -83,7 +83,7 @@ fn correction_runs_fold_into_their_videos_row() {
 fn a_finished_correction_run_folds_quietly() {
     let mut q = queue(&["a"]);
     q.items[0].state = JobState::FinishedBefore;
-    let review = queue_review(&mut q, PathBuf::from("a"));
+    let review = queue_review(&mut q, PathBuf::from("a"), 1);
     if let Some(item) = q.get_mut(review) {
         item.state = JobState::FinishedBefore;
     }
@@ -98,7 +98,7 @@ fn a_finished_correction_run_folds_quietly() {
 fn a_failed_or_lone_correction_run_keeps_its_own_row() {
     let mut q = queue(&["a"]);
     q.items[0].state = JobState::FinishedBefore;
-    let failed = queue_review(&mut q, PathBuf::from("a"));
+    let failed = queue_review(&mut q, PathBuf::from("a"), 1);
     if let Some(item) = q.get_mut(failed) {
         item.state = JobState::Failed(Failure {
             step: None,
@@ -107,7 +107,7 @@ fn a_failed_or_lone_correction_run_keeps_its_own_row() {
             finished: Vec::new(),
         });
     }
-    let lone = queue_review(&mut q, PathBuf::from("b"));
+    let lone = queue_review(&mut q, PathBuf::from("b"), 1);
     let rows = rows(&q);
     assert_eq!(
         names(&rows),
@@ -127,7 +127,7 @@ fn a_correction_run_folds_into_the_finished_run_of_a_video_queued_again() {
     let mut q = queue(&["a"]);
     q.items[0].state = JobState::FinishedBefore;
     add_videos(&mut q, [PathBuf::from("a")]);
-    let review = queue_review(&mut q, PathBuf::from("a"));
+    let review = queue_review(&mut q, PathBuf::from("a"), 1);
     let rows = rows(&q);
     assert_eq!(rows.len(), 2);
     assert!(rows[0].folded.is_empty(), "the waiting run");

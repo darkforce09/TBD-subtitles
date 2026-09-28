@@ -26,10 +26,10 @@ diff sheet is built. Parakeet by default.
 
 ### Correction run
 
-A short job the window queues when the owner saves, keeps or takes back a line in Check Lines:
-the `review` step times the corrected lines again on the CPU, then the cues, the quality check
-and the subtitle file are rebuilt. It is not a full run of the video, and it shows in its video's
-sidebar row as "Updating subtitles".
+A short job the window queues when the owner saves, keeps or takes back a line in Check Lines,
+or when [Fix It](#fix-it) changed lines: the `review` step times the corrected lines again on the
+CPU, then the cues, the quality check and the subtitle file are rebuilt. It is not a full run
+of the video, and it shows in its video's sidebar row as "Updating subtitles".
 
 In code: `JobKind::Review` in `apps/tbd_subtitles/src/job_queue/models/queue.rs`, which calls it
 a review run; `StepName::Review` in `crates/job_model/src/stage/step_name.rs`.
@@ -60,6 +60,18 @@ disagreements appear as `{A|B|C}` slots. The input to adjudication.
 
 An audio track re-recorded in another language. The Muhn Pace videos carry the English dub, whose
 script differs from the Japanese version's subtitles.
+
+### Fix It
+
+The button on a finished job's Overview that has a stronger `claude` model (Opus by default) fix
+the lines the quality check flagged: it reads the whole video for its context, fixes one kind of
+problem at a time, and keeps a change only when a judge accepts it and every word was heard by a
+speech engine. Each change becomes a correction the owner keeps or undoes in Check Lines.
+
+In code: `crates/stages/src/fix_it/` and `crates/pipeline/src/fix_it/`; `Chosen::FixIt` in
+`crates/job_model/src/outputs/review.rs`.
+
+See: [Fix It](/documentation/features/fix_it.md)
 
 ### Folder kind
 

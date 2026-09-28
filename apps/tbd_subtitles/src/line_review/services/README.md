@@ -22,11 +22,11 @@ apps/tbd_subtitles/src/line_review/services/
 `sheet.json` (`P`, `W`) and the re-decodes (`ALT p`, `ALT w`), the settled text and flags from
 `adjudicated.json`, the groups of the findings that name it in `qc.json` (each with why in the
 owner's words: the word both engines heard, the reading speed, the layout rule), and the
-corrections in `review.json`.
+corrections in `review.json`; a line with a Fix It change the owner has not checked is in the
+Changed by Claude group first, with what the app had and Claude's reason.
 
-`line_filter::shown` lists To Check (worth a listen, not corrected), Checked (corrected) or every
-line,
-narrowed to the session's group and search: words of the line as it stands now, its id, or a
+`line_filter::shown` lists To Check (worth a listen, not settled by the owner), Checked (settled
+by the owner) or every line, narrowed to the session's group and search: words of the line as it stands now, its id, or a
 typed time (`16:33` is the second from 16:33, `16:33.4` its tenth, `16:3` the ten seconds from
 16:30; a time too large to count is none), which matches the lines said then. A line is worth a
 listen while the quality check flags it, the owner corrected it, or the owner took it back and
@@ -38,15 +38,18 @@ first), and `neighbour` the line before or after it.
 `review_editing` keeps a draft per line only while it differs from what the line has saved, so
 opening another line keeps it. `save` records where the text came from (an engine's tag, the
 settled text, or typed), drops `UNSURE`, refuses an empty text unless the line is dropped, and
-writes the whole file through a part file; `looks_right` saves the line unchanged as the
-language model's reading. Both mark the line Saved and return the next line of the list, which
+changes the file through `pipeline::work_dir::update_corrections`, under its lock and as it is
+on disk, so a Fix It change written meanwhile is kept; `looks_right` saves the line unchanged:
+the language model's reading, or a Fix It change kept as the owner's (`kept_fix_it`), and
+`undo_change` saves the language model's reading in place of a Fix It change. Both mark the line Saved and return the next line of the list, which
 they open: the one after it when the list still shows it (the line itself when it is the last),
 else the one now in its place. `revert` keeps the line it takes back open, so its run's status
 shows: when its list (Checked) no longer shows it, the list becomes All, and only a search that
 no longer matches its text moves the editor on. Taking back the last correction removes the
 file; a line with no correction has nothing to take back (`revert` says so). `run_started`
 turns Saved and Failed lines to Updating and `run_ended` Updating ones to Updated or Failed
-(`start_runs` and `end_runs` do the same for a closed review's runs); `carry_over` keeps the open
+(`start_runs` and `end_runs` do the same for a closed review's runs; `mark_fixed` marks the
+lines a Fix It run changed as Saved); `carry_over` keeps the open
 line, the list, the search, the group, the runs and the drafts still worth keeping when the
 lines are read again, and `park` and `unpark` keep a closed review's drafts and runs until it
 opens again.

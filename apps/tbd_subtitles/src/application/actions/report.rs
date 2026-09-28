@@ -3,8 +3,8 @@
 //!
 //! **Role:** read the selected finished job's report when it is selected or ends; read the
 //! summary of every finished row when the window opens, and of a video's rows after each of its
-//! runs and corrections; turn each `ReportEvent` into a desktop request, a toast, Check Lines or a
-//! run again from the language-model calls.
+//! runs and corrections; turn each `ReportEvent` into a desktop request, a toast, Check Lines, a
+//! run again from the language-model calls, or Fix It started or stopped.
 //!
 //! **Position:** called by `application::TbdSubtitlesApp::apply`, `new`, the runner's poll and
 //! the review's save; uses `job_report::services`.
@@ -42,6 +42,8 @@ impl TbdSubtitlesApp {
                     self.apply_queue(JobQueueEvent::TryAgain(id, Some(StepName::Adjudicate)));
                 }
             }
+            ReportEvent::FixIt => self.start_fix(),
+            ReportEvent::StopFix => self.stop_fix(),
         }
     }
 

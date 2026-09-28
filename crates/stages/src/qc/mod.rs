@@ -309,6 +309,7 @@ fn summary(input: &QcInput, rules: &FrameRules, uncovered_speech_s: f64) -> QcSu
         uncovered_speech_s,
         voice_without_cue_s: 0.0,
         reviewed: 0,
+        fixed: 0,
         video_s: input.duration_s,
     }
 }

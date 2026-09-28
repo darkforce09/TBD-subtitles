@@ -1,8 +1,8 @@
 //! A finished job's lines worth a listen and its problems, counted from its quality check and the
 //! owner's corrections.
 //!
-//! **Role:** count the distinct lines of each group and in all, the lines the owner checked, and
-//! the pass rules the job breaks.
+//! **Role:** count the distinct lines of each group and in all, the lines the owner checked, the
+//! pass rules the job breaks, and the findings Fix It would ask about.
 //!
 //! **Position:** called by `report_loading` when a report or a row's summary is read.
 //!
@@ -10,7 +10,8 @@
 //!
 //! **Invariants:** a line is counted once however many findings name it, and once in each group
 //! it has findings in; a finding about no line (a sound cue, the whole job) is no line to check;
-//! a line the owner corrected is worth a listen and checked, even once a correction run has
+//! a line the owner corrected is worth a listen and checked, a line Fix It changed is worth a
+//! listen and not checked until the owner keeps or undoes it, even once a correction run has
 //! settled its findings, so the counts hold across the run; the problems are empty exactly when
 //! the job passes (`QcReport::passes`), one per failed rule.
 
@@ -18,14 +19,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use job_model::outputs::Corrections;
 use job_model::report::{CPS_TARGET, QcCheck, QcReport};
+use stages::fix_it::items;
 
 use crate::job_report::models::finding_group::LineGroup;
 use crate::job_report::models::problem::Problem;
 use crate::job_report::models::summary::{LineCounts, RowSummary};
 
-/// The lines worth a listen: those `qc` flags, in their groups, and those the owner corrected in
-/// `corrections`, which are checked. A corrected line stays counted after a correction run
-/// settles its findings, then under no group.
+/// The lines worth a listen: those `qc` flags, in their groups; those the owner settled in
+/// `corrections`, which are checked; and those Fix It changed and the owner has not checked, in
+/// the Changed by Claude group. A corrected line stays counted after a correction run settles its
+/// findings, then under no group.
 pub(crate) fn line_counts(qc: &QcReport, corrections: &Corrections) -> LineCounts {
     let mut flagged: BTreeSet<&str> = BTreeSet::new();
     let mut groups: BTreeMap<LineGroup, BTreeSet<&str>> = BTreeMap::new();
@@ -41,9 +44,20 @@ pub(crate) fn line_counts(qc: &QcReport, corrections: &Corrections) -> LineCount
     let checked: BTreeSet<&str> = corrections
         .lines
         .iter()
+        .filter(|line| line.by_owner())
+        .map(|line| line.id.as_str())
+        .collect();
+    let fixed: BTreeSet<&str> = corrections
+        .lines
+        .iter()
+        .filter(|line| !line.by_owner())
         .map(|line| line.id.as_str())
         .collect();
     flagged.extend(&checked);
+    flagged.extend(&fixed);
+    if !fixed.is_empty() {
+        groups.insert(LineGroup::ChangedByFixIt, fixed);
+    }
     LineCounts {
         flagged: flagged.len(),
         checked: checked.len(),
@@ -52,6 +66,14 @@ pub(crate) fn line_counts(qc: &QcReport, corrections: &Corrections) -> LineCount
             .filter_map(|group| groups.get(group).map(|lines| (*group, lines.len())))
             .collect(),
     }
+}
+
+/// How many of `qc`'s findings Fix It would ask about, the owner's `corrections` left out.
+pub(crate) fn fixable(qc: &QcReport, corrections: &Corrections) -> usize {
+    qc.findings
+        .iter()
+        .filter(|finding| items::asks_about(finding, corrections).is_some())
+        .count()
 }
 
 /// The pass rules `qc` breaks, one problem each, in the order the file card lists them.

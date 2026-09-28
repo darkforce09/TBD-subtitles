@@ -96,11 +96,13 @@ list and the line editor side by side.
   with a button such as Undo; errors are red.
 - **Overview** (a finished job): the file card says "Subtitles saved next to the video" with the
   pill "Passes the quality check" or "Needs attention", lists each whole-video problem with its
-  fix, shows a blue note while a correction run updates the file, the path, and Open in Player
-  (the desktop's default player, through the desktop portal), Show in Folder and Copy Path, each
-  confirmed in a toast (a red one when the desktop could not, or has not answered within 20
-  seconds). Each request to the desktop portal has a D-Bus connection of its own, so one the
-  desktop never answers holds up no other. The window's log is also written to
+  fix, shows a blue note while a correction run updates the file or
+  [Fix It](/documentation/features/fix_it.md) runs, the Fix It row with its button when Fix It has
+  findings to ask about, the path, and Open in Player (the desktop's default player, through the
+  desktop portal), Show in Folder and Copy Path, each confirmed in a toast (a red one when the
+  desktop could not, or has not answered within 20 seconds). Each request to the desktop portal
+  has a D-Bus connection of its own, so one the desktop never answers holds up no other. The
+  window's log is also written to
   `~/.local/state/tbd-subtitles/tbd-subtitles.log` (under `XDG_STATE_HOME` when set), emptied at
   each start, since a launcher such as Gear Lever drops stderr. The lines card says "38 lines worth
   a listen" with a green bar of those checked, Check Lines, and one row per finding group with its
@@ -132,10 +134,11 @@ list and the line editor side by side.
   The list shows To Check, Checked or All with their counts (To Check matches the header's
   count), a search field (words, a line's id, or a time such as `16:33`), the group the list is
   narrowed to as an orange pill with ✕, and a row per line: its time, its text cut after two
-  lines, a dot (orange to check, blue while edited) or a green check, and chips (its groups, or
-  "Edited, not saved", "Looks right", "Corrected"). The open line shows its time and id with the
-  status chip of its correction run; an orange box per finding group saying why, or a green one
-  once kept or corrected; the clip with its picture (the frame at the line's start, then the
+  lines, a dot (orange to check, blue while edited), a wand (changed by Fix It) or a green check,
+  and chips (its groups, "Claude" first for a Fix It change, or "Edited, not saved", "Looks
+  right", "Corrected"). The open line shows its time and id with the status chip of its
+  correction run; a blue box with what the app had and why for a Fix It change, an orange box per
+  finding group saying why, or a green one once kept or corrected; the clip with its picture (the frame at the line's start, then the
   clip's frames), a timeline with hatched 0.75 s pads, the line's span and a red playhead, and
   Play, Voices Only or Stop; "In the subtitles now"; what was heard (the language model's pick,
   Parakeet, Whisper, and each engine's second listen to the voices alone), each with Use or "In
@@ -144,14 +147,16 @@ list and the line editor side by side.
   italics, never in a two-speaker subtitle), Song lyric (left out of the dialogue; its song can
   get a [sound cue](/documentation/glossary.md#sound-cue)) and Drop the line (left out). The
   footer has Previous and Next (off at the list's ends), then Discard Edit and Save Correction for
-  an edited line, Take Back for a checked one, or Looks Right for an unedited one. Nothing is
-  saved while a full run of the video runs, and corrections never touch lines the owner did not
-  save. With every line checked the pane says "All 38 lines checked" and "The subtitles are up to
-  date.", with Show Checked Lines.
+  an edited line, Keep Change and Undo Change for a Fix It change, Take Back for a checked one,
+  or Looks Right for an unedited one. Nothing is saved while a full run of the video runs, and
+  the owner's corrections change only lines the owner saved; Fix It changes others. With every
+  line checked the pane says "All 38 lines checked" and "The subtitles are up to date.", with Show
+  Checked Lines.
 - **Settings window:** a second native window, centred over the main one when it opens, in four
   tabs. General: the models folder and the work folder with their sizes, the subtitle format, the
   glossary with its count of names. Engines: vocal separation, the second speech engine, the
-  `claude` model (Sonnet, Opus, Fable or Haiku), processes at once, the shot cut score. Models:
+  `claude` model a run asks and the one Fix It asks (Sonnet, Opus, Fable or Haiku; Sonnet and
+  Opus by default), processes at once, the shot cut score. Models:
   each model and runtime library with its size and state, Download Missing or Stop. This Computer: the GPU with its driver and
   free VRAM, the CUDA libraries, FFmpeg and its clip sound, ffprobe, `claude`, the Whisper worker;
   a missing CUDA runtime links to Models. A change is saved to `settings.toml` as it is made (a
@@ -197,6 +202,8 @@ list and the line editor side by side.
   │    ├─ Speech with no subtitle ── [Show Nearby Lines] ──▶ Check Lines, All, at the nearest line
   │    ├─ Only 91.2 % easy to read ─ [Show Lines] ─────────▶ Check Lines, To Check, Too fast to read
   │    └─ 1 language-model call failed ─ [Try Again] ──────▶ a full run from adjudication on
+  ├─ file card: Fix It with Claude Opus ─ [Fix It] ───────▶ three passes, then a correction run
+  │                                                           (see Fix It)
   └─ lines card: "38 lines worth a listen"
        ├─ [Check Lines] ───────────────────────────────────▶ Check Lines, To Check, every group
        └─ a finding group's row ───────────────────────────▶ Check Lines, To Check, that group
@@ -221,9 +228,10 @@ Check Lines closes; a finding stays worth a listen until the correction run that
 
 ### What each finding group means
 
-The quality check flags lines for a listen in six groups. Only layout findings, and too many
-lines too fast to read, can fail a job; each line's box in Check Lines says which word or number
-put it there.
+The quality check flags lines for a listen in six groups, and a seventh, first, holds the lines
+[Fix It](/documentation/features/fix_it.md) changed that the owner has not kept or undone (chip
+"Claude"). Only layout findings, and too many lines too fast to read, can fail a job; each line's
+box in Check Lines says which word or number put it there.
 
 - **Unsure what was said** (chip "Unsure"): the line is flagged
   [UNSURE](/documentation/glossary.md#unsure) by
@@ -286,6 +294,9 @@ with its fix, and the sidebar row counts them ("Needs attention · 1 problem").
 | "N language-model calls failed" | Some lines may be missing; run adjudication and the steps after it again. | Try Again |
 | "Only 91.2 % of subtitles are easy to read" | The target is 95 % within 20 characters per second; shorten some Too fast lines. | Show Lines |
 
+Fix It asks its model about every one of these but the aligner's offset and failed calls, and
+about the lines worth a listen ([Fix It](/documentation/features/fix_it.md)).
+
 ### Keyboard shortcuts
 
 | Keys | Where | What they do |
@@ -298,7 +309,7 @@ with its fix, and the sidebar row counts them ("Needs attention · 1 problem").
 | ↑ and ↓ | Check Lines | open the line above or below |
 | Space | Check Lines | play the clip, or stop it; a focused button takes Space for itself |
 | Ctrl+S | Check Lines | Save Correction on an edited line |
-| Ctrl+Enter | Check Lines | Looks Right on an unedited line |
+| Ctrl+Enter | Check Lines | Looks Right on an unedited line; Keep Change on a Fix It change |
 | Esc | Check Lines | leave the text box; then stop the clip |
 
 Space, Delete and the arrows belong to the text box while typing and do nothing while a menu is
@@ -318,9 +329,10 @@ nothing.
   window reads `job.json` and the step records for progress and the time left, `qc.json`,
   `output.json` and `report.md` for the Overview, and `sheet.json`, `adjudicated.json`, the
   re-decodes, `probe.json` and `audio/vocals_16k.f32` for Check Lines. It writes only
-  `review.json`, the owner's corrections, which the review step reads. Each finished row's verdict
-  and lines to check are read from `qc.json` and `review.json` when the window opens and after each
-  run and correction of its video.
+  `review.json`, the corrections the review step reads, under its lock `review.json.lock`, which
+  Fix It takes too; Fix It also writes `fix.json` and, while it runs, `fix/calls/`. Each finished
+  row's verdict and lines to check are read from `qc.json` and `review.json` when the window opens
+  and after each run and correction of its video.
 - Kept only while the window is open: unsaved line edits, correction-run status chips, the row
   removed last (for Undo), toasts, and which sidebar sections are folded.
 
@@ -390,3 +402,5 @@ nothing.
   ([a failed call is retried](/documentation/decisions/desktop_gui.md#2026-09-28--a-failed-language-model-call-is-retried-by-running-adjudication-again)).
 - Settings apply as they change, with no Save
   ([settings apply as they change](/documentation/decisions/desktop_gui.md#2026-09-28--settings-apply-as-they-change)).
+- Fix It fixes the flagged lines in three passes, each change kept by the owner or undone
+  ([Fix It](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-a-stronger-model-fixes-the-flagged-lines-in-three-passes)).

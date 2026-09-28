@@ -7,6 +7,7 @@ answers in before the next frame.
 
 ```text
 apps/tbd_subtitles/src/application/actions/
+├── fix_it.rs    Fix It: its view, start and Stop, the lanes it holds, and what happens when it ends
 ├── mod.rs       the module list and the re-exports `application` uses
 ├── queue.rs     the queue's actions: add, select, remove and undo, move, cancel, try and run again
 ├── report.rs    the selected job's report, the finished rows' summaries, and the Overview's requests
@@ -69,17 +70,30 @@ window opens, and of a video's rows after each of its runs and each saved or tak
 correction (a row whose files cannot be read has none). It applies the Overview's events: Open in
 Player, Show in Folder and Open Full Report through `open_with_desktop`, the copied path's toast,
 Check Lines on the lines to check, on a group (the list narrowed to it), or on every line at the
-one nearest the first speech with no subtitle (Show Nearby Lines); and Try Again beside a failed
+one nearest the first speech with no subtitle (Show Nearby Lines); Try Again beside a failed
 language-model call, which is Try Again from `StepName::Adjudicate`: every model call and the
-steps after them run again.
+steps after them run again; and Fix It and its Stop.
+
+`fix_it.rs` starts Fix It on the selected video with the Fix It model and processes saved now, on
+`job_report::services::fix_it`'s thread, one run at a time and never while a run of the video
+runs or its correction run waits ("Wait until this video's subtitles are updated."). While it
+runs, the full lane holds a waiting run of that video, the review lane starts the first waiting
+correction run whose video is neither running nor being fixed, and the queue refuses to remove,
+try again or run again its row. `fix_view` gives the Overview its Fix It: hidden with nothing to
+ask about, ready, off with why, or running with its stage and Stop. When a run ends
+(`poll_fix`), the lines it changed are marked Saved in the open review or the parked one, one
+correction run of the video carries them, and a toast says how many lines changed, kept the
+owner's own correction, or whose calls failed; a stopped run says nothing changed.
+
 `review.rs` opens the selected job's review on its lines to check, narrowed to a group when one
 is named, with the edits it had when it last closed, or says in a red toast why it cannot,
 leaving the report as it is; closes it once its job is no longer finished (after every queue
 event, so a job tried or run again shows as it is now), parking its unsaved edits and the runs
 of its saved lines under the job until it opens again; a parked review follows its video's
 runs too. It applies the owner's picks, typing and flags to the open line's draft,
-the list, the search and the group; on Save Correction, Looks Right or Take Back it writes
-`review.json` and queues a review run of the video, or adds the correction to the one that waits
+the list, the search and the group; on Save Correction, Looks Right (Keep Change for a Fix It
+change), Undo Change or Take Back it writes `review.json` and queues a review run of the video,
+or adds the correction to the one that waits
 (Take Back on a line with no correction does nothing), and a line that cannot be saved (an empty text not dropped) says why in a red toast. Play starts
 the clip player on the open line with 0.75 s either side, with the video's sound or the vocal
 stem; Stop and closing the review stop it. Whenever the editor shows another line, by a click,
@@ -117,4 +131,7 @@ carried over.
   while Check Lines is closed (`a_group_on_the_overview_opens_check_lines_on_that_group`,
   `use_edits_the_line_and_save_moves_on_while_the_subtitles_update`,
   `an_edit_waits_while_check_lines_is_closed` in
-  `apps/tbd_subtitles/src/application/tests/rendering_review.rs`).
+  `apps/tbd_subtitles/src/application/tests/rendering_review.rs`). Fix It runs one video at a time, holds
+  the runs of its video, and queues one correction run of its changes
+  (`fix_it_runs_on_the_video_and_queues_the_correction_run_that_times_its_changes` in
+  `apps/tbd_subtitles/src/application/tests/rendering_fix_it.rs`).

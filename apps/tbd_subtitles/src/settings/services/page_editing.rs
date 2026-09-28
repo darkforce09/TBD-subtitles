@@ -181,6 +181,10 @@ pub(crate) fn changed_field(before: &AppSettings, after: &AppSettings) -> Option
             Field::Model,
         ),
         (
+            b.language_model.fix_model != a.language_model.fix_model,
+            Field::FixModel,
+        ),
+        (
             b.language_model.processes != a.language_model.processes,
             Field::Processes,
         ),

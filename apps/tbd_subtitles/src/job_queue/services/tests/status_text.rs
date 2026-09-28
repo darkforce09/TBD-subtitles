@@ -89,8 +89,8 @@ fn ended_rows_say_how_they_ended() {
 fn a_row_with_waiting_corrections_is_updating() {
     let mut q = queue(&["a"]);
     q.items[0].state = JobState::FinishedBefore;
-    queue_review(&mut q, PathBuf::from("a"));
-    queue_review(&mut q, PathBuf::from("a"));
+    queue_review(&mut q, PathBuf::from("a"), 1);
+    queue_review(&mut q, PathBuf::from("a"), 1);
     assert_eq!(lines(&q), ["Updating subtitles · 2 corrections"]);
 }
 
@@ -225,7 +225,7 @@ fn a_waiting_job_says_when_it_starts() {
         "It can start once the models are on disk."
     );
     q.running = false;
-    let review = queue_review(&mut q, PathBuf::from("a"));
+    let review = queue_review(&mut q, PathBuf::from("a"), 1);
     let review = q.get(review).expect("the correction run").clone();
     assert_eq!(
         waiting_start(&q, &review, 1, false),
@@ -259,7 +259,7 @@ fn a_job_tried_again_starts_at_once_only_when_its_lane_and_video_are_idle() {
     // The full lane is idle, but a correction run of the same video runs.
     q.running = false;
     q.items[1].state = JobState::FinishedBefore;
-    let review = queue_review(&mut q, PathBuf::from("a"));
+    let review = queue_review(&mut q, PathBuf::from("a"), 1);
     if let Some(item) = q.get_mut(review) {
         item.state = JobState::Running(Box::new(JobProgress::new(Instant::now())));
     }

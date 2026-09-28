@@ -22,7 +22,7 @@ use job_model::StepName;
 use job_model::job::{JobSettings, OutputFormat, Separator, WhisperModel};
 use pipeline::progress::Progress;
 use pipeline::workers::Binaries;
-use pipeline::{CancelToken, JobOptions, run_job};
+use pipeline::{CancelToken, JobOptions, JobOutcome, run_job};
 
 use crate::settings::models::app_settings::AppSettings;
 use crate::settings::services::{job_settings, settings_file};
@@ -170,25 +170,30 @@ pub(super) fn run(args: &ProcessArgs) -> anyhow::Result<()> {
     for video in &args.videos {
         let outcome = run_job(video, &options, &print)
             .with_context(|| format!("no subtitles for {}", video.display()))?;
-        let s = &outcome.qc.summary;
-        eprintln!("subtitles: {}", outcome.subtitles.display());
-        eprintln!("report:    {}", outcome.report.display());
-        eprintln!(
-            "qc:        {} cues, {} findings, {:.1} % within 20 cps, {}",
-            s.cues,
-            outcome.qc.findings.len(),
-            s.cps_ok_share * 100.0,
-            match outcome.qc.failures().as_slice() {
-                [] => "passes".to_string(),
-                reasons => format!("fails: {}", reasons.join("; ")),
-            }
-        );
+        print_outcome(&outcome);
     }
     Ok(())
 }
 
+/// Where a finished job left its subtitles and report, and how its quality check came out.
+pub(super) fn print_outcome(outcome: &JobOutcome) {
+    let s = &outcome.qc.summary;
+    eprintln!("subtitles: {}", outcome.subtitles.display());
+    eprintln!("report:    {}", outcome.report.display());
+    eprintln!(
+        "qc:        {} cues, {} findings, {:.1} % within 20 cps, {}",
+        s.cues,
+        outcome.qc.findings.len(),
+        s.cps_ok_share * 100.0,
+        match outcome.qc.failures().as_slice() {
+            [] => "passes".to_string(),
+            reasons => format!("fails: {}", reasons.join("; ")),
+        }
+    );
+}
+
 /// One line per event on stderr.
-fn print(event: Progress) {
+pub(super) fn print(event: Progress) {
     match event {
         Progress::JobStarted {
             video,

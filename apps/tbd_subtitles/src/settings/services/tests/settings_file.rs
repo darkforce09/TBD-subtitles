@@ -18,6 +18,7 @@ fn an_empty_file_is_the_measured_defaults() {
     assert_eq!(settings.engines.whisper, WhisperModel::LargeV3);
     assert_eq!(settings.language_model.backend, Backend::Claude);
     assert_eq!(settings.language_model.model, "sonnet");
+    assert_eq!(settings.language_model.fix_model, "opus");
     assert_eq!(settings.language_model.processes, 8);
     assert_eq!(settings.cut_score, 20.0);
     assert_eq!(settings.output_format, OutputFormat::Srt);
@@ -41,6 +42,7 @@ whisper = "large_v3_turbo"
 [language_model]
 backend = "claude"
 model = "opus"
+fix_model = "fable"
 processes = 4
 "#,
     )
@@ -53,7 +55,17 @@ processes = 4
     assert_eq!(settings.engines.separator, Separator::MdxNet);
     assert_eq!(settings.engines.whisper, WhisperModel::LargeV3Turbo);
     assert_eq!(settings.language_model.model, "opus");
+    assert_eq!(settings.language_model.fix_model, "fable");
     assert_eq!(settings.language_model.processes, 4);
+}
+
+#[test]
+fn a_file_from_before_fix_it_keeps_its_model_and_asks_opus_to_fix() {
+    let settings =
+        parse("[language_model]\nbackend = \"claude\"\nmodel = \"haiku\"\nprocesses = 2\n")
+            .expect("parse");
+    assert_eq!(settings.language_model.model, "haiku");
+    assert_eq!(settings.language_model.fix_model, "opus");
 }
 
 #[test]

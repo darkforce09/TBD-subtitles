@@ -32,6 +32,18 @@ pub(crate) fn job_settings(settings: &AppSettings) -> anyhow::Result<JobSettings
     Ok(job)
 }
 
+/// The glossary's name as Fix It tells it to the model: `one_piece`, `none`, or a glossary
+/// file's name without its extension.
+pub(crate) fn glossary_name(settings: &AppSettings) -> String {
+    match settings.glossary.as_str() {
+        ONE_PIECE | NO_GLOSSARY => settings.glossary.clone(),
+        path => std::path::Path::new(path).file_stem().map_or_else(
+            || path.to_string(),
+            |stem| stem.to_string_lossy().into_owned(),
+        ),
+    }
+}
+
 /// The models folder the settings name, else the default.
 pub(crate) fn models_dir(settings: &AppSettings) -> anyhow::Result<PathBuf> {
     match &settings.models_dir {

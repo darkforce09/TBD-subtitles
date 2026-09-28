@@ -50,6 +50,7 @@ fn each_group_has_its_own_title_chip_and_explanation() {
     assert_eq!(
         titles,
         [
+            "Changed by Claude",
             "Unsure what was said",
             "Heard word replaced",
             "Word no engine heard",
@@ -62,6 +63,7 @@ fn each_group_has_its_own_title_chip_and_explanation() {
     assert_eq!(
         chips,
         [
+            "Claude",
             "Unsure",
             "Word replaced",
             "Word no engine heard",
@@ -72,6 +74,15 @@ fn each_group_has_its_own_title_chip_and_explanation() {
     );
     for group in LineGroup::ALL {
         assert!(group.explanation().ends_with('.'), "{group:?}");
+        if group == LineGroup::ChangedByFixIt {
+            // Its lines come from the corrections, never from a check.
+            assert!(
+                CHECKS
+                    .iter()
+                    .all(|check| LineGroup::of(*check) != Some(group))
+            );
+            continue;
+        }
         assert!(
             CHECKS
                 .iter()

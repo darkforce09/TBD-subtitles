@@ -334,6 +334,19 @@ pub(crate) fn queue_control(queue: &Queue, models_missing: bool) -> QueueControl
     QueueControl::Start { reason }
 }
 
+/// The first waiting job of `kind` that `startable` lets start.
+pub(crate) fn first_startable(
+    queue: &Queue,
+    kind: JobKind,
+    startable: impl Fn(JobId) -> bool,
+) -> Option<JobId> {
+    queue
+        .items
+        .iter()
+        .find(|item| item.state.is_waiting() && item.kind == kind && startable(item.id))
+        .map(|item| item.id)
+}
+
 /// The first waiting job of `kind`, which runs next in its lane: full runs one after another
 /// while the queue runs, review runs as soon as they are queued.
 pub(crate) fn next_waiting(queue: &Queue, kind: JobKind) -> Option<JobId> {
@@ -344,9 +357,9 @@ pub(crate) fn next_waiting(queue: &Queue, kind: JobKind) -> Option<JobId> {
         .map(|item| item.id)
 }
 
-/// Queue a review run of `video` carrying one more correction, unless one already waits, which
-/// then carries it; returns the waiting run's id.
-pub(crate) fn queue_review(queue: &mut Queue, video: PathBuf) -> JobId {
+/// Queue a review run of `video` carrying `corrections` more corrections, unless one already
+/// waits, which then carries them; returns the waiting run's id.
+pub(crate) fn queue_review(queue: &mut Queue, video: PathBuf, corrections: usize) -> JobId {
     let waiting = queue.items.iter().position(|item| {
         item.kind == JobKind::Review && item.video == video && item.state.is_waiting()
     });
@@ -358,7 +371,7 @@ pub(crate) fn queue_review(queue: &mut Queue, video: PathBuf) -> JobId {
         }
     };
     let item = &mut queue.items[at];
-    item.corrections += 1;
+    item.corrections += corrections;
     item.id
 }
 

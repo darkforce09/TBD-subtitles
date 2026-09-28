@@ -13,10 +13,10 @@ crates/pipeline/src/tasks/
 ├── llm.rs        adjudication and re-adjudication through `claude -p`, several processes at once
 ├── media.rs      probe and decode, the shot scan, and vocal separation with the chosen separator
 ├── mod.rs        `Job`, `TaskReport`, the dispatcher `run`, and `in_process` and `worker_main`
-├── review.rs     the owner's corrections timed again, each alone, on the CPU; other lines kept
+├── review.rs     the corrections timed again, each alone, on the CPU; other lines kept
 ├── sounds.rs     sound events with CED over both stems, and the sound cues the language model picks
 ├── speech.rs     voice activity and chunk plan, Parakeet and Whisper, the diff sheet, re-decodes
-└── tests/        unit tests for the review task
+└── tests/        unit tests for the review task and the quality check's corrections
 ```
 
 ## How it works
@@ -37,8 +37,11 @@ model steps share one factory of `ClaudeCli` backends, each running in the job's
 `claude-cwd/`. The Whisper steps load a model only with the `crispasr` feature; without it they
 fail and name `tbd-subtitles-ggml`. The output task writes the job's format (SRT, WebVTT or ASS),
 moves the file of another format it wrote last time into `backup/`, and records both in
-`output.json` (`OutputRecord`). The long tasks report progress: probe and decode and separation in
-seconds of audio, the language-model tasks in batches.
+`output.json` (`OutputRecord`). The quality check settles the findings of every corrected line;
+a Fix It change the owner has not checked has its words held again against every hypothesis, the
+re-decodes included, and the summary counts the owner's lines and Fix It's apart. The long tasks
+report progress: probe and decode and separation in seconds of audio, the language-model tasks
+in batches.
 
 ## Boundaries
 
@@ -53,6 +56,8 @@ seconds of audio, the language-model tasks in batches.
   - the subtitle file beside the video is the only file written outside the work directory, and a
     replaced one is kept in the job's `backup/` (`layout.rs`);
   - the video is only read, and audio is streamed, never held whole (`media.rs`);
+  - a Fix It change the owner has not checked is checked again for words no engine heard
+    (`owner_lines_are_settled_and_fix_it_lines_are_checked_again` in `tests/layout.rs`);
   - a binary without `crispasr` refuses a Whisper step instead of skipping it (`speech.rs`);
   - a worker runs only the steps `graph::placement` gives its binary (`mod.rs`).
 

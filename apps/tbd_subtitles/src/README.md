@@ -9,7 +9,7 @@ owning one part of the window.
 ```text
 apps/tbd_subtitles/src/
 ├── application/  the eframe window: the queue state, the frame, and the actions applied after it
-├── cli/          the `gui`, `process` and `worker` subcommands and their dispatch
+├── cli/          the `gui`, `process`, `fix` and `worker` subcommands and their dispatch
 ├── core/         logging, threads' wake, the desktop portal and colour scheme, the shared look
 ├── job_queue/    the videos waiting for subtitles: toolbar, sidebar, progress, events and edits
 ├── job_report/   the report of a finished job: quality checks, flagged lines, the output file
@@ -24,7 +24,8 @@ apps/tbd_subtitles/src/
 `main.rs` hands the process arguments to `cli`, which installs logging from `core`, and turns the
 result into the exit code: 0 on success, 1 with the whole error chain on stderr otherwise. `cli`
 parses with clap and opens the window through `application` for `gui` or no subcommand, or runs
-its own `process` and `worker` runners, which hand the jobs and steps to `crates/pipeline/`.
+its own `process`, `fix` and `worker` runners, which hand the jobs, Fix It and steps to
+`crates/pipeline/`.
 
 `application` composes the features. Each feature keeps its data in `models/` and `services/`,
 free of egui, and draws in `ui/` from a narrow borrowed view the application lends it each frame;

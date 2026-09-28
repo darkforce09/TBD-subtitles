@@ -1,27 +1,31 @@
 //! The owner's edits of a review's lines: open a line, take an engine's reading or type a text,
-//! set its flags, discard the edit, save it or keep the line as it is (Looks Right) to
-//! `review.json`, take a correction back, follow each saved line's correction run, and carry the
-//! edits over when the lines are read again.
+//! set its flags, discard the edit, save it or keep the line as it is (Looks Right, or Keep Change
+//! for a Fix It change) to `review.json`, undo a Fix It change, take a correction back, follow
+//! each saved line's correction run, and carry the edits over when the lines are read again.
 //!
 //! **Role:** every change the review view can make to the session and to the corrections file.
 //!
 //! **Position:** called by the application's review actions; uses `line_filter` for the line the
 //! editor shows and the line after it.
 //!
-//! **Signals and state:** writes `review.json` in the job's work directory (through a part file),
-//! or removes it when the last correction is taken back.
+//! **Signals and state:** changes `review.json` in the job's work directory under its lock
+//! (`pipeline::work_dir::update_corrections`), so a Fix It change written meanwhile is kept, or
+//! removes it when the last correction is taken back.
 //!
-//! **Invariants:** a line keeps its words unless the owner saves a correction; a correction never
-//! carries `UNSURE`; an empty text is saved only for a line the owner drops; a draft lives only
-//! while it differs from what its line has saved, and survives opening other lines and reading
-//! the lines again; a save moves on to the next line of the list, or stays on the last; a line
-//! taken back stays open, the list showing every line when its own no longer shows it; a line
-//! with no correction has nothing to take back; a closed review keeps its drafts and runs.
+//! **Invariants:** a line keeps its words unless the owner saves a correction or Fix It changed
+//! it; Keep Change keeps Fix It's words as the owner's, and Undo Change saves the language
+//! model's reading as the owner's; a correction never carries `UNSURE`; an empty text is saved
+//! only for a line the owner drops; a draft lives only while it differs from what its line has
+//! saved, and survives opening other lines and reading the lines again; a save moves on to the
+//! next line of the list, or stays on the last; a line taken back stays open, the list showing
+//! every line when its own no longer shows it; a line with no correction has nothing to take
+//! back; a closed review keeps its drafts and runs.
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
 use job_model::outputs::{Chosen, Correction, Corrections};
+use pipeline::work_dir::WorkDir;
 
 use crate::line_review::models::session::{
     Draft, LineList, LineStatus, Parked, ReviewLine, ReviewSession, RunState, same_flags,
@@ -90,10 +94,12 @@ pub(crate) fn is_dirty(session: &ReviewSession, id: &str) -> bool {
     }
 }
 
-/// What `line`'s row says: edited, kept, corrected, to check, or nothing.
+/// What `line`'s row says: edited, changed by Fix It, kept, corrected, to check, or nothing.
 pub(crate) fn status(session: &ReviewSession, line: &ReviewLine) -> LineStatus {
     if is_dirty(session, &line.id) {
         LineStatus::Edited
+    } else if session.unchecked_fix(&line.id) {
+        LineStatus::FixIt
     } else if session.kept(line) {
         LineStatus::Kept
     } else if session.correction(&line.id).is_some() {
@@ -137,10 +143,36 @@ pub(crate) fn save(session: &mut ReviewSession) -> Result<Option<String>, String
     commit(session, correction)
 }
 
-/// Keep the line the editor shows as the language model has it: saved unchanged as the language
-/// model's reading, so the review step times it again and its warnings clear; the next line of
-/// the list, which the editor then shows.
+/// Keep the line the editor shows as it is saved: a Fix It change the owner has not checked
+/// becomes the owner's, kept as Fix It wrote it; any other line is saved unchanged as the
+/// language model's reading, so the review step times it again and its warnings clear. The next
+/// line of the list, which the editor then shows.
 pub(crate) fn looks_right(session: &mut ReviewSession) -> Result<Option<String>, String> {
+    let line = line_filter::open_line(session)
+        .cloned()
+        .ok_or_else(|| "no line is open".to_string())?;
+    if let Some(Correction {
+        chosen: Chosen::FixIt { model, why },
+        text,
+        flags,
+        ..
+    }) = session.correction(&line.id).cloned()
+    {
+        let kept = Correction {
+            id: line.id.clone(),
+            text,
+            flags,
+            chosen: Chosen::KeptFixIt { model, why },
+        };
+        return commit(session, kept);
+    }
+    undo_change(session)
+}
+
+/// Save the line the editor shows as the language model's reading, in place of any Fix It
+/// change, so the review step times it again; the line is the owner's from then on. The next
+/// line of the list, which the editor then shows.
+pub(crate) fn undo_change(session: &mut ReviewSession) -> Result<Option<String>, String> {
     let line = line_filter::open_line(session)
         .cloned()
         .ok_or_else(|| "no line is open".to_string())?;
@@ -161,9 +193,7 @@ fn commit(session: &mut ReviewSession, correction: Correction) -> Result<Option<
     }
     let id = correction.id.clone();
     let at = place(session, &id);
-    let mut corrections = session.corrections.clone();
-    corrections.set(correction);
-    write(&session.work_dir, &corrections)?;
+    let (corrections, ()) = update(&session.work_dir, |c| c.set(correction))?;
     session.corrections = corrections;
     session.drafts.remove(&id);
     mark_saved(session, &id);
@@ -178,12 +208,11 @@ fn commit(session: &mut ReviewSession, correction: Correction) -> Result<Option<
 /// take back.
 pub(crate) fn revert(session: &mut ReviewSession, id: &str) -> Result<bool, String> {
     let at = place(session, id);
-    let mut corrections = session.corrections.clone();
-    if !corrections.remove(id) {
+    let (corrections, removed) = update(&session.work_dir, |c| c.remove(id))?;
+    session.corrections = corrections;
+    if !removed {
         return Ok(false);
     }
-    write(&session.work_dir, &corrections)?;
-    session.corrections = corrections;
     session.drafts.remove(id);
     mark_saved(session, id);
     let shown = |session: &ReviewSession| line_filter::shown(session).iter().any(|l| l.id == id);
@@ -304,20 +333,24 @@ fn collapsed(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Write `corrections` to `review.json` whole, or remove the file when there are none.
-fn write(work_dir: &Path, corrections: &Corrections) -> Result<(), String> {
-    let path = work_dir.join("review.json");
-    if corrections.lines.is_empty() {
-        return match std::fs::remove_file(&path) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(format!("cannot remove {}: {e}", path.display())),
-        };
+/// Change the corrections in `work_dir` with `change`, as the file holds them now and under its
+/// lock, so a change Fix It wrote meanwhile is kept; the corrections as they now are, and what
+/// `change` returned.
+fn update<R>(
+    work_dir: &Path,
+    change: impl FnOnce(&mut Corrections) -> R,
+) -> Result<(Corrections, R), String> {
+    pipeline::work_dir::update_corrections(&WorkDir::new(work_dir), change)
+        .map_err(|e| e.to_string())
+}
+
+/// Mark `ids`, which Fix It changed, as saved and waiting for their correction run, in the runs
+/// of an open or a closed review.
+pub(crate) fn mark_fixed(runs: &mut Vec<(String, RunState)>, ids: &[String]) {
+    for id in ids {
+        runs.retain(|(line, _)| line != id);
+        runs.push((id.clone(), RunState::Saved));
     }
-    let text = serde_json::to_string_pretty(corrections).map_err(|e| e.to_string())?;
-    let part = work_dir.join("review.json.part");
-    std::fs::write(&part, text).map_err(|e| format!("cannot write {}: {e}", part.display()))?;
-    std::fs::rename(&part, &path).map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
 #[cfg(test)]

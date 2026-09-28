@@ -194,6 +194,7 @@ fn wrapped(ui: &Ui, text: &str, font: FontId, colour: Color32, width: f32) -> Ar
 /// The mark of `group`'s row.
 fn group_glyph(group: LineGroup) -> &'static str {
     match group {
+        LineGroup::ChangedByFixIt => icons::MAGIC_WAND,
         LineGroup::Unsure => icons::EAR,
         LineGroup::HeardWordReplaced => icons::PENCIL_SIMPLE,
         LineGroup::NovelWord => icons::INFO,

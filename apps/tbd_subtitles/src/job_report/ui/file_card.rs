@@ -1,6 +1,7 @@
 //! The Overview's file card: the subtitles saved next to the video, whether they pass the quality
-//! check, each problem in plain words with its fix, the correction run under way, the path, and
-//! the buttons that open the video, show the file and copy its path.
+//! check, Fix It under way, the correction run under way, each problem in plain words with its
+//! fix, the Fix It row, the path, and the buttons that open the video, show the file and copy its
+//! path.
 //!
 //! **Role:** draw the borrowed report's verdict and problems and turn the buttons into
 //! `ReportEvent`s.
@@ -11,8 +12,9 @@
 //!
 //! **Invariants:** the pill says "Passes the quality check" exactly when there is no problem; a
 //! problem's button is drawn only when it has a remedy; Try Again reruns the language-model
-//! calls, never the steps before them; the path shows its folder and file, the whole path on
-//! hover.
+//! calls, never the steps before them; the Fix It row shows only when Fix It has findings to ask
+//! about, its button off with why while it cannot run, and Stop while it runs; the path shows its
+//! folder and file, the whole path on hover.
 
 use std::path::Path;
 
@@ -29,6 +31,7 @@ use crate::core::ui::palette::palette;
 use crate::core::ui::pill::{Tone, pill};
 use crate::job_report::events::{LinesToCheck, ReportEvent};
 use crate::job_report::models::finding_group::LineGroup;
+use crate::job_report::models::fixing::{FixView, stage_words};
 use crate::job_report::models::problem::{Problem, Remedy};
 use crate::job_report::models::report::JobReport;
 use crate::job_report::ui::overview::head_ui;
@@ -43,11 +46,12 @@ const NOTE_MARGIN: Margin = Margin {
 };
 
 /// Draw the file card of `report`; `updating` counts the corrections of a correction run of the
-/// video while one waits or runs.
+/// video while one waits or runs, and `fix` is Fix It for the job.
 pub(super) fn file_card_ui(
     ui: &mut Ui,
     report: &JobReport,
     updating: Option<usize>,
+    fix: &FixView,
     events: &mut Vec<ReportEvent>,
 ) {
     let p = palette(ui);
@@ -79,12 +83,14 @@ pub(super) fn file_card_ui(
                 }
             },
         );
+        fixing_ui(ui, fix, events);
         if let Some(corrections) = updating {
             updating_ui(ui, corrections);
         }
         for problem in &report.problems {
             problem_ui(ui, *problem, events);
         }
+        fix_it_ui(ui, fix, !passes, events);
         let full = report.subtitles.display().to_string();
         ui.scope(|ui| well_text(ui, &short_path(&report.subtitles), false))
             .response
@@ -126,7 +132,7 @@ fn short_path(path: &Path) -> String {
 fn updating_ui(ui: &mut Ui, corrections: usize) {
     let p = palette(ui);
     let title = format!(
-        "Updating subtitles with your {}…",
+        "Updating subtitles with {}…",
         format::plural(corrections, "correction")
     );
     let line = "Each corrected line is timed again, then the file is rewritten. This takes a few \
@@ -134,7 +140,97 @@ fn updating_ui(ui: &mut Ui, corrections: usize) {
     let body = |ui: &mut Ui| {
         ui.add(Label::new(RichText::new(line).size(12.0).color(p.text2)).wrap());
     };
-    note_ui(ui, p.accent_tint, StatusIcon::Working, &title, |_| {}, body);
+    let mark = |ui: &mut Ui| status_icon(ui, StatusIcon::Working, 18.0, false);
+    note_ui(ui, p.accent_tint, mark, &title, |_| {}, body);
+}
+
+/// The blue note while Fix It runs on the video: its model, its pass, and Stop.
+fn fixing_ui(ui: &mut Ui, fix: &FixView, events: &mut Vec<ReportEvent>) {
+    let FixView::Running {
+        model,
+        stage,
+        done,
+        total,
+        stopping,
+    } = fix
+    else {
+        return;
+    };
+    let p = palette(ui);
+    let title = format!("Fixing with {model} · {}…", stage_words(*stage));
+    let line = if *stopping {
+        "Stopping. Nothing is changed; Fix It again picks up where it stopped.".to_string()
+    } else {
+        format!(
+            "{done} of {} done. The subtitles change only once every change is checked.",
+            format::plural(*total, "call")
+        )
+    };
+    let body = |ui: &mut Ui| {
+        ui.add(Label::new(RichText::new(line).size(12.0).color(p.text2)).wrap());
+    };
+    let stop = |ui: &mut Ui| {
+        let label = if *stopping { "Stopping…" } else { "Stop" };
+        let button = Button::new(label)
+            .icon(icons::STOP)
+            .size(ButtonSize::Small)
+            .enabled(!stopping);
+        if button.show(ui).clicked() {
+            events.push(ReportEvent::StopFix);
+        }
+    };
+    let mark = |ui: &mut Ui| status_icon(ui, StatusIcon::Working, 18.0, false);
+    note_ui(ui, p.accent_tint, mark, &title, stop, body);
+}
+
+/// The Fix It row: what Fix It does and its button, primary when the job `needs_attention`, off
+/// with why when it cannot run now.
+fn fix_it_ui(ui: &mut Ui, fix: &FixView, needs_attention: bool, events: &mut Vec<ReportEvent>) {
+    let (model, reason) = match fix {
+        FixView::Ready { model } => (model, None),
+        FixView::Unavailable { model, reason } => (model, Some(reason)),
+        FixView::Hidden | FixView::Running { .. } => return,
+    };
+    let p = palette(ui);
+    let line = format!(
+        "{model} reads the whole video, fixes the flagged lines and checks each change. You can \
+         keep or undo every change in Check Lines."
+    );
+    let body = |ui: &mut Ui| {
+        ui.add(Label::new(RichText::new(line).size(12.0).color(p.text2)).wrap());
+        if let Some(reason) = reason {
+            ui.add(Label::new(RichText::new(reason.as_str()).size(12.0).color(p.warn)).wrap());
+        }
+    };
+    let button = |ui: &mut Ui| {
+        let fix_it = Button::new("Fix It")
+            .icon(icons::MAGIC_WAND)
+            .primary(needs_attention)
+            .enabled(reason.is_none())
+            .show(ui);
+        let fix_it = match reason {
+            Some(reason) => fix_it.on_disabled_hover_text(reason.as_str()),
+            None => fix_it,
+        };
+        if fix_it.clicked() {
+            events.push(ReportEvent::FixIt);
+        }
+    };
+    let wand = |ui: &mut Ui| {
+        ui.label(
+            RichText::new(icons::MAGIC_WAND)
+                .font(icons::font(18.0))
+                .color(p.accent),
+        )
+    };
+    note_ui(
+        ui,
+        p.well,
+        wand,
+        &format!("Fix It with {model}"),
+        button,
+        body,
+    );
 }
 
 /// One problem on the recessed well: its warning mark, its title and fix, and its button.
@@ -158,24 +254,18 @@ fn problem_ui(ui: &mut Ui, problem: Problem, events: &mut Vec<ReportEvent>) {
             });
         }
     };
-    note_ui(
-        ui,
-        p.well,
-        StatusIcon::Warning,
-        &problem.title(),
-        button,
-        |ui| {
-            ui.add(Label::new(RichText::new(problem.fix()).size(12.0).color(p.text2)).wrap());
-        },
-    );
+    let mark = |ui: &mut Ui| status_icon(ui, StatusIcon::Warning, 18.0, false);
+    note_ui(ui, p.well, mark, &problem.title(), button, |ui| {
+        ui.add(Label::new(RichText::new(problem.fix()).size(12.0).color(p.text2)).wrap());
+    });
 }
 
-/// A note on `fill`, radius 8: an 18 px `mark`, `title` in semibold over what `body` draws, and
-/// what `aside` draws at the top right.
-fn note_ui(
+/// A note on `fill`, radius 8: the 18 px mark `mark` draws, `title` in semibold over what `body`
+/// draws, and what `aside` draws at the top right.
+fn note_ui<R>(
     ui: &mut Ui,
     fill: Color32,
-    mark: StatusIcon,
+    mark: impl FnOnce(&mut Ui) -> R,
     title: &str,
     aside: impl FnOnce(&mut Ui),
     body: impl FnOnce(&mut Ui),
@@ -189,7 +279,7 @@ fn note_ui(
             ui.set_width(ui.available_width());
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = NOTE_GAP;
-                status_icon(ui, mark, 18.0, false);
+                let _ = mark(ui);
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                     aside(ui);
                     ui.vertical(|ui| {

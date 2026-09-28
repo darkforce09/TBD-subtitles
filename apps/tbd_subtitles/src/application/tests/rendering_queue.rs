@@ -71,7 +71,7 @@ fn a_waiting_correction_run_does_not_enable_start() {
     let mut app = app("correction-start", vec![PathBuf::from("/v/a.mp4")]);
     app.settings.items.iter_mut().for_each(|i| i.present = true);
     app.queue.items[0].state = JobState::FinishedBefore;
-    queue_editing::queue_review(&mut app.queue, PathBuf::from("/v/a.mp4"));
+    queue_editing::queue_review(&mut app.queue, PathBuf::from("/v/a.mp4"), 1);
     let (text, _) = render(&app);
     assert!(text.contains("Nothing is waiting"), "{text}");
     assert!(text.contains("Updating subtitles · 1 correction"), "{text}");

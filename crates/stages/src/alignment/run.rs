@@ -2,8 +2,8 @@
 //! backbone's own times when the aligner cannot be trusted; every word records its source.
 //!
 //! **Role:** drive a [`WordAligner`] over the planned blocks, check each result, fall back in
-//! order (block, utterance alone, backbone, interpolation), and measure the job's offset from
-//! the backbone.
+//! order (block, utterance alone, backbone, interpolation; for a corrected line, its earlier
+//! aligned times before the backbone), and measure the job's offset from the backbone.
 //!
 //! **Position:** called by the alignment step inside the ONNX worker, whose aligner reads the
 //! vocal stem and runs Parakeet-CTC; tests use a scripted aligner.
@@ -17,7 +17,7 @@ use job_model::outputs::{Aligned, AlignedUtterance, AlignedWord, TimeSpan, Timin
 
 use super::WordTimes;
 use super::blocks::{Kept, audio_span, plan_blocks};
-use super::timing::{backbone_times, interpolate, passes, signed_median};
+use super::timing::{backbone_times, carried_times, interpolate, passes, signed_median};
 
 /// Something that times words against audio.
 pub trait WordAligner {
@@ -97,15 +97,17 @@ pub fn align_all(
     result
 }
 
-/// Time kept utterance `index` alone, as the owner corrected it: the aligner over the
-/// utterance's own span (between the middles of the gaps to its neighbours), else the backbone's
-/// times matched to the new words, else interpolation. The result is never unsure.
+/// Time kept utterance `index` alone, as corrected: the aligner over the utterance's own span
+/// (between the middles of the gaps to its neighbours), else the aligner's times it had `before`
+/// carried over to the words that stayed or took another's place, else the backbone's times matched
+/// to the new words, else interpolation. The result is never unsure.
 pub fn realign_utterance(
     kept: &[Kept],
     index: usize,
     duration_s: f64,
     aligner: &mut dyn WordAligner,
     errors: &mut Vec<String>,
+    before: Option<&AlignedUtterance>,
 ) -> AlignedUtterance {
     let k = &kept[index];
     let reference = backbone_times(&k.words, &k.backbone);
@@ -114,7 +116,10 @@ pub fn realign_utterance(
         Some(times) if passes(&[(&times, (k.start_s, k.end_s), &reference)]) => {
             finish(k, &times, TimingSource::CtcUtterance)
         }
-        _ => finish(k, &reference, TimingSource::Backbone),
+        _ => match before.and_then(|b| carried_times(&k.words, &b.words)) {
+            Some(carried) => finish_each(k, &carried.times, &carried.sources),
+            None => finish(k, &reference, TimingSource::Backbone),
+        },
     };
     utterance.unsure = false;
     utterance
@@ -161,20 +166,28 @@ fn split_by(times: &[Option<(f64, f64)>], group: &[Kept]) -> Vec<WordTimes> {
 
 /// The utterance with `times` from `source`, and every untimed word interpolated.
 fn finish(k: &Kept, times: &[Option<(f64, f64)>], source: TimingSource) -> AlignedUtterance {
+    finish_each(k, times, &vec![Some(source); times.len()])
+}
+
+/// The utterance with each word's time from its own source, and every untimed word interpolated.
+fn finish_each(
+    k: &Kept,
+    times: &[Option<(f64, f64)>],
+    sources: &[Option<TimingSource>],
+) -> AlignedUtterance {
     let filled = interpolate(&k.words, times, k.start_s, k.end_s);
     let words = k
         .words
         .iter()
-        .zip(times)
+        .zip(times.iter().zip(sources))
         .zip(filled)
-        .map(|((text, time), (start_s, end_s))| AlignedWord {
+        .map(|((text, (time, source)), (start_s, end_s))| AlignedWord {
             text: text.clone(),
             start_s,
             end_s,
-            source: if time.is_some() {
-                source
-            } else {
-                TimingSource::Interpolated
+            source: match (time, source) {
+                (Some(_), Some(source)) => *source,
+                _ => TimingSource::Interpolated,
             },
         })
         .collect();

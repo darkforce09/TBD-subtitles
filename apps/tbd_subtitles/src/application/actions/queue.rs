@@ -17,7 +17,8 @@
 //! Again and Run Again start a job at once when its lane is idle without turning the queue on,
 //! and say so in red when it could not start; Run Again queues nothing when the settings saved
 //! now are the ones the job ran with; a video is never put back while another run of it waits or
-//! runs; the queue is written after every event.
+//! runs; a video Fix It is fixing is not removed, tried again or run again; the queue is written
+//! after every event.
 
 use std::time::{Duration, Instant};
 
@@ -41,6 +42,14 @@ const UNDO_SHOWN: Duration = Duration::from_secs(6);
 
 impl TbdSubtitlesApp {
     pub(crate) fn apply_queue(&mut self, event: JobQueueEvent) {
+        if let JobQueueEvent::Remove(id)
+        | JobQueueEvent::TryAgain(id, _)
+        | JobQueueEvent::RunAgain(id) = &event
+            && self.video_fixing(*id)
+        {
+            let why = "Fix It is fixing this video. Stop it, or wait until it ends.";
+            return self.toast(ToastKind::Error, why);
+        }
         match event {
             JobQueueEvent::AddVideos => self.choose_for_queue(false),
             JobQueueEvent::AddFolder => self.choose_for_queue(true),

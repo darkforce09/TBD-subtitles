@@ -1,4 +1,4 @@
-//! The job runner: one video through every step, skipping what is still valid, the shot scan
+//! The jo runner: one video through every step, skipping what is still valid, the shot scan
 //! alongside the GPU steps, each step's measure recorded, and the report written at the end.
 //!
 //! **Role:** open or create the job's work directory and record, take its lock, walk
@@ -24,7 +24,6 @@ use job_model::StepName;
 use job_model::job::{JobRecord, JobSettings, StepMeasure, StepRecord};
 use job_model::outputs::ProbeDecoded;
 use job_model::report::QcReport;
-use sha2::Digest;
 
 use crate::cancel::CancelToken;
 use crate::error::{Context, PipelineError, Result};
@@ -98,7 +97,7 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
     record.video_modified_s = modified_s;
     record.settings = options.settings.clone();
     record.models_dir = Some(options.models_dir.to_string_lossy().into_owned());
-    record.corrections = corrections_digest(&work);
+    record.corrections = work_dir::corrections_digest(&work);
     for step in &options.rerun {
         record.steps.remove(step);
     }
@@ -214,17 +213,6 @@ fn announce_duration(step: StepName, work: &WorkDir, progress: ProgressSink) {
     {
         progress(Progress::JobDuration(probe.probe.duration_s));
     }
-}
-
-/// The SHA-256 of the owner's corrections, or `None` when the job has none.
-fn corrections_digest(work: &WorkDir) -> Option<String> {
-    let bytes = fs::read(work.review()).ok()?;
-    Some(
-        sha2::Sha256::digest(&bytes)
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect(),
-    )
 }
 
 /// The CUDA runtime's environment for ONNX Runtime workers, packaged beside the binaries or in

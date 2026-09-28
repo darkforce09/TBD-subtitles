@@ -1,38 +1,40 @@
-//! The line editor on the right of Check Lines: the line's time and id with the status chip of
-//! its correction run, why it is worth a listen, its clip, the text in the subtitles now, what
-//! was heard, the text box with its `||` hint, the four flags, and the footer; or what to do when
+//! The line editor on the right of Check Lines: the head and the why boxes (`line_status`), the
+//! line's clip, the text in the subtitles now, what was heard, the text box with its `||` hint,
+//! the four flags, and the footer; or what to do when no line is shown.||` hint, the four flags, and the footer; or what to do when
 //! no line is shown.
 //!
 //! **Role:** draw the open line from the borrowed view and turn every click and edit into a
 //! `ReviewEvent`.
 //!
-//! **Position:** drawn by `review_view` in its central panel; draws `clip_view` and `heard_list`.
+//! **Position:** drawn by `review_view` in its central panel; draws `line_status`, `clip_view` and
+//! `heard_list`.
 //!
 //! **Signals and state:** the text box's cursor lives in egui's memory under the line's id.
 //!
 //! **Invariants:** the footer offers Discard Edit and Save Correction while the line is edited,
-//! Take Back while it is corrected, and Looks Right otherwise; Previous and Next are off at the
+//! Keep Change and Undo Change while Fix It's change waits for the owner, Take Back while the
+//! owner corrected it, and Looks Right otherwise; Previous and Next are off at the
 //! list's ends; nothing is saved while a full run of the video runs; each flag's caption says
 //! what the subtitles do with it.
 
 use eframe::egui::text::{LayoutJob, TextFormat};
 use eframe::egui::{
-    Align, Align2, Color32, CornerRadius, EventFilter, FontFamily, FontId, Frame, Id, Label,
-    Layout, Margin, Panel, Rect, RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, Ui,
-    UiBuilder, WidgetInfo, WidgetType, pos2, vec2,
+    Align, CornerRadius, EventFilter, FontFamily, FontId, Frame, Id, Label, Layout, Margin, Panel,
+    Rect, RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, Ui, UiBuilder, pos2, vec2,
 };
 
 use super::clip_view::clip_view_ui;
 use super::heard_list::heard_list_ui;
+use super::line_status::{head_ui, why_ui};
 use super::review_view::{ReviewView, small_caps};
 use crate::core::format;
 use crate::core::ui::button::Button;
 use crate::core::ui::fonts;
-use crate::core::ui::icons::{self, StatusIcon, paint_status, status_icon};
+use crate::core::ui::icons::{self, StatusIcon, status_icon};
 use crate::core::ui::palette::palette;
 use crate::core::ui::switch::switch;
 use crate::line_review::events::ReviewEvent;
-use crate::line_review::models::session::{LineList, ReviewLine, ReviewSession, RunState};
+use crate::line_review::models::session::{LineList, ReviewLine, ReviewSession};
 use crate::line_review::services::line_filter;
 use crate::line_review::services::review_editing::{self, EDITABLE_FLAGS};
 
@@ -80,114 +82,6 @@ pub(super) fn line_editor_ui(
                     text_ui(ui, view.session, line, events);
                     flags_ui(ui, view.session, line, events);
                 });
-        });
-}
-
-/// The line's time, its id and length, and on the right its run's status chip.
-fn head_ui(ui: &mut Ui, session: &ReviewSession, line: &ReviewLine) {
-    let p = palette(ui);
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 10.0;
-        ui.label(
-            RichText::new(format::clock_tenths(line.start_s))
-                .font(FontId::new(17.0, FontFamily::Name(fonts::SEMIBOLD.into())))
-                .color(p.text),
-        );
-        ui.label(
-            RichText::new(format!("{} · {:.1} s", line.id, line.length_s()))
-                .size(12.0)
-                .color(p.text2),
-        );
-        if let Some(state) = session.run_shown() {
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                status_chip_ui(ui, state);
-            });
-        }
-    });
-}
-
-/// Saved, Updating subtitles…, Subtitles updated, or Subtitles not updated: a 24 px chip, its
-/// mark 10 px in and its words 6 px after it, named by its words.
-fn status_chip_ui(ui: &mut Ui, state: RunState) {
-    let p = palette(ui);
-    let (fill, colour, text) = match state {
-        RunState::Saved => (p.seg_bg, p.text2, "Saved"),
-        RunState::Updating => (p.accent_tint, p.accent, "Updating subtitles…"),
-        RunState::Updated => (p.good_tint, p.good, "Subtitles updated"),
-        RunState::Failed => (p.seg_bg, p.bad, "Subtitles not updated"),
-    };
-    let words = ui
-        .painter()
-        .layout_no_wrap(text.to_string(), FontId::proportional(12.0), colour);
-    let size = vec2(10.0 + 14.0 + 6.0 + words.size().x + 10.0, 24.0);
-    let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, text));
-    ui.painter().rect_filled(rect, CornerRadius::same(12), fill);
-    let centre = rect.center().y;
-    let mark = Rect::from_center_size(pos2(rect.left() + 17.0, centre), vec2(14.0, 14.0));
-    match state {
-        RunState::Saved => {
-            ui.painter().text(
-                mark.center(),
-                Align2::CENTER_CENTER,
-                icons::CHECK,
-                icons::font(14.0),
-                colour,
-            );
-        }
-        RunState::Updating => paint_status(ui, mark, StatusIcon::Working, false),
-        RunState::Updated => paint_status(ui, mark, StatusIcon::Done, false),
-        RunState::Failed => paint_status(ui, mark, StatusIcon::Warning, false),
-    }
-    let at = pos2(mark.right() + 6.0, centre - words.size().y / 2.0);
-    ui.painter().galley(at, words, colour);
-}
-
-/// Why the line is worth a listen, a box per group; or, once checked, what the owner did.
-fn why_ui(ui: &mut Ui, session: &ReviewSession, line: &ReviewLine) {
-    let p = palette(ui);
-    if session.correction(&line.id).is_some() {
-        let (title, body) = if session.kept(line) {
-            (
-                "You kept this line",
-                "Its warnings are cleared and it was timed again.",
-            )
-        } else {
-            (
-                "You corrected this line",
-                "Your text is in the file, timed again to the audio.",
-            )
-        };
-        let body = format!("{body} Take Back returns it to the app's reading.");
-        why_box(ui, p.good_tint, StatusIcon::Done, title, &body);
-        return;
-    }
-    for (group, why) in &line.groups {
-        why_box(ui, p.warn_tint, StatusIcon::Warning, group.title(), why);
-    }
-}
-
-fn why_box(ui: &mut Ui, fill: Color32, mark: StatusIcon, title: &str, body: &str) {
-    let p = palette(ui);
-    Frame::new()
-        .fill(fill)
-        .corner_radius(CornerRadius::same(8))
-        .inner_margin(Margin::symmetric(12, 10))
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.horizontal_top(|ui| {
-                ui.spacing_mut().item_spacing.x = 10.0;
-                status_icon(ui, mark, 18.0, false);
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing.y = 2.0;
-                    let semibold = FontId::new(13.0, FontFamily::Name(fonts::SEMIBOLD.into()));
-                    ui.label(RichText::new(title).font(semibold).color(p.text));
-                    let text = RichText::new(body)
-                        .size(12.5)
-                        .color(p.text.gamma_multiply(0.85));
-                    ui.add(Label::new(text).wrap());
-                });
-            });
         });
 }
 
@@ -346,7 +240,8 @@ fn flag_words(flag: &str) -> (&'static str, &'static str) {
     }
 }
 
-/// Previous and Next; then Discard Edit and Save Correction, Take Back, or Looks Right.
+/// Previous and Next; then Discard Edit and Save Correction, Keep Change and Undo Change, Take
+/// Back, or Looks Right.
 fn footer_ui(ui: &mut Ui, view: &ReviewView<'_>, line: &ReviewLine, events: &mut Vec<ReviewEvent>) {
     let session = view.session;
     let p = palette(ui);
@@ -384,6 +279,27 @@ fn footer_ui(ui: &mut Ui, view: &ReviewView<'_>, line: &ReviewLine, events: &mut
                     events.push(ReviewEvent::Discard);
                 }
                 ui.label(RichText::new("Edited, not saved").size(11.5).color(p.text2));
+            } else if session.unchecked_fix(&line.id) {
+                let keep = Button::new("Keep Change")
+                    .icon(icons::CHECK)
+                    .primary(true)
+                    .hint("Ctrl+Enter")
+                    .enabled(free)
+                    .show(ui)
+                    .on_hover_text("Keep Claude's text. It becomes yours.")
+                    .on_disabled_hover_text(BUSY);
+                if keep.clicked() {
+                    events.push(ReviewEvent::LooksRight);
+                }
+                let undo = Button::new("Undo Change")
+                    .icon(icons::ARROW_COUNTER_CLOCKWISE)
+                    .enabled(free)
+                    .show(ui)
+                    .on_hover_text("Put the app's reading back. The line is timed again.")
+                    .on_disabled_hover_text(BUSY);
+                if undo.clicked() {
+                    events.push(ReviewEvent::UndoChange);
+                }
             } else if session.correction(&line.id).is_some() {
                 let back = Button::new("Take Back")
                     .icon(icons::ARROW_COUNTER_CLOCKWISE)

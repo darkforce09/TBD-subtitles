@@ -51,13 +51,17 @@ pub(crate) struct Engines {
     pub(crate) whisper: WhisperModel,
 }
 
-/// The program that settles the text: the backend, its model and how many run at once.
+/// The program that settles the text and fixes flagged lines: the backend, the model a run asks,
+/// the model Fix It asks, and how many run at once.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct LanguageModel {
     pub(crate) backend: Backend,
     /// The model name the backend is asked for, such as `sonnet`.
     pub(crate) model: String,
+    /// The model Fix It asks, such as `opus`: a stronger one than the run's, since it reads the
+    /// whole video and fixes only the flagged lines.
+    pub(crate) fix_model: String,
     /// How many backend processes run at once.
     pub(crate) processes: usize,
 }
@@ -99,6 +103,7 @@ impl Default for LanguageModel {
         LanguageModel {
             backend: Backend::Claude,
             model: "sonnet".to_string(),
+            fix_model: "opus".to_string(),
             processes: 8,
         }
     }
