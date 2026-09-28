@@ -28,16 +28,17 @@ started." The General and Engines tabs are forms: a right-aligned 170 px label b
 controls, 11.5 px grey help under them, and a refused edit's error in red with a cross under its
 field. Each change is an `SettingsEvent::Edit` of the saved settings with that one change, which
 the application writes at once: lists and the segmented format on a choice, the stepper's arrows
-on each press, and the model's name or a stepper's typed number on Enter, when the field loses
-the focus, or when the window closes with it typed (the text being typed lives in egui's memory
-while the field has the focus and goes once it is sent); a typed number that is not finite or not
-in its range is dropped. General shows the models folder with its size on disk, the work folder
+on each press, and a stepper's typed number on Enter, when the field loses the focus, or when
+the window closes with it typed (the text being typed lives in egui's memory while the field has
+the focus and goes once it is sent); a typed number that is not finite or not in its range is
+dropped. General shows the models folder with its size on disk, the work folder
 with its size and Open, Choose… and, for a folder set by hand, Default (the models folder's
 buttons are off while a download runs: "Stop the download first"); each folder on one line, the
 home as `~` and cut in the middle when too long, the whole path on hover; SRT | WebVTT | ASS; and
-the glossary with its count of names. Engines shows the separator and the Whisper model in lists
-as wide as their column, with help that follows the choice, the `claude` CLI with its model
-name, processes at once (1–16) and the shot cut score (1–100). Models lists the rows of
+the glossary with its count of names. Engines shows the separator, the Whisper model and the
+`claude` model (Sonnet, Opus, Fable or Haiku, or a name kept in `settings.toml`) in lists as wide
+as their column, with help that follows the choice, processes at once (1–16) and the shot cut
+score (1–100). Models lists the rows of
 `model_list::rows` (Name, Kind, Size, Status: On disk, Missing, or a bar with its share), then
 Download Missing (size), or Stop with "Downloading … of …. A stopped file resumes next time.",
 or "Everything a job needs is on disk." This Computer lists each check with ✓, ⚠ or ✗ (a spinner

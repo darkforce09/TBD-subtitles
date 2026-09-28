@@ -65,7 +65,7 @@ fn each_settings_tab_shows_its_settings_under_the_tab_bar_and_over_the_footer() 
             "Language model",
             "claude CLI",
             "Model",
-            "sonnet",
+            "Claude Sonnet (default)",
             "Processes at once",
         ],
     );

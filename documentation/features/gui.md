@@ -146,11 +146,11 @@ list and the line editor side by side.
 - **Settings window:** a second native window, centred over the main one when it opens, in four
   tabs. General: the models folder and the work folder with their sizes, the subtitle format, the
   glossary with its count of names. Engines: vocal separation, the second speech engine, the
-  `claude` model, processes at once, the shot cut score. Models: each model and runtime library
-  with its size and state, Download Missing or Stop. This Computer: the GPU with its driver and
+  `claude` model (Sonnet, Opus, Fable or Haiku), processes at once, the shot cut score. Models:
+  each model and runtime library with its size and state, Download Missing or Stop. This Computer: the GPU with its driver and
   free VRAM, the CUDA libraries, FFmpeg and its clip sound, ffprobe, `claude`, the Whisper worker;
   a missing CUDA runtime links to Models. A change is saved to `settings.toml` as it is made (a
-  list or the format on a choice, a stepper on each press, a text field on Enter, when it loses
+  list or the format on a choice, a stepper on each press, a typed number on Enter, when it loses
   the focus or when the window closes) and applies to videos that have not started, as the footer
   says. A number out of its range, a glossary that cannot be read, or a models folder moved while
   a download runs is not saved and says why in red under its field; a `settings.toml` that could

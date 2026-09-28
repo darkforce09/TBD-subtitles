@@ -1,19 +1,19 @@
 //! The pieces of the Settings window's forms, as the mockup draws them: a row of a 170 px label,
 //! right-aligned, beside its controls; the help and error lines under a control; the dividing
-//! line; a path in its well beside its buttons; a list to choose from; a text field that sends
-//! its change once the owner is done; and a stepper.
+//! line; a path in its well beside its buttons; a list to choose from; and a stepper whose typed
+//! number is sent once the owner is done.
 //!
 //! **Role:** lay out and paint the form's parts from the palette, and say what the owner changed.
 //!
 //! **Position:** used by the General and Engines tabs of `settings_window`, and for a folder by the
 //! This Computer tab.
 //!
-//! **Signals and state:** the text being typed in a field or a stepper lives in egui's memory
-//! while the field has the focus, and goes once it is sent.
+//! **Signals and state:** the number being typed in a stepper lives in egui's memory while
+//! the field has the focus, and goes once it is sent.
 //!
-//! **Invariants:** a text field or a stepper's number is sent on Enter, when the focus leaves or
-//! when the window closes, never while it is typed; a typed number that is not finite or not in
-//! its range is dropped; a stepper's arrows send at once and keep the value in its range; a path
+//! **Invariants:** a stepper's typed number is sent on Enter, when the focus leaves or when
+//! the window closes, never while it is typed; a typed number that is not finite or not in its
+//! range is dropped; a stepper's arrows send at once and keep the value in its range; a path
 //! stays on one line, the home as `~`, cut in the middle, whole on hover.
 
 use std::ops::RangeInclusive;
@@ -186,28 +186,6 @@ pub(super) fn choice<T: Clone + PartialEq>(
             }
         });
     (chosen != *current).then_some(chosen)
-}
-
-/// A one-line text field showing `value`, `width` wide; the trimmed text once the owner presses
-/// Enter or leaves it, or the window `closing` with it typed in, when it is not empty and differs.
-pub(super) fn text_field(
-    ui: &mut Ui,
-    id: &str,
-    value: &str,
-    width: f32,
-    closing: bool,
-) -> Option<String> {
-    let id = ui.id().with(id);
-    let (text, done) = typed(ui, id, value, closing, |ui, text| {
-        ui.add(
-            TextEdit::singleline(text)
-                .id(id)
-                .desired_width(width)
-                .margin(Margin::symmetric(8, 6)),
-        )
-    });
-    let text = text.trim();
-    (done && !text.is_empty() && text != value).then(|| text.to_string())
 }
 
 /// Draw a field with `add` over the text being typed (kept in egui's memory under `id` while the

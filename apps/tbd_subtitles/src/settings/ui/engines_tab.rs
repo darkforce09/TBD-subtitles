@@ -8,9 +8,10 @@
 //!
 //! **Signals and state:** none; reads the borrowed page and returns events.
 //!
-//! **Invariants:** the model's name is sent on Enter, when its field loses the focus or when the
-//! window closes with it typed; the steppers send each press at once and a typed number only when
-//! it is finite and within 1–16 processes or a score of 1–100; the lists fill their column.
+//! **Invariants:** a list sends its choice at once; a model name kept in `settings.toml` that the
+//! model list does not offer is shown as its own choice until another is picked; the steppers
+//! send each press at once and a typed number only when it is finite and within 1–16 processes or
+//! a score of 1–100; the lists fill their column.
 
 use eframe::egui::{RichText, Ui};
 use job_model::job::{Separator, WhisperModel};
@@ -22,8 +23,28 @@ use crate::settings::models::app_settings::AppSettings;
 use crate::settings::models::page::{Field, SettingsPage};
 use crate::settings::services::page_editing::{CUT_SCORES, PROCESSES};
 
+/// The `claude` models offered: the name `claude --model` takes, its label and its help line.
+const CLAUDE_MODELS: [(&str, &str, &str); 4] = [
+    (
+        "sonnet",
+        "Claude Sonnet (default)",
+        "Balanced speed and accuracy.",
+    ),
+    (
+        "opus",
+        "Claude Opus",
+        "More careful choices; slower and uses more of your plan.",
+    ),
+    ("fable", "Claude Fable", "The most capable model; slowest."),
+    (
+        "haiku",
+        "Claude Haiku (fast)",
+        "Fastest and cheapest; more mistakes.",
+    ),
+];
+
 /// Draw the Engines tab from `page` and push what the owner asked for onto `events`; while the
-/// window is `closing`, a number or name still being typed is sent.
+/// window is `closing`, a number still being typed is sent.
 pub(super) fn engines_ui(
     ui: &mut Ui,
     page: &SettingsPage,
@@ -93,10 +114,22 @@ pub(super) fn engines_ui(
         );
     });
     form::row(ui, "Model", |ui| {
-        let model = &saved.language_model.model;
-        if let Some(model) = form::text_field(ui, "model", model, 140.0, closing) {
+        let current = &saved.language_model.model;
+        let mut options: Vec<(String, String)> = CLAUDE_MODELS
+            .iter()
+            .map(|(name, label, _)| (name.to_string(), label.to_string()))
+            .collect();
+        let known = CLAUDE_MODELS.iter().find(|(name, _, _)| name == current);
+        if known.is_none() {
+            options.push((current.clone(), current.clone()));
+        }
+        if let Some(model) = form::choice(ui, "model", current, &options, ui.available_width()) {
             edit(&|s| s.language_model.model.clone_from(&model));
         }
+        form::help(
+            ui,
+            known.map_or("A model name from settings.toml.", |(_, _, how)| how),
+        );
         form::field_error(ui, page, Field::Model);
     });
     form::row(ui, "Processes at once", |ui| {
