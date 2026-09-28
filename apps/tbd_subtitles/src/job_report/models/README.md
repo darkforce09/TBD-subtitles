@@ -32,11 +32,13 @@ first stretch of speech with no subtitle, which the problem carries), Try Again 
 `cleared_title` says it in the past tense once Fix It cleared it ("1 subtitle broke a layout
 rule", "Only 91.2 % of subtitles were easy to read").
 `FixView` is Fix It on the Overview: hidden when it has nothing to ask about, ready with the
-model's name ("Claude Opus"), off with why, running with its stage, its calls done and whether
-Stop was pressed, or updating while the correction run that puts its changes into the subtitles
-waits or runs. The window counts a run in four steps (`FIX_STEPS`): its three passes, then that
-correction run (`UPDATING_STEP`); `stage_words` says the stage with its step ("checking each
-change (3 of 4)") and `updating_words` the last ("updating the subtitles (4 of 4)").
+model's name ("Claude Opus"), off with why, running with its stage, its calls done, whether
+Stop was pressed and whether every call of the run waits for a free `claude` call, or updating
+while the correction run that puts its changes into the subtitles waits or runs. The window
+counts a run in four steps (`FIX_STEPS`): its three passes, then that correction run (`UPDATING_STEP`); `stage_words` says the stage with its step ("checking each
+change (3 of 4)"), `updating_words` the last ("updating the subtitles (4 of 4)") and
+`running_line` the line under the note: Stop pressed, "Waiting for a free Claude call. 3 of 12
+calls done.", or the calls done.
 `FixResult` is what the latest Fix It runs did to a job: the model, the lines changed, the lines
 already right, turned down or left to the owner's own correction, the changes the owner kept or
 undid, the problems cleared and left, the first two changes' words and how many more changed;
@@ -48,13 +50,14 @@ distinct lines worth a listen (the flagged ones, those the owner corrected and t
 changed), those the owner checked (corrected or kept), those Claude checked (its changes the owner
 has not kept or undone, and the flagged lines whose every finding it answered) and the lines of
 each group; the lines to check are the rest. `RowSummary` is what a finished row and the header
-say: its problems, its lines worth a listen, those still to check, and whether Claude fixed the
-job. `JobReport::summary` gives a loaded report's.
+say: its problems, its lines worth a listen, those still to check, whether Claude fixed the
+job, and the findings Fix It would ask about, which Fix All counts. `JobReport::summary` gives
+a loaded report's.
 
 ## Boundaries
 
 - Depends on: `job_model` (`StepName`, `StepMeasure`, `Corrections`, `QcReport`, `QcCheck`);
-  `pipeline::fix_it::FixStage` for the stage Fix It is in.
+  `pipeline::fix_it::FixStage` for the stage Fix It is in; `crate::core::format::plural`.
 - Used by: `crate::job_report::{services, ui}`, `crate::application`, and
   `crate::job_queue` for `summary::RowSummary`; `crate::line_review` for `finding_group::LineGroup`.
 - Rules: nothing here names egui or eframe
@@ -62,4 +65,6 @@ job. `JobReport::summary` gives a loaded report's.
   `apps/tbd_subtitles/src/tests/architecture_rules.rs`); every check about a line has one group
   and the job-wide checks none (`every_check_about_a_line_has_a_group_and_the_job_wide_ones_none`
   in `tests/finding_group.rs`); the total step time leaves out the shot scan, which runs alongside
-  (`JobReport::total_s`).
+  (`JobReport::total_s`); the note under way says when a run waits for a free call, and Stop
+  outranks the wait (`the_line_under_way_says_when_the_run_waits_for_a_free_call` in
+  `tests/fixing.rs`).

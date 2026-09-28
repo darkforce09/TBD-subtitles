@@ -1,10 +1,22 @@
 //! What the file card shows about Fix It: nothing, the button, the button off with why, the run
-//! under way with its step, or the correction run that puts its changes into the subtitles.
+//! under way with its step (or waiting for a free `claude` call), or the correction run that puts
+//! its changes into the subtitles.
 //!
-//! The window counts a Fix It run in four steps: its three passes (reading, fixing, checking and
-//! saving), then the correction run that times the changed lines and rewrites the file.
+//! **Role:** the Overview's `FixView`, and the words of its steps and of the line under the note
+//! while a run goes.
+//!
+//! **Position:** built by the application's Fix It actions; drawn by `job_report::ui::file_card`;
+//! the steps are also counted by the sidebar's status line.
+//!
+//! **Signals and state:** none.
+//!
+//! **Invariants:** the window counts a Fix It run in four steps: its three passes (reading,
+//! fixing, checking and saving), then the correction run that times the changed lines and
+//! rewrites the file; Stop outranks the wait for a free `claude` call in the line under the note.
 
 use pipeline::fix_it::FixStage;
+
+use crate::core::format::plural;
 
 /// The steps of a Fix It run as the window counts them.
 pub(crate) const FIX_STEPS: usize = 4;
@@ -28,6 +40,9 @@ pub(crate) enum FixView {
         total: usize,
         /// Stop was pressed and the `claude` processes are ending.
         stopping: bool,
+        /// Every call of the run waits for a free slot under the cap on `claude` calls at once,
+        /// which other runs hold.
+        waiting: bool,
     },
     /// Fix It changed lines, and the correction run that puts them into the subtitles waits or
     /// runs.
@@ -59,6 +74,19 @@ pub(crate) fn stage_words(stage: FixStage) -> String {
         FixStage::Saving => "saving the changes",
     };
     format!("{doing} ({} of {FIX_STEPS})", step_of(stage))
+}
+
+/// The line under the note while Fix It runs: Stop pressed, waiting for a free `claude` call, or
+/// `done` of `total` calls done.
+pub(crate) fn running_line(done: usize, total: usize, stopping: bool, waiting: bool) -> String {
+    let calls = format!("{done} of {} done.", plural(total, "call"));
+    if stopping {
+        "Stopping. Nothing is changed; Fix It again picks up where it stopped.".to_string()
+    } else if waiting {
+        format!("Waiting for a free Claude call. {calls}")
+    } else {
+        format!("{calls} The subtitles change only once every change is checked.")
+    }
 }
 
 /// What Fix It is doing while its correction run waits or runs, with its step of four.

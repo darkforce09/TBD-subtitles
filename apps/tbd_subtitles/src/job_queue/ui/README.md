@@ -15,7 +15,7 @@ apps/tbd_subtitles/src/job_queue/ui/
 ├── progress_card.rs  a running job's stage, step, thick bar, time left and time so far
 ├── progress_view.rs  the selected job's cards by its state: the dispatcher
 ├── row_menu.rs       a row's right-click menu, by the row's state
-├── sidebar.rs        the sections Now, Up Next and Done with their headings, or the empty hint
+├── sidebar.rs        the sections Now, Up Next and Done with their headings and Fix All, or the empty hint
 ├── sidebar_row.rs    one row: status mark, name, status line, bar, ✕ on hover, drag and drop
 ├── stage_list.rs     the six stages with their marks and times, "Show all 18 steps", step lines
 └── toolbar.rs        Add Videos…, Add Folder…, the queue button with its reason, the log button, gear
@@ -28,8 +28,11 @@ button is off with an info mark, the button `queue_editing::queue_control` choos
 Queue or Resume Queue, or Pause After This Video), the log button and the gear, which it reports
 (`ToolbarPress`) so the application opens the log window or Settings. `sidebar_ui` draws the rows of `sidebar_rows::rows` under the headings
 NOW, UP NEXT and DONE with their counts; a click on a heading folds its section away (kept in
-egui's memory), and `row_order` gives the rows the arrow keys move through. With no video it shows
-a film strip, "No videos yet" and how to add some.
+egui's memory); while finished videos have lines to fix, DONE's heading holds a small Fix All
+button with a wand just left of its count, whose hover says "Fix It on the 3 finished videos with
+lines to fix" and whose click (`JobQueueEvent::FixAll`) never folds the section; and `row_order`
+gives the rows the arrow keys move through. With no video it shows a film strip, "No videos yet"
+and how to add some.
 
 `sidebar_row_ui` draws a row 48 px high (a running row is taller by its bar): the status mark (a
 clock, a progress ring, a check, a warning for a finished job that does not pass the quality

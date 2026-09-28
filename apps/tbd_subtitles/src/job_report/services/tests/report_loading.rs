@@ -96,6 +96,7 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
             flagged: 1,
             to_check: 1,
             fixed_by_claude: false,
+            fixable: 1,
         })
     );
     assert_eq!(report.fix_result, None, "no fix.json yet");

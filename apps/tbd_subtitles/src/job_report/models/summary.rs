@@ -37,6 +37,9 @@ pub(crate) struct RowSummary {
     pub(crate) to_check: usize,
     /// Whether a Fix It run of the job as it stands answered at least one line.
     pub(crate) fixed_by_claude: bool,
+    /// The findings Fix It would ask about: the owner's corrections and the findings a Fix It
+    /// run of the job as it stands answered left out.
+    pub(crate) fixable: usize,
 }
 
 impl RowSummary {

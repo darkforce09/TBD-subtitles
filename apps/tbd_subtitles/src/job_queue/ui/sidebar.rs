@@ -1,21 +1,25 @@
 //! The sidebar: the videos in the sections Now, Up Next and Done, each under a heading with its
-//! count that folds it away, or a hint when the list is empty.
+//! count that folds it away, Done's with Fix All while finished videos have lines to fix, or a
+//! hint when the list is empty.
 //!
-//! **Role:** draw the rows `sidebar_rows` builds, section by section, and keep which sections
-//! are folded away.
+//! **Role:** draw the rows `sidebar_rows` builds, section by section, keep which sections are
+//! folded away, and turn Fix All into `JobQueueEvent::FixAll`.
 //!
 //! **Position:** called by the application's frame for the left panel; draws `sidebar_row` for
 //! each row; the application's shortcuts read `row_order`.
 //!
 //! **Signals and state:** whether each section is folded away lives in egui's memory.
 //!
-//! **Invariants:** the arrow keys move through exactly the rows drawn, in the order drawn.
+//! **Invariants:** the arrow keys move through exactly the rows drawn, in the order drawn; Fix All
+//! shows only on Done's heading and only while it has a video to start on, and its click never
+//! folds the section.
 
 use eframe::egui::{
-    Align2, Context, FontFamily, FontId, Id, RichText, ScrollArea, Sense, TextFormat, Ui,
-    WidgetInfo, WidgetType, pos2, text::LayoutJob, vec2,
+    Align, Align2, Context, FontFamily, FontId, Id, Layout, Rect, Response, RichText, ScrollArea,
+    Sense, TextFormat, Ui, UiBuilder, WidgetInfo, WidgetType, pos2, text::LayoutJob, vec2,
 };
 
+use crate::core::ui::button::{Button, ButtonSize};
 use crate::core::ui::fonts;
 use crate::core::ui::icons;
 use crate::core::ui::palette::palette;
@@ -25,6 +29,9 @@ use crate::job_queue::models::sidebar::{Section, SidebarRow};
 use crate::job_queue::models::view::JobQueueView;
 use crate::job_queue::services::sidebar_rows;
 use crate::job_queue::ui::sidebar_row::sidebar_row_ui;
+
+/// The space between a heading's Fix All button and its count, and its folding click area.
+const COUNT_GAP: f32 = 8.0;
 
 /// Draw the sidebar from `view` and push what the owner asked for onto `events`.
 pub(crate) fn sidebar_ui(ui: &mut Ui, view: &JobQueueView<'_>, events: &mut Vec<JobQueueEvent>) {
@@ -40,7 +47,12 @@ pub(crate) fn sidebar_ui(ui: &mut Ui, view: &JobQueueView<'_>, events: &mut Vec<
             if shown.is_empty() {
                 continue;
             }
-            if !heading_ui(ui, section, shown.len()) {
+            let fix_all = if section == Section::Done {
+                view.fix_all
+            } else {
+                0
+            };
+            if !heading_ui(ui, section, shown.len(), fix_all, events) {
                 continue;
             }
             for (at, row) in shown.iter().enumerate() {
@@ -70,12 +82,51 @@ fn folded(ctx: &Context, section: Section) -> bool {
         .unwrap_or(false)
 }
 
-/// A section's heading: a chevron, its title in capitals and its count; a click folds the
-/// section away or opens it. Whether the section is open.
-fn heading_ui(ui: &mut Ui, section: Section, count: usize) -> bool {
+/// A section's heading: a chevron, its title in capitals and its count, with Fix All just left of
+/// the count when `fix_all` finished videos have lines to fix; a click beside the button folds
+/// the section away or opens it. Whether the section is open.
+fn heading_ui(
+    ui: &mut Ui,
+    section: Section,
+    count: usize,
+    fix_all: usize,
+    events: &mut Vec<JobQueueEvent>,
+) -> bool {
     let p = palette(ui);
     ui.add_space(6.0);
-    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::click());
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::hover());
+    let semibold = FontFamily::Name(fonts::SEMIBOLD.into());
+    let count_text = count.to_string();
+    let count_width = ui
+        .painter()
+        .layout_no_wrap(
+            count_text.clone(),
+            FontId::new(11.0, semibold.clone()),
+            p.text2,
+        )
+        .size()
+        .x;
+    let mut click_rect = rect;
+    if fix_all > 0 {
+        let area = Rect::from_min_max(
+            rect.min,
+            pos2(rect.right() - 6.0 - count_width - COUNT_GAP, rect.bottom()),
+        );
+        let mut right = ui.new_child(
+            UiBuilder::new()
+                .max_rect(area)
+                .layout(Layout::right_to_left(Align::Center)),
+        );
+        if fix_all_ui(&mut right, fix_all).clicked() {
+            events.push(JobQueueEvent::FixAll);
+        }
+        click_rect.max.x = right.min_rect().left() - COUNT_GAP;
+    }
+    let response = ui.interact(
+        click_rect,
+        Id::new(("sidebar-heading", section)),
+        Sense::click(),
+    );
     let title = section.title().to_uppercase();
     response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &title));
     let mut open = !folded(ui.ctx(), section);
@@ -96,7 +147,6 @@ fn heading_ui(ui: &mut Ui, section: Section, count: usize) -> bool {
         icons::font(12.0),
         p.text2,
     );
-    let semibold = FontFamily::Name(fonts::SEMIBOLD.into());
     let mut job = LayoutJob::default();
     job.append(
         &title,
@@ -114,11 +164,24 @@ fn heading_ui(ui: &mut Ui, section: Section, count: usize) -> bool {
     ui.painter().text(
         pos2(rect.right() - 6.0, rect.center().y),
         Align2::RIGHT_CENTER,
-        count.to_string(),
+        count_text,
         FontId::new(11.0, semibold),
         p.text2,
     );
     open
+}
+
+/// The small Fix All button, its hover naming how many videos it starts Fix It on.
+fn fix_all_ui(ui: &mut Ui, fix_all: usize) -> Response {
+    let hover = match fix_all {
+        1 => "Fix It on the finished video with lines to fix".to_string(),
+        n => format!("Fix It on the {n} finished videos with lines to fix"),
+    };
+    Button::new("Fix All")
+        .icon(icons::MAGIC_WAND)
+        .size(ButtonSize::Small)
+        .show(ui)
+        .on_hover_text(hover)
 }
 
 /// The empty list: a film strip and how to add videos.

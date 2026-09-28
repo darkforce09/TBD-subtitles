@@ -39,9 +39,30 @@ fn a_run_and_its_correction_run_are_under_way() {
         done: 0,
         total: 1,
         stopping: false,
+        waiting: true,
     };
-    assert!(running.under_way());
+    assert!(
+        running.under_way(),
+        "a run waiting for a free call is under way"
+    );
     assert!(FixView::Updating { model: model() }.under_way());
     assert!(!FixView::Ready { model: model() }.under_way());
     assert!(!FixView::Hidden.under_way());
+}
+
+#[test]
+fn the_line_under_way_says_when_the_run_waits_for_a_free_call() {
+    assert_eq!(
+        running_line(3, 12, false, false),
+        "3 of 12 calls done. The subtitles change only once every change is checked."
+    );
+    assert_eq!(
+        running_line(3, 12, false, true),
+        "Waiting for a free Claude call. 3 of 12 calls done."
+    );
+    assert_eq!(
+        running_line(0, 1, true, true),
+        "Stopping. Nothing is changed; Fix It again picks up where it stopped.",
+        "Stop outranks the wait"
+    );
 }

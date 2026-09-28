@@ -80,6 +80,7 @@ fn lines_are_counted_once_per_group_and_checked_when_corrected() {
             flagged: 3,
             to_check: 2,
             fixed_by_claude: false,
+            fixable: 4,
         },
         "layout, speech with no subtitle and the failed call"
     );

@@ -44,9 +44,10 @@ the job lock does not keep them apart: a full run whose video has a review run r
 and the full lane waits with it. No job starts while a model or runtime archive is missing.
 
 The sidebar shows one row per video in the sections Now, Up Next and Done (the newest ended job
-first), each under a heading with its count that folds it away. A correction run folds into its
-video's row, which then reads "Updating subtitles · 2 corrections" and offers Stop Updating
-Subtitles while it runs; one that failed or was cancelled keeps a row of its own, so it can be
+first), each under a heading with its count that folds it away; while finished videos have lines
+to fix, Done's heading offers Fix All, which asks the application to start Fix It on each of them
+(`JobQueueEvent::FixAll`). A correction run folds into its video's row, which then reads
+"Updating subtitles · 2 corrections" and offers Stop Updating Subtitles while it runs; one that failed or was cancelled keeps a row of its own, so it can be
 tried again. Each row has a status mark and a status line ("Settling the words · about
 4 min left", "Waiting · 2nd in line", "Failed at Hear the speech", "Cancelled · 9 finished steps
 kept"); a finished row gives its verdict and lines to check from its work folder, through the

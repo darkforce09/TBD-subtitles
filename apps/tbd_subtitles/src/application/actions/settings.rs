@@ -13,8 +13,9 @@
 //!
 //! **Invariants:** one download and one check run at a time; an edit and a chosen path are
 //! written at once when `page_editing` allows them, and never otherwise; a settings file that
-//! could not be read is kept beside itself before the first write, which a toast says; an edit
-//! re-runs no machine check and measures only a folder it changed.
+//! could not be read is kept beside itself before the first write, which a toast says; the cap on
+//! Fix It's `claude` calls is the saved "Claude calls at once" after every edit; an edit re-runs
+//! no machine check and measures only a folder it changed.
 
 use std::path::PathBuf;
 use std::sync::mpsc::TryRecvError;
@@ -187,6 +188,9 @@ impl TbdSubtitlesApp {
             );
             self.toast(ToastKind::Info, text);
         }
+        // Every Fix It run under way takes the new cap on its next call.
+        self.claude_gate
+            .set_limit(self.settings.saved.language_model.fix_calls);
         let stale = applied.stale;
         if stale.models {
             refresh_models(&mut self.settings, &self.env);

@@ -1,13 +1,15 @@
 //! Fix It on a thread of its own: the pipeline's `fix_video` run for one video, its progress and
 //! its outcome sent back to the window, and Stop.
 //!
-//! **Role:** start one Fix It run, forward each progress step, keep the latest, and hand over the
-//! outcome once the run ends.
+//! **Role:** start one Fix It run, forward each progress step, keep the latest, tell whether the
+//! run only waits for a free `claude` call at the shared gate, and hand over the outcome once the
+//! run ends.
 //!
 //! **Position:** started and polled by the application's Fix It actions; the run is
 //! `pipeline::fix_it::fix_video`, or a stand-in in the tests.
 //!
-//! **Signals and state:** one thread per run and one channel back; the run's `CancelToken`.
+//! **Signals and state:** one thread per run and one channel back, so many runs go at once; the
+//! run's `CancelToken` and its seat at the gate its calls share with every other run.
 //! Each new stage and the end are logged under the `fix_it` target, in spans naming the video and
 //! the step `fix_it`, which its model calls inherit.
 //!
@@ -19,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
 use std::sync::{Arc, Mutex};
 
+use inference::llm::call_gate::CallSeat;
 use pipeline::fix_it::{FixOptions, FixOutcome, FixProgress, FixStage};
 use pipeline::{CancelToken, PipelineError};
 
@@ -54,6 +57,8 @@ pub(crate) struct Fixing {
     pub(crate) stopping: bool,
     events: Receiver<FixEvent>,
     cancel: CancelToken,
+    /// The run's seat at the gate its `claude` calls share with every other run.
+    calls: CallSeat,
 }
 
 /// Start Fix It on `video` with `options` through `run`; `model` is the model's name as the window
@@ -67,6 +72,7 @@ pub(crate) fn start(
 ) -> Fixing {
     let (sender, events) = channel();
     let cancel = options.cancel.clone();
+    let calls = options.calls.clone();
     let path = video.clone();
     std::thread::spawn(move || {
         let name = path
@@ -96,6 +102,7 @@ pub(crate) fn start(
         stopping: false,
         events,
         cancel,
+        calls,
     }
 }
 
@@ -145,6 +152,12 @@ impl Fixing {
     pub(crate) fn stop(&mut self) {
         self.stopping = true;
         self.cancel.cancel();
+    }
+
+    /// Whether the run has a call waiting for a free slot at the gate and none running: it only
+    /// waits its turn.
+    pub(crate) fn waiting(&self) -> bool {
+        self.calls.waiting_only()
     }
 
     /// Fold in what the thread sent; the outcome once the run ended. A thread gone without an

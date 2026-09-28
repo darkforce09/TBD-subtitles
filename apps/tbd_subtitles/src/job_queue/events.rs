@@ -40,4 +40,6 @@ pub(crate) enum JobQueueEvent {
     Start,
     /// Start no further job once the running one ends.
     Pause,
+    /// Start Fix It on every finished video with lines to fix that it is not fixing.
+    FixAll,
 }

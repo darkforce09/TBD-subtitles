@@ -6,7 +6,9 @@
 //! run again once the pipeline has recorded them, and record how each job ends: finished,
 //! cancelled with the steps it kept, or failed at a step with the steps it kept, moving it ahead
 //! of the jobs that ended before it; tell the open line review when a review run of its video
-//! starts and ends, and Fix It when one ends, once the summaries and the report are read again.
+//! starts and ends, and Fix It when one ends, once the summaries and the report are read again;
+//! once they are, start Fix It on each full run that finished well when the owner asked for Fix
+//! It after each job.
 //!
 //! **Position:** called by `application::TbdSubtitlesApp::apply` (through the queue and review
 //! actions) and before each frame; uses `job_queue::services` and the settings.
@@ -209,6 +211,7 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
     let (mut ended, mut recorded) = (false, false);
     let mut ended_videos = Vec::new();
     let mut reviewed = Vec::new();
+    let mut finished_full = Vec::new();
     for event in events {
         match event {
             RunnerEvent::Progress(id, progress) => {
@@ -240,6 +243,8 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
                     let step = job.and_then(|job| job.failed_step().or(job.current_step()));
                     if item.kind == JobKind::Review {
                         reviewed.push((item.video.clone(), outcome.is_ok()));
+                    } else if outcome.is_ok() {
+                        finished_full.push(id);
                     }
                     item.state = match outcome {
                         Ok(outcome) => JobState::Finished(JobResult {
@@ -291,5 +296,7 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
         for (video, ok) in &reviewed {
             app.fix_run_ended(video, *ok);
         }
+        // The summaries are fresh, so Fix It after each job knows which have lines to fix.
+        app.fix_after_run(&finished_full);
     }
 }

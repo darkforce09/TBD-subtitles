@@ -1,4 +1,16 @@
 //! The application's actions: every change a frame asks for, applied after the frame.
+//!
+//! **Role:** name each change the window can make, wrap each feature's events as one, and say
+//! an action in the log.
+//!
+//! **Position:** built by the frame (`window`, `feature_views`, `shortcuts`, the Settings and log
+//! windows) and by the actions that offer a toast's button; applied by `TbdSubtitlesApp::apply`.
+//!
+//! **Signals and state:** none.
+//!
+//! **Invariants:** an action names the job it acts on where the job shown may change before it is
+//! applied (Fix It, Stop, See Changes); the log's words for an action stay within [`DESCRIBED`]
+//! characters.
 
 use std::path::PathBuf;
 
@@ -27,6 +39,10 @@ pub(crate) enum Action {
     ToastButton(ToastId),
     /// Select this finished job and open Check Lines on the lines Claude changed.
     SeeFixChanges(JobId),
+    /// Start Fix It on this finished job's video.
+    FixIt(JobId),
+    /// Stop the Fix It run of this job's video.
+    StopFix(JobId),
     Settings(SettingsEvent),
     Report(ReportEvent),
     Review(ReviewEvent),

@@ -158,6 +158,7 @@ pub(crate) fn summary(
         flagged: lines.flagged,
         to_check: lines.to_check(),
         fixed_by_claude,
+        fixable: fixable(qc, corrections, answered),
     }
 }
 

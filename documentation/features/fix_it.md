@@ -15,10 +15,13 @@ owner to keep or undo. Once the subtitles are updated, the Overview shows what i
   the merge into the corrections, is `crates/pipeline/src/fix_it/`; the window's thread is
   `apps/tbd_subtitles/src/job_report/services/fix_it.rs`, its button and note
   `apps/tbd_subtitles/src/job_report/ui/file_card.rs`, and its actions
-  `apps/tbd_subtitles/src/application/actions/fix_it.rs`; Keep Change and Undo Change are in
+  `apps/tbd_subtitles/src/application/actions/fix_it/`, Fix All in the sidebar
+  `apps/tbd_subtitles/src/job_queue/ui/sidebar.rs`, and the shared cap on `claude` calls
+  `crates/inference/src/llm/call_gate/`; Keep Change and Undo Change are in
   `apps/tbd_subtitles/src/line_review/`.
-- Entry: Fix It on the Overview of a finished job, or `tbd-subtitles fix <VIDEO>` without a
-  window (`apps/tbd_subtitles/src/cli/fix_command.rs`), which runs the correction run after it.
+- Entry: Fix It on the Overview of a finished job, Fix All on the sidebar's Done heading, Fix It
+  after each job in Settings, or `tbd-subtitles fix <VIDEO>` without a window
+  (`apps/tbd_subtitles/src/cli/fix_command.rs`), which runs the correction run after it.
 - Related: the [desktop GUI](/documentation/features/gui.md) it sits in, and the
   [pipeline](/documentation/architecture/pipeline.md#fix-it) whose findings it fixes.
 
@@ -96,13 +99,28 @@ A 27-minute episode takes about ten calls.
 - The Fix It row shows while a flagged finding is one Claude has not answered. It hides once
   every flagged finding is answered, and shows again when the quality check finds one Claude has
   not seen. It is off while a run of the video runs or its correction run waits ("Wait until this
-  video's subtitles are updated."), and while another video is being fixed ("Fix It is fixing
-  another video; it fixes one at a time.").
+  video's subtitles are updated."). It works while other videos are being fixed: each video's
+  Fix It is a run of its own, and many run at once.
 - While it runs, no run of the video starts (a correction run the owner queues waits for it), and
   the row cannot be removed, tried again or run again. Check Lines stays open to the owner; a line
   the owner saves meanwhile keeps the owner's correction.
-- Stop ends the run at once: "Fix It stopped. Nothing was changed; Fix It again picks up where it
-  stopped." Every answered call is kept, so the next Fix It asks only what is left.
+- Stop ends that video's run at once, and no other: "Fix It stopped on Dressrosa 12. Nothing was
+  changed; Fix It again picks up where it stopped." Every answered call is kept, so the next Fix
+  It asks only what is left. A run that fails says so the same way: "Fix It failed on Dressrosa
+  12: …".
+- Every run's `claude` calls share one cap, "Claude calls at once" in Settings, Engines. While
+  every call of a run waits for a free call under that cap, its note reads "Waiting for a free
+  Claude call. 3 of 12 calls done." in place of the calls done; the calls go in the order the runs
+  started, so the videos started first finish first.
+- **Fix All**, a small button with a wand on the sidebar's DONE heading, just left of its count,
+  starts Fix It on every finished video with lines to fix that is not being fixed and whose
+  subtitles are not being updated, oldest finished first, so a batch goes roughly in episode
+  order: "Fix It started on 12 videos." Its hover names how many ("Fix It on the 12 finished
+  videos with lines to fix"); it shows only while there is one, and a click on it never folds the
+  section.
+- **Fix It after each job**, a switch in Settings, Engines, starts Fix It by itself on a video as
+  soon as its full run finishes well, when it has lines to fix; it says nothing when it starts,
+  and in red when it could not.
 - A changed line is in the Changed by Claude group, with a wand and the "Claude" chip, until the
   owner keeps or undoes it. Its quality-check words are checked again on Claude's text, and the
   report counts it apart: "Lines Fix It changed, not checked yet: 14".
@@ -171,10 +189,11 @@ When Claude changed nothing, Fix It finishes at once, with no correction run, an
 
 - Settings: the Fix It model is `fix_model` in the `[language_model]` table of `settings.toml`,
   `opus` by default, chosen in Settings, Engines, "Fix It model" (Sonnet, Opus, Fable or Haiku);
-  the run's own model stays `model`, `sonnet` by default. Fix It runs as many calls at once as
-  `processes`. `fix_calls`, "Claude calls at once" in Settings, Engines (1–100, 32 by default),
-  is how many `claude` calls Fix It makes at once across every video it fixes; the rest wait
-  their turn, videos started first going first. `fix_after_run`, the switch "Fix It after each
+  the run's own model stays `model`, `sonnet` by default. `processes` caps the calls of each run
+  at once. `fix_calls`, "Claude calls at once" in Settings, Engines (1–100, 32 by default),
+  caps the `claude` calls of every run together, across every video Fix It fixes, and an edit
+  applies at once to the runs under way; the rest wait their turn, videos started first going
+  first. `fix_after_run`, the switch "Fix It after each
   job" beside it (off by default), starts Fix It on each video when its job finishes, if it has
   lines to fix. A file written before either setting existed loads their defaults.
 - `review.json`: each kept change as a correction whose `chosen` is `fix_it` with the model and
@@ -195,9 +214,10 @@ When Claude changed nothing, Fix It finishes at once, with no correction run, an
 
 ## Design
 
-- Fix It runs on a thread of the window, not as a queued job: it writes corrections, not steps,
-  and the existing correction run times them. Closing the window ends a run; its answered calls
-  stay for the next one.
+- Each Fix It run has a thread of the window, not a queued job: it writes corrections, not steps,
+  and the existing correction run times them. Many runs go at once, one per video, limited only
+  by the cap on Claude calls, and up to four correction runs of different videos time their
+  changes at once. Closing the window ends every run; their answered calls stay for the next one.
 - The model sees each line's start, its length and the gaps around it, never a word's time.
 - The `claude` calls run with no tools, as for adjudication; the context is the model's own
   knowledge and the job's own files.
@@ -222,3 +242,6 @@ None.
   say what it did, a notification comes when the window is away, and the lines it answered count
   as checked
   ([Fix It finishes visibly](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-finishes-visibly)).
+- Fix It runs on many videos at once under one cap on Claude calls, with Fix All and Fix It after
+  each job
+  ([Fix It on many videos](/documentation/decisions/batch.md#2026-09-28--fix-it-runs-on-many-videos-at-once-under-one-cap-on-claude-calls)).

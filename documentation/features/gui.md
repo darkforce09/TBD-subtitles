@@ -69,7 +69,10 @@ list and the line editor side by side.
   resumes next time); then for a moment "All models are on disk." No job starts before then.
 - **Sidebar:** one row per video in the sections Now (running), Up Next (waiting) and Done
   (finished, failed or cancelled, newest first), each heading with its count and folding away on
-  a click. A row has a status mark, the video's name and one line: "Waiting · 2nd in line",
+  a click. While finished videos have lines to fix, the Done heading holds a small Fix All button
+  with a wand just left of its count ("Fix It on the 12 finished videos with lines to fix" on
+  hover), which starts [Fix It](/documentation/features/fix_it.md) on each, oldest finished first;
+  a click on it never folds the section. A row has a status mark, the video's name and one line: "Waiting · 2nd in line",
   "Failed at Hear the speech", "Subtitles ready · 38 to check" (the count in orange),
   "Needs attention · 1 problem", "Updating subtitles · 1 correction" while a
   [correction run](/documentation/glossary.md#correction-run) of its video runs, "Fixing with
@@ -106,7 +109,8 @@ list and the line editor side by side.
   Opus", what it changed, cleared and left, See Changes). The card lists each whole-video problem
   with its fix, shows a blue note while a correction run updates the file or
   [Fix It](/documentation/features/fix_it.md) runs ("Fixing with Claude Opus · updating the
-  subtitles (4 of 4)…"), the Fix It row with its button while a flagged finding is one Claude has
+  subtitles (4 of 4)…", or "Waiting for a free Claude call. 3 of 12 calls done." while every call
+  of its run waits under the cap on Claude calls at once), the Fix It row with its button while a flagged finding is one Claude has
   not answered, the path, and Open in Player (the desktop's default player, through the
   desktop portal), Show in Folder and Copy Path, each confirmed in a toast (a red one when the
   desktop could not, or has not answered within 20 seconds). Each request to the desktop portal
@@ -483,7 +487,10 @@ nothing.
 - Fix It fixes the flagged lines in three passes, each change kept by the owner or undone
   ([Fix It](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-a-stronger-model-fixes-the-flagged-lines-in-three-passes)),
   and shows its result in a Result card when the subtitles are updated
-  ([Fix It finishes visibly](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-finishes-visibly)).
+  ([Fix It finishes visibly](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-finishes-visibly));
+  it runs on many videos at once under one cap on Claude calls, with Fix All and Fix It after
+  each job
+  ([Fix It on many videos](/documentation/decisions/batch.md#2026-09-28--fix-it-runs-on-many-videos-at-once-under-one-cap-on-claude-calls)).
 - A log window shows everything the app does, from one `tracing` buffer
   ([log window](/documentation/decisions/desktop_gui.md#2026-09-28--a-log-window-shows-everything-the-app-does)).
 - Model calls show whole in the log window, never in the log file

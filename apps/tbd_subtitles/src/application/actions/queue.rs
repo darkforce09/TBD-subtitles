@@ -75,6 +75,7 @@ impl TbdSubtitlesApp {
                 self.queue.pausing = false;
             }
             JobQueueEvent::Pause => self.pause(),
+            JobQueueEvent::FixAll => self.fix_all(),
         }
         self.save_queue();
         self.start_next();

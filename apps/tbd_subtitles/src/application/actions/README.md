@@ -7,7 +7,7 @@ answers in before the next frame.
 
 ```text
 apps/tbd_subtitles/src/application/actions/
-├── fix_it.rs       Fix It: its view and steps, start and Stop, the lanes it holds, its end and finish
+├── fix_it/         Fix It: its view and steps, start (one, Fix All, after a job) and Stop, end, finish
 ├── log_console.rs  the log window: open, read lines and calls, views, filters, clear, log file
 ├── mod.rs          the module list and the re-exports `application` uses
 ├── queue.rs        the queue's actions: add, select, remove and undo, move, cancel, try and run again
@@ -26,8 +26,9 @@ refused with an error under their field; a settings file that could not be read 
 `settings.toml.broken` before the first write, which an info toast says; what the edit made
 stale is refreshed and nothing else:
 the models list when the models folder or an engine changed, a folder's size when that folder
-changed, never the machine checks. `Open` shows a tab of the Settings window (the tab bar, the
-banner's Details…, This Computer's link to Models); the other actions open the desktop's chooser
+changed, never the machine checks; after every edit the cap on Fix It's Claude calls
+(`claude_gate`) is the saved "Claude calls at once". `Open` shows a tab of the Settings window
+(the tab bar, the banner's Details…, This Computer's link to Models); the other actions open the desktop's chooser
 for a path setting, start or stop the model download, and run the machine checks again.
 `poll_settings` folds the download's events (by item id), the checks and the folders' sizes into
 the page. A download that ends lists the models again, runs the checks again and measures the
@@ -47,7 +48,8 @@ another run waiting or running is not put back ("… is already in the list."). 
 with the ones in the job's `job.json` first, and when they are the same queues nothing and says
 so. Check Lines selects the job and opens its review; Show in Folder and Open in Player go to the
 desktop portal through `open_with_desktop`, which says so in a toast and, when the desktop answers
-that it could not, in a red one; a copied subtitle path says so in a toast. `runner.rs` keeps a
+that it could not, in a red one; a copied subtitle path says so in a toast; Fix All goes to
+`fix_it/`, which starts Fix It on every finished video with lines to fix. `runner.rs` keeps a
 full lane on its own runner and four review lanes (`job_queue::services::review_lanes`), each with
 a runner of its own: full runs start one after another while the queue runs, and review runs
 start as soon as one waits and a review lane is idle, up to four at once and never two of the same
@@ -66,7 +68,8 @@ step rates, the summaries of the rows of each video whose run ended, the report 
 are read again and the next job of each lane starts. A review run's start, and its end first,
 before the next run starts, are passed to the open review of its video, whose saved lines go
 from Saved to Updating and on to Updated or Failed; once everything is read again, a review run's
-end is passed to Fix It too (`fix_run_ended`).
+end is passed to Fix It too (`fix_run_ended`), and so are the full runs that finished well, which
+Fix It after each job starts on (`fix_after_run`).
 
 `report.rs` reads the selected finished job's report when it is selected or a job ends, and with
 it the job's row summary; `refresh_summaries` reads the summary of every finished row when the
@@ -76,29 +79,43 @@ Player, Show in Folder and Open Full Report through `open_with_desktop`, the cop
 Check Lines on the lines to check, on a group (the list narrowed to it), or on every line at the
 one nearest the first speech with no subtitle (Show Nearby Lines); Try Again beside a failed
 language-model call, which is Try Again from `StepName::Adjudicate`: every model call and the
-steps after them run again; and Fix It and its Stop.
+steps after them run again; and Fix It and its Stop, on the selected job (the Overview's own
+come as `Action::FixIt` and `Action::StopFix`, naming the job it shows).
 
-`fix_it.rs` starts Fix It on the selected video with the Fix It model and processes saved now, on
-`job_report::services::fix_it`'s thread, one run at a time and never while a run of the video
-runs or its correction run waits ("Wait until this video's subtitles are updated."). While it
-runs, the full lane holds a waiting run of that video, the review lanes start the first waiting
-correction runs whose videos are neither running nor being fixed, and the queue refuses to remove,
-try again or run again its row. `fix_view` gives the Overview its Fix It: hidden with nothing to
-ask about, ready, off with why, running with its stage and Stop, or updating while its
-correction run waits or runs; `fix_steps` gives the sidebar each video Fix It fixes with its step
-of four. When a run ends (`poll_fix`) with changes, the lines it changed are marked Saved in the
-open review or the parked one, one correction run of the video carries them, and the run waits
-in `fix_followups`, saying nothing yet; when that correction run ends (`fix_run_ended`, from the
-runner once the summaries and the report are read again), or at once when nothing changed, the
-run finishes (`fix_finished`): a green toast for 8 s says what Claude did ("Dressrosa 12 is fixed:
-Claude changed 17 lines. The subtitles are ready.", "…; 1 problem is left for you.", or "Claude
-checked Dressrosa 12: every line was already right."), how many lines kept the owner's own
-correction and how many calls failed, with See Changes (`Action::SeeFixChanges`: the job
-selected and Check Lines opened on Changed by Claude) when lines changed; the job is marked just
-fixed (`just_fixed`, until another job is selected) for its result card; and while the window is
-unfocused or minimized (`presence`), the desktop gets a notification ("Dressrosa 12 is fixed",
-"Claude changed 17 lines. The subtitles are ready.") and the window asks for its attention. A
-correction run that fails or is stopped forgets the run; a stopped Fix It says nothing changed.
+`fix_it/` starts Fix It on a video (its Overview's button, `Action::FixIt` naming the job it
+shows), on every finished video with lines to fix (the sidebar's Fix All), or, with Fix It after
+each job on, on a full run that just finished well (`fix_after_run`, from the runner once the
+summaries are read again), with the Fix It model and processes saved now, on
+`job_report::services::fix_it`'s threads. Many runs go at once, one per video, each on its own
+thread; a video already being fixed says "Fix It is already fixing this video.", and none starts
+while a run of the video runs or its correction run waits ("Wait until this video's subtitles are
+updated."). Every run's `claude` calls take a slot at the one gate the window holds
+(`claude_gate`), whose cap is the saved "Claude calls at once" (`fix_calls`) and changes at once
+when it is edited; the calls wait in the order their runs started, and `processes` caps each run
+alone. Fix All starts on the rows of Done that finished, have findings Fix It would ask about
+(`RowSummary::fixable`) and nothing against a run, one per video, oldest finished first, then says
+"Fix It started on 3 videos." (or, in red, why the first could not start). While a run goes, the
+full lane holds a waiting run of its video, the review lanes start the first waiting correction
+runs whose videos are neither running nor being fixed, and the queue refuses to remove, try again
+or run again its row. `fix_view` gives the Overview its Fix It: hidden with nothing to ask about,
+ready, off with why, running with its stage, Stop and whether every call of it waits for a free
+slot, or updating while its correction run waits or runs; `fix_steps` gives the sidebar each video
+Fix It fixes with its step of four; the window redraws every second while a run goes, so the
+waiting note stays current. When a run ends (`poll_fix`, every run each frame) with changes, the
+lines it changed are marked Saved in the open review or the parked one, one correction run of the
+video carries them, and the run waits in `fix_followups`, saying nothing yet; when that correction
+run ends (`fix_run_ended`, from the runner once the summaries and the report are read again), or
+at once when nothing changed, the run finishes (`fix_finished`): a green toast for 8 s says what
+Claude did ("Dressrosa 12 is fixed: Claude changed 17 lines. The subtitles are ready.", "…; 1
+problem is left for you.", or "Claude checked Dressrosa 12: every line was already right."), how
+many lines kept the owner's own correction and how many calls failed, with See Changes
+(`Action::SeeFixChanges`: the job selected and Check Lines opened on Changed by Claude) when lines
+changed; the job is marked just fixed (`just_fixed`, until another job is selected) for its result
+card; and while the window is unfocused or minimized (`presence`), the desktop gets a notification
+("Dressrosa 12 is fixed", "Claude changed 17 lines. The subtitles are ready.") and the window asks
+for its attention. A correction run that fails or is stopped forgets the run; a stopped Fix It
+says nothing changed on that video ("Fix It stopped on Dressrosa 12. …"), and a failed one says
+why ("Fix It failed on Dressrosa 12: …").
 
 `review.rs` opens the selected job's review on its lines to check, narrowed to a group when one
 is named, with the edits it had when it last closed, or says in a red toast why it cannot,
@@ -156,12 +173,19 @@ line); Open Log File opens the log file in the desktop's text editor through `op
   while Check Lines is closed (`a_group_on_the_overview_opens_check_lines_on_that_group`,
   `use_edits_the_line_and_save_moves_on_while_the_subtitles_update`,
   `an_edit_waits_while_check_lines_is_closed` in
-  `apps/tbd_subtitles/src/application/tests/rendering_review.rs`). Fix It runs one video at a time, holds
-  the runs of its video, and queues one correction run of its changes; it finishes once that run
-  ended, or at once with nothing changed, telling the desktop only while the window is away, and
-  a failed correction run finishes nothing
-  (`fix_it_runs_on_the_video_and_queues_the_correction_run_that_times_its_changes`,
+  `apps/tbd_subtitles/src/application/tests/rendering_review.rs`). Fix It runs on many videos at
+  once, one run per video, under one cap on Claude calls, holds the runs of its video, and queues
+  one correction run of its changes; it finishes once that run ended, or at once with nothing
+  changed, telling the desktop only while the window is away, and a failed correction run
+  finishes nothing (`fix_it_runs_on_the_video_and_queues_the_correction_run_that_times_its_changes`,
   `fix_it_finishes_once_its_changes_are_in_the_subtitles`,
   `fix_it_with_nothing_to_change_finishes_at_once_and_leaves_the_desktop_alone_in_front`,
   `a_failed_correction_run_finishes_nothing` in
-  `apps/tbd_subtitles/src/application/tests/rendering_fix_it.rs`).
+  `apps/tbd_subtitles/src/application/tests/rendering_fix_it.rs`); Stop ends only its own
+  video's run, Fix All and Fix It after each job start on exactly the finished videos with lines
+  to fix, and the cap follows its setting at once (`two_videos_fix_at_once`,
+  `stop_ends_only_its_own_video`,
+  `fix_all_starts_every_finished_video_with_lines_to_fix_and_hides_once_all_are_fixing`,
+  `fix_after_each_job_starts_when_a_full_run_finishes`, `fix_after_each_job_off_starts_nothing`,
+  `claude_calls_at_once_applies_at_once` in
+  `apps/tbd_subtitles/src/application/tests/rendering_fix_many.rs`).

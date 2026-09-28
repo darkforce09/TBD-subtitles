@@ -2,7 +2,7 @@
 //!
 //! **Role:** hold the receiving end of every thread the application started (the desktop's
 //! chooser, the files the desktop was asked to open, the model download, the machine checks, the
-//! sizes of the work and models folders, the desktop's colour scheme, the Fix It run) and apply
+//! sizes of the work and models folders, the desktop's colour scheme, the Fix It runs) and apply
 //! what they sent;
 //! let the toasts whose time is up go.
 //!
@@ -15,6 +15,7 @@
 //! an open that fails says so in a red toast, and so does an open the desktop has not answered
 //! within [`OPEN_DEADLINE`]; a closed channel ends the wait.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
@@ -68,8 +69,8 @@ pub(crate) struct Pending {
     pub(crate) scheme: Option<Receiver<Scheme>>,
     /// The desktop's answers to the files it was asked to open.
     pub(crate) opens: Vec<OpenRequest>,
-    /// The Fix It run under way, with the job it fixes.
-    pub(crate) fix: Option<(JobId, Fixing)>,
+    /// Every Fix It run under way, by the job it fixes; at most one per video.
+    pub(crate) fixes: BTreeMap<JobId, Fixing>,
 }
 
 /// A file the desktop was asked to open, waiting for its answer.

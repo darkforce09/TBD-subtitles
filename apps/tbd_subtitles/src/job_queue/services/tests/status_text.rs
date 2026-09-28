@@ -127,6 +127,7 @@ fn finished_rows_give_their_verdict_and_lines_to_check_from_their_files() {
         flagged,
         to_check,
         fixed_by_claude: false,
+        fixable: 0,
     };
     let ids: Vec<JobId> = q.items.iter().map(|item| item.id).collect();
     let summaries = HashMap::from([
@@ -167,6 +168,7 @@ fn a_row_fixed_by_claude_says_so_and_a_row_being_fixed_gives_its_step() {
         flagged: 38,
         to_check,
         fixed_by_claude: true,
+        fixable: 0,
     };
     let ids: Vec<JobId> = q.items.iter().map(|item| item.id).collect();
     let summaries = HashMap::from([

@@ -42,8 +42,17 @@ impl TbdSubtitlesApp {
                     self.apply_queue(JobQueueEvent::TryAgain(id, Some(StepName::Adjudicate)));
                 }
             }
-            ReportEvent::FixIt => self.start_fix(),
-            ReportEvent::StopFix => self.stop_fix(),
+            // The Overview's own are `Action::FixIt` and `StopFix`, naming the job it shows.
+            ReportEvent::FixIt => {
+                if let Some(id) = self.queue.selected {
+                    self.start_fix(id);
+                }
+            }
+            ReportEvent::StopFix => {
+                if let Some(id) = self.queue.selected {
+                    self.stop_fix(id);
+                }
+            }
         }
     }
 

@@ -12,8 +12,8 @@
 //! toasts.
 //!
 //! **Signals and state:** reads dropped files and whether the window is focused or minimized;
-//! asks for a frame each second while a job runs, when the next toast is due to go, and when the
-//! banner that says every model is on disk goes.
+//! asks for a frame each second while a job or a Fix It run runs, when the next toast is due to
+//! go, and when the banner that says every model is on disk goes.
 //!
 //! **Invariants:** `frame_ui` changes nothing; the toolbar is 52 px high and the sidebar 272 px
 //! wide; the banner spans the window under the toolbar while it shows; the toasts, the overlay
@@ -33,7 +33,8 @@ use crate::job_queue::ui::drop_overlay_ui;
 use crate::settings::events::SettingsEvent;
 use crate::settings::services::model_list::Banner;
 
-/// How often the window redraws while a job runs, so its clock and time left move.
+/// How often the window redraws while a job or a Fix It run runs, so its clock and time left
+/// move and Fix It's note says whether it waits for a free call.
 const RUNNING_REDRAW: Duration = Duration::from_secs(1);
 /// The toolbar's height and the sidebar's width.
 const TOOLBAR_HEIGHT: f32 = 52.0;
@@ -91,7 +92,8 @@ impl TbdSubtitlesApp {
         if !dropped.is_empty() {
             actions.push(Action::QueueVideos(dropped));
         }
-        if self.queue.running_job().is_some() {
+        // Fix It's note says when a run waits for a free call, which no thread announces.
+        if self.queue.running_job().is_some() || !self.pending.fixes.is_empty() {
             ctx.request_repaint_after(RUNNING_REDRAW);
         }
         if let Some(next) = self.toasts.next_expiry() {

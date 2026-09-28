@@ -33,7 +33,9 @@ check once the owner kept or undid every change). Just after Fix It finished, th
 follows on the recessed well, unless the result lists it: an orange warning mark, its title in
 semibold, its fix in grey and its small button (Try Again with a turning arrow, Show Nearby Lines,
 Show Lines); while Fix It runs on the video, a blue note says "Fixing with Claude Opus · reading
-the whole video (1 of 4)…" with the calls done and Stop (then "Stopping…"), and while its
+the whole video (1 of 4)…" with the calls done ("Waiting for a free Claude call. 3 of 12 calls
+done." while every call of the run waits under the cap on Claude calls at once, which other runs
+hold) and Stop (then "Stopping…"), and while its
 correction run waits or runs, "Fixing with Claude Opus · updating the subtitles (4 of 4)…"; while
 any other correction run of the video waits or runs, one says "Updating subtitles with 2
 corrections…". When Fix It has findings to ask about, a row on the well follows the problems: a

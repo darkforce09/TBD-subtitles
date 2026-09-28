@@ -1,7 +1,8 @@
 //! Lends each feature its borrowed view, draws it, and turns its events into actions.
 //!
 //! **Role:** build each feature's narrow view from the application state, call the feature's
-//! `ui`, and wrap the events it returns as `Action`s.
+//! `ui`, and wrap the events it returns as `Action`s; the Overview's Fix It and Stop become
+//! `Action::FixIt` and `Action::StopFix` naming the job it shows.
 //!
 //! **Position:** called by `window` (toolbar, models banner, sidebar, the selected job), by
 //! `settings_window` and by `log_window`; the only place the application calls the features' `ui`
@@ -25,6 +26,7 @@ use crate::job_queue::models::queue::{JobState, QueueItem};
 use crate::job_queue::models::view::JobQueueView;
 use crate::job_queue::services::sidebar_rows;
 use crate::job_queue::ui as job_queue_ui;
+use crate::job_report::events::ReportEvent;
 use crate::job_report::ui::{OverviewView, overview_ui};
 use crate::line_review::ui::{Playing, ReviewView, review_view_ui};
 use crate::log_console::ui as log_console_ui;
@@ -43,6 +45,7 @@ fn queue_view(app: &TbdSubtitlesApp) -> JobQueueView<'_> {
         rates: &app.rates,
         summaries: &app.summaries,
         fixing: app.fix_steps(),
+        fix_all: app.fix_candidates().len(),
         now: Instant::now(),
     }
 }
@@ -169,7 +172,12 @@ fn body_ui(ui: &mut Ui, app: &TbdSubtitlesApp, item: &QueueItem, actions: &mut V
             };
             let mut events = Vec::new();
             overview_ui(ui, &view, &mut events);
-            actions.extend(events.into_iter().map(Action::from));
+            // Fix It and its Stop act on the job shown, whichever job is selected once applied.
+            actions.extend(events.into_iter().map(|event| match event {
+                ReportEvent::FixIt => Action::FixIt(item.id),
+                ReportEvent::StopFix => Action::StopFix(item.id),
+                event => Action::from(event),
+            }));
         }
         Some((_, Err(error))) => {
             ui.label(RichText::new(format!("No report: {error}")).color(palette(ui).bad));

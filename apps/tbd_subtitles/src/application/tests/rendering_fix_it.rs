@@ -42,7 +42,7 @@ fn finished_with(root: &Path, name: &str, fix: FixVideo) -> (TbdSubtitlesApp, Jo
 
 /// A Fix It that says it reads the video, waits until `go` is set or it is stopped, then changes
 /// line U0314.
-fn waiting_fix(go: Arc<AtomicBool>) -> FixVideo {
+pub(super) fn waiting_fix(go: Arc<AtomicBool>) -> FixVideo {
     Arc::new(move |video, options, progress| {
         progress(FixProgress {
             stage: FixStage::Reading,
@@ -68,10 +68,10 @@ fn waiting_fix(go: Arc<AtomicBool>) -> FixVideo {
 }
 
 /// Poll until the Fix It run ended, or fail after five seconds.
-fn until_fixed(app: &mut TbdSubtitlesApp) {
+pub(super) fn until_fixed(app: &mut TbdSubtitlesApp) {
     for _ in 0..500 {
         app.poll();
-        if app.pending.fix.is_none() {
+        if app.pending.fixes.is_empty() {
             return;
         }
         std::thread::sleep(Duration::from_millis(10));
@@ -85,9 +85,9 @@ fn until_reading(app: &mut TbdSubtitlesApp) {
         app.poll();
         if app
             .pending
-            .fix
-            .as_ref()
-            .is_some_and(|(_, fixing)| fixing.progress.is_some())
+            .fixes
+            .values()
+            .any(|fixing| fixing.progress.is_some())
         {
             return;
         }
@@ -251,7 +251,7 @@ fn notified(app: &TbdSubtitlesApp) -> Vec<String> {
         .collect()
 }
 
-fn assert_shows(text: &str, expected: &[&str]) {
+pub(super) fn assert_shows(text: &str, expected: &[&str]) {
     for expected in expected {
         assert!(text.contains(expected), "{expected} not in {text}");
     }
@@ -271,7 +271,7 @@ fn fix_it_runs_on_the_video_and_queues_the_correction_run_that_times_its_changes
             "Fix It",
         ],
     );
-    app.apply(vec![Action::from(ReportEvent::FixIt)]);
+    app.apply(vec![Action::FixIt(id)]);
     until_reading(&mut app);
     let (text, _) = render(&app);
     assert_shows(
@@ -456,14 +456,14 @@ fn a_failed_correction_run_finishes_nothing() {
 #[test]
 fn stop_ends_the_run_and_changes_nothing() {
     let root = scratch("fix-it-stop");
-    let (mut app, _) = finished_with(
+    let (mut app, id) = finished_with(
         &root,
         "Dressrosa 12",
         waiting_fix(Arc::new(AtomicBool::new(false))),
     );
     app.apply(vec![Action::from(ReportEvent::FixIt)]);
     until_reading(&mut app);
-    app.apply(vec![Action::from(ReportEvent::StopFix)]);
+    app.apply(vec![Action::StopFix(id)]);
     let (text, _) = render(&app);
     assert!(text.contains("Stopping…"), "{text}");
     until_fixed(&mut app);
@@ -476,7 +476,8 @@ fn stop_ends_the_run_and_changes_nothing() {
     let (text, _) = render(&app);
     assert!(
         text.contains(
-            "Fix It stopped. Nothing was changed; Fix It again picks up where it stopped."
+            "Fix It stopped on Dressrosa 12. Nothing was changed; Fix It again picks up where it \
+             stopped."
         ),
         "{text}"
     );
@@ -501,7 +502,7 @@ fn fix_it_is_off_while_the_video_s_subtitles_are_updated_and_hidden_with_nothing
         "{text}"
     );
     app.apply(vec![Action::from(ReportEvent::FixIt)]);
-    assert!(app.pending.fix.is_none());
+    assert!(app.pending.fixes.is_empty());
     write_job(
         &root,
         &video,

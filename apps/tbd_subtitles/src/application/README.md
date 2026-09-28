@@ -48,22 +48,24 @@ every finished row's summary (its verdict and lines to check, read from its work
 window opens, after each run of its video and after each correction), its line review while open,
 the clip playing in it, the line its editor shows with that line's still frame,
 the unsaved edits and run states of each job whose review closed (`parked`, until it opens again;
-they are lost when the window closes), each Fix It run that ended until its changes are in the
-subtitles (`fix_followups`), the video Fix It finished last with egui's time then (`just_fixed`,
-until another job is selected), egui's clock and whether the window is unfocused or minimized as
-the last frame saw them (`presence`), whether to ask the desktop for the window's attention, and
-`Pending`, the receiving end of every other thread it started (the choosers, the files the
-desktop was asked to open, the downloads and checks, and the Fix It run under way). The
-videos passed to `launch` enter the queue as the first `Action`; the machine checks and the
-measures of the work and models folders start at once. While a job runs the window redraws every
-second; a playing clip wakes it at each frame and a still frame when it is decoded.
+they are lost when the window closes), the one gate every Fix It run's `claude` calls share
+(`claude_gate`, capped at the saved "Claude calls at once" and changed at once by an edit), each
+Fix It run that ended until its changes are in the subtitles (`fix_followups`), the video Fix It
+finished last with egui's time then (`just_fixed`, until another job is selected), egui's clock
+and whether the window is unfocused or minimized as the last frame saw them (`presence`),
+whether to ask the desktop for the window's attention, and `Pending`, the receiving end of every
+other thread it started (the choosers, the files the desktop was asked to open, the downloads and
+checks, and every Fix It run under way, by job). The videos passed to `launch` enter the queue as the first `Action`; the machine checks and the
+measures of the work and models folders start at once. While a job or a Fix It run runs the
+window redraws every second; a playing clip wakes it at each frame and a still frame when it is
+decoded.
 
 Each frame runs in these steps:
 
 ```text
 Presence::read         egui's clock, and whether the window is unfocused or minimized
 poll(&mut self)        the threads' answers: chooser paths, files opened, downloads, checks, sizes,
-                       job events, the colour scheme, the Fix It run, new log lines while the log
+                       job events, the colour scheme, the Fix It runs, new log lines while the log
                        window is open; toasts whose time is up go
 attention              RequestUserAttention when Fix It finished while the window was away
 theme::follow          light or dark, as the desktop reported
@@ -74,9 +76,10 @@ frame_ui(&self)
   │   the log button ──▶ Action::ShowLog
   ├── models banner (while a model is missing, downloads, or 4 s after) ──▶ Settings(Open(Models)
   │   / Download / StopDownload)
-  ├── sidebar (272 px) ──▶ JobQueueEvent ──▶ Action::Queue
+  ├── sidebar (272 px, Fix All on DONE's heading) ──▶ JobQueueEvent ──▶ Action::Queue
   ├── the selected job: jobs_ui (the empty card, the hint, or the header over the job's cards,
-  │   its Overview or its lines to check) ──▶ Queue / ShowTab / Report / Review
+  │   its Overview or its lines to check) ──▶ Queue / ShowTab / Report / Review; the Overview's
+  │   Fix It and Stop ──▶ FixIt(job) / StopFix(job), naming the job it shows
   ├── the drop overlay while files hover; the toasts ──▶ Action::ToastButton
   ├── settings_window (while open, on its tab) ──▶ Settings (Edit, Open(tab), …) /
   │   ShowSettings(false)
@@ -85,12 +88,14 @@ apply(&mut self, actions)
   ├── ShowTab: Overview closes the line review, Check Lines opens it
   ├── SeeFixChanges (a Fix It toast's See Changes): the job selected, Check Lines on Changed by
   │   Claude
+  ├── FixIt / StopFix: Fix It started on that job's video, or its run stopped
   └── actions::queue (edits, Undo, Try Again, Run Again, Start, Pause, Cancel, toasts),
       actions::runner (the next job of each lane, its options, how it ended, a review run's start
       and end for the status chip and for Fix It), actions::review (open on a group, edit, save or
-      keep and queue a review run, play, the still frame), actions::report, actions::fix_it (start,
-      Stop, the correction run of its changes, its finish with a toast and, while the window is
-      away, a desktop notification) or actions::settings (an edit written at once, the tab, the
+      keep and queue a review run, play, the still frame), actions::report, actions::fix_it (start
+      on one video, on every finished one with lines to fix, or after a full run; Stop, the
+      correction run of its changes, its finish with a toast and, while the window is away, a
+      desktop notification) or actions::settings (an edit written at once, the tab, the
       download), actions::log_console (open, read, filter, clear, open the log file); each action
       but the log window's own is logged at debug, cut to 160 characters
 ```
@@ -204,6 +209,15 @@ everything onto disk (the frame asks for a redraw when it goes).
     nothing (`fix_it_finishes_once_its_changes_are_in_the_subtitles`,
     `fix_it_with_nothing_to_change_finishes_at_once_and_leaves_the_desktop_alone_in_front`,
     `a_failed_correction_run_finishes_nothing` in `tests/rendering_fix_it.rs`);
+  - Fix It runs on many videos at once, one run per video, and Stop ends only its own; Fix All
+    starts every finished video with lines to fix and goes once all are fixing; Fix It after each
+    job starts on a full run that finished, and only while it is on; a run whose every call waits
+    under the cap says so; an edit of "Claude calls at once" changes the cap at once
+    (`two_videos_fix_at_once`, `stop_ends_only_its_own_video`,
+    `fix_all_starts_every_finished_video_with_lines_to_fix_and_hides_once_all_are_fixing`,
+    `fix_after_each_job_starts_when_a_full_run_finishes`, `fix_after_each_job_off_starts_nothing`,
+    `a_video_waiting_for_a_free_call_says_so`, `claude_calls_at_once_applies_at_once` in
+    `tests/rendering_fix_many.rs`);
   - Check Lines opens on the first line to check with its list, why, clip, readings, text box,
     flags and Looks Right; Use edits the line and Save moves on while the status chip goes from
     Updating subtitles… to Subtitles updated; Take Back, also from the Checked list and of the

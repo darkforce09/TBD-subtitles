@@ -54,6 +54,7 @@ impl JobReport {
             flagged: self.lines.flagged,
             to_check: self.lines.to_check(),
             fixed_by_claude: self.fix_result.is_some(),
+            fixable: self.fixable,
         }
     }
 }

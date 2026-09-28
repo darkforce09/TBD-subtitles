@@ -7,7 +7,7 @@ worth a listen and its problems, and running Fix It on a thread, with no renderi
 
 ```text
 apps/tbd_subtitles/src/job_report/services/
-├── fix_it.rs          Fix It on a thread of its own: its progress, its outcome and Stop
+├── fix_it.rs          Fix It, one thread per run: its progress, its wait for a call, its outcome, Stop
 ├── fix_result.rs      `fix_result`: what Fix It did, from `fix.json`, the corrections and the problems
 ├── line_counts.rs     lines per group, lines checked, the problems, a row's summary, what Fix It asks
 ├── mod.rs             the module list
@@ -46,7 +46,10 @@ kind is left (none without a record of them) and the problems left, and the word
 two changes in id order (`stages::fix_it::changed_words`) with how many more changed.
 
 `fix_it::start` runs Fix It (`pipeline::fix_it::fix_video`, or a stand-in in the tests) on a
-thread of its own that lives until the run ends, so the `claude` processes it starts end with it.
+thread of its own that lives until the run ends, so the `claude` processes it starts end with it;
+every run has its own thread, so many go at once, their calls sharing the gate whose seat
+`FixOptions::calls` carries. `Fixing::waiting` says whether the run has a call waiting for a free
+slot there and none holding one (`CallSeat::waiting_only`), which the Overview's note shows.
 The thread sends each `FixProgress` and then the outcome, waking the window each time;
 `Fixing::poll` keeps the latest progress and hands over the outcome once, and `Fixing::stop`
 sets the run's `CancelToken`, which kills the running calls. The thread logs the start, each
@@ -57,9 +60,10 @@ the run's threads inherit.
 ## Boundaries
 
 - Depends on: `crate::job_report::models`; `job_model`; `pipeline::work_dir::{job_id, WorkDir}`
-  and `pipeline::fix_it`; `stages::output::subtitle_path`, `stages::fix_it::items` and
-  `stages::fix_it::changed_words`; `crate::settings::models::claude_models` for the model's name;
-  `crate::core::background::Wake`; `serde` and `serde_json`.
+  and `pipeline::fix_it`; `inference::llm::call_gate::CallSeat`;
+  `stages::output::subtitle_path`, `stages::fix_it::items` and `stages::fix_it::changed_words`;
+  `crate::settings::models::claude_models` for the model's name; `crate::core::background::Wake`;
+  `serde` and `serde_json`.
 - Used by: `crate::application::actions` (`report` and `fix_it`) and `crate::application`'s
   environment, which holds the Fix It runner.
 - Rules: nothing here names egui or eframe

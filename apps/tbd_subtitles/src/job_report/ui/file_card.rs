@@ -16,9 +16,9 @@
 //! result while it shows, else on its own; Try Again reruns the language-model calls, never the
 //! steps before them; Fix It's result shows only while Fix It is not under way on the video; the
 //! Fix It row shows only when Fix It has findings to ask about, its button off with why while it
-//! cannot run, and Stop while it runs; while Fix It's correction run waits or runs, Fix It's note
-//! says so in place of the correction note; the path shows its folder and file, the whole path on
-//! hover.
+//! cannot run, and Stop while it runs, its note saying so while every call of the run waits for
+//! a free `claude` call; while Fix It's correction run waits or runs, Fix It's note says so in
+//! place of the correction note; the path shows its folder and file, the whole path on hover.
 
 use std::path::Path;
 
@@ -35,7 +35,7 @@ use crate::core::ui::palette::palette;
 use crate::core::ui::pill::{Tone, pill};
 use crate::job_report::events::{LinesToCheck, ReportEvent};
 use crate::job_report::models::finding_group::LineGroup;
-use crate::job_report::models::fixing::{FixView, stage_words, updating_words};
+use crate::job_report::models::fixing::{FixView, running_line, stage_words, updating_words};
 use crate::job_report::models::problem::{Problem, Remedy};
 use crate::job_report::ui::fix_result_card::fix_result_ui;
 use crate::job_report::ui::overview::{OverviewView, head_ui};
@@ -151,30 +151,26 @@ fn updating_ui(ui: &mut Ui, corrections: usize) {
     note_ui(ui, p.accent_tint, mark, &title, |_| {}, body);
 }
 
-/// The blue note while Fix It runs on the video: its model, its step, and Stop; or, while its
-/// correction run waits or runs, its last step.
+/// The blue note while Fix It runs on the video: its model, its step, its calls or that it waits
+/// for a free `claude` call, and Stop; or, while its correction run waits or runs, its last step.
 fn fixing_ui(ui: &mut Ui, fix: &FixView, events: &mut Vec<ReportEvent>) {
-    let (model, stage, done, total, stopping) = match fix {
+    let (model, stage, line, stopping) = match fix {
         FixView::Running {
             model,
             stage,
             done,
             total,
             stopping,
-        } => (model, stage, done, total, stopping),
+            waiting,
+        } => {
+            let line = running_line(*done, *total, *stopping, *waiting);
+            (model, stage, line, stopping)
+        }
         FixView::Updating { model } => return fix_updating_ui(ui, model),
         FixView::Hidden | FixView::Ready { .. } | FixView::Unavailable { .. } => return,
     };
     let p = palette(ui);
     let title = format!("Fixing with {model} · {}…", stage_words(*stage));
-    let line = if *stopping {
-        "Stopping. Nothing is changed; Fix It again picks up where it stopped.".to_string()
-    } else {
-        format!(
-            "{done} of {} done. The subtitles change only once every change is checked.",
-            format::plural(*total, "call")
-        )
-    };
     let body = |ui: &mut Ui| {
         ui.add(Label::new(RichText::new(line).size(12.0).color(p.text2)).wrap());
     };

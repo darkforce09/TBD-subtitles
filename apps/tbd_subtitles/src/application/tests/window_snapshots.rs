@@ -213,7 +213,7 @@ fn fix_it_done_scene(root: &Path, out: &Path, videos: &[PathBuf]) {
     for _ in 0..500 {
         harness.run_steps(1);
         let app = harness.state();
-        if app.pending.fix.is_none() && app.fix_followups.is_empty() {
+        if app.pending.fixes.is_empty() && app.fix_followups.is_empty() {
             break;
         }
         std::thread::sleep(Duration::from_millis(10));

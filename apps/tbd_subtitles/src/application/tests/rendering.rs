@@ -21,6 +21,8 @@ mod rendering_console;
 mod rendering_detail;
 #[path = "rendering_fix_it.rs"]
 mod rendering_fix_it;
+#[path = "rendering_fix_many.rs"]
+mod rendering_fix_many;
 #[path = "rendering_queue.rs"]
 mod rendering_queue;
 #[path = "rendering_report.rs"]

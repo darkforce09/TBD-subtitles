@@ -20,6 +20,9 @@ pub(crate) struct JobQueueView<'a> {
     /// Each video Fix It is fixing, with its step of four: its three passes, then the correction
     /// run that puts its changes into the subtitles.
     pub(crate) fixing: Vec<(PathBuf, usize)>,
+    /// The finished videos Fix All would start Fix It on: those with lines to fix that Fix It is
+    /// not fixing and whose subtitles are not being updated.
+    pub(crate) fix_all: usize,
     pub(crate) now: Instant,
 }
 
