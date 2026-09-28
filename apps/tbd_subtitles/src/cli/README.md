@@ -17,7 +17,9 @@ apps/tbd_subtitles/src/cli/
 
 ## How it works
 
-`run` parses the process arguments with clap's derive API and `dispatch` sends each subcommand to
+`run` parses the process arguments with clap's derive API, installs logging
+(`crate::core::logging`, to the window's log file as well for `gui` or no subcommand), and
+`dispatch` sends each subcommand to
 its runner; with no subcommand it opens the window, as a desktop launcher expects. Every runner
 returns an `anyhow::Result`, which `apps/tbd_subtitles/src/main.rs` turns into the exit code.
 clap itself prints the usage and exits 2 on a usage error, including a step refused by
@@ -88,7 +90,7 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
 
 ## Boundaries
 
-- Depends on: `crate::application::launch`; `pipeline` (`run_job`, `JobOptions`,
+- Depends on: `crate::application::launch`; `crate::core::logging`; `pipeline` (`run_job`, `JobOptions`,
   `progress::Progress`, `workers::Binaries`, `work_dir::default_root`, `graph::placement`,
   `tasks::worker_main`) from `crates/pipeline/`; `job_model::StepName` and `job_model::job` from
   `crates/job_model/`; `crate::settings::{models, services}` (the settings file and the job

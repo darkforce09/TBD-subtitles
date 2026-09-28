@@ -15,7 +15,7 @@ apps/tbd_subtitles/
 
 ## How it works
 
-`src/main.rs` installs logging, parses the command line and runs the chosen subcommand. With no
+`src/main.rs` parses the command line, which installs logging, and runs the chosen subcommand. With no
 subcommand, or with `gui`, it opens a 1280 by 800 window (1100 by 700 at least, so the sidebar,
 the line list and the line editor fit side by side) titled "TBD Subtitles", drawn with eframe's
 glow renderer under X11 (XWayland on a Wayland desktop), in Adwaita Sans and the desktop's light
@@ -69,7 +69,8 @@ cargo gates file-length
 ## Configuration
 
 - `RUST_LOG`: the log filter, read by `src/core/logging.rs`; `info` when unset or invalid. Log
-  lines go to stderr, coloured only when stderr is a terminal.
+  lines go to stderr, coloured only when stderr is a terminal; the window's also go to
+  `tbd-subtitles/tbd-subtitles.log` under `XDG_STATE_HOME`, else `~/.local/state`.
 - `XDG_DATA_HOME`, else `HOME`: the data folder `tbd-subtitles/` that holds the models, the CUDA
   runtime, the window's kept queue `queue.json` and, unless `--work-root` or the settings name
   another, the jobs' work directories under `work/` (read by

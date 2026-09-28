@@ -64,6 +64,9 @@ impl TbdSubtitlesApp {
         if let Some(next) = self.toasts.next_expiry() {
             ctx.request_repaint_after(next.saturating_duration_since(Instant::now()));
         }
+        if let Some(deadline) = self.pending.next_open_deadline() {
+            ctx.request_repaint_after(deadline.saturating_duration_since(Instant::now()));
+        }
         shortcuts::shortcuts(&ctx, self, &mut actions);
         let p = palette(ui);
         Panel::top(Id::new("toolbar"))

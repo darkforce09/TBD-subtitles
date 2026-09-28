@@ -10,8 +10,9 @@
 //!
 //! **Signals and state:** channels only; each thread wakes the window after it sends.
 //!
-//! **Invariants:** at most one chooser is open at a time, and a chooser or an open that fails
-//! says so in a red toast; a closed channel ends the wait.
+//! **Invariants:** at most one chooser is open at a time, and a second ask says so; a chooser or
+//! an open that fails says so in a red toast, and so does an open the desktop has not answered
+//! within [`OPEN_DEADLINE`]; a closed channel ends the wait.
 
 use std::path::Path;
 use std::sync::mpsc::{Receiver, TryRecvError};
@@ -29,6 +30,10 @@ use crate::settings::services::model_downloads::Downloading;
 /// How long the window waits for the desktop's colour scheme before its first frame; the portal
 /// answers in a few milliseconds.
 const FIRST_SCHEME: Duration = Duration::from_millis(250);
+
+/// How long the window waits for the desktop to answer an open before it says the desktop did
+/// not; the portal answers once the program has started, in a second or two.
+pub(crate) const OPEN_DEADLINE: Duration = Duration::from_secs(20);
 
 /// What a chooser's answer is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,9 +63,27 @@ pub(crate) struct Pending {
     pub(crate) work_size: Option<Receiver<u64>>,
     pub(crate) models_size: Option<Receiver<u64>>,
     pub(crate) scheme: Option<Receiver<Scheme>>,
-    /// The desktop's answers to the files it was asked to open, each with the words a failure
-    /// starts with.
-    pub(crate) opens: Vec<(String, Receiver<Opened>)>,
+    /// The desktop's answers to the files it was asked to open.
+    pub(crate) opens: Vec<OpenRequest>,
+}
+
+/// A file the desktop was asked to open, waiting for its answer.
+pub(crate) struct OpenRequest {
+    /// The words a failure toast starts with.
+    pub(crate) failed: String,
+    /// When the desktop was asked.
+    pub(crate) asked: Instant,
+    pub(crate) answer: Receiver<Opened>,
+}
+
+impl Pending {
+    /// When the oldest unanswered open runs out of time, so the window can wake to say so.
+    pub(crate) fn next_open_deadline(&self) -> Option<Instant> {
+        self.opens
+            .iter()
+            .map(|open| open.asked + OPEN_DEADLINE)
+            .min()
+    }
 }
 
 impl TbdSubtitlesApp {
@@ -70,7 +93,7 @@ impl TbdSubtitlesApp {
         poll_runner(self);
         self.poll_chooser();
         self.poll_scheme();
-        self.poll_opens();
+        self.poll_opens(Instant::now());
         self.toasts.expire(Instant::now());
     }
 
@@ -100,18 +123,28 @@ impl TbdSubtitlesApp {
             ),
         };
         self.toast(ToastKind::Info, doing);
-        self.pending.opens.push((failed, answer));
+        self.pending.opens.push(OpenRequest {
+            failed,
+            asked: Instant::now(),
+            answer,
+        });
     }
 
-    /// Say in a red toast when the desktop could not open a file; forget the answered requests.
-    fn poll_opens(&mut self) {
+    /// Say in a red toast when the desktop could not open a file, or has not answered by `now`
+    /// within [`OPEN_DEADLINE`]; forget the answered and the timed-out requests.
+    pub(crate) fn poll_opens(&mut self, now: Instant) {
         let mut failures = Vec::new();
         self.pending
             .opens
-            .retain(|(failed, answer)| match answer.try_recv() {
+            .retain(|open| match open.answer.try_recv() {
                 Ok(Ok(())) | Err(TryRecvError::Disconnected) => false,
                 Ok(Err(error)) => {
-                    failures.push(format!("{failed}: {error}"));
+                    failures.push(format!("{}: {error}", open.failed));
+                    false
+                }
+                Err(TryRecvError::Empty) if now >= open.asked + OPEN_DEADLINE => {
+                    tracing::warn!(failed = %open.failed, "the desktop did not answer an open");
+                    failures.push(format!("{}: the desktop did not answer", open.failed));
                     false
                 }
                 Err(TryRecvError::Empty) => true,
@@ -174,6 +207,7 @@ impl TbdSubtitlesApp {
     /// Open the desktop's chooser for videos or a folder; its answer is queued.
     pub(crate) fn choose_for_queue(&mut self, folder: bool) {
         if self.pending.chooser.is_some() {
+            self.toast(ToastKind::Info, "A file chooser is already open.");
             return;
         }
         let (purpose, kind, title) = if folder {

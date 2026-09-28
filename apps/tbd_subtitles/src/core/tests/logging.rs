@@ -1,0 +1,33 @@
+use std::ffi::OsStr;
+
+use super::*;
+
+#[test]
+fn the_log_goes_under_xdg_state_home() {
+    assert_eq!(
+        log_path(Some(OsStr::new("/s")), Some(OsStr::new("/home/o"))),
+        Some(PathBuf::from("/s/tbd-subtitles/tbd-subtitles.log"))
+    );
+}
+
+#[test]
+fn without_xdg_state_home_the_log_goes_under_local_state() {
+    assert_eq!(
+        log_path(Some(OsStr::new("")), Some(OsStr::new("/home/o"))),
+        Some(PathBuf::from(
+            "/home/o/.local/state/tbd-subtitles/tbd-subtitles.log"
+        ))
+    );
+    assert_eq!(log_path(None, None), None);
+}
+
+#[test]
+fn opening_the_log_makes_its_folder_and_empties_it() {
+    let dir = std::env::temp_dir().join(format!("tbd-log-{}", std::process::id()));
+    let path = dir.join("nested").join("tbd-subtitles.log");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, "old run").unwrap();
+    drop(open(&path).unwrap());
+    assert_eq!(fs::read_to_string(&path).unwrap(), "");
+    fs::remove_dir_all(&dir).unwrap();
+}

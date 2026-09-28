@@ -9,10 +9,13 @@
 //! the settings' folder choosers, and the Overview's and the row menu's "Open in Player", "Show
 //! in Folder" and "Open Full Report"; uses `ashpd` (zbus, pure Rust).
 //!
-//! **Signals and state:** one thread per request; D-Bus calls to `org.freedesktop.portal`.
+//! **Signals and state:** one thread and one D-Bus session connection per request; calls to
+//! `org.freedesktop.portal`. The connection closes when the request ends.
 //!
 //! **Invariants:** the app starts no program itself: the desktop opens the file; a dialog the
 //! owner closes answers with no paths, never an error; an open that fails answers with why.
+//! No request shares a connection with another request or with the colour scheme watcher, so a
+//! request the desktop never answers holds up no other.
 
 use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
@@ -21,6 +24,7 @@ use std::sync::mpsc::{Receiver, channel};
 use ashpd::desktop::file_chooser::{FileFilter, SelectedFiles};
 use ashpd::desktop::open_uri::OpenFileRequest;
 use ashpd::desktop::{ResponseError, open_uri::OpenDirectoryRequest};
+use ashpd::zbus::Connection;
 
 use crate::core::background::Wake;
 
@@ -50,8 +54,17 @@ pub(crate) fn choose(kind: Choose, title: &str, wake: Wake) -> Receiver<Chosen> 
     answer
 }
 
+/// A session bus connection of the request's own. ashpd's shared connection holds a lock while
+/// it waits for the bus, so one request that never returns there would stall every later one.
+async fn connection() -> Result<Connection, String> {
+    Connection::session().await.map_err(|e| e.to_string())
+}
+
 async fn ask(kind: Choose, title: &str) -> Chosen {
-    let request = SelectedFiles::open_file().title(title).modal(true);
+    let request = SelectedFiles::open_file()
+        .connection(Some(connection().await?))
+        .title(title)
+        .modal(true);
     let request = match kind {
         Choose::Videos => request.multiple(true).filter(
             FileFilter::new("Videos")
@@ -84,9 +97,11 @@ pub(crate) fn open(path: &Path, wake: Wake) -> Receiver<Opened> {
     let path = path.to_path_buf();
     std::thread::spawn(move || {
         let result = pollster::block_on(async {
+            let connection = connection().await?;
             if path.is_dir() {
                 let folder = std::fs::File::open(&path).map_err(|e| e.to_string())?;
                 OpenDirectoryRequest::default()
+                    .connection(Some(connection))
                     .send(&folder)
                     .await
                     .map(|_| ())
@@ -94,6 +109,7 @@ pub(crate) fn open(path: &Path, wake: Wake) -> Receiver<Opened> {
             } else {
                 let uri = ashpd::Uri::parse(&file_uri(&path)).map_err(|e| e.to_string())?;
                 OpenFileRequest::default()
+                    .connection(Some(connection))
                     .send_uri(&uri)
                     .await
                     .map(|_| ())
@@ -118,6 +134,7 @@ pub(crate) fn reveal(path: &Path, wake: Wake) -> Receiver<Opened> {
         let result = pollster::block_on(async {
             let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
             OpenDirectoryRequest::default()
+                .connection(Some(connection().await?))
                 .send(&file)
                 .await
                 .map(|_| ())

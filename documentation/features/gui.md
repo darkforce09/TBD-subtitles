@@ -56,7 +56,8 @@ list and the line editor side by side.
 ```
 
 - **Toolbar** (52 px): Add Videos… and Add Folder… open the desktop's chooser (files, or a folder
-  for its videos without subtitles). The queue's one button is Start Queue, Pause After This
+  for its videos without subtitles); asked again while one is open, a toast says "A file chooser
+  is already open." The queue's one button is Start Queue, Pause After This
   Video or Resume Queue; a disabled Start Queue says why beside it ("Download the models first",
   "Nothing is waiting"). It counts full runs only. The gear opens Settings.
 - **Banner:** under the toolbar while models are missing. It says what is missing ("5 models and
@@ -97,7 +98,11 @@ list and the line editor side by side.
   pill "Passes the quality check" or "Needs attention", lists each whole-video problem with its
   fix, shows a blue note while a correction run updates the file, the path, and Open in Player
   (the desktop's default player, through the desktop portal), Show in Folder and Copy Path, each
-  confirmed in a toast (a red one when the desktop could not). The lines card says "38 lines worth
+  confirmed in a toast (a red one when the desktop could not, or has not answered within 20
+  seconds). Each request to the desktop portal has a D-Bus connection of its own, so one the
+  desktop never answers holds up no other. The window's log is also written to
+  `~/.local/state/tbd-subtitles/tbd-subtitles.log` (under `XDG_STATE_HOME` when set), emptied at
+  each start, since a launcher such as Gear Lever drops stderr. The lines card says "38 lines worth
   a listen" with a green bar of those checked, Check Lines, and one row per finding group with its
   explanation and count. Then Details (subtitles, easy to read, unsure lines, words no engine
   heard, timing offset, speech and voice with no subtitle, words timed by the aligner, corrections

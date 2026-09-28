@@ -77,6 +77,11 @@ pilot](/documentation/research/pilot_dressrosa_11.md) subtitle file shows the sa
   launched with its own binary run directly instead of through `AppRun`, or an old extracted
   `AppDir` is on `PATH` ahead of it; launch the `.AppImage` file itself.
 
+- **Where is the app's log when launched from Gear Lever?** Gear Lever drops stderr; the
+  window writes its log to `~/.local/state/tbd-subtitles/tbd-subtitles.log` too, emptied at each
+  start. A button that asks the desktop (Add Videos…, Open in Player, Show in Folder) and fails
+  logs a warning there.
+
 ## Related documentation
 
 - [Development environment](/documentation/runbooks/development_environment.md) — building the

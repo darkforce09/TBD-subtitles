@@ -12,20 +12,24 @@ apps/tbd_subtitles/src/core/
 ├── background.rs    `Wake`: how a thread asks the window for a frame
 ├── color_scheme.rs  `Scheme` and `watch`: the desktop's light or dark preference, followed as it changes
 ├── format.rs        sizes, durations, rough times left, video lengths, line times, places in line, counts
-├── logging.rs       `initialise`: the global log subscriber, filtered by `RUST_LOG`, writing to stderr
+├── logging.rs       `initialise`: the global log subscriber, filtered by `RUST_LOG`, to stderr and a file
 ├── mod.rs           the module tree
 ├── portal.rs        the desktop's chooser, opening a file in its program, showing it in the file manager
 ├── steps.rs         the six stages the window shows, and each step's plain title
-├── tests/           unit tests for the portal's file URIs, the formats, the stages, the scheme, toasts
+├── tests/           unit tests for the portal's file URIs, the formats, the stages, the scheme, toasts, log path
 ├── toast.rs         `Toast`, `Toasts` and `ToastKind`: short messages at the bottom, with a button
 └── ui/              the palette, fonts and theme, and the widgets features draw: buttons to toasts
 ```
 
 ## How it works
 
-`logging::initialise` runs once, first thing in `main`: it installs a `tracing` subscriber whose
-filter comes from `RUST_LOG`, or `info` when that is unset or invalid, writing to stderr without
-target names and with colour only when stderr is a terminal.
+`logging::initialise` runs once, in `cli::run` as soon as the subcommand is known: it installs a
+`tracing` subscriber whose filter comes from `RUST_LOG`, or `info` when that is unset or invalid,
+writing to stderr without target names and with colour only when stderr is a terminal. For the
+window it also writes, without colour, to `logging::window_log_path`:
+`$XDG_STATE_HOME/tbd-subtitles/tbd-subtitles.log`, else `~/.local/state/…`, emptied at each start,
+because a desktop launcher such as Gear Lever drops stderr. A log file that cannot be opened
+leaves stderr alone.
 
 `portal` talks to the XDG desktop portal over D-Bus with `ashpd` (pure Rust, zbus on async-io): it
 shows the desktop's own chooser for videos, a folder or a JSON file on a thread of its own and
@@ -33,7 +37,9 @@ sends the chosen paths back on a channel; `open` asks the desktop to open a file
 program (VLC for the owner's videos) or a folder in the file manager, and `reveal` asks the file
 manager to show a file in the folder that holds it (Show in Folder), each on a thread that sends
 back whether the desktop did it (`Opened`), so the window can say when it could not. The app
-starts no program for it. `file_uri` and `file_path` turn paths into `file://` URIs and back,
+starts no program for it. Every request opens a session bus connection of its own and closes it
+when it ends: ashpd's shared connection holds a lock while it waits for the bus, so one request
+the desktop never answered would stall every later one without a message. `file_uri` and `file_path` turn paths into `file://` URIs and back,
 percent-encoded.
 
 `color_scheme::watch` asks the same portal's `settings` interface on a thread of its own: it
@@ -64,7 +70,7 @@ draws its own panels with them, so the window looks the same across features.
 
 ## Public surface
 
-- `logging::initialise`, called by `apps/tbd_subtitles/src/main.rs`.
+- `logging::{initialise, window_log_path}`, called by `apps/tbd_subtitles/src/cli/mod.rs`.
 - `background::Wake`; `portal::{choose, open, reveal, Choose, Chosen, Opened}`;
   `toast::{Toast, Toasts, ToastKind, ToastId, SHOWN}`.
 - `format::{size, duration, about, length, clock_tenths, ordinal, plural}`.

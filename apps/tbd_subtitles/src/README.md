@@ -14,14 +14,14 @@ apps/tbd_subtitles/src/
 ├── job_queue/    the videos waiting for subtitles: toolbar, sidebar, progress, events and edits
 ├── job_report/   the report of a finished job: quality checks, flagged lines, the output file
 ├── line_review/  reviewing a flagged line: its clip, the engines' hypotheses, the chosen text
-├── main.rs       the entry point: logging, the command line, the exit code
+├── main.rs       the entry point: the command line and the exit code
 ├── settings/     models, work folder, engines, language-model backend, output format, GPU check
 └── tests/        the architecture tests and the source inspection they read imports with
 ```
 
 ## How it works
 
-`main.rs` installs logging from `core`, hands the process arguments to `cli`, and turns the
+`main.rs` hands the process arguments to `cli`, which installs logging from `core`, and turns the
 result into the exit code: 0 on success, 1 with the whole error chain on stderr otherwise. `cli`
 parses with clap and opens the window through `application` for `gui` or no subcommand, or runs
 its own `process` and `worker` runners, which hand the jobs and steps to `crates/pipeline/`.

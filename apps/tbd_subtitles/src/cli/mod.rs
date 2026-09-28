@@ -5,7 +5,8 @@
 //! **Position:** called by `main`; starts `application` for `gui`; `process_command` runs each
 //! video's job through `pipeline`; `worker_command` runs one step of a job for the job runner.
 //!
-//! **Signals and state:** reads the process arguments; no state.
+//! **Signals and state:** reads the process arguments; starts logging, to the log file too when
+//! the window opens; no state.
 //!
 //! **Invariants:** running with no subcommand opens the window, as a desktop launcher expects;
 //! `worker` refuses the steps that belong to the ggml worker binary.
@@ -47,7 +48,11 @@ enum Command {
 
 /// Parse the command line and run the chosen subcommand.
 pub(crate) fn run() -> anyhow::Result<()> {
-    dispatch(Cli::parse())
+    let cli = Cli::parse();
+    let window = matches!(cli.command, None | Some(Command::Gui { .. }));
+    let log_file = window.then(crate::core::logging::window_log_path).flatten();
+    crate::core::logging::initialise(log_file.as_deref());
+    dispatch(cli)
 }
 
 fn dispatch(cli: Cli) -> anyhow::Result<()> {

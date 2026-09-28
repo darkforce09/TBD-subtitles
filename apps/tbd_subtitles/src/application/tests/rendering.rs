@@ -547,3 +547,53 @@ fn a_change_of_the_desktops_scheme_is_followed() {
     );
     assert_eq!(app.scheme, Scheme::Dark);
 }
+
+#[test]
+fn an_open_the_desktop_never_answers_ends_in_a_red_toast() {
+    use crate::application::background::{OPEN_DEADLINE, OpenRequest};
+    use crate::core::toast::ToastKind;
+    let mut app = app("open-deadline", Vec::new());
+    let asked = Instant::now();
+    let (send, answer) = std::sync::mpsc::channel();
+    app.pending.opens.push(OpenRequest {
+        failed: "Dressrosa 17.mp4 could not open".to_string(),
+        asked,
+        answer,
+    });
+    assert_eq!(
+        app.pending.next_open_deadline(),
+        Some(asked + OPEN_DEADLINE)
+    );
+    app.poll_opens(asked + OPEN_DEADLINE - Duration::from_secs(1));
+    assert_eq!(app.pending.opens.len(), 1, "still within its time");
+    assert!(app.toasts.shown().is_empty());
+    app.poll_opens(asked + OPEN_DEADLINE);
+    assert!(
+        app.pending.opens.is_empty(),
+        "a timed-out open is forgotten"
+    );
+    let toast = app.toasts.shown().last().expect("a toast");
+    assert_eq!(toast.kind, ToastKind::Error);
+    assert_eq!(
+        toast.text,
+        "Dressrosa 17.mp4 could not open: the desktop did not answer"
+    );
+    drop(send);
+}
+
+#[test]
+fn asking_for_a_chooser_while_one_is_open_says_so() {
+    use crate::application::background::Chooser;
+    use crate::core::toast::ToastKind;
+    let mut app = app("chooser-open", Vec::new());
+    let (_send, answer) = std::sync::mpsc::channel();
+    app.pending.chooser = Some((Chooser::QueueVideos, answer));
+    app.choose_for_queue(true);
+    let toast = app.toasts.shown().last().expect("a toast");
+    assert_eq!(toast.kind, ToastKind::Info);
+    assert_eq!(toast.text, "A file chooser is already open.");
+    assert!(matches!(
+        app.pending.chooser,
+        Some((Chooser::QueueVideos, _))
+    ));
+}
