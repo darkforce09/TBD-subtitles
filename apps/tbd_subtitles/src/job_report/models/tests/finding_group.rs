@@ -45,7 +45,7 @@ fn every_check_about_a_line_has_a_group_and_the_job_wide_ones_none() {
 }
 
 #[test]
-fn each_group_has_its_own_title_and_an_explanation() {
+fn each_group_has_its_own_title_chip_and_explanation() {
     let titles: Vec<&str> = LineGroup::ALL.iter().map(|g| g.title()).collect();
     assert_eq!(
         titles,
@@ -54,6 +54,18 @@ fn each_group_has_its_own_title_and_an_explanation() {
             "Heard word replaced",
             "Word no engine heard",
             "Too fast to read",
+            "Loosely timed",
+            "Layout",
+        ]
+    );
+    let chips: Vec<&str> = LineGroup::ALL.iter().map(|g| g.chip()).collect();
+    assert_eq!(
+        chips,
+        [
+            "Unsure",
+            "Word replaced",
+            "Word no engine heard",
+            "Too fast",
             "Loosely timed",
             "Layout",
         ]

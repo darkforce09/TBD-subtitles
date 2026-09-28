@@ -24,8 +24,9 @@ use crate::core::toast::ToastKind;
 use crate::job_queue::events::JobQueueEvent;
 use crate::job_queue::models::queue::JobState;
 use crate::job_report::events::{LinesToCheck, ReportEvent};
-use crate::job_report::services::{line_counts, report_loading};
+use crate::job_report::services::report_loading;
 use crate::line_review::events::ReviewEvent;
+use crate::line_review::models::session::LineList;
 use crate::settings::services::job_settings;
 
 impl TbdSubtitlesApp {
@@ -44,22 +45,15 @@ impl TbdSubtitlesApp {
         }
     }
 
-    /// Open Check Lines on `lines`: a group opens at its earliest line, since the line review
-    /// lists every line worth a listen and no group alone; a time shows every line, at the one
-    /// nearest it.
+    /// Open Check Lines on `lines`: the lines to check, those of one group only, or every line
+    /// at the one nearest a time.
     fn check_lines(&mut self, lines: LinesToCheck) {
-        let first = match lines {
-            LinesToCheck::Group(group) => self
-                .report
-                .as_ref()
-                .and_then(|(_, report)| report.as_ref().ok())
-                .and_then(|report| line_counts::first_line(&report.qc, group)),
-            LinesToCheck::Flagged | LinesToCheck::Near(_) => None,
+        let at = match lines {
+            LinesToCheck::Flagged => return self.open_review(None),
+            LinesToCheck::Group(group) => return self.open_review(Some(group)),
+            LinesToCheck::Near(at) => at,
         };
-        self.open_review(first);
-        let LinesToCheck::Near(at) = lines else {
-            return;
-        };
+        self.open_review(None);
         let nearest = self.review.as_ref().and_then(|(_, session)| {
             let distance = |start: f64, end: f64| {
                 if at < start {
@@ -76,7 +70,7 @@ impl TbdSubtitlesApp {
                 })
                 .map(|line| line.id.clone())
         });
-        self.apply_review(ReviewEvent::ShowAll(true));
+        self.apply_review(ReviewEvent::List(LineList::All));
         if let Some(id) = nearest {
             self.apply_review(ReviewEvent::Open(id));
         }

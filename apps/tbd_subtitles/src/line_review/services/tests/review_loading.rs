@@ -118,9 +118,16 @@ fn every_reading_of_a_line_is_gathered_in_sheet_order() {
         [("P", "blame!"), ("W", "flavor!"), ("ALT p", "Brave!")]
     );
     assert!(first.flagged());
-    assert_eq!(first.reasons.len(), 1);
-    assert!(!session.lines[1].flagged());
-    assert_eq!(session.shown().count(), 1, "flagged lines only");
+    assert_eq!(
+        first.groups,
+        [(
+            LineGroup::Unsure,
+            "The engines disagreed and a second listen didn't settle it. The app's best guess \
+             is in the file."
+                .to_string()
+        )]
+    );
+    assert!(!session.lines[1].flagged(), "no finding names U2");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -128,4 +135,31 @@ fn every_reading_of_a_line_is_gathered_in_sheet_order() {
 fn a_job_without_a_sheet_names_it() {
     let error = load(Path::new("/v/a.mp4"), Path::new("/no/such/job")).expect_err("missing");
     assert!(error.contains("sheet.json"), "{error}");
+}
+
+#[test]
+fn why_a_line_is_flagged_names_the_word_or_the_number() {
+    let finding = |check: QcCheck, detail: &str| QcFinding {
+        check,
+        time_s: 0.0,
+        text: String::new(),
+        detail: detail.into(),
+        utterance: Some("U1".into()),
+    };
+    assert_eq!(
+        why(&finding(QcCheck::RemovedLocked, "U1: Frankie,")),
+        "Both engines heard “Frankie”; the subtitles don't use it."
+    );
+    assert_eq!(
+        why(&finding(QcCheck::Novel, "U1: Franky")),
+        "Neither engine heard “Franky”."
+    );
+    assert_eq!(
+        why(&finding(QcCheck::TooFast, "23.4 cps")),
+        "23.4 characters per second; the limit is 20."
+    );
+    assert_eq!(
+        why(&finding(QcCheck::LineTooLong, "47 characters")),
+        "Layout: line over 42 characters."
+    );
 }

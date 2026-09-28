@@ -23,10 +23,12 @@ fn a_time_left_is_said_loosely() {
 }
 
 #[test]
-fn video_times_read_as_clocks() {
-    assert_eq!(clock(246.8), "0:04:06");
-    assert_eq!(clock(3725.0), "1:02:05");
-    assert_eq!(clock(-1.0), "0:00:00");
+fn line_times_read_to_the_tenth_of_a_second() {
+    assert_eq!(clock_tenths(993.44), "16:33.4");
+    assert_eq!(clock_tenths(9.24), "0:09.2");
+    assert_eq!(clock_tenths(59.96), "1:00.0");
+    assert_eq!(clock_tenths(3725.0), "1:02:05.0");
+    assert_eq!(clock_tenths(-1.0), "0:00.0");
 }
 
 #[test]

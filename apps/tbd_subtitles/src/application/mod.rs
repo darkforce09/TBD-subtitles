@@ -7,8 +7,9 @@
 //! changes state through their `services`. No feature imports this module.
 //!
 //! **Signals and state:** holds the queue, the toasts, the row removed last, whether the Settings
-//! window is open, the settings page, the desktop's colour scheme, the finished rows' summaries
-//! and the threads it waits on; reads files dropped onto the window.
+//! window is open, the settings page, the desktop's colour scheme, the finished rows' summaries,
+//! the open line review with its clip and still frame, the edits of closed reviews, and the
+//! threads it waits on; reads files dropped onto the window.
 //!
 //! **Invariants:** nothing changes state while a frame is drawn: every change is an [`Action`]
 //! applied after the frame, or a thread's answer folded in before it.
@@ -46,8 +47,8 @@ use crate::job_queue::services::{queue_editing, queue_store, time_left};
 use crate::job_report::models::report::JobReport;
 use crate::job_report::models::summary::RowSummary;
 use crate::line_review::events::ReviewEvent;
-use crate::line_review::models::session::ReviewSession;
-use crate::line_review::services::clip_player::ClipPlayer;
+use crate::line_review::models::session::{Parked, ReviewSession};
+use crate::line_review::services::clip_player::{ClipPlayer, Still};
 use crate::settings::models::page::SettingsPage;
 use crate::settings::services::job_settings;
 
@@ -90,6 +91,11 @@ pub(crate) struct TbdSubtitlesApp {
     review: Option<(JobId, ReviewSession)>,
     /// The clip playing in the review.
     clip: Option<ClipPlayer>,
+    /// The line the review's editor shows, with its still frame when its video has a picture.
+    still: Option<(String, Option<Still>)>,
+    /// The unsaved line edits and the run states of each job whose review closed, until it opens
+    /// again or the window closes.
+    parked: HashMap<JobId, Parked>,
 }
 
 impl TbdSubtitlesApp {
@@ -126,6 +132,8 @@ impl TbdSubtitlesApp {
             summaries: HashMap::new(),
             review: None,
             clip: None,
+            still: None,
+            parked: HashMap::new(),
         };
         app.refresh_summaries(None);
         app.watch_scheme();

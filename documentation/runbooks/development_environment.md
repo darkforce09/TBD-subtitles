@@ -179,10 +179,12 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
 
     **Expected:** each step's row turns from pending to running to done, with the time left under
     the job; when it ends, the report says whether it passes the quality check and lists the
-    findings. Check Lines opens the flagged lines; Play sounds the clip through the desktop's
-    audio and shows its picture; Save and time again queues a "· 1 correction" run of the video
-    that runs the review step, the cues, the quality check and the output only, and the old
-    subtitle file moves to the work directory's `backup/`.
+    findings. Check Lines opens the lines to check, the open one with its still frame; Play sounds
+    the clip through the desktop's audio and shows its picture with a moving playhead; Save
+    Correction (or Looks Right) queues a "· 1 correction" run of the video that runs the review
+    step, the cues, the quality check and the output only, the line's chip goes from Updating
+    subtitles… to Subtitles updated, and the old subtitle file moves to the work directory's
+    `backup/`.
 
 ## CUDA libraries for ONNX Runtime
 

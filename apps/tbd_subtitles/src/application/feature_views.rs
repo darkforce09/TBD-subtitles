@@ -26,7 +26,7 @@ use crate::job_queue::models::view::JobQueueView;
 use crate::job_queue::services::sidebar_rows;
 use crate::job_queue::ui as job_queue_ui;
 use crate::job_report::ui::{OverviewView, overview_ui};
-use crate::line_review::ui::{ReviewView, review_view_ui};
+use crate::line_review::ui::{Playing, ReviewView, review_view_ui};
 use crate::settings::ui::settings_page_ui;
 
 /// The widest the selected job's column grows, and the space between its cards.
@@ -88,17 +88,23 @@ pub(super) fn jobs_ui(ui: &mut Ui, app: &TbdSubtitlesApp, actions: &mut Vec<Acti
         .as_ref()
         .filter(|(id, _)| finished && *id == item.id)
     {
+        let clip = app.clip.as_ref().filter(|clip| clip.is_playing());
+        let still = app.still.as_ref().and_then(|(_, still)| still.as_ref());
         let view = ReviewView {
             session,
-            playing: app.clip.as_ref().is_some_and(|clip| clip.is_playing()),
-            frame: app.clip.as_ref().and_then(|clip| clip.frame()),
+            playing: clip.map(|clip| Playing {
+                sound: clip.sound(),
+                position_s: clip.position_s(),
+            }),
+            frame: clip
+                .and_then(|clip| clip.frame())
+                .or_else(|| still.and_then(|still| still.frame())),
+            decoding: still.is_some_and(|still| still.is_decoding()),
             job_busy: app.video_busy(item.id),
         };
-        Frame::new().inner_margin(Margin::same(8)).show(ui, |ui| {
-            let mut events = Vec::new();
-            review_view_ui(ui, &view, &mut events);
-            actions.extend(events.into_iter().map(Action::from));
-        });
+        let mut events = Vec::new();
+        review_view_ui(ui, &view, &mut events);
+        actions.extend(events.into_iter().map(Action::from));
         return;
     }
     ScrollArea::vertical()

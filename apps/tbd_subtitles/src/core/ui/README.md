@@ -2,7 +2,7 @@
 
 The look every feature's UI shares, taken from the approved mockup: the light and dark palettes,
 the fonts, the theme built from them, and the widgets drawn the same everywhere (buttons, cards,
-disclosures, pills and count badges, progress bars, segmented controls, icons and status marks,
+disclosures, pills and count badges, progress bars, segmented controls, switches, icons and status marks,
 toasts), so panels drawn by different features look alike.
 
 ## Contents
@@ -18,7 +18,8 @@ apps/tbd_subtitles/src/core/ui/
 ├── palette.rs     `Palette`, `LIGHT` and `DARK` from the mockup's tokens; `palette(ui)` picks one
 ├── pill.rs        `pill` (a state on its tint, green or orange) and `paint_badge` (the orange count)
 ├── progress.rs    `bar`, `good_bar` and `paint_bar`: the rounded progress bar, blue or green
-├── segmented.rs   `segmented`: a row of segments with the chosen one raised, each with its `Tally`
+├── segmented.rs   `segmented` and `segmented_across`: segments with the chosen one raised, each with its `Tally`
+├── switch.rs      `switch`: the 32 by 19 px on/off switch, blue while on
 ├── tests/         unit tests for the palette's contrast, the font families and the theme's visuals
 ├── theme.rs       `install`: text styles, spacing, radii, borders, shadow, visuals; `follow`: light or dark
 └── toast.rs       `toasts_ui`: the toasts at the bottom centre, each with its mark, text and button
@@ -52,13 +53,14 @@ Each feature takes the colours of text that carries meaning from `palette(ui)`: 
 secondary text, `good`, `warn` and `bad` for states; the toolbar and the sidebar have their own
 greys, icons their brighter `good_icon`, `warn_icon`, `bad_icon` and the quiet `text3`, and pills
 the translucent `good_tint` and `warn_tint` (the mockup's 12 % and 13 % in light eased to 10 % and
-9 %, so their text reads at 4.5). The accent is macOS blue as mocked; KDE's accent colour is not
+9 %, so their text reads at 4.5). The line editor sits on the mockup's `grouped` grey, and a clip's
+picture on its `video` black. The accent is macOS blue as mocked; KDE's accent colour is not
 followed.
 
 `button::Button` paints the mockup's button from the palette: a bordered control, the blue
 primary one with white text, or the danger one with red text (Cancel, Remove from List), 24, 28
-or 32 px high, an optional icon before the label, a hover and
-a pressed look, 45 % opacity when disabled (it then senses no click), and its label as its
+or 32 px high, an optional icon before the label (or after it, `icon_after`: Next), an optional
+shortcut after the label in 11 px at 65 % opacity (`hint`: Ctrl+S), a hover and a pressed look, 45 % opacity when disabled (it then senses no click), and its label as its
 accessible name. `icon_button` is a borderless 28 px square with an 18 px glyph. `icons` names the
 glyphs the window uses and paints the status marks on a 24-unit grid: a clock (waiting), a progress
 ring (running), an empty grey ring (still to come), a white check on green (done), a white exclamation on an orange triangle (needs a
@@ -82,7 +84,10 @@ lines checked); `paint_bar` paints one into a given rectangle. `segmented::segme
 row of 24 px segments in a 2 px `seg_bg` well, radius 8, the chosen one raised in `seg_on` with a
 small shadow; a segment's `Tally` follows its label 6 px on, a count in 11 px semibold grey or a
 green check; each segment is named by its label with whether it is chosen, and a click on another
-returns its value. `pill::pill` draws a 20 px pill, radius 10, a 14 px glyph and 11.5 px semibold
+returns its value; `segmented_across` spreads the segments equally across the width given (the
+line list's To Check, Checked and All). `switch::switch` draws a 32 by 19 px track, `line_strong`
+while off and `accent_fill` while on, with a 15 px white knob that sits right while on, named as a
+check box with whether it is on. `pill::pill` draws a 20 px pill, radius 10, a 14 px glyph and 11.5 px semibold
 text in `good` or `warn` on its tint, named by its text; `pill::paint_badge` paints the 18 px
 count of a sidebar row (at least 22 px wide, radius 9, 11 px bold `warn` on `warn_tint`, white on
 translucent white on a selected row) ending at a given point, and gives back the space it took.
@@ -93,7 +98,7 @@ translucent white on a selected row) ending at a given point, and gives back the
   `palette::{palette, Palette, LIGHT, DARK}`; `button::{Button, ButtonSize, icon_button}`;
   `card::{card, card_head, card_text, well_text}`; `disclosure::disclosure`;
   `pill::{pill, paint_badge, Tone}`; `progress::{bar, good_bar, paint_bar}`;
-  `segmented::{segmented, Tally}`;
+  `segmented::{segmented, segmented_across, Tally}`; `switch::switch`;
   `icons::{font, StatusIcon, status_icon, paint_status}` and the glyph names; `toast::toasts_ui`.
 
 ## Boundaries

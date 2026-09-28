@@ -20,6 +20,8 @@ mod rendering_detail;
 mod rendering_queue;
 #[path = "rendering_report.rs"]
 mod rendering_report;
+#[path = "rendering_review.rs"]
+mod rendering_review;
 #[path = "window_snapshots.rs"]
 mod window_snapshots;
 
@@ -467,6 +469,17 @@ fn a_saved_correction_queues_a_review_run_that_runs_at_once() {
         "calls":1,"input_tokens":0,"output_tokens":0,"cost_usd":0.0}"#;
     std::fs::write(job.join("sheet.json"), sheet).expect("sheet");
     std::fs::write(job.join("adjudicated.json"), adjudicated).expect("adjudicated");
+    let qc = QcReport {
+        findings: vec![job_model::report::QcFinding {
+            check: job_model::report::QcCheck::Unsure,
+            time_s: 10.0,
+            text: "Blaver!".into(),
+            detail: "U1".into(),
+            utterance: Some("U1".into()),
+        }],
+        ..QcReport::default()
+    };
+    std::fs::write(job.join("qc.json"), serde_json::to_string(&qc).expect("qc")).expect("qc");
     let id = app.queue.items[0].id;
     app.apply(vec![
         Action::from(JobQueueEvent::Select(id)),
@@ -477,11 +490,11 @@ fn a_saved_correction_queues_a_review_run_that_runs_at_once() {
     for expected in [
         "Overview",
         "Check Lines",
-        "Review lines",
+        "To Check",
         "Blaver!",
         "Parakeet",
         "flavor!",
-        "Save and time again",
+        "Looks Right",
     ] {
         assert!(text.contains(expected), "{expected} not in {text}");
     }

@@ -5,8 +5,8 @@
 //! heard words replaced, words no engine heard, lines too fast to read, loosely timed lines and
 //! layout.
 //!
-//! **Position:** read by `services::line_counts` to count lines per group, and by the lines card
-//! for each group's row.
+//! **Position:** read by `services::line_counts` to count lines per group, by the lines card for
+//! each group's row, and by the line review for a line's chips and its group filter.
 //!
 //! **Signals and state:** none; constants only.
 //!
@@ -71,6 +71,18 @@ impl LineGroup {
             LineGroup::HeardWordReplaced => "Heard word replaced",
             LineGroup::NovelWord => "Word no engine heard",
             LineGroup::TooFast => "Too fast to read",
+            LineGroup::LooselyTimed => "Loosely timed",
+            LineGroup::Layout => "Layout",
+        }
+    }
+
+    /// The group's short name on a line's chip in the Check Lines list.
+    pub(crate) fn chip(self) -> &'static str {
+        match self {
+            LineGroup::Unsure => "Unsure",
+            LineGroup::HeardWordReplaced => "Word replaced",
+            LineGroup::NovelWord => "Word no engine heard",
+            LineGroup::TooFast => "Too fast",
             LineGroup::LooselyTimed => "Loosely timed",
             LineGroup::Layout => "Layout",
         }

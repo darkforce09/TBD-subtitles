@@ -22,12 +22,15 @@ language-model call), how many lines are worth a listen in their groups and how 
 the check's numbers and each step's time and memory, with buttons that open the video, show the
 file in its folder, copy its path and open `report.md` through the desktop; its sidebar row says
 "Subtitles ready · 38 to check" with an orange count, or "Needs attention · 1 problem", even for
-a job finished in an earlier window. Its Check Lines tab opens the line review: the flagged
-lines (or every line), each with its clip (the video's sound or the voices alone, and a small
-picture), what every engine heard, the text and its flags. The owner picks a reading or types the
-line, and Save and time again writes `review.json` and starts a review run at once, which
-re-times the corrected lines and rewrites the subtitle file; Take the correction back undoes one.
-The video's row shows the review run ("Updating subtitles · 1 correction") until it ends.
+a job finished in an earlier window. Its Check Lines tab opens the line review: a list of the
+lines to check, those checked or every line, narrowed to a group or a search, beside the open
+line with why it is worth a listen, its clip (the video's sound or the voices alone, its picture
+and a playhead), what every engine heard, the text and its flags. The owner uses a reading or
+types the line, and Save Correction, or Looks Right for a line that is right as it is, writes
+`review.json`, moves on to the next line and starts a review run at once, which re-times the
+saved lines and rewrites the subtitle file; Take Back undoes one. A status chip over the line
+goes Saved → Updating subtitles… → Subtitles updated, and the video's row shows the review run
+("Updating subtitles · 1 correction") until it ends.
 
 ## Where it lives
 
@@ -87,15 +90,38 @@ The video's row shows the review run ("Updating subtitles · 1 correction") unti
    Path, each saying in a toast what it did, and in a red one when the desktop could not. The
    lines card: "38 lines worth a listen", a green bar of those checked, Check Lines, and a row per
    group (Unsure what was said, Heard word replaced, Word no engine heard, Too fast to read,
-   Loosely timed, Layout) with its explanation and count, which opens Check Lines at the group's
-   earliest line. Then Details (subtitles, easy to read, unsure lines, words no engine heard,
+   Loosely timed, Layout) with its explanation and count, which opens Check Lines narrowed to that
+   group. Then Details (subtitles, easy to read, unsure lines, words no engine heard,
    timing offset, speech and voice with no subtitle, words timed by the aligner, corrections made)
    and Step times (each stage and step with its time, peak RAM and peak VRAM, and Open Full
    Report), both folded away at first.
-4. **Review.** Under a finished job's Check Lines tab, for each flagged line: play the clip (sound and a small picture, both from
-   FFmpeg), see every engine's hypothesis, pick one or type a correction; the line is re-aligned
-   and the subtitle file rewritten. Corrections never touch lines that were not flagged unless
-   the owner opens them.
+4. **Review.** Under a finished job's Check Lines tab. On the left, 330 px wide: To Check,
+   Checked and All with their counts (To Check matches the header's count; a line stays worth a
+   listen after its correction run settles its findings, and while a taken-back line's run runs),
+   the search field
+   (words, a line's id, or a time such as `16:33`), the group the list is narrowed to as an orange
+   pill with ✕, and a row per line with its time (`16:33.4`), its text cut after two lines, a dot
+   (orange to check, blue while edited) or a green check, and chips: its groups ("Unsure", "Word
+   replaced", "Too fast"), or "Edited, not saved", "Looks right" or "Corrected". On the right the
+   open line: its time and id with the status chip of its correction run; an orange box per group
+   saying why ("Both engines heard “Frankie”; the subtitles don't use it."), or a green one once
+   kept or corrected; the clip, its picture at most 480 px wide (the frame at the line's start,
+   decoded when the line opens, then the clip's frames), a timeline with hatched 0.75 s pads, the line's span and a
+   red playhead that follows the time since the sound began, and Play, Voices Only or Stop; "In
+   the subtitles now"; what was heard (the language model's pick, Parakeet, Whisper, and each
+   engine's second listen to the voices alone), each with Use or "In use"; the text box ("Type ||
+   where a second speaker starts."); and four switches that say what the subtitles do: New
+   speaker (never merged into the line before; they share a subtitle only with dashes), Narrator
+   (in italics, never in a two-speaker subtitle), Song lyric (left out of the dialogue; its song
+   can get a sound cue) and Drop the line (left out). The footer has Previous and Next (off at the
+   list's ends), then Discard Edit and Save Correction for an edited line, Take Back for a checked
+   one, or Looks Right, which saves the line unchanged so it is timed again and its warnings
+   clear. Saving moves on to the next line (or stays on the last); an edit not saved, and the
+   status chip of a saved line, stay while the window is open, also when Check Lines closes. Keys: Ctrl+S saves an edited line, Ctrl+Enter keeps an
+   unedited one, ↑ and ↓ move through the lines, Space plays or stops (or presses the button that
+   has the keyboard's focus), Esc leaves the text box and
+   then stops the clip; Space and the arrows are the text box's while typing. Nothing is saved
+   while a full run of the video runs. Corrections never touch lines the owner did not save.
 5. **Settings.** In a window of their own, centred over the main one when they open: models
    folder and download status, work folder and its size, engines per stage, language-model
    backend, output format, GPU check (driver, free VRAM, CUDA libraries found, FFmpeg, ffprobe,
@@ -126,7 +152,10 @@ Mono for monospace text (egui's fonts when they are missing), Phosphor icons, ti
 1 px borders and one soft shadow, and selections in a light accent tint with accent text. The
 detail pane is built as mocked: the header with the 22 px title, cards in a column at most 800 px
 wide, a segmented control with a count, disclosures, pills, thick and thin progress bars and the
-stage marks, and the Overview's cards. The
+stage marks, and the Overview's cards. Check Lines is built as mocked too: the 330 px list, the
+editor over the grouped grey, switches, the clip's still frame and a painted timeline. Two things
+differ: the playhead follows the time since the sound started, so it may lead the audio by tens of
+milliseconds, and Looks Right re-times the line on its own, as its hover text says. The
 window follows the desktop's light or dark colour scheme as KDE sets it, through the desktop
 portal, and switches when it changes; KDE's accent colour is not followed. Code layout follows the TBD-Reforger desktop-app pattern: one folder per feature with
 `models/`, `services/` and `ui/`, where the UI draws from a borrowed view and returns events that

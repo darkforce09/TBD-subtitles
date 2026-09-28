@@ -2,7 +2,7 @@
 //! the language model settled on, why the quality check flagged it, and the owner's corrections.
 //!
 //! **Role:** join `sheet.json`, the re-decodes, `adjudicated.json`, `qc.json`, `review.json` and
-//! `probe.json` into a `ReviewSession`.
+//! `probe.json` into a `ReviewSession`, each line with its groups and why in the owner's words.
 //!
 //! **Position:** called by the application when the owner opens a job's review and after a
 //! review run ends.
@@ -12,12 +12,13 @@
 //! **Invariants:** an utterance appears once, in sheet order; a missing re-decode or correction
 //! file means none, a missing sheet or adjudication is an error naming the file.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use job_model::outputs::{AdjudicationPass, Corrections, ProbeDecoded, Redecode, Utterance};
-use job_model::report::QcReport;
+use job_model::report::{QcCheck, QcFinding, QcReport};
 
+use crate::job_report::models::finding_group::LineGroup;
 use crate::line_review::models::session::{Hypothesis, ReviewLine, ReviewSession};
 
 /// The review of the job of `video` whose work directory is `work_dir`.
@@ -52,14 +53,14 @@ pub(crate) fn load(video: &Path, work_dir: &Path) -> Result<ReviewSession, Strin
         .iter()
         .map(|l| (l.id.as_str(), (l.t.as_str(), l.f.as_slice())))
         .collect();
-    let mut reasons: HashMap<&str, Vec<String>> = HashMap::new();
+    let mut groups: HashMap<&str, BTreeMap<LineGroup, String>> = HashMap::new();
     for finding in &qc.findings {
-        if let Some(id) = &finding.utterance {
-            reasons.entry(id.as_str()).or_default().push(format!(
-                "{}: {}",
-                finding.check.describe(),
-                finding.detail
-            ));
+        if let (Some(id), Some(group)) = (&finding.utterance, LineGroup::of(finding.check)) {
+            groups
+                .entry(id.as_str())
+                .or_default()
+                .entry(group)
+                .or_insert_with(|| why(finding));
         }
     }
     let lines = sheet
@@ -82,27 +83,55 @@ pub(crate) fn load(video: &Path, work_dir: &Path) -> Result<ReviewSession, Strin
                 adjudicated: text.to_string(),
                 flags: flags.to_vec(),
                 hypotheses,
-                reasons: reasons.remove(u.id.as_str()).unwrap_or_default(),
+                groups: groups
+                    .remove(u.id.as_str())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .collect(),
             }
         })
         .collect();
-    let (audio_position, picture) = probe.map_or((0, (0, 0)), |p| {
-        (
-            p.track.audio_position,
-            p.probe.video.map_or((0, 0), |v| (v.width, v.height)),
-        )
-    });
-    Ok(ReviewSession {
-        video: video.to_path_buf(),
-        work_dir: work_dir.to_path_buf(),
-        audio_position,
-        picture,
+    let mut session = ReviewSession::new(
+        video.to_path_buf(),
+        work_dir.to_path_buf(),
         lines,
         corrections,
-        show_all: false,
-        draft: None,
-        notice: None,
-    })
+    );
+    if let Some(p) = probe {
+        session.audio_position = p.track.audio_position;
+        session.picture = p.probe.video.map_or((0, 0), |v| (v.width, v.height));
+    }
+    Ok(session)
+}
+
+/// Why `finding` put its line in its group, in the owner's words.
+fn why(finding: &QcFinding) -> String {
+    // `U0412: Frankie,` names the word after the line's id.
+    let word = || {
+        let detail = finding.detail.as_str();
+        let word = detail.split_once(": ").map_or(detail, |(_, word)| word);
+        word.trim_end_matches([',', '.', '!', '?']).to_string()
+    };
+    match finding.check {
+        QcCheck::Unsure => "The engines disagreed and a second listen didn't settle it. The app's \
+                            best guess is in the file."
+            .to_string(),
+        QcCheck::RemovedLocked => {
+            format!(
+                "Both engines heard “{}”; the subtitles don't use it.",
+                word()
+            )
+        }
+        QcCheck::Novel => format!("Neither engine heard “{}”.", word()),
+        QcCheck::TooFast => format!(
+            "{}; the limit is 20.",
+            finding.detail.replace("cps", "characters per second")
+        ),
+        QcCheck::WeakTiming => "Fewer than half the words were timed by the aligner. Looks \
+                                Right re-times it."
+            .to_string(),
+        check => format!("Layout: {}.", check.describe()),
+    }
 }
 
 /// The work directory of `video`'s job under `work_root`.

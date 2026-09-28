@@ -30,6 +30,10 @@ pub(crate) struct Palette {
     pub(crate) stripe: Color32,
     /// Recessed wells: code and monospace blocks.
     pub(crate) well: Color32,
+    /// Grouped content behind its cards: the line editor.
+    pub(crate) grouped: Color32,
+    /// The black behind a clip's picture.
+    pub(crate) video: Color32,
     /// The inside of buttons and text fields.
     pub(crate) control: Color32,
     /// The 1 px border of buttons and text fields.
@@ -94,6 +98,8 @@ pub(crate) static LIGHT: Palette = Palette {
     card: Color32::from_rgb(0xFF, 0xFF, 0xFF),
     stripe: Color32::from_rgb(0xF4, 0xF4, 0xF6),
     well: Color32::from_rgb(0xF4, 0xF4, 0xF6),
+    grouped: Color32::from_rgb(0xF4, 0xF4, 0xF6),
+    video: Color32::from_rgb(0x16, 0x17, 0x1A),
     control: Color32::from_rgb(0xFF, 0xFF, 0xFF),
     control_border: Color32::from_rgb(0xCF, 0xCF, 0xD6),
     seg_bg: Color32::from_rgb(0xE6, 0xE6, 0xEA),
@@ -130,6 +136,8 @@ pub(crate) static DARK: Palette = Palette {
     card: Color32::from_rgb(0x2A, 0x2A, 0x2D),
     stripe: Color32::from_rgb(0x26, 0x26, 0x29),
     well: Color32::from_rgb(0x23, 0x23, 0x26),
+    grouped: Color32::from_rgb(0x1B, 0x1B, 0x1D),
+    video: Color32::from_rgb(0x0B, 0x0B, 0x0D),
     control: Color32::from_rgb(0x35, 0x35, 0x39),
     control_border: Color32::from_rgb(0x4A, 0x4A, 0x50),
     seg_bg: Color32::from_rgb(0x33, 0x33, 0x36),

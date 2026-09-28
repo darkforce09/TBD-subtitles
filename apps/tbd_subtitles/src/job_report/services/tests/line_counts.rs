@@ -146,21 +146,6 @@ fn problems_are_empty_exactly_when_the_job_passes_for_each_rule() {
 }
 
 #[test]
-fn a_group_opens_at_its_earliest_line() {
-    let qc = QcReport {
-        findings: vec![
-            finding(QcCheck::Unsure, 1.0, Some("U1")),
-            finding(QcCheck::TooShort, 2.0, None),
-            finding(QcCheck::Overlap, 3.0, Some("U4")),
-            finding(QcCheck::Overlap, 5.0, Some("U7")),
-        ],
-        ..QcReport::default()
-    };
-    assert_eq!(first_line(&qc, LineGroup::Layout).as_deref(), Some("U4"));
-    assert_eq!(first_line(&qc, LineGroup::TooFast), None);
-}
-
-#[test]
 fn corrected_lines_stay_counted_after_the_correction_run_settles_them() {
     let before = QcReport {
         findings: vec![

@@ -255,9 +255,13 @@ fn show_nearby_lines_opens_every_line_at_the_one_nearest_the_speech_with_no_subt
         crate::job_report::events::LinesToCheck::Near(at),
     ))]);
     let (_, session) = app.review.as_ref().expect("Check Lines is open");
-    assert!(session.show_all, "every line shows");
     assert_eq!(
-        session.draft.as_ref().map(|draft| draft.id.as_str()),
+        session.list,
+        crate::line_review::models::session::LineList::All,
+        "every line shows"
+    );
+    assert_eq!(
+        session.open.as_deref(),
         Some("U2"),
         "the line nearest 20 s: U2 starts 5 s later, U1 ended 9 s before"
     );

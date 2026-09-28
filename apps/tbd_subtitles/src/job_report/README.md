@@ -44,9 +44,8 @@ and a row per group that opens Check Lines on it), and the closed disclosures De
 times. Open asks the desktop portal, so the video opens in the desktop's default player (VLC) and
 the app starts no program. Try Again beside a failed language-model call runs the job again from
 adjudication (`StepName::Adjudicate`): every model call and every step after them. Check Lines on
-a group opens the line review at the group's earliest line, since the line review lists every
-line worth a listen and no group alone; Show Nearby Lines opens it with every line shown, at
-the line nearest the first stretch of speech with no subtitle.
+a group opens the line review on the lines to check narrowed to that group; Show Nearby Lines
+opens it with every line shown, at the line nearest the first stretch of speech with no subtitle.
 
 ## Public surface
 

@@ -10,7 +10,7 @@ apps/tbd_subtitles/src/application/actions/
 ├── mod.rs       the module list and the re-exports `application` uses
 ├── queue.rs     the queue's actions: add, select, remove and undo, move, cancel, try and run again
 ├── report.rs    the selected job's report, the finished rows' summaries, and the Overview's requests
-├── review.rs    the line review: open, edit, save and queue a review run, play clips, reload
+├── review.rs    the line review: open (on a group), edit, save or keep and queue a run, clips, stills
 ├── runner.rs    starting the next job of each lane with its options, and the runners' events
 └── settings.rs  the settings page as the window opens, its actions, and its threads' answers
 ```
@@ -51,30 +51,39 @@ which the pipeline has recorded by then, so a job failing before it keeps them),
 finished job, a cancelled one with the finished steps it kept, or a failed one with the step that
 failed and the steps it had finished (each with its seconds, or still valid), after which the
 step rates, the summaries of the rows of each video whose run ended, the report and an open review
-are read again and the next job of each lane starts.
+are read again and the next job of each lane starts. A review run's start, and its end first,
+before the next run starts, are passed to the open review of its video, whose saved lines go
+from Saved to Updating and on to Updated or Failed.
 
 `report.rs` reads the selected finished job's report when it is selected or a job ends, and with
 it the job's row summary; `refresh_summaries` reads the summary of every finished row when the
 window opens, and of a video's rows after each of its runs and each saved or taken-back
 correction (a row whose files cannot be read has none). It applies the Overview's events: Open in
 Player, Show in Folder and Open Full Report through `open_with_desktop`, the copied path's toast,
-Check Lines on the lines worth a listen, on every line at the one nearest the first speech with
-no subtitle (Show Nearby Lines), or on a group, which
-opens at the group's earliest line; and Try Again beside a failed language-model call, which is
-Try Again from `StepName::Adjudicate`: every model call and the steps after them run again.
-`review.rs` opens the selected job's review at the line it is asked for (a group's earliest) or its
-first flagged line, or says in a red toast why it cannot, leaving the report as it is; closes it once its job
-is no longer finished (after every queue event, so a job tried or run again shows as it is now);
-applies the owner's picks, typing and flags to the draft, and on Save or Take back writes
-`review.json` and queues a review run of the video, or adds the correction to the one that
-waits. Play starts the clip player on the open line with 0.75 s either side, with the video's
-sound or the vocal stem; opening another line, Stop and closing the review stop it.
+Check Lines on the lines to check, on a group (the list narrowed to it), or on every line at the
+one nearest the first speech with no subtitle (Show Nearby Lines); and Try Again beside a failed
+language-model call, which is Try Again from `StepName::Adjudicate`: every model call and the
+steps after them run again.
+`review.rs` opens the selected job's review on its lines to check, narrowed to a group when one
+is named, with the edits it had when it last closed, or says in a red toast why it cannot,
+leaving the report as it is; closes it once its job is no longer finished (after every queue
+event, so a job tried or run again shows as it is now), parking its unsaved edits and the runs
+of its saved lines under the job until it opens again; a parked review follows its video's
+runs too. It applies the owner's picks, typing and flags to the open line's draft,
+the list, the search and the group; on Save Correction, Looks Right or Take Back it writes
+`review.json` and queues a review run of the video, or adds the correction to the one that waits
+(Take Back on a line with no correction does nothing), and a line that cannot be saved (an empty text not dropped) says why in a red toast. Play starts
+the clip player on the open line with 0.75 s either side, with the video's sound or the vocal
+stem; Stop and closing the review stop it. Whenever the editor shows another line, by a click,
+a step, a save or a filter, the clip stops and the frame at the line's start is decoded when its
+video has a picture. After a run of the video ends, its lines are read again with what the owner did
+carried over.
 
 ## Boundaries
 
 - Depends on: `crate::settings` (events, models, services); `crate::job_queue` (events, models,
-  services); `crate::job_report::services`; `crate::line_review` (events,
-  services); `pipeline` (`JobOptions`, `CancelToken`, `workers::Binaries`); `media_io::preview`
+  services); `crate::job_report` (events, `models::finding_group`, services); `crate::line_review`
+  (events, models, services); `pipeline` (`JobOptions`, `CancelToken`, `workers::Binaries`); `media_io::preview`
   (`Clip`); `crate::core::{portal, steps, toast}`; `crate::application` (`TbdSubtitlesApp`,
   `Action`, `Environment`, `background::{Chooser, Opening}`).
 - Used by: `crate::application`, in `apply` and `poll`.
@@ -93,4 +102,9 @@ sound or the vocal stem; opening another line, Stop and closing the review stop 
   reruns the language-model calls, and a row finished in an earlier window shows its summary
   (`a_failed_language_model_call_needs_attention_and_try_again_reruns_the_calls`,
   `a_job_finished_in_an_earlier_window_shows_its_verdict_and_lines_to_check` in
-  `apps/tbd_subtitles/src/application/tests/rendering_report.rs`).
+  `apps/tbd_subtitles/src/application/tests/rendering_report.rs`); a group opens Check Lines
+  narrowed to it, a save moves on while its run's status chip follows the run, and an edit waits
+  while Check Lines is closed (`a_group_on_the_overview_opens_check_lines_on_that_group`,
+  `use_edits_the_line_and_save_moves_on_while_the_subtitles_update`,
+  `an_edit_waits_while_check_lines_is_closed` in
+  `apps/tbd_subtitles/src/application/tests/rendering_review.rs`).

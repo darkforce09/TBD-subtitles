@@ -2,10 +2,9 @@
 //! owner's corrections.
 //!
 //! **Role:** count the distinct lines of each group and in all, the lines the owner checked, and
-//! the pass rules the job breaks; name the first line of a group.
+//! the pass rules the job breaks.
 //!
-//! **Position:** called by `report_loading` when a report or a row's summary is read, and by the
-//! application when Check Lines opens on a group.
+//! **Position:** called by `report_loading` when a report or a row's summary is read.
 //!
 //! **Signals and state:** none; reads the check and the corrections.
 //!
@@ -98,14 +97,6 @@ pub(crate) fn summary(qc: &QcReport, corrections: &Corrections) -> RowSummary {
         flagged: lines.flagged,
         to_check: lines.to_check(),
     }
-}
-
-/// The earliest line with a finding of `group`.
-pub(crate) fn first_line(qc: &QcReport, group: LineGroup) -> Option<String> {
-    qc.findings
-        .iter()
-        .filter(|finding| LineGroup::of(finding.check) == Some(group))
-        .find_map(|finding| finding.utterance.clone())
 }
 
 #[cfg(test)]

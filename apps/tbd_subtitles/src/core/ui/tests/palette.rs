@@ -31,6 +31,7 @@ fn every_text_colour_reads_on_every_surface() {
             ("card", p.card),
             ("stripe", p.stripe),
             ("well", p.well),
+            ("grouped", p.grouped),
         ];
         let texts = [
             ("text", p.text),

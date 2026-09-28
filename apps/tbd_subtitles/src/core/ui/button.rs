@@ -1,5 +1,6 @@
-//! Buttons as the mockup draws them: a bordered button with an optional icon, the blue primary
-//! button, the red-text danger button, three heights, and a borderless icon button.
+//! Buttons as the mockup draws them: a bordered button with an optional icon before or after its
+//! label and an optional shortcut hint, the blue primary button, the red-text danger button, three
+//! heights, and a borderless icon button.
 //!
 //! **Role:** paint a button from the palette, with its hover, pressed and disabled looks, and
 //! name it for accessibility.
@@ -37,6 +38,10 @@ pub(crate) enum ButtonSize {
 pub(crate) struct Button<'a> {
     label: &'a str,
     icon: Option<&'a str>,
+    /// The icon follows the label.
+    icon_after: bool,
+    /// A shortcut after the label.
+    hint: Option<&'a str>,
     primary: bool,
     danger: bool,
     size: ButtonSize,
@@ -49,6 +54,8 @@ impl<'a> Button<'a> {
         Button {
             label,
             icon: None,
+            icon_after: false,
+            hint: None,
             primary: false,
             danger: false,
             size: ButtonSize::Regular,
@@ -61,6 +68,23 @@ impl<'a> Button<'a> {
     pub(crate) fn icon(self, glyph: &'a str) -> Button<'a> {
         Button {
             icon: Some(glyph),
+            ..self
+        }
+    }
+
+    /// A Phosphor glyph after the label.
+    pub(crate) fn icon_after(self, glyph: &'a str) -> Button<'a> {
+        Button {
+            icon: Some(glyph),
+            icon_after: true,
+            ..self
+        }
+    }
+
+    /// A keyboard shortcut after the label, small and faded (`Ctrl+S`).
+    pub(crate) fn hint(self, hint: &'a str) -> Button<'a> {
+        Button {
+            hint: Some(hint),
             ..self
         }
     }
@@ -112,8 +136,13 @@ impl<'a> Button<'a> {
             ui.painter()
                 .layout_no_wrap(glyph.to_string(), icons::font(14.0), text)
         });
+        let hint = self.hint.map(|hint| {
+            ui.painter()
+                .layout_no_wrap(hint.to_string(), FontId::proportional(11.0), text)
+        });
         let icon_width = icon.as_ref().map_or(0.0, |icon| icon.size().x + ICON_GAP);
-        let content = icon_width + label.size().x;
+        let hint_width = hint.as_ref().map_or(0.0, |hint| ICON_GAP + hint.size().x);
+        let content = icon_width + label.size().x + hint_width;
         let width = (content + 2.0 * padding).max(self.min_width);
         let sense = if self.enabled {
             Sense::click()
@@ -161,17 +190,29 @@ impl<'a> Button<'a> {
             Stroke::new(1.0, fade(border)),
             StrokeKind::Inside,
         );
+        let centre = rect.center().y;
         let mut x = rect.center().x - content / 2.0;
-        if let Some(icon) = icon {
-            let size = icon.size();
-            let at = pos2(x, rect.center().y - size.y / 2.0);
-            x += size.x + ICON_GAP;
+        let mut put = |galley: std::sync::Arc<eframe::egui::Galley>, colour: Color32| {
+            let at = pos2(x, centre - galley.size().y / 2.0);
+            x += galley.size().x + ICON_GAP;
             ui.painter()
-                .galley_with_override_text_color(at, icon, fade(text));
+                .galley_with_override_text_color(at, galley, colour);
+        };
+        let (before, after) = if self.icon_after {
+            (None, icon)
+        } else {
+            (icon, None)
+        };
+        if let Some(icon) = before {
+            put(icon, fade(text));
         }
-        let at = pos2(x, rect.center().y - label.size().y / 2.0);
-        ui.painter()
-            .galley_with_override_text_color(at, label, fade(text));
+        put(label, fade(text));
+        if let Some(hint) = hint {
+            put(hint, fade(text).gamma_multiply(0.65));
+        }
+        if let Some(icon) = after {
+            put(icon, fade(text));
+        }
         response
     }
 }

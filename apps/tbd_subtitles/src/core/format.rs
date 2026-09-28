@@ -53,10 +53,16 @@ pub(crate) fn length(seconds: f64) -> String {
     }
 }
 
-/// A video time as `h:mm:ss`.
-pub(crate) fn clock(seconds: f64) -> String {
-    let s = seconds.max(0.0).floor() as u64;
-    format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
+/// A moment of a video to the tenth of a second, as the line review writes it: `16:33.4`, or
+/// `1:02:05.0` from an hour on.
+pub(crate) fn clock_tenths(seconds: f64) -> String {
+    let tenths = (seconds.max(0.0) * 10.0).round() as u64;
+    let (s, tenth) = (tenths / 10, tenths % 10);
+    if s >= 3600 {
+        format!("{}:{:02}:{:02}.{tenth}", s / 3600, s / 60 % 60, s % 60)
+    } else {
+        format!("{}:{:02}.{tenth}", s / 60, s % 60)
+    }
 }
 
 /// A place in line: `1st`, `2nd`, `3rd`, `4th`, `11th`, `21st`.

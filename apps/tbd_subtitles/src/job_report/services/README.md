@@ -7,7 +7,7 @@ lines worth a listen and its problems, with no rendering code.
 
 ```text
 apps/tbd_subtitles/src/job_report/services/
-├── line_counts.rs     lines per group, lines checked, the problems, a row's summary, a group's first line
+├── line_counts.rs     lines per group, lines checked, the problems, a row's summary
 ├── mod.rs             the module list
 ├── report_loading.rs  `load` and `summary`: `job.json`, `qc.json`, `output.json` and `review.json`
 └── tests/             unit tests for the counts and problems, a finished job and a missing one
@@ -26,7 +26,7 @@ stays counted, under no group. A finding about no line (a sound cue, the whole j
 check. `line_counts::problems`
 gives one `Problem` per pass rule the check breaks, in the order the file card lists them:
 layout, speech with no subtitle (with the time of its first stretch), the aligner's offset,
-failed language-model calls, reading speed. `line_counts::first_line` names a group's earliest line, where Check Lines opens on it.
+failed language-model calls, reading speed.
 
 ## Boundaries
 

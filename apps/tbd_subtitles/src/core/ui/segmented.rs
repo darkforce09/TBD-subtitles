@@ -5,7 +5,7 @@
 //! which one was clicked.
 //!
 //! **Position:** used by the views that switch between tabs, such as the selected job's Overview
-//! and Check Lines.
+//! and Check Lines, and across the top of the line list for its three lists.
 //!
 //! **Signals and state:** none; the caller holds which segment is chosen.
 //!
@@ -39,12 +39,30 @@ pub(crate) enum Tally {
     Done,
 }
 
-/// Draw one segment per `(value, label, tally)` with `current` chosen; the value clicked, when
-/// it is not the one chosen.
+/// Draw one segment per `(value, label, tally)` with `current` chosen, each as wide as its label;
+/// the value clicked, when it is not the one chosen.
 pub(crate) fn segmented<T: Copy + PartialEq>(
     ui: &mut Ui,
     current: T,
     segments: &[(T, &str, Option<Tally>)],
+) -> Option<T> {
+    draw(ui, current, segments, false)
+}
+
+/// As [`segmented`], across the width given, the segments equally wide.
+pub(crate) fn segmented_across<T: Copy + PartialEq>(
+    ui: &mut Ui,
+    current: T,
+    segments: &[(T, &str, Option<Tally>)],
+) -> Option<T> {
+    draw(ui, current, segments, true)
+}
+
+fn draw<T: Copy + PartialEq>(
+    ui: &mut Ui,
+    current: T,
+    segments: &[(T, &str, Option<Tally>)],
+    across: bool,
 ) -> Option<T> {
     let p = palette(ui);
     let font = FontId::proportional(12.5);
@@ -58,16 +76,20 @@ pub(crate) fn segmented<T: Copy + PartialEq>(
             (label, tally)
         })
         .collect();
-    let widths: Vec<f32> = laid
-        .iter()
-        .map(|(label, tally)| {
-            let tally = tally
-                .as_ref()
-                .map_or(0.0, |tally| TALLY_GAP + tally.size().x);
-            label.size().x + tally + 2.0 * PADDING
-        })
-        .collect();
     let gaps = WELL * segments.len().saturating_sub(1) as f32;
+    let widths: Vec<f32> = if across {
+        let each = (ui.available_width() - gaps - 2.0 * WELL) / segments.len().max(1) as f32;
+        vec![each.max(0.0); segments.len()]
+    } else {
+        laid.iter()
+            .map(|(label, tally)| {
+                let tally = tally
+                    .as_ref()
+                    .map_or(0.0, |tally| TALLY_GAP + tally.size().x);
+                label.size().x + tally + 2.0 * PADDING
+            })
+            .collect()
+    };
     let size = vec2(
         widths.iter().sum::<f32>() + gaps + 2.0 * WELL,
         HEIGHT + 2.0 * WELL,

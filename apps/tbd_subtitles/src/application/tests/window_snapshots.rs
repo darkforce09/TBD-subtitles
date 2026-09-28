@@ -7,11 +7,13 @@
 //! `TBD_SNAPSHOTS=<folder> cargo test -p tbd_subtitles -- --ignored window_snapshots`.
 //!
 //! **Signals and state:** reads the owner's Dressrosa 11 and 15–17 work folders and copies their
-//! JSON files into a scratch folder; writes PNGs only to `$TBD_SNAPSHOTS`, never into the repo.
+//! JSON files into a scratch folder; writes PNGs only to `$TBD_SNAPSHOTS`, never into the repo;
+//! the Check Lines scenes write Dressrosa 15's corrections into the scratch copy and decode still
+//! frames of its video with FFmpeg.
 //!
 //! **Invariants:** the owner's work folders and videos are only read; the app runs over the
 //! scratch copy with a stand-in runner, and a running, failed or cancelled job is set by hand, so
-//! no job starts.
+//! no job starts; the correction run of the Check Lines scenes waits until it is stopped.
 
 use std::path::Path;
 
@@ -50,6 +52,7 @@ fn window_snapshots() {
     queue_scenes(&root, &out, &videos);
     detail_scenes(&root, &out, &videos);
     attention_scene(&root, &out, &videos);
+    review_scenes(&root, &out, &videos);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -58,16 +61,121 @@ fn harness(
     root: &Path,
     setup: impl FnOnce(&mut TbdSubtitlesApp),
 ) -> Harness<'static, TbdSubtitlesApp> {
+    harness_with(root, stand_in(), setup)
+}
+
+/// As `harness`, its jobs run by `run`.
+fn harness_with(
+    root: &Path,
+    run: RunJob,
+    setup: impl FnOnce(&mut TbdSubtitlesApp),
+) -> Harness<'static, TbdSubtitlesApp> {
     let root = root.to_path_buf();
     Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
         .wgpu()
         .build_eframe(move |creation| {
             theme::install(&creation.egui_ctx);
-            let mut app = TbdSubtitlesApp::new(Environment::scratch(&root, stand_in()), Vec::new());
+            let mut app = TbdSubtitlesApp::new(Environment::scratch(&root, run), Vec::new());
             setup(&mut app);
             app
         })
+}
+
+/// A stand-in whose run lasts until it is stopped: a correction run still updating the subtitles.
+fn until_stopped() -> RunJob {
+    Arc::new(|_video, options, progress| {
+        progress(Progress::StepStarted(StepName::Review));
+        while !options.cancel.is_cancelled() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        Err(PipelineError::cancelled("step review"))
+    })
+}
+
+/// Dressrosa 15's Check Lines: the first line to check, after Use (edited), after Looks Right
+/// (its correction run updating the subtitles), narrowed to "Heard word replaced", and with every
+/// line checked. It writes 15's corrections into the scratch copy, so it runs last.
+fn review_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
+    use crate::job_report::events::{LinesToCheck, ReportEvent};
+    use crate::job_report::models::finding_group::LineGroup;
+    use crate::line_review::events::ReviewEvent;
+    use crate::line_review::services::line_filter;
+    let _ = std::fs::remove_dir_all(root.join("data"));
+    let mut harness = harness_with(root, until_stopped(), all_finished(videos));
+    harness.get_by_label("[Muhn Pace] Dressrosa 15").click();
+    harness.run_steps(2);
+    // The header's tab, above the lines card's button of the same name.
+    harness
+        .get_all_by_label("Check Lines")
+        .min_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
+        .expect("the header offers Check Lines")
+        .click();
+    harness.run_steps(2);
+    wait_for_still(&mut harness);
+    shoot(&mut harness, out, "check_lines_first");
+    // Use the first reading that differs from the line's text.
+    let tag = harness.state().review.as_ref().and_then(|(_, session)| {
+        let line = line_filter::open_line(session)?;
+        let now = session.current(line).text.to_lowercase();
+        ["P", "W", "ALT p", "ALT w"]
+            .into_iter()
+            .find(|tag| line.reading(tag).is_some_and(|t| t.to_lowercase() != now))
+    });
+    let tag = tag.expect("a reading that differs from the line");
+    let apply = |harness: &mut Harness<'_, TbdSubtitlesApp>, event: ReviewEvent| {
+        harness.state_mut().apply(vec![Action::from(event)]);
+    };
+    apply(&mut harness, ReviewEvent::Pick(tag.to_string()));
+    shoot(&mut harness, out, "after_use");
+    apply(&mut harness, ReviewEvent::Discard);
+    apply(&mut harness, ReviewEvent::LooksRight);
+    wait_for_still(&mut harness);
+    shoot(&mut harness, out, "after_looks_right");
+    harness.state_mut().apply(vec![
+        Action::ShowTab(DetailTab::Overview),
+        Action::from(ReportEvent::CheckLines(LinesToCheck::Group(
+            LineGroup::HeardWordReplaced,
+        ))),
+    ]);
+    wait_for_still(&mut harness);
+    shoot(&mut harness, out, "group_filter");
+    apply(&mut harness, ReviewEvent::ClearGroup);
+    let left: Vec<String> = harness
+        .state()
+        .review
+        .as_ref()
+        .map(|(_, session)| {
+            line_filter::shown(session)
+                .iter()
+                .map(|line| line.id.clone())
+                .collect()
+        })
+        .unwrap_or_default();
+    for id in left {
+        apply(&mut harness, ReviewEvent::Open(id));
+        apply(&mut harness, ReviewEvent::LooksRight);
+    }
+    shoot(&mut harness, out, "all_checked");
+    if let Some((_, token)) = &harness.state().review_cancel {
+        token.cancel();
+    }
+}
+
+/// Wait up to five seconds for the open line's still frame, so the scene shows it.
+fn wait_for_still(harness: &mut Harness<'_, TbdSubtitlesApp>) {
+    for _ in 0..50 {
+        let decoding = harness
+            .state()
+            .still
+            .as_ref()
+            .and_then(|(_, still)| still.as_ref())
+            .is_some_and(|still| still.is_decoding());
+        if !decoding {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 /// Every video finished: the list, the Dressrosa 15 Overview, then with Details and Step times
@@ -114,7 +222,8 @@ fn all_finished(videos: &[PathBuf]) -> impl FnOnce(&mut TbdSubtitlesApp) + use<>
 }
 
 /// Every video finished, Dressrosa 16 with a failed language-model call added to its check: the
-/// needs-attention Overview. It changes the scratch copy of 16's `qc.json`, so it runs last.
+/// needs-attention Overview. It changes the scratch copy of 16's `qc.json`, so it runs after the
+/// scenes that show 16.
 fn attention_scene(root: &Path, out: &Path, videos: &[PathBuf]) {
     let qc_path = std::fs::read_dir(root.join("work"))
         .expect("the scratch work folder")

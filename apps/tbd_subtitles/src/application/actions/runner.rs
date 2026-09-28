@@ -4,7 +4,8 @@
 //! **Role:** hand the next waiting job of each lane to its runner when nothing in that lane runs,
 //! build the job's options, empty its steps to run again once the pipeline has recorded them, and
 //! record how each job ends: finished, cancelled with the steps it kept, or failed at a step with
-//! the steps it kept, moving it ahead of the jobs that ended before it.
+//! the steps it kept, moving it ahead of the jobs that ended before it; tell the open line review
+//! when a review run of its video starts and ends.
 //!
 //! **Position:** called by `application::TbdSubtitlesApp::apply` (through the queue and review
 //! actions) and before each frame; uses `job_queue::services` and the settings.
@@ -102,8 +103,13 @@ impl TbdSubtitlesApp {
             Ok(options) => options,
             Err(error) => {
                 item.state = JobState::Failed(Failure::new(None, format!("{error:#}"), Vec::new()));
+                let (kind, video) = (item.kind, item.video.clone());
                 queue_editing::newest_ended_first(&mut self.queue, id);
                 self.save_queue();
+                if kind == JobKind::Review {
+                    self.review_run_started(&video);
+                    self.review_run_ended(&video, false);
+                }
                 return None;
             }
         };
@@ -115,12 +121,16 @@ impl TbdSubtitlesApp {
             video: item.video.clone(),
             options,
         };
+        let video = command.video.clone();
         let runner = match kind {
             JobKind::Full => &self.runner,
             JobKind::Review => &self.review_runner,
         };
         let started = runner.run(command);
         self.save_queue();
+        if kind == JobKind::Review {
+            self.review_run_started(&video);
+        }
         match started {
             Ok(()) => Some((id, token)),
             Err(message) => {
@@ -128,6 +138,9 @@ impl TbdSubtitlesApp {
                     item.state = JobState::Failed(Failure::new(None, message, Vec::new()));
                 }
                 queue_editing::newest_ended_first(&mut self.queue, id);
+                if kind == JobKind::Review {
+                    self.review_run_ended(&video, false);
+                }
                 None
             }
         }
@@ -182,6 +195,7 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
     }
     let (mut ended, mut recorded) = (false, false);
     let mut ended_videos = Vec::new();
+    let mut reviewed = Vec::new();
     for event in events {
         match event {
             RunnerEvent::Progress(id, progress) => {
@@ -211,6 +225,9 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
                     let finished = job.map_or_else(Vec::new, JobProgress::finished_steps);
                     let kept_steps = finished.len();
                     let step = job.and_then(|job| job.failed_step().or(job.current_step()));
+                    if item.kind == JobKind::Review {
+                        reviewed.push((item.video.clone(), outcome.is_ok()));
+                    }
                     item.state = match outcome {
                         Ok(outcome) => JobState::Finished(JobResult {
                             subtitles: outcome.subtitles,
@@ -238,6 +255,10 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
     }
     if recorded && !ended {
         app.save_queue();
+    }
+    // The runs that ended settle their lines before the next run marks the lines it takes.
+    for (video, ok) in &reviewed {
+        app.review_run_ended(video, *ok);
     }
     if ended {
         if let Ok(root) = job_settings::work_root(&app.settings.saved) {

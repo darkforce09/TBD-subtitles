@@ -1,5 +1,9 @@
-//! The review view.
+//! The Check Lines view: the list of lines and the line editor with its clip and readings.
 
+mod clip_view;
+mod heard_list;
+mod line_editor;
+mod line_list;
 mod review_view;
 
-pub(crate) use review_view::{ReviewView, review_view_ui};
+pub(crate) use review_view::{Playing, ReviewView, review_view_ui};
