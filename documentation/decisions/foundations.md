@@ -169,3 +169,24 @@ still in the main media folder. Episodes 08–10 get no subtitles unless the own
 **Supersedes:** 2026-09-25 — Build a reusable local app, not a one-off script (its choice of pilot
 and batch only).
 
+### 2026-09-28 — Repository tooling may also run FFmpeg and the app's own binaries
+
+**Context:** `tools/appimage_builder` packages the app as an AppImage and must prove the bundled
+FFmpeg build it downloads actually works (version, `scdet` and `apad` filters, the `pulse`
+device), and that the `tbd-subtitles` and `tbd-subtitles-ggml` binaries it just built and staged
+run before they are packed into the squashfs image. Both checks mean running those programs as
+child processes from a `tools/` program, which the git-and-cargo-only entry does not allow.
+
+**Decision:** Programs under `tools/` may also run FFmpeg (to verify a downloaded or bundled
+build) and the app's own built binaries (to smoke-test a staged `AppDir` before packing).
+Packaging stays pure Rust: no `appimagetool`, `patchelf` or `mksquashfs` — ELF rewriting and
+squashfs assembly are done with Rust crates (`object`, `backhand`), never shelled-out tools.
+
+**Consequences:** `tools/appimage_builder` runs `git`, `cargo`, `ffmpeg`/`ffprobe` and the staged
+`usr/bin/tbd-subtitles`/`tbd-subtitles-ggml` as child processes; no other new external program is
+introduced. The app itself (`apps/`, `crates/`) is unchanged: still only FFmpeg, ffprobe and,
+optionally, `claude`.
+
+**Supersedes:** 2026-09-25 — Repository tooling may run git and cargo (widens what `tools/`
+programs may run as child processes).
+

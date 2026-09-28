@@ -12,6 +12,9 @@ target-*/
 # Job work directories: extracted audio, separated stems, per-stage JSON, reports.
 /work/
 
+# Packaged builds: the AppImage `cargo appimage` writes.
+/dist/
+
 # Media never belongs in the repository; test clips are generated or fetched by the tests.
 *.mp4
 *.mkv

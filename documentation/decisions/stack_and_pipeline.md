@@ -334,3 +334,25 @@ pipeline milestone keeps only its 120-minute test.
 
 **Supersedes:** 2026-09-25 — Dressrosa 11 is the pilot; 12–48 are the first batch (when and
 where the batch runs).
+
+### 2026-09-28 — Ship as one AppImage bundling CUDA, cuDNN, ONNX Runtime and FFmpeg
+
+**Context:** The owner wants one file to drop into Gear Lever and run, with no dev checkout, no
+`target/`, and no host CUDA setup beyond the NVIDIA driver. The CUDA locator already looks in
+`<exe_dir>/cuda/{cuda-13.4,cudnn-9.26,onnxruntime-1.28.2}/lib` before the user runtime folder, and
+a no-arg launch already opens the GUI, so an AppImage only needs to fill that folder and give the
+app its own FFmpeg.
+
+**Decision:** `cargo appimage` builds one AppImage whose `AppDir` carries `usr/bin/cuda/` with the
+same `cuda-13.4`/`cudnn-9.26`/`onnxruntime-1.28.2` layout the exe-relative override already reads,
+and `usr/bin/ffmpeg/` with a static, pinned FFmpeg 8.1 build. The host supplies only the NVIDIA
+driver, X11/EGL, PulseAudio, the desktop portal and FUSE; everything else the app needs to run is
+inside the image. The NVIDIA redistributable libraries are bundled for the owner's personal use
+only; the AppImage is not published.
+
+**Consequences:** The image is self-contained (verified in the [AppImage
+runbook](/documentation/runbooks/building_the_appimage.md)) at the cost of its size, roughly
+1.5 GB, dominated by cuDNN. Moving to a new CUDA or ONNX Runtime version means re-pinning the
+runtime archives the builder downloads, the same pins `cuda_runtime` already uses.
+
+**Supersedes:** none.

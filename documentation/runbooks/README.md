@@ -9,6 +9,7 @@ project to the next working session.
 
 ```text
 documentation/runbooks/
+├── building_the_appimage.md     package the app as a self-contained AppImage with `cargo appimage`
 ├── continue_in_claude_code.md   the prompt that starts the next session in the Claude Code GUI
 └── development_environment.md   host and container, GPU, paths, toolchain, FFmpeg, build and check
 ```

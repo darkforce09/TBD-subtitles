@@ -1,0 +1,30 @@
+# The AppImage builder: `cargo appimage` builds the app's two binaries, gathers the CUDA, cuDNN and
+# ONNX Runtime libraries and a static FFmpeg beside them, and packs one self-contained
+# `dist/TBD-subtitles-…-x86_64.AppImage`, with no packaging program outside Rust.
+[package]
+name = "appimage_builder"
+description = "Builds TBD-subtitles as one self-contained AppImage"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[[bin]]
+name = "appimage-builder"
+path = "src/main.rs"
+
+[dependencies]
+# Runs cargo, git and the built and bundled programs with deadlines.
+child_process = { path = "../../crates/child_process" }
+# The runtime folder names, the data folder and the pinned, hash-checked downloads and unpacking.
+inference = { path = "../../crates/inference" }
+# Error context at the top of the binary.
+anyhow = "1"
+# The command line: `--skip-build` and `--out`.
+clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
+# Reads the NEEDED, RUNPATH and SONAME entries of the binaries and libraries.
+object = { version = "0.37", default-features = false, features = ["read_core", "elf", "std"] }
+# Writes the zstd-compressed squashfs image the AppImage runtime mounts.
+backhand = { version = "0.25", default-features = false, features = ["zstd", "parallel"] }
+# Draws the application icon.
+png = "0.18"

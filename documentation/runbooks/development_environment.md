@@ -243,3 +243,5 @@ into the runtime folder `~/.local/share/tbd-subtitles/runtime/`:
 
 - [System overview](/documentation/architecture/system_overview.md#hardware-and-host-rules) — how the app uses the GPU.
 - [Rust ML stack](/documentation/research/rust_ml_stack.md#11-onnx-runtime-from-rust) — the `ort` CUDA details.
+- [Building the AppImage](/documentation/runbooks/building_the_appimage.md) — packaging the built
+  binaries and this CUDA toolkit into a self-contained AppImage.

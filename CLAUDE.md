@@ -85,6 +85,7 @@ TBD-subtitles/
 │   ├── stages/            2  one module folder per pipeline stage
 │   └── pipeline/          3  step graph, resume, work directory, workers, tasks, runner, report
 ├── tools/
+│   ├── appimage_builder/  `cargo appimage`: packages the app as a self-contained AppImage
 │   ├── repo_gates/        `cargo gates`: every law a program can check
 │   ├── stack_spike*/      the stack spike: measuring harness and its ggml and llm workers
 │   └── verification_core/ fail-closed verdicts and reports for the gates
@@ -124,7 +125,9 @@ narrows it, `--with-untracked` includes new files. Open the window on the host:
 `distrobox-host-exec target/debug/tbd-subtitles gui`. Build both app binaries (the ggml
 worker under the CUDA 13.4 toolkit) and generate subtitles on the host as in steps 12 and 13 of
 the [development environment](/documentation/runbooks/development_environment.md#steps) runbook:
-`distrobox-host-exec target/release/tbd-subtitles process <video>`.
+`distrobox-host-exec target/release/tbd-subtitles process <video>`. Package a self-contained
+AppImage: `cargo appimage` (see the [AppImage
+runbook](/documentation/runbooks/building_the_appimage.md)).
 
 ## 5. Where to look
 

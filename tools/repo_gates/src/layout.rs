@@ -30,6 +30,7 @@ pub(crate) const PRODUCT_LAYERS: &[(&str, u8)] = &[
 /// The repository tools and the product crates each may depend on.
 pub(crate) const TOOL_DEPENDENCIES: &[(&str, &[&str])] = &[
     ("verification_core", &["child_process"]),
+    ("appimage_builder", &["child_process", "inference"]),
     ("repo_gates", &["verification_core"]),
     (
         "stack_spike",
