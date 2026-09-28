@@ -1,8 +1,8 @@
 # TBD Subtitles
 
 The `tbd_subtitles` crate, which builds the `tbd-subtitles` binary: the eframe desktop window that
-queues videos, the headless `process` command that runs a job from video to subtitle file, and
-the `worker` subcommand that runs one step of a job in its own
+queues and runs videos, the headless `process` command that runs a job from video to subtitle
+file, and the `worker` subcommand that runs one step of a job in its own
 [worker process](/documentation/glossary.md#worker-process). The owner runs it on the host PC.
 
 ## Contents
@@ -16,10 +16,16 @@ apps/tbd_subtitles/
 ## How it works
 
 `src/main.rs` installs logging, parses the command line and runs the chosen subcommand. With no
-subcommand, or with `gui`, it opens a 1100 by 700 window (640 by 400 at least) titled "TBD
-Subtitles", drawn with eframe's glow renderer under X11 (XWayland on a Wayland desktop), in
-Adwaita Sans and the desktop's light or dark colour scheme; videos named on the command line or dropped onto
-the window join the queue on the left, skipping any already queued. The window runs no job.
+subcommand, or with `gui`, it opens a 1280 by 800 window (1100 by 700 at least, so the sidebar,
+the line list and the line editor fit side by side) titled "TBD Subtitles", drawn with eframe's
+glow renderer under X11 (XWayland on a Wayland desktop), in Adwaita Sans and the desktop's light
+or dark colour scheme. Videos named on the command line, dropped onto the window or added with
+Add Videos… and Add Folder… join the queue in the sidebar, skipping any already queued. The
+window runs the queued jobs one at a time through `pipeline::run_job` on a thread of its own,
+shows each job's progress, time left and report, plays and corrects the lines worth a listen
+(each saved correction starts a [correction run](/documentation/glossary.md#correction-run) that
+re-times it), and opens Settings in a second window that saves each change to `settings.toml`
+and downloads the models. The queue is kept across windows.
 
 `process` turns its options into the job settings, checks every video is a readable file, and
 runs one job per video through `pipeline::run_job`, printing each
@@ -36,13 +42,16 @@ applies the events it returns after the frame. `src/README.md` maps the modules.
 
 ## Getting started
 
-Run these from the repository root; the window needs a desktop session. A full `process` run
-needs the host (FFmpeg, the GPU), the models and CUDA runtime in `~/.local/share/tbd-subtitles/`,
-and `tbd-subtitles-ggml` built beside this binary (see `apps/tbd_subtitles_ggml/README.md`).
+Run these from the repository root; the window needs a desktop session with X11 or XWayland
+(the owner's KDE Wayland session has XWayland), so from the `claude-desktop` container open it on
+the host with `distrobox-host-exec`. A job run from the window or `process` needs the host
+(FFmpeg, the GPU), the models and CUDA runtime in `~/.local/share/tbd-subtitles/`, and
+`tbd-subtitles-ggml` built beside this binary (see `apps/tbd_subtitles_ggml/README.md`).
 
 ```bash
-cargo run -p tbd_subtitles                     # the window, empty queue; stays in the foreground
-cargo run -p tbd_subtitles -- gui a.mkv b.mkv  # opens the window with these videos queued
+cargo build -p tbd_subtitles
+distrobox-host-exec target/debug/tbd-subtitles gui               # the window, with the kept queue
+distrobox-host-exec target/debug/tbd-subtitles gui a.mkv b.mkv   # with these videos queued too
 cargo run -p tbd_subtitles -- --help           # the usage and the three subcommands
 cargo build --release -p tbd_subtitles
 distrobox-host-exec target/release/tbd-subtitles process "<video>"   # subtitles beside the video
@@ -62,13 +71,15 @@ cargo gates file-length
 - `RUST_LOG`: the log filter, read by `src/core/logging.rs`; `info` when unset or invalid. Log
   lines go to stderr, coloured only when stderr is a terminal.
 - `XDG_DATA_HOME`, else `HOME`: the data folder `tbd-subtitles/` that holds the models, the CUDA
-  runtime and, unless `--work-root` names another, the jobs' work directories under `work/`
-  (read by `crates/inference/src/model_store/mod.rs` and `crates/pipeline/src/work_dir/mod.rs`).
+  runtime, the window's kept queue `queue.json` and, unless `--work-root` or the settings name
+  another, the jobs' work directories under `work/` (read by
+  `crates/inference/src/model_store/mod.rs` and `crates/pipeline/src/work_dir/mod.rs`).
 - `XDG_CONFIG_HOME`, else `HOME`: the settings file `tbd-subtitles/settings.toml` under the
-  config folder (`~/.config`), read by `src/settings/services/settings_file.rs` for
-  the `process` subcommand. A missing file means the defaults; an unknown key or a bad value is an
-  error naming it. Its keys: `models_dir`, `work_root`, `glossary`, `cut_score`, `output_format`,
-  `[engines]` `separator` and `whisper`, `[language_model]` `backend`, `model` and `processes`.
+  config folder (`~/.config`), read by `src/settings/services/settings_file.rs` for the window
+  and the `process` subcommand, and written by the window's Settings on each change. A missing
+  file means the defaults; an unknown key or a bad value is an error naming it. Its keys:
+  `models_dir`, `work_root`, `glossary`, `cut_score`, `output_format`, `[engines]` `separator`
+  and `whisper`, `[language_model]` `backend`, `model` and `processes`.
 - The `process` options (`--settings`, `--models-dir`, `--glossary`, `--audio-track`,
   `--separator`, `--whisper`, `--cut-score`, `--llm-model`, `--format`, `--rerun`), which win over
   the settings file: `src/cli/README.md`.
@@ -88,9 +99,14 @@ cargo gates file-length
 ## Boundaries
 
 - Depends on: `crates/pipeline/` (`run_job`, `JobOptions`, `workers::Binaries`, `tasks`,
-  `graph`, `work_dir`, `progress`); `crates/job_model/` for `StepName` and the job settings;
-  `crates/stages/` for the built-in One Piece glossary; the `anyhow`, `clap`, `eframe`, `tracing`
-  and `tracing-subscriber` crates; at run time, `tbd-subtitles-ggml` beside it.
+  `graph`, `work_dir`, `progress`); `crates/job_model/` for `StepName`, the job settings, the
+  quality check and the stage outputs the review reads; `crates/inference/` for the model store
+  and the CUDA runtime; `crates/media_io/` for the clip's FFmpeg command lines;
+  `crates/child_process/` for the machine check's version queries; `crates/stages/` for the
+  built-in One Piece glossary; the `eframe` (glow), `winit` (X11), `egui-phosphor`, `ashpd`,
+  `pollster`, `futures-util`, `serde`, `serde_json`, `toml`, `anyhow`, `clap`, `tracing` and
+  `tracing-subscriber` crates; at run time, FFmpeg, ffprobe, the desktop portal and
+  `tbd-subtitles-ggml` beside it.
 - Used by: people at a desktop or a terminal; the job runner in `crates/pipeline/` starts its
   `worker` subcommand; no crate links it.
 - Rules:
@@ -106,8 +122,8 @@ cargo gates file-length
 ## Related documentation
 
 - [Pipeline](/documentation/architecture/pipeline.md) — the steps a `process` run goes through.
-- [Desktop GUI](/documentation/features/gui.md) — the queue, progress, report, review and settings
-  the window is built to show.
+- [Desktop GUI](/documentation/features/gui.md) — the window's layout, flows, finding groups and
+  keyboard shortcuts.
 - [System overview](/documentation/architecture/system_overview.md) — the `gui`, `process` and
   `worker` processes and the crates behind them.
 - [Development environment](/documentation/runbooks/development_environment.md) — the host, the

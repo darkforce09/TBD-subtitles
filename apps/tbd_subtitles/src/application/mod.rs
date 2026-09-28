@@ -196,8 +196,8 @@ pub(crate) fn launch(videos: Vec<PathBuf>) -> anyhow::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_title(APP_NAME)
             .with_app_id(APP_ID)
-            .with_inner_size([1200.0, 760.0])
-            .with_min_inner_size([760.0, 480.0])
+            .with_inner_size([1280.0, 800.0])
+            .with_min_inner_size([1100.0, 700.0])
             .with_drag_and_drop(true),
         renderer: eframe::Renderer::Glow,
         event_loop_builder: Some(Box::new(|builder| {

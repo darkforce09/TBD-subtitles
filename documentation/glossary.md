@@ -24,6 +24,19 @@ Advanced SubStation Alpha, a subtitle format with styles and positioning (`{\an8
 The speech engine whose word sequence the other engines' hypotheses are aligned against when the
 diff sheet is built. Parakeet by default.
 
+### Correction run
+
+A short job the window queues when the owner saves, keeps or takes back a line in Check Lines:
+the `review` step times the corrected lines again on the CPU, then the cues, the quality check
+and the subtitle file are rebuilt. It is not a full run of the video, and it shows in its video's
+sidebar row as "Updating subtitles".
+
+In code: `JobKind::Review` in `apps/tbd_subtitles/src/job_queue/models/queue.rs`, which calls it
+a review run; `StepName::Review` in `crates/job_model/src/stage/step_name.rs`.
+
+See: [desktop GUI](/documentation/features/gui.md#overview-to-check-lines),
+[pipeline](/documentation/architecture/pipeline.md#7-forced-alignment)
+
 ### CPS
 
 Characters per second: a cue's character count divided by its duration. The reading-speed limit is

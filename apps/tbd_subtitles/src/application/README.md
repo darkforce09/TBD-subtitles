@@ -23,29 +23,30 @@ apps/tbd_subtitles/src/application/
 
 ## How it works
 
-`launch` opens a native window titled "TBD Subtitles" (application id `tbd-subtitles`), 1200 by
-760 and at least 760 by 480, with drag and drop on and the glow renderer, and returns when it
-closes. It runs under X11 (XWayland on the owner's KDE Wayland desktop, forced through winit's
-`with_x11`), because only there can files be dropped onto the window and Settings be placed over
-it. Before the first frame it installs the theme from `core::ui::theme` (Adwaita Sans, the icon
-font, the mockup's palettes) and starts following the desktop's colour scheme through
-`core::color_scheme`, waiting up to 250 ms for its first answer so the first frame already has the
-desktop's colours. Its `Environment` names the owner's settings file, the kept queue, the GPU
-lock and the runtime folder, holds the job runner (the pipeline's `run_job`) and wakes the window
-from any thread (`request_repaint`); the tests build one over a scratch folder with a stand-in
-runner, and start no portal thread. `TbdSubtitlesApp` holds the queue loaded from `queue.json`,
-two job runners with the cancel token of the job each runs (one for full runs, one for the review
-runs that re-time the owner's corrections), the step rates for the time left, the settings page,
-the Settings window's tab while it is open, the toasts, the row removed last (for Undo), the desktop's
-colour scheme, the selected finished job's report, every finished row's summary (its verdict and
-lines to check, read from its work folder when the window opens, after each run of its video and
-after each correction), its line review while open, the clip playing in it, the line its editor
-shows with that line's still frame, the unsaved edits and run states of each job whose review
-closed (`parked`, until it opens again; they are lost when the window closes), and `Pending`, the receiving end of
-every other thread it started (the choosers, the files the desktop was asked to open, the
-downloads and checks). The videos passed to `launch` enter the queue as the first `Action`; the
-machine checks and the measures of the work and models folders start at once. While a job runs the window redraws
-every second; a playing clip wakes it at each frame and a still frame when it is decoded.
+`launch` opens a native window titled "TBD Subtitles" (application id `tbd-subtitles`), 1280 by 800
+and at least 1100 by 700 (the sidebar, the line list and the line editor side by side), with drag
+and drop on and the glow renderer, and returns when it closes. It runs under X11 (XWayland on the
+owner's KDE Wayland desktop, forced through winit's `with_x11`), because only there can files be
+dropped onto the window and Settings be placed over it. Before the first frame it installs the
+theme from `core::ui::theme` (Adwaita Sans, the icon font, the mockup's palettes) and starts
+following the desktop's colour scheme through `core::color_scheme`, waiting up to 250 ms for its
+first answer so the first frame already has the desktop's colours. Its `Environment` names the
+owner's settings file, the kept queue, the GPU lock and the runtime folder, holds the job runner
+(the pipeline's `run_job`) and wakes the window from any thread (`request_repaint`); the tests
+build one over a scratch folder with a stand-in runner, and start no portal thread.
+`TbdSubtitlesApp` holds the queue loaded from `queue.json`, two job runners with the cancel token
+of the job each runs (one for full runs, one for the review runs that re-time the owner's
+corrections), the step rates for the time left, the settings page, the Settings window's tab while
+it is open, the toasts, the row removed last (for Undo), the desktop's colour scheme, the selected
+finished job's report, every finished row's summary (its verdict and lines to check, read from its
+work folder when the window opens, after each run of its video and after each correction), its line
+review while open, the clip playing in it, the line its editor shows with that line's still frame,
+the unsaved edits and run states of each job whose review closed (`parked`, until it opens again;
+they are lost when the window closes), and `Pending`, the receiving end of every other thread it
+started (the choosers, the files the desktop was asked to open, the downloads and checks). The
+videos passed to `launch` enter the queue as the first `Action`; the machine checks and the
+measures of the work and models folders start at once. While a job runs the window redraws every
+second; a playing clip wakes it at each frame and a still frame when it is decoded.
 
 Each frame runs in three steps:
 

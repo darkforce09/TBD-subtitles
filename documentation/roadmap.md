@@ -73,10 +73,9 @@ budget. The batch of Dressrosa 12–48 moved to M2 at the owner's word: it runs 
 - [x] Job report view: QC results and the list of flagged lines.
 - [x] Review flagged lines: play the clip, pick or edit the text, re-align, save.
 - [x] Settings: model folder, engines, output format, language-model backend, GPU checks.
-- [ ] Redesign: the owner's approved macOS-like window, built in eight phases. Done: the look
-  (the mockup's palettes, Adwaita Sans, Phosphor icons, the desktop's light or dark, X11). Left:
-  the queue's states, toolbar and sidebar, the detail pane, the overview, Check Lines, the
-  Settings window, the finish.
+- [x] Redesign: the owner's approved macOS-like window, built in eight phases: the look (the
+  mockup's palettes, Adwaita Sans, Phosphor icons, the desktop's light or dark, X11), the queue's
+  states, toolbar and sidebar, the detail pane, the overview, Check Lines and the Settings window.
 - [ ] Batch: Dressrosa 12–48 queued and run from the window, each with a report that passes QC.
 
 Details: [GUI](/documentation/features/gui.md).

@@ -51,8 +51,8 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
 ### gui
 
 - Synopsis: `tbd-subtitles gui [VIDEOS]...`, or `tbd-subtitles` with no subcommand and no videos.
-- Does: opens the desktop window with the given videos in the queue, and returns when the window
-  closes. The window runs no job.
+- Does: opens the desktop window with the given videos added to the kept queue, and returns when
+  the window closes. The window runs the queued jobs one at a time.
 - Exit codes: 0 when the window closes; 1 when it cannot open; 2 on a usage error.
 - Example: `cargo run -p tbd_subtitles -- gui episode_01.mkv episode_02.mkv`
 
