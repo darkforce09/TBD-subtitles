@@ -19,6 +19,10 @@ use eframe::egui::{Color32, Ui};
 pub(crate) struct Palette {
     /// The window's background: panels and the page.
     pub(crate) window: Color32,
+    /// The toolbar across the top of the window.
+    pub(crate) toolbar: Color32,
+    /// The sidebar that lists the videos.
+    pub(crate) sidebar: Color32,
     /// Cards, popups and menus.
     pub(crate) card: Color32,
     /// The stripes of tables: the mockup's grouped grey in light, and in dark a grey lighter than
@@ -40,6 +44,8 @@ pub(crate) struct Palette {
     pub(crate) text: Color32,
     /// Secondary text: hints, empty states, file paths.
     pub(crate) text2: Color32,
+    /// Quiet marks: the icons of waiting and cancelled jobs.
+    pub(crate) text3: Color32,
     /// Links, selected text, the focus ring of text fields.
     pub(crate) accent: Color32,
     /// The accent as a fill: progress bars, the text cursor, and the fill white text sits on.
@@ -52,6 +58,11 @@ pub(crate) struct Palette {
     pub(crate) warn: Color32,
     /// Something broken, which stops a job.
     pub(crate) bad: Color32,
+    /// The fill of icons that mark something done, to look at, or broken (brighter than the
+    /// text colours, as icons need less contrast).
+    pub(crate) good_icon: Color32,
+    pub(crate) warn_icon: Color32,
+    pub(crate) bad_icon: Color32,
     /// Laid over a control while the pointer is on it.
     pub(crate) hover: Color32,
     /// Laid over a control while it is pressed.
@@ -70,6 +81,8 @@ impl Palette {
 /// The light scheme (the mockup's `:root`).
 pub(crate) static LIGHT: Palette = Palette {
     window: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+    toolbar: Color32::from_rgb(0xF7, 0xF7, 0xF8),
+    sidebar: Color32::from_rgb(0xEF, 0xEF, 0xF2),
     card: Color32::from_rgb(0xFF, 0xFF, 0xFF),
     stripe: Color32::from_rgb(0xF4, 0xF4, 0xF6),
     well: Color32::from_rgb(0xF4, 0xF4, 0xF6),
@@ -80,12 +93,16 @@ pub(crate) static LIGHT: Palette = Palette {
     line_strong: Color32::from_rgb(0xC9, 0xC9, 0xD0),
     text: Color32::from_rgb(0x1D, 0x1D, 0x1F),
     text2: Color32::from_rgb(0x5C, 0x5C, 0x63),
+    text3: Color32::from_rgb(0x74, 0x74, 0x7B),
     accent: Color32::from_rgb(0x00, 0x64, 0xD2),
     accent_fill: Color32::from_rgb(0x00, 0x68, 0xDA),
     accent_tint: Color32::from_rgba_unmultiplied_const(0x00, 0x68, 0xDA, 28),
     good: Color32::from_rgb(0x1B, 0x7F, 0x37),
     warn: Color32::from_rgb(0xA6, 0x4E, 0x00),
     bad: Color32::from_rgb(0xC4, 0x16, 0x1C),
+    good_icon: Color32::from_rgb(0x28, 0xA7, 0x45),
+    warn_icon: Color32::from_rgb(0xE8, 0x84, 0x00),
+    bad_icon: Color32::from_rgb(0xE5, 0x30, 0x2A),
     hover: Color32::from_rgba_unmultiplied_const(0, 0, 0, 13),
     press: Color32::from_rgba_unmultiplied_const(0, 0, 0, 23),
     shadow: Color32::from_rgba_unmultiplied_const(0, 0, 0, 41),
@@ -94,6 +111,8 @@ pub(crate) static LIGHT: Palette = Palette {
 /// The dark scheme (the mockup's `[data-theme="dark"]`).
 pub(crate) static DARK: Palette = Palette {
     window: Color32::from_rgb(0x1E, 0x1E, 0x20),
+    toolbar: Color32::from_rgb(0x26, 0x26, 0x28),
+    sidebar: Color32::from_rgb(0x23, 0x23, 0x25),
     card: Color32::from_rgb(0x2A, 0x2A, 0x2D),
     stripe: Color32::from_rgb(0x26, 0x26, 0x29),
     well: Color32::from_rgb(0x23, 0x23, 0x26),
@@ -104,12 +123,16 @@ pub(crate) static DARK: Palette = Palette {
     line_strong: Color32::from_rgb(0x4A, 0x4A, 0x50),
     text: Color32::from_rgb(0xF2, 0xF2, 0xF4),
     text2: Color32::from_rgb(0xAB, 0xAB, 0xB2),
+    text3: Color32::from_rgb(0x8E, 0x8E, 0x96),
     accent: Color32::from_rgb(0x4D, 0xA2, 0xFF),
     accent_fill: Color32::from_rgb(0x15, 0x70, 0xDD),
     accent_tint: Color32::from_rgba_unmultiplied_const(0x4D, 0xA2, 0xFF, 41),
     good: Color32::from_rgb(0x4C, 0xD9, 0x64),
     warn: Color32::from_rgb(0xFF, 0xB3, 0x40),
     bad: Color32::from_rgb(0xFF, 0x6B, 0x63),
+    good_icon: Color32::from_rgb(0x34, 0xC7, 0x59),
+    warn_icon: Color32::from_rgb(0xFF, 0x9F, 0x0A),
+    bad_icon: Color32::from_rgb(0xFF, 0x45, 0x3A),
     hover: Color32::from_rgba_unmultiplied_const(255, 255, 255, 15),
     press: Color32::from_rgba_unmultiplied_const(255, 255, 255, 26),
     shadow: Color32::from_rgba_unmultiplied_const(0, 0, 0, 128),

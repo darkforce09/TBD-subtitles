@@ -4,7 +4,7 @@
 //! **Role:** hand the next waiting job of each lane to its runner when nothing in that lane runs,
 //! build the job's options, empty its steps to run again once the pipeline has recorded them, and
 //! record how each job ends: finished, cancelled with the steps it kept, or failed at a step with
-//! the steps it kept.
+//! the steps it kept, moving it ahead of the jobs that ended before it.
 //!
 //! **Position:** called by `application::TbdSubtitlesApp::apply` (through the queue and review
 //! actions) and before each frame; uses `job_queue::services` and the settings.
@@ -13,10 +13,11 @@
 //! `queue.json` after every change.
 //!
 //! **Invariants:** at most one full run and one review run run at once, each on its own runner;
-//! no job starts while a model is missing; a run of a video never starts while a run of the
-//! other kind of the same video runs, and a waiting full run holds its lane meanwhile; a job
-//! takes the settings saved now until it has started once, and its own `job.json` settings
-//! after that, as a review run always does.
+//! no job starts while a model is missing; a job started at once (Try Again, Run Again) leaves
+//! the queue off, and a pause ends once the full lane is idle; a run of a video never starts
+//! while a run of the other kind of the same video runs, and a waiting full run holds its lane
+//! meanwhile; a job takes the settings saved now until it has started once, and its own
+//! `job.json` settings after that, as a review run always does.
 
 use std::path::Path;
 use std::time::Instant;
@@ -38,6 +39,9 @@ impl TbdSubtitlesApp {
     /// runs, no full run does and no review run of its video does; the first waiting review run
     /// when no review run does and no full run of its video does.
     pub(crate) fn start_next(&mut self) {
+        if self.cancel.is_none() {
+            self.queue.pausing = false;
+        }
         if self.models_missing() {
             return;
         }
@@ -54,6 +58,26 @@ impl TbdSubtitlesApp {
         {
             self.review_cancel = self.start(id);
         }
+    }
+
+    /// Start job `id` now when its lane is idle and every model is on disk, without turning the
+    /// queue on; whether it runs.
+    pub(crate) fn start_now(&mut self, id: JobId) -> bool {
+        if self.models_missing() {
+            return false;
+        }
+        match self.queue.get(id).map(|item| item.kind) {
+            Some(JobKind::Full) => {
+                if self.cancel.is_none() && !self.video_running(id, JobKind::Review) {
+                    self.cancel = self.start(id);
+                }
+            }
+            Some(JobKind::Review) => self.start_next(),
+            None => return false,
+        }
+        self.queue
+            .get(id)
+            .is_some_and(|item| item.state.is_running())
     }
 
     /// Whether a `kind` run of job `job`'s video is running now.
@@ -82,6 +106,7 @@ impl TbdSubtitlesApp {
                     message: format!("{error:#}"),
                     kept_steps: 0,
                 });
+                queue_editing::newest_ended_first(&mut self.queue, id);
                 self.save_queue();
                 return None;
             }
@@ -110,6 +135,7 @@ impl TbdSubtitlesApp {
                         kept_steps: 0,
                     });
                 }
+                queue_editing::newest_ended_first(&mut self.queue, id);
                 None
             }
         }
@@ -144,7 +170,7 @@ impl TbdSubtitlesApp {
 }
 
 /// The settings `video`'s job ran with, from its `job.json`.
-fn recorded_settings(work_root: &Path, video: &Path) -> Option<JobSettings> {
+pub(crate) fn recorded_settings(work_root: &Path, video: &Path) -> Option<JobSettings> {
     let video = std::fs::canonicalize(video).ok()?;
     let path = work_root
         .join(pipeline::work_dir::job_id(&video))
@@ -207,6 +233,7 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
                         }),
                     };
                 }
+                queue_editing::newest_ended_first(&mut app.queue, id);
                 for lane in [&mut app.cancel, &mut app.review_cancel] {
                     if lane.as_ref().is_some_and(|(running, _)| *running == id) {
                         *lane = None;

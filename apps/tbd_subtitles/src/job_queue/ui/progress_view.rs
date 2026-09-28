@@ -54,7 +54,7 @@ pub(crate) fn progress_view_ui(
         JobState::Failed(failure) => failed_ui(ui, failure),
         JobState::Cancelled { kept_steps } => {
             ui.label(format!(
-                "Cancelled. {} kept; Retry resumes after them.",
+                "Cancelled. {} kept; Try Again resumes after them.",
                 format::plural(*kept_steps, "finished step")
             ));
         }
@@ -75,7 +75,7 @@ fn failed_ui(ui: &mut Ui, failure: &Failure) {
     ui.label(RichText::new(heading).color(palette(ui).bad).strong());
     ui.label(RichText::new(detail).color(palette(ui).bad));
     ui.label(format!(
-        "{} kept; Retry resumes after them.",
+        "{} kept; Try Again resumes after them.",
         format::plural(failure.kept_steps, "finished step")
     ));
 }

@@ -1,18 +1,21 @@
 # Shared window look
 
 The look every feature's UI shares, taken from the approved mockup: the light and dark palettes,
-the fonts, and the theme built from them, so panels drawn by different features look alike. It
-holds no widgets; each feature draws its own.
+the fonts, the theme built from them, and the widgets drawn the same everywhere (buttons, icons
+and status marks, toasts), so panels drawn by different features look alike.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/core/ui/
+├── button.rs   `Button` (bordered or blue primary, 24, 28 or 32 px) and `icon_button`
 ├── fonts.rs    `definitions` and `install`: Adwaita Sans in three weights, Adwaita Mono, Phosphor icons
+├── icons.rs    the Phosphor glyphs by name, `font`, and the painted status marks (`StatusIcon`)
 ├── mod.rs      the module tree
 ├── palette.rs  `Palette`, `LIGHT` and `DARK` from the mockup's tokens; `palette(ui)` picks one
 ├── tests/      unit tests for the palette's contrast, the font families and the theme's visuals
-└── theme.rs    `install`: text styles, spacing, radii, borders, shadow, visuals; `follow`: light or dark
+├── theme.rs    `install`: text styles, spacing, radii, borders, shadow, visuals; `follow`: light or dark
+└── toast.rs    `toasts_ui`: the toasts at the bottom centre, each with its mark, text and button
 ```
 
 ## How it works
@@ -24,8 +27,9 @@ them in front of egui's own fonts: Adwaita Sans once at weight 400 as the propor
 twice more with the `wght` axis set to 600 and 700 as the families `semibold` and `bold`, Adwaita
 Mono as the monospace font ahead of egui's Hack. The Phosphor icon font (crate `egui-phosphor`,
 regular weight) is a fallback of the proportional, `semibold`, `bold` and monospace families, so
-icon glyphs draw inside their text. Without the system fonts each family falls back to egui's
-fonts. Then it sets the text styles (`Heading` is the 15 px semibold headline, so `ui.heading`
+icon glyphs draw inside their text; alone it is the family `phosphor`, in which every icon is
+drawn (`icons::font`), since Adwaita Sans has glyphs of its own at some of the icon font's
+private-use code points. Without the system fonts each family falls back to egui's fonts. Then it sets the text styles (`Heading` is the 15 px semibold headline, so `ui.heading`
 heads a section; the named style `title` is the 22 px bold page title; body and buttons 13;
 caption 11 as `Small`), controls 28 px high with 12 px of side padding, radius 6 on controls and
 10 on cards and windows, 1 px borders, one soft shadow, and egui's visuals for the light and the
@@ -39,20 +43,34 @@ it differs from the theme in use it switches and asks for one more frame, since 
 started keeps its style.
 
 Each feature takes the colours of text that carries meaning from `palette(ui)`: `text2` for
-secondary text, `good`, `warn` and `bad` for states. The accent is macOS blue as mocked; KDE's
-accent colour is not followed.
+secondary text, `good`, `warn` and `bad` for states; the toolbar and the sidebar have their own
+greys, and icons their brighter `good_icon`, `warn_icon`, `bad_icon` and the quiet `text3`. The
+accent is macOS blue as mocked; KDE's accent colour is not followed.
+
+`button::Button` paints the mockup's button from the palette: a bordered control, or the blue
+primary one with white text, 24, 28 or 32 px high, an optional icon before the label, a hover and
+a pressed look, 45 % opacity when disabled (it then senses no click), and its label as its
+accessible name. `icon_button` is a borderless 28 px square with an 18 px glyph. `icons` names the
+glyphs the window uses and paints the status marks on a 24-unit grid: a clock (waiting), a progress
+ring (running), a white check on green (done), a white exclamation on an orange triangle (needs a
+look), a white cross on red (failed), a stop (cancelled), a turning arc (working) and an info mark;
+on a selected row every mark is white. `toast::toasts_ui` draws the toasts at the bottom centre,
+the oldest lowest, each a card with its mark, its text and a small button; an error's border and
+text are red. It returns the toast whose button was pressed.
 
 ## Public surface
 
-- `theme::{install, follow, TITLE}`; `fonts::{definitions, install, SEMIBOLD, BOLD}`;
-  `palette::{palette, Palette, LIGHT, DARK}`.
+- `theme::{install, follow, TITLE}`; `fonts::{definitions, install, SEMIBOLD, BOLD, ICONS}`;
+  `palette::{palette, Palette, LIGHT, DARK}`; `button::{Button, ButtonSize, icon_button}`;
+  `icons::{font, StatusIcon, status_icon, paint_status}` and the glyph names; `toast::toasts_ui`.
 
 ## Boundaries
 
-- Depends on: `eframe::egui` (colours, fonts, styles); `egui-phosphor` in `fonts.rs`;
-  `crate::core::color_scheme::Scheme` in `theme.rs`.
-- Used by: `crate::application` (`launch` installs the theme, `App::ui` follows the scheme) and
-  every feature's `ui` for the palette.
+- Depends on: `eframe::egui` (colours, fonts, styles, painting); `egui-phosphor` in `fonts.rs` and
+  `icons.rs`; `crate::core::color_scheme::Scheme` in `theme.rs`; `crate::core::toast` in
+  `toast.rs`.
+- Used by: `crate::application` (`launch` installs the theme, `App::ui` follows the scheme, the
+  frame draws the toasts) and every feature's `ui` for the palette and the widgets.
 - Rules:
   - nothing here imports a feature or a composition module
     (`dependency_boundaries_and_external_test_placement_are_enforced` in
@@ -71,5 +89,9 @@ accent colour is not followed.
     `progress_tracks_and_table_stripes_show_on_the_window`,
     `headings_are_headlines_and_titles_are_named` in `tests/theme.rs`);
   - the families `semibold`, `bold`, monospace and the icon font exist with or without the
-    system fonts (`the_families_exist_without_the_system_fonts`,
-    `the_system_fonts_lead_each_family_in_its_weight` in `tests/fonts.rs`).
+    system fonts, and icons draw from the icon font first
+    (`the_families_exist_without_the_system_fonts`,
+    `the_system_fonts_lead_each_family_in_its_weight`,
+    `icons_draw_from_the_icon_font_ahead_of_adwaita_sans` in `tests/fonts.rs`);
+  - text reads on the sidebar and the toolbar (`sidebar_and_toolbar_text_reads_on_its_bar` in
+    `tests/palette.rs`).

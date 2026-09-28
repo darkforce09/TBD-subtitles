@@ -2,18 +2,11 @@
 
 use std::path::PathBuf;
 
+use crate::core::toast::ToastId;
 use crate::job_queue::events::JobQueueEvent;
 use crate::job_report::events::ReportEvent;
 use crate::line_review::events::ReviewEvent;
 use crate::settings::events::SettingsEvent;
-
-/// The page the right side of the window shows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Page {
-    /// The selected job: its progress, report or review.
-    Jobs,
-    Settings,
-}
 
 /// A change to the application state, collected while a frame is drawn.
 #[derive(Debug, Clone, PartialEq)]
@@ -21,7 +14,10 @@ pub(crate) enum Action {
     /// Add these videos, or the videos of these folders, to the end of the queue.
     QueueVideos(Vec<PathBuf>),
     Queue(JobQueueEvent),
-    ShowPage(Page),
+    /// Open the Settings window, or close it.
+    ShowSettings(bool),
+    /// The button of this toast was pressed: take the toast away and do what it offers.
+    ToastButton(ToastId),
     Settings(SettingsEvent),
     Report(ReportEvent),
     Review(ReviewEvent),

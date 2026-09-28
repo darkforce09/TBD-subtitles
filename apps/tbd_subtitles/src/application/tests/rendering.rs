@@ -14,6 +14,8 @@ use crate::job_queue::models::queue::{Failure, JobState};
 use crate::job_queue::services::job_runner::RunJob;
 use crate::settings::events::SettingsEvent;
 
+#[path = "rendering_queue.rs"]
+mod rendering_queue;
 #[path = "window_snapshots.rs"]
 mod window_snapshots;
 
@@ -111,21 +113,28 @@ fn settle(app: &mut TbdSubtitlesApp) {
 /// Run two headless frames in the window's theme and return every piece of text painted, with
 /// the actions asked for.
 fn render(app: &TbdSubtitlesApp) -> (String, Vec<Action>) {
+    render_with(app, Vec::new())
+}
+
+/// As `render`, with `events` (keys pressed, say) given to the first frame.
+fn render_with(app: &TbdSubtitlesApp, mut events: Vec<egui::Event>) -> (String, Vec<Action>) {
     let context = egui::Context::default();
     theme::install(&context);
     theme::follow(&context, app.scheme);
     let mut text = String::new();
     let mut actions = Vec::new();
-    // Panels settle their sizes on the first frame.
+    // Panels and windows settle their sizes on the first frame; the text is the second's.
     for _ in 0..2 {
+        text.clear();
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
                 egui::vec2(1400.0, 1800.0),
             )),
+            events: std::mem::take(&mut events),
             ..Default::default()
         };
-        let mut output = context.run_ui(input, |ui| actions = app.frame_ui(ui));
+        let mut output = context.run_ui(input, |ui| actions.extend(app.frame_ui(ui)));
         output.textures_delta.clear();
         for clipped in output.shapes {
             if let egui::epaint::Shape::Text(shape) = &clipped.shape {
@@ -144,20 +153,34 @@ fn videos(app: &TbdSubtitlesApp) -> Vec<PathBuf> {
 #[test]
 fn an_empty_queue_says_how_to_add_videos() {
     let (text, actions) = render(&app("empty", Vec::new()));
-    assert!(text.contains("Queue"), "{text}");
-    assert!(text.contains("No videos queued"), "{text}");
-    assert!(text.contains("Add videos"), "{text}");
-    assert!(actions.is_empty());
+    for expected in [
+        "Add Videos…",
+        "Add Folder…",
+        "Start Queue",
+        "Download the models first",
+        "No videos yet",
+        "Drop videos here",
+        "The models download first; you can add videos now.",
+    ] {
+        assert!(text.contains(expected), "{expected} not in {text}");
+    }
+    assert!(actions.is_empty(), "an idle frame asks for nothing");
 }
 
 #[test]
-fn queued_videos_show_by_file_name_and_wait_for_start() {
+fn queued_videos_show_by_name_and_wait_for_start() {
     let app = app("names", vec![PathBuf::from("/videos/Dressrosa 08.mp4")]);
     let (text, _) = render(&app);
-    assert!(text.contains("Dressrosa 08.mp4"), "{text}");
-    assert!(text.contains("1 waiting"), "{text}");
-    assert!(text.contains("Models are missing"), "{text}");
-    assert!(!text.contains("No videos queued"), "{text}");
+    for expected in [
+        "UP NEXT",
+        "Dressrosa 08",
+        "Waiting · next in line",
+        "Start Queue",
+        "Download the models first",
+    ] {
+        assert!(text.contains(expected), "{expected} not in {text}");
+    }
+    assert!(!text.contains("No videos yet"), "{text}");
 }
 
 #[test]
@@ -194,6 +217,11 @@ fn started_jobs_run_one_after_another_and_the_queue_is_kept() {
     for item in &app.queue.items {
         assert!(matches!(item.state, JobState::Finished(_)), "{item:?}");
     }
+    let done: Vec<JobId> = crate::job_queue::services::sidebar_rows::rows(&app.queue)
+        .iter()
+        .map(|row| row.id)
+        .collect();
+    assert_eq!(done, [1, 0], "the newest finished first");
     assert!(!app.queue.running, "an empty queue stops");
     let kept = crate::job_queue::services::queue_store::load(&app.env.queue_path).expect("kept");
     assert_eq!(kept.items.len(), 2);
@@ -214,14 +242,30 @@ fn a_cancelled_job_keeps_its_finished_steps_and_can_be_retried() {
     app.apply(vec![Action::from(JobQueueEvent::Select(id))]);
     let (text, _) = render(&app);
     assert!(text.contains("2 finished steps kept"), "{text}");
+    assert!(text.contains("Cancelled · 2 finished steps kept"), "{text}");
     app.apply(vec![
         Action::from(JobQueueEvent::Pause),
-        Action::from(JobQueueEvent::Retry(id)),
+        Action::from(JobQueueEvent::TryAgain(id, None)),
     ]);
-    assert!(app.queue.items[0].state.is_waiting());
+    assert!(
+        app.queue.items[0].state.is_running(),
+        "Try Again starts at once when nothing runs"
+    );
+    assert!(!app.queue.running, "without turning the queue on");
     assert!(
         app.queue.items[0].keep_settings,
-        "a retry keeps its own settings"
+        "a job tried again keeps its own settings"
+    );
+    let (text, _) = render(&app);
+    assert!(
+        text.contains("Trying a again from Separate the voices."),
+        "{text}"
+    );
+    app.apply(vec![Action::from(JobQueueEvent::Cancel(id))]);
+    settle(&mut app);
+    assert_eq!(
+        app.queue.items[0].state,
+        JobState::Cancelled { kept_steps: 2 }
     );
 }
 
@@ -320,9 +364,11 @@ fn a_full_run_waits_while_its_videos_review_run_runs() {
 }
 
 #[test]
-fn the_settings_page_shows_the_form_models_and_checks() {
+fn the_settings_window_shows_the_form_and_the_models() {
     let mut app = app("settings", Vec::new());
-    app.apply(vec![Action::ShowPage(Page::Settings)]);
+    let (text, _) = render(&app);
+    assert!(!text.contains("Models folder"), "closed at first: {text}");
+    app.apply(vec![Action::ShowSettings(true)]);
     let (text, _) = render(&app);
     for expected in [
         "Settings",
@@ -332,8 +378,6 @@ fn the_settings_page_shows_the_form_models_and_checks() {
         "Models and runtime",
         "parakeet-tdt-0.6b-v2",
         "missing",
-        "Download missing",
-        "This machine",
     ] {
         assert!(text.contains(expected), "{expected} not in {text}");
     }
@@ -471,10 +515,17 @@ fn a_saved_correction_queues_a_review_run_that_runs_at_once() {
         .count();
     assert_eq!(review_runs, 1);
     assert_eq!(app.queue.items[1].corrections, 1);
+    let (text, _) = render(&app);
+    assert!(
+        text.contains("Updating subtitles · 1 correction"),
+        "the correction run shows on its video's row: {text}"
+    );
+    let rows = text.lines().filter(|line| *line == "Dressrosa 13").count();
+    assert_eq!(rows, 1, "one row for the video: {text}");
     settle(&mut app);
     assert!(matches!(app.queue.items[1].state, JobState::Finished(_)));
     let (text, _) = render(&app);
-    assert!(text.contains("Dressrosa 13.mp4 · 1 correction"), "{text}");
+    assert!(text.contains("Subtitles ready"), "{text}");
     let _ = std::fs::remove_dir_all(&root);
 }
 

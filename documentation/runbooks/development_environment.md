@@ -175,7 +175,7 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
     distrobox-host-exec target/release/tbd-subtitles gui
     ```
 
-    Add a video with Add videos… (or drop it on the window), press Start, and select the job.
+    Add a video with Add Videos… (or drop it on the window), press Start Queue, and select the job.
 
     **Expected:** each step's row turns from pending to running to done, with the time left under
     the job; when it ends, the report says whether it passes the quality check and lists the

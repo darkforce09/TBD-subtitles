@@ -11,7 +11,7 @@ apps/tbd_subtitles/src/
 ├── application/  the eframe window: the queue state, the frame, and the actions applied after it
 ├── cli/          the `gui`, `process` and `worker` subcommands and their dispatch
 ├── core/         logging, threads' wake, the desktop portal and colour scheme, the shared look
-├── job_queue/    the videos waiting for subtitles: the queue panel, its view, events and edits
+├── job_queue/    the videos waiting for subtitles: toolbar, sidebar, progress, events and edits
 ├── job_report/   the report of a finished job: quality checks, flagged lines, the output file
 ├── line_review/  reviewing a flagged line: its clip, the engines' hypotheses, the chosen text
 ├── main.rs       the entry point: logging, the command line, the exit code
@@ -31,9 +31,9 @@ free of egui, and draws in `ui/` from a narrow borrowed view the application len
 what the user does there comes back as that feature's events (`events.rs`), which the application
 turns into its `Action`s and applies after the frame, so nothing changes state while a frame is
 drawn. All four features are wired in this way. `core` holds what any module may use: logging,
-the wake threads use, the desktop portal and its colour scheme, number formats, and the shared look
-(the mockup's palettes, Adwaita Sans and Adwaita Mono with the Phosphor icon font, and the theme
-built from them).
+the wake threads use, the desktop portal and its colour scheme, number formats, the toasts, and
+the shared look (the mockup's palettes, Adwaita Sans and Adwaita Mono with the Phosphor icon font,
+the theme built from them, and the buttons, icons and toasts every feature draws).
 
 ```text
 main.rs ──▶ cli ──▶ application ──▶ job_queue, job_report, line_review, settings

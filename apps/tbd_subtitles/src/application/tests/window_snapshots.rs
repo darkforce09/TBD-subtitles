@@ -10,7 +10,7 @@
 //! JSON files into a scratch folder; writes PNGs only to `$TBD_SNAPSHOTS`, never into the repo.
 //!
 //! **Invariants:** the owner's work folders and videos are only read; the app runs over the
-//! scratch copy with a stand-in runner, so no job starts.
+//! scratch copy with a stand-in runner, and a running job is set by hand, so no job starts.
 
 use std::path::Path;
 
@@ -18,9 +18,12 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
 
 use super::*;
+use crate::job_queue::models::progress::StepState;
 
 /// The work folders the scenes are built from.
 const EPISODES: [&str; 4] = ["11", "15", "16", "17"];
+/// Episodes queued in the running scene with no work folder: they only wait.
+const WAITING: [u32; 9] = [12, 13, 14, 18, 19, 20, 21, 22, 23];
 /// The files a report and a review read from a work folder.
 const JOB_FILES: [&str; 7] = [
     "qc.json",
@@ -42,35 +45,127 @@ fn window_snapshots() {
     let root = std::env::temp_dir().join(format!("tbd-snapshots-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let videos = copy_work_folders(&root.join("work"));
-    let mut harness = Harness::builder()
+    finished_scenes(&root, &out, &videos);
+    first_run_scene(&root.join("first-run"), &out);
+    queue_scenes(&root, &out, &videos);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The window over `root` with `setup` applied to the app before the first frame.
+fn harness(
+    root: &Path,
+    setup: impl FnOnce(&mut TbdSubtitlesApp),
+) -> Harness<'static, TbdSubtitlesApp> {
+    let root = root.to_path_buf();
+    Harness::builder()
         .with_size(egui::vec2(1280.0, 800.0))
         .wgpu()
-        .build_eframe(|creation| {
+        .build_eframe(move |creation| {
             theme::install(&creation.egui_ctx);
             let mut app = TbdSubtitlesApp::new(Environment::scratch(&root, stand_in()), Vec::new());
-            app.settings.items.iter_mut().for_each(|i| i.present = true);
-            app.apply(vec![Action::QueueVideos(videos)]);
-            for item in &mut app.queue.items {
+            setup(&mut app);
+            app
+        })
+}
+
+/// Every video finished: the list, the Dressrosa 15 report, its review and the settings.
+fn finished_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
+    let videos = videos.to_vec();
+    let mut harness = harness(root, move |app| {
+        app.settings.items.iter_mut().for_each(|i| i.present = true);
+        app.apply(vec![Action::QueueVideos(videos)]);
+        for item in &mut app.queue.items {
+            item.state = JobState::FinishedBefore;
+        }
+    });
+    shoot(&mut harness, out, "queue");
+    harness.get_by_label("[Muhn Pace] Dressrosa 15").click();
+    shoot(&mut harness, out, "report");
+    harness.get_by_label("Review lines").click();
+    shoot(&mut harness, out, "review");
+    harness.get_by_label("Settings").click();
+    shoot(&mut harness, out, "settings");
+}
+
+/// The first window: no videos, the models still missing.
+fn first_run_scene(root: &Path, out: &Path) {
+    let mut harness = harness(root, |_| {});
+    shoot(&mut harness, out, "first_run");
+}
+
+/// A running queue: Dressrosa 16 settling its words, the rest waiting, 15 and 11 done; then a
+/// waiting row's menu, and the toast after it is removed.
+fn queue_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
+    // A queue of its own, not the one the finished scenes kept.
+    let _ = std::fs::remove_dir_all(root.join("data"));
+    let mut queued = videos.to_vec();
+    let folder = root.join("videos");
+    queued.extend(
+        WAITING
+            .iter()
+            .map(|n| folder.join(format!("[Muhn Pace] Dressrosa {n}.mp4"))),
+    );
+    let mut harness = harness(root, move |app| {
+        app.settings.items.iter_mut().for_each(|i| i.present = true);
+        app.apply(vec![Action::QueueVideos(queued)]);
+        let now = Instant::now();
+        let id_of = |app: &TbdSubtitlesApp, episode: &str| {
+            let name = format!("[Muhn Pace] Dressrosa {episode}");
+            app.queue
+                .items
+                .iter()
+                .find(|item| item.name() == name)
+                .map(|item| item.id)
+        };
+        for episode in ["11", "15"] {
+            if let Some(item) = id_of(app, episode).and_then(|id| app.queue.get_mut(id)) {
                 item.state = JobState::FinishedBefore;
             }
-            app
-        });
-    shoot(&mut harness, &out, "queue");
-    harness.get_by_label("[Muhn Pace] Dressrosa 15.mp4").click();
-    shoot(&mut harness, &out, "report");
-    harness.get_by_label("Review lines").click();
-    shoot(&mut harness, &out, "review");
-    harness.get_by_label("Settings").click();
-    shoot(&mut harness, &out, "settings");
-    drop(harness);
-    let _ = std::fs::remove_dir_all(&root);
+        }
+        let running = id_of(app, "16");
+        if let Some(item) = running.and_then(|id| app.queue.get_mut(id)) {
+            item.state = JobState::Running(Box::new(settling(now)));
+        }
+        app.queue.running = true;
+        // The full lane holds the running job, with no thread behind it.
+        app.cancel = running.map(|id| (id, CancelToken::new()));
+        app.queue.selected = id_of(app, "15");
+        app.refresh_report(false);
+    });
+    shoot(&mut harness, out, "running_queue");
+    harness
+        .get_by_label("[Muhn Pace] Dressrosa 17")
+        .click_secondary();
+    shoot(&mut harness, out, "row_menu");
+    harness.get_by_label("Remove from List").click();
+    shoot(&mut harness, out, "undo_toast");
+}
+
+/// A job ten minutes in, its words being settled: every step before done, the rest to run.
+fn settling(now: Instant) -> JobProgress {
+    let mut progress = JobProgress::new(now - Duration::from_secs(600));
+    progress.duration_s = Some(1559.0);
+    for row in &mut progress.steps {
+        row.state = match row.step {
+            StepName::Adjudicate => StepState::Running {
+                started: now - Duration::from_secs(40),
+                done: 3,
+                total: 8,
+                message: Some("batch 4 of 8".into()),
+            },
+            step if step < StepName::Adjudicate => StepState::Done { wall_s: 30.0 },
+            _ => StepState::Pending,
+        };
+    }
+    progress
 }
 
 /// Render the scene in light and in dark, as `<scene>_light.png` and `<scene>_dark.png`.
 fn shoot(harness: &mut Harness<'_, TbdSubtitlesApp>, out: &Path, scene: &str) {
     for (scheme, name) in [(Scheme::Light, "light"), (Scheme::Dark, "dark")] {
         harness.state_mut().scheme = scheme;
-        harness.run();
+        // A spinner asks for frames without end; the scene is taken where it stands.
+        let _ = harness.run_ok();
         let image = harness
             .render()
             .unwrap_or_else(|error| panic!("{scene} in {name} did not render: {error}"));

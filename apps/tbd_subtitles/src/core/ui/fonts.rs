@@ -3,14 +3,16 @@
 //!
 //! **Role:** build egui's font definitions and install them: Adwaita Sans regular as the
 //! proportional font, semibold (600) and bold (700) as the families [`SEMIBOLD`] and [`BOLD`],
-//! Adwaita Mono as the monospace font, and the icon font as a fallback of those four families.
+//! Adwaita Mono as the monospace font, and the icon font as a fallback of those four families
+//! and alone as the family [`ICONS`].
 //!
 //! **Position:** installed by `core::ui::theme::install`, whose text styles name these families.
 //!
 //! **Signals and state:** reads the two system font files once; no other state.
 //!
-//! **Invariants:** the families `semibold`, `bold` and the icon font always exist; without the
-//! system fonts every family falls back to egui's own fonts (`tests/fonts.rs`).
+//! **Invariants:** the families `semibold`, `bold` and the icon font always exist, and the icon
+//! family draws from the icon font first; without the system fonts every family falls back to
+//! egui's own fonts (`tests/fonts.rs`).
 
 use std::sync::Arc;
 
@@ -21,8 +23,10 @@ use eframe::egui::{Context, FontData, FontDefinitions, FontFamily, FontTweak};
 const SANS_FONT: &str = "/usr/share/fonts/adwaita-sans-fonts/AdwaitaSans-Regular.ttf";
 /// Adwaita Mono regular, as Fedora installs it.
 const MONO_FONT: &str = "/usr/share/fonts/adwaita-mono-fonts/AdwaitaMono-Regular.ttf";
-/// The name egui-phosphor gives the icon font.
-const ICONS: &str = "phosphor";
+/// The name egui-phosphor gives the icon font, and the family that draws icons alone: Adwaita
+/// Sans has glyphs of its own at some of the icon font's private-use code points, so an icon is
+/// drawn in this family, where the icon font comes first.
+pub(crate) const ICONS: &str = "phosphor";
 /// The family of semibold (600) text: headlines.
 pub(crate) const SEMIBOLD: &str = "semibold";
 /// The family of bold (700) text: titles.
@@ -66,6 +70,9 @@ pub(crate) fn definitions(sans: Option<Vec<u8>>, mono: Option<Vec<u8>>) -> FontD
         }
         fonts.families.insert(family, members);
     }
+    fonts
+        .families
+        .insert(FontFamily::Name(ICONS.into()), vec![ICONS.into()]);
     let monospace = fonts.families.entry(FontFamily::Monospace).or_default();
     monospace.push(ICONS.into());
     if let Some(bytes) = mono {

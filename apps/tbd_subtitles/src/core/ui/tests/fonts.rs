@@ -71,3 +71,9 @@ fn the_system_fonts_lead_each_family_in_its_weight() {
     );
     assert!(fonts.families[&FontFamily::Monospace].contains(&ICONS.to_string()));
 }
+
+#[test]
+fn icons_draw_from_the_icon_font_ahead_of_adwaita_sans() {
+    let fonts = definitions(Some(stand_in()), Some(stand_in()));
+    assert_eq!(fonts.families[&FontFamily::Name(ICONS.into())], [ICONS]);
+}

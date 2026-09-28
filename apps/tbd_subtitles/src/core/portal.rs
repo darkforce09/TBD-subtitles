@@ -1,11 +1,13 @@
-//! The desktop portal: the desktop's own file and folder chooser, and opening a file in the
-//! desktop's default program (VLC for the owner's videos), over D-Bus.
+//! The desktop portal: the desktop's own file and folder chooser, opening a file in the
+//! desktop's default program (VLC for the owner's videos), and showing a file in the file
+//! manager, over D-Bus.
 //!
 //! **Role:** ask the XDG desktop portal on a thread of its own, so the window keeps drawing while
 //! the dialog is open, and hand the answer back through a channel.
 //!
-//! **Position:** called by the application for the queue's "Add videos…" and "Add folder…", the
-//! settings' folder choosers and the report's "Open in VLC"; uses `ashpd` (zbus, pure Rust).
+//! **Position:** called by the application for the toolbar's "Add Videos…" and "Add Folder…",
+//! the settings' folder choosers, the report's "Open in VLC" and the row menu's "Open in Player"
+//! and "Show in Folder"; uses `ashpd` (zbus, pure Rust).
 //!
 //! **Signals and state:** one thread per request; D-Bus calls to `org.freedesktop.portal`.
 //!
@@ -96,6 +98,25 @@ pub(crate) fn open(path: &Path) {
         });
         if let Err(error) = result {
             tracing::warn!(path = %path.display(), %error, "the desktop could not open it");
+        }
+    });
+}
+
+/// Ask the file manager to show `path` in the folder that holds it, on a thread; a failure is
+/// logged.
+pub(crate) fn reveal(path: &Path) {
+    let path = path.to_path_buf();
+    std::thread::spawn(move || {
+        let result = pollster::block_on(async {
+            let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+            OpenDirectoryRequest::default()
+                .send(&file)
+                .await
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        });
+        if let Err(error) = result {
+            tracing::warn!(path = %path.display(), %error, "the file manager could not show it");
         }
     });
 }

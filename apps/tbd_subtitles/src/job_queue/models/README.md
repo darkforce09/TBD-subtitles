@@ -1,6 +1,6 @@
 # Job queue models
 
-The data the queue panel and the progress view draw, with no rendering code.
+The data the toolbar, the sidebar and the progress view draw, with no rendering code.
 
 ## Contents
 
@@ -8,7 +8,8 @@ The data the queue panel and the progress view draw, with no rendering code.
 apps/tbd_subtitles/src/job_queue/models/
 ├── mod.rs       the module list
 ├── progress.rs  `JobProgress` with a `StepRow` and `StepState` per step, and the step `Rates`
-├── queue.rs     `Queue`, `QueueItem`, `JobId`, `JobKind`, `JobState`, `Failure`, `JobResult`, `Move`
+├── queue.rs     `Queue`, `QueueItem`, `JobId`, `JobKind`, `JobState`, `Failure`, `JobResult`, `Move`, `Removed`
+├── sidebar.rs   `Section`, `SidebarRow` and `ReviewFold`: the sidebar's rows
 ├── tests/       unit tests for the progress's kept, current and failed steps
 └── view.rs      `JobQueueView`, the queue, the rates and the clock lent for one frame
 ```
@@ -26,6 +27,16 @@ pending, still valid, running (since when, how far, its last line), done (its ti
 it answers how many steps are kept (done, or valid from an earlier run), which step runs now
 (beside the shot scan, the later one) and which failed. `Rates` are each step's seconds per
 second of video.
+
+A `QueueItem` names its video by the file name without the extension, and without a leading group
+tag such as "[Muhn Pace] " in messages. The `Queue` knows whether it runs and whether the owner
+paused it while a full run still runs. `Removed` is a row taken out of the list, its job first and
+then the correction runs folded into its row, each with the index it had, so Undo puts it back
+where it was. A `ReviewFold` also names the correction run running now, which the row's menu
+can stop. A `SidebarRow` is one video in the sidebar: its job, its name, its `Section` (Now,
+Up Next or Done), the correction runs folded into it, a `ReviewFold` while some of them wait or
+run (with the corrections they carry), its place in line, and whether it can be removed or
+dragged.
 
 ## Boundaries
 

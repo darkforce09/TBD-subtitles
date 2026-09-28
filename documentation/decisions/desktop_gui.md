@@ -4,7 +4,8 @@
 
 The decisions the desktop window led to: how it plays clips and hands videos to other programs,
 where models live and how they arrive, when a job passes the quality check, how the owner's
-corrections are timed, how the window looks, and which settings a job runs with. The
+corrections are timed, how the window looks, which settings a job runs with, where Settings open,
+how correction runs show, and how a job is tried again. The
 [decision log](/documentation/decisions/) says how entries are written.
 
 ### 2026-09-26 — Clips play through FFmpeg, not libmpv
@@ -197,5 +198,81 @@ settings since; a settings change reaches new jobs and the runs the owner asks f
 that failed before writing its `job.json` has no settings of its own and takes the saved ones.
 `queue.json` also keeps each failed job's step, message and kept steps, a cancelled job's kept
 steps, and a review run's count of corrections.
+
+**Supersedes:** none.
+
+### 2026-09-28 — Settings open in a window of their own
+
+**Context:** The approved mockup opens Settings from a gear in the toolbar, in a window of their
+own that KDE decorates, while the main window keeps the list and the selected job. The window had
+two pages, Jobs and Settings, with tabs, so opening Settings hid the queue. eframe draws a second
+native window with `show_viewport_immediate`; spike S3 showed that on Wayland with vsync on a
+minimised second window stops the main window's frames, which does not happen under X11, and that
+only X11 lets the app place the window.
+
+**Decision:** Settings open in a second native window (`show_viewport_immediate`, 660 by 600,
+at least 480 by 360), from the gear or Ctrl+,, centred over the main window when they open. The
+window stays where the owner puts it until it is closed with its title bar's ✕; asking for it
+while it is open brings it to the front. The pages and their tabs are gone: the main window always
+shows the list and the selected job. Until the settings are redone, the window shows the settings
+page as it was, with Save and Revert. Where the backend draws one window only, as in the headless
+tests, egui shows it as a window inside the main one.
+
+**Consequences:** The queue and the running job stay in view while the owner changes a setting.
+The window runs under X11, as decided for the look, so it can be placed; on Wayland KWin would
+place it. The rendering tests see the settings inside the main window, cut at its height.
+
+**Supersedes:** none.
+
+### 2026-09-28 — Correction runs show in their video's row
+
+**Context:** Saving a correction queues a review run (a correction run) of the video, which
+re-times the corrected lines and rewrites the subtitle file. The queue showed each as a row of its
+own ("Dressrosa 13.mp4 · 2 corrections"), so a video with corrections had two or more rows, and
+the correction runs counted as waiting jobs. The approved mockup shows one row per video, which
+reads "Updating subtitles · 2 corrections" while its correction runs.
+
+**Decision:** The sidebar builds one row per video. A correction run that waits, runs or has
+finished folds into the row of its video's newest finished full run (else its last full run),
+which reads "Updating subtitles · N corrections", N being the corrections the waiting and running
+runs carry, with a spinner for its mark, and whose menu offers Stop Updating Subtitles while one
+runs; a row leaves the list with the correction runs folded into it, and not while one of them
+runs. Ended jobs stand newest first in the queue, so the Done section lists them that way. A correction run that failed or was cancelled keeps a row of its
+own ("Dressrosa 13 · 1 correction"), so the owner sees it and can try it again; so does one whose
+video has no full run in the list. The toolbar's queue button counts full runs only: a waiting
+correction run does not enable Start Queue, since correction runs start by themselves.
+
+**Consequences:** The list holds one row per video, as the owner thinks of it; the finished
+correction runs stay in the queue, folded out of sight, and leave with their row. The queue file
+is unchanged.
+
+**Supersedes:** none.
+
+### 2026-09-28 — Try Again resumes after the kept steps and starts at once when nothing runs
+
+**Context:** A failed or cancelled job keeps its finished steps, and a retry resumes after them
+with the job's own settings. Retry put the job back to waiting where it stood, so it ran only when
+the owner started the queue and the jobs before it had run. The approved mockup's Try Again puts
+the job first in line and starts it at once when nothing runs, and its Run Again runs a finished
+job again. The owner chose the label Run Again with Current Settings: only the steps the changed
+settings touch run, and a toast says so when nothing changed.
+
+**Decision:** Try Again puts a failed or cancelled job back to waiting, first in line among the
+runs of its kind, keeping its own settings and the steps it kept, with a step to run again when
+one is named. Run Again with Current Settings does the same for a finished job with the settings
+saved now, so the pipeline runs only the steps whose settings changed; when the settings saved now
+are the ones in the job's `job.json`, it queues nothing and a toast says so. Either starts the job
+at once when its lane is idle and every model is on disk, without turning the queue on, so the
+queue does not go on to the next video; otherwise it waits first in line. A toast says which
+happened ("Trying Dressrosa 19 again from Hear the speech."; "Dressrosa 19 runs next, from Hear
+the speech." while the queue runs; "Dressrosa 19 is first in line. Press Start Queue to run it.";
+"Dressrosa 19 waits for the models."), in red with the reason when the job could not start.
+Neither puts a job back, and Undo does not restore a row, while another run of the same kind of
+its video waits or runs: a toast says the video is already in the list. Pause After This Video turns the queue off while
+the running full run finishes, and Resume Queue turns it on again.
+
+**Consequences:** A job that failed can be tried again at once without starting the whole queue.
+The toolbar tells Pause After This Video and Resume Queue apart through the queue's pausing
+state, which lasts until the full lane is idle and is not kept across windows.
 
 **Supersedes:** none.

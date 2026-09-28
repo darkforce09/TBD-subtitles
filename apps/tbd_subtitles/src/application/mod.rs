@@ -6,8 +6,9 @@
 //! **Position:** started by `cli` for the `gui` subcommand; draws the features' `ui` modules and
 //! changes state through their `services`. No feature imports this module.
 //!
-//! **Signals and state:** holds the queue, the page shown, the settings page, the desktop's colour
-//! scheme and the threads it waits on; reads files dropped onto the window.
+//! **Signals and state:** holds the queue, the toasts, the row removed last, whether the Settings
+//! window is open, the settings page, the desktop's colour scheme and the threads it waits on;
+//! reads files dropped onto the window.
 //!
 //! **Invariants:** nothing changes state while a frame is drawn: every change is an [`Action`]
 //! applied after the frame, or a thread's answer folded in before it.
@@ -17,6 +18,8 @@ mod background;
 mod environment;
 mod events;
 mod feature_views;
+mod settings_window;
+mod shortcuts;
 mod window;
 
 use std::path::PathBuf;
@@ -26,14 +29,15 @@ use anyhow::anyhow;
 use eframe::egui;
 
 pub(crate) use environment::Environment;
-pub(crate) use events::{Action, Page};
+pub(crate) use events::Action;
 
 use pipeline::CancelToken;
 
 use crate::core::color_scheme::Scheme;
+use crate::core::toast::Toasts;
 use crate::core::ui::theme;
 use crate::job_queue::models::progress::Rates;
-use crate::job_queue::models::queue::{JobId, Queue};
+use crate::job_queue::models::queue::{JobId, Queue, Removed};
 use crate::job_queue::services::job_runner::{self, JobRunner};
 use crate::job_queue::services::{queue_editing, queue_store, time_left};
 use crate::job_report::events::ReportEvent;
@@ -50,7 +54,6 @@ const APP_ID: &str = "tbd-subtitles";
 /// The application state.
 pub(crate) struct TbdSubtitlesApp {
     env: Environment,
-    page: Page,
     /// Every job, in run order.
     queue: Queue,
     /// The thread that runs the full jobs, one at a time.
@@ -65,6 +68,12 @@ pub(crate) struct TbdSubtitlesApp {
     /// Each step's seconds per second of video, for the time left.
     rates: Rates,
     settings: SettingsPage,
+    /// Whether the Settings window is open.
+    settings_window: bool,
+    /// The short messages at the bottom of the window; a button's action is applied as is.
+    toasts: Toasts<Action>,
+    /// The row removed last, which Undo puts back; a newer removal replaces it.
+    removed: Option<Removed>,
     /// The desktop's colour scheme, which the window follows.
     scheme: Scheme,
     pending: background::Pending,
@@ -90,7 +99,6 @@ impl TbdSubtitlesApp {
         let review_runner = job_runner::start(env.run_job.clone(), env.wake.clone());
         let mut app = TbdSubtitlesApp {
             env,
-            page: Page::Jobs,
             queue,
             runner,
             cancel: None,
@@ -98,6 +106,9 @@ impl TbdSubtitlesApp {
             review_cancel: None,
             rates,
             settings,
+            settings_window: false,
+            toasts: Toasts::default(),
+            removed: None,
             scheme: Scheme::default(),
             pending: background::Pending::default(),
             report: None,
@@ -122,7 +133,12 @@ impl TbdSubtitlesApp {
                     }
                 }
                 Action::Queue(event) => self.apply_queue(event),
-                Action::ShowPage(page) => self.page = page,
+                Action::ShowSettings(open) => self.settings_window = open,
+                Action::ToastButton(id) => {
+                    if let Some((_, action)) = self.toasts.take(id).and_then(|toast| toast.action) {
+                        self.apply(vec![action]);
+                    }
+                }
                 Action::Settings(event) => self.apply_settings(event),
                 Action::Report(ReportEvent::Open(path)) => crate::core::portal::open(&path),
                 Action::Report(ReportEvent::Review(line)) => self.open_review(line),

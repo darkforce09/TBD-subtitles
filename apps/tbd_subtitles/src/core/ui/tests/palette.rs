@@ -95,3 +95,15 @@ fn the_mockup_accent_fills_are_kept() {
     assert_eq!(LIGHT.accent_fill, Color32::from_rgb(0x00, 0x68, 0xDA));
     assert_eq!(DARK.accent_fill, Color32::from_rgb(0x15, 0x70, 0xDD));
 }
+
+#[test]
+fn sidebar_and_toolbar_text_reads_on_its_bar() {
+    for (scheme, p) in schemes() {
+        for (surface, background) in [("sidebar", p.sidebar), ("toolbar", p.toolbar)] {
+            for (name, text) in [("text", p.text), ("text2", p.text2), ("bad", p.bad)] {
+                let ratio = contrast(text, background);
+                assert!(ratio >= 4.5, "{scheme}: {name} on {surface} is {ratio:.2}");
+            }
+        }
+    }
+}

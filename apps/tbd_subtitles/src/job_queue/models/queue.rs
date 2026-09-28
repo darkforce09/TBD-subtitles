@@ -1,7 +1,7 @@
 //! The queue: each video's job, what kind of run it is, and where it stands.
 //!
 //! **Role:** hold every job in run order with its id, video, kind and state, the selected job,
-//! and whether the queue runs.
+//! and whether the queue runs or is pausing; and a row taken out, kept for Undo.
 //!
 //! **Position:** owned by the application; changed by `job_queue::services`; drawn by
 //! `job_queue::ui`.
@@ -94,6 +94,28 @@ pub(crate) struct QueueItem {
     pub(crate) corrections: usize,
 }
 
+impl QueueItem {
+    /// The video's name as the window shows it: its file name without the extension.
+    pub(crate) fn name(&self) -> String {
+        self.video.file_stem().map_or_else(
+            || self.video.display().to_string(),
+            |stem| stem.to_string_lossy().into_owned(),
+        )
+    }
+
+    /// The name without a leading group tag such as "[Muhn Pace] ", for messages.
+    pub(crate) fn short_name(&self) -> String {
+        let name = self.name();
+        match name
+            .strip_prefix('[')
+            .and_then(|rest| rest.split_once("] "))
+        {
+            Some((_, short)) if !short.is_empty() => short.to_string(),
+            _ => name,
+        }
+    }
+}
+
 /// Every job, in run order, and the one the right side shows.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Queue {
@@ -101,6 +123,8 @@ pub(crate) struct Queue {
     pub(crate) selected: Option<JobId>,
     /// Whether the queue starts the next waiting job when one ends.
     pub(crate) running: bool,
+    /// The owner paused the queue while a full run runs: it stops once that run ends.
+    pub(crate) pausing: bool,
     pub(crate) next_id: JobId,
 }
 
@@ -117,10 +141,6 @@ impl Queue {
     pub(crate) fn running_job(&self) -> Option<&QueueItem> {
         self.items.iter().find(|item| item.state.is_running())
     }
-
-    pub(crate) fn count(&self, pick: impl Fn(&JobState) -> bool) -> usize {
-        self.items.iter().filter(|item| pick(&item.state)).count()
-    }
 }
 
 /// Where a waiting job moves among the waiting jobs.
@@ -129,4 +149,19 @@ pub(crate) enum Move {
     Up,
     Down,
     Top,
+}
+
+/// A row taken out of the queue, kept so Undo can put it back where it was.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Removed {
+    /// The row's job first, then the correction runs folded into its row, each with the index it
+    /// had in the queue.
+    pub(crate) items: Vec<(usize, QueueItem)>,
+}
+
+impl Removed {
+    /// The removed row's job.
+    pub(crate) fn job(&self) -> Option<&QueueItem> {
+        self.items.first().map(|(_, item)| item)
+    }
 }
