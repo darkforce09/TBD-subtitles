@@ -1,11 +1,12 @@
-//! One frame of the window: the page tabs, the queue on the left, the page on the right, dropped
-//! files, then the actions.
+//! One frame of the window: the desktop's colour scheme, the page tabs, the queue on the left, the
+//! page on the right, dropped files, then the actions.
 
 use std::time::Duration;
 
 use eframe::egui::{self, Id, Panel, Ui};
 
 use super::{Action, Page, TbdSubtitlesApp, feature_views};
+use crate::core::ui::theme;
 
 /// How often the window redraws while a job runs, so its clock and time left move.
 const RUNNING_REDRAW: Duration = Duration::from_secs(1);
@@ -13,6 +14,7 @@ const RUNNING_REDRAW: Duration = Duration::from_secs(1);
 impl eframe::App for TbdSubtitlesApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.poll();
+        theme::follow(ui.ctx(), self.scheme);
         let actions = self.frame_ui(ui);
         self.apply(actions);
     }

@@ -13,7 +13,7 @@
 use eframe::egui::{Grid, ProgressBar, RichText, Ui};
 
 use crate::core::format;
-use crate::core::ui::{BAD, CAUTION, GOOD, MUTED_TEXT};
+use crate::core::ui::palette::palette;
 use crate::settings::events::SettingsEvent;
 use crate::settings::models::machine::{CheckState, ItemKind};
 use crate::settings::models::page::SettingsPage;
@@ -35,23 +35,29 @@ pub(crate) fn machine_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<Sett
                         ItemKind::Model => "model",
                         ItemKind::Runtime => "runtime",
                     })
-                    .color(MUTED_TEXT),
+                    .color(palette(ui).text2),
                 );
                 ui.label(format::size(item.bytes));
                 match page.download.filter(|d| d.index == index) {
                     Some(progress) => {
                         let share = progress.held as f32 / progress.total.max(1) as f32;
-                        ui.add(
-                            ProgressBar::new(share)
-                                .desired_width(160.0)
-                                .show_percentage(),
-                        );
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                ProgressBar::new(share)
+                                    .desired_width(160.0)
+                                    .fill(palette(ui).accent_fill),
+                            );
+                            ui.label(
+                                RichText::new(format!("{} %", (share * 100.0) as u32))
+                                    .color(palette(ui).text2),
+                            );
+                        });
                     }
                     None if item.present => {
-                        ui.label(RichText::new("✓ on disk").color(GOOD));
+                        ui.label(RichText::new("✓ on disk").color(palette(ui).good));
                     }
                     None => {
-                        ui.label(RichText::new("missing").color(BAD));
+                        ui.label(RichText::new("missing").color(palette(ui).bad));
                     }
                 }
                 ui.end_row();
@@ -63,7 +69,8 @@ pub(crate) fn machine_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<Sett
                 events.push(SettingsEvent::StopDownload);
             }
             ui.label(
-                RichText::new("Downloading; a stopped file resumes next time.").color(MUTED_TEXT),
+                RichText::new("Downloading; a stopped file resumes next time.")
+                    .color(palette(ui).text2),
             );
         } else if missing > 0 {
             if ui
@@ -73,14 +80,14 @@ pub(crate) fn machine_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<Sett
                 events.push(SettingsEvent::Download);
             }
         } else {
-            ui.label(RichText::new("Everything a job needs is on disk.").color(GOOD));
+            ui.label(RichText::new("Everything a job needs is on disk.").color(palette(ui).good));
         }
     });
     ui.add_space(12.0);
     ui.heading("This machine");
     match &page.checks {
         None => {
-            ui.label(RichText::new("Checking…").color(MUTED_TEXT));
+            ui.label(RichText::new("Checking…").color(palette(ui).text2));
         }
         Some(checks) => {
             Grid::new("checks")
@@ -89,9 +96,9 @@ pub(crate) fn machine_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<Sett
                 .show(ui, |ui| {
                     for check in checks {
                         let (mark, colour) = match check.state {
-                            CheckState::Ok => ("✓", GOOD),
-                            CheckState::Warning => ("⚠", CAUTION),
-                            CheckState::Failed => ("✗", BAD),
+                            CheckState::Ok => ("✓", palette(ui).good),
+                            CheckState::Warning => ("⚠", palette(ui).warn),
+                            CheckState::Failed => ("✗", palette(ui).bad),
                         };
                         ui.label(RichText::new(format!("{mark} {}", check.name)).color(colour));
                         ui.label(&check.detail);

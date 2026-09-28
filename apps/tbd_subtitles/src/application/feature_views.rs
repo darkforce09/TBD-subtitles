@@ -5,7 +5,7 @@ use std::time::Instant;
 use eframe::egui::{RichText, ScrollArea, Ui};
 
 use super::{Action, TbdSubtitlesApp};
-use crate::core::ui::{BAD, MUTED_TEXT};
+use crate::core::ui::palette::palette;
 use crate::job_queue::models::view::JobQueueView;
 use crate::job_queue::ui::{progress_view_ui, queue_panel_ui};
 use crate::job_report::ui::report_view_ui;
@@ -34,7 +34,7 @@ pub(super) fn jobs_ui(ui: &mut Ui, app: &TbdSubtitlesApp, actions: &mut Vec<Acti
         ui.heading(super::APP_NAME);
         ui.label(
             RichText::new("Select a job in the queue to see its progress and report.")
-                .color(MUTED_TEXT),
+                .color(palette(ui).text2),
         );
         return;
     };
@@ -61,7 +61,7 @@ pub(super) fn jobs_ui(ui: &mut Ui, app: &TbdSubtitlesApp, actions: &mut Vec<Acti
                 actions.extend(events.into_iter().map(Action::from));
             }
             Some((_, Err(error))) => {
-                ui.label(RichText::new(format!("No report: {error}")).color(BAD));
+                ui.label(RichText::new(format!("No report: {error}")).color(palette(ui).bad));
             }
             None => {}
         }

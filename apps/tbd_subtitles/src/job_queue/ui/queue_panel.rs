@@ -12,7 +12,7 @@
 use eframe::egui::{Button, ProgressBar, RichText, ScrollArea, Ui};
 
 use crate::core::format;
-use crate::core::ui::{BAD, CAUTION, GOOD, MUTED_TEXT};
+use crate::core::ui::palette::palette;
 use crate::job_queue::events::JobQueueEvent;
 use crate::job_queue::models::queue::{JobKind, JobState, Move, QueueItem};
 use crate::job_queue::models::view::JobQueueView;
@@ -59,17 +59,19 @@ pub(crate) fn queue_panel_ui(
                 queue.count(JobState::is_waiting),
                 queue.count(|s| matches!(s, JobState::Finished(_) | JobState::FinishedBefore))
             ))
-            .color(MUTED_TEXT),
+            .color(palette(ui).text2),
         );
     });
     if view.models_missing {
-        ui.label(RichText::new("Models are missing: download them in Settings.").color(BAD));
+        ui.label(
+            RichText::new("Models are missing: download them in Settings.").color(palette(ui).bad),
+        );
     }
     ui.separator();
     if queue.items.is_empty() {
         ui.label(
             RichText::new("No videos queued. Add videos or a folder, or drop them here.")
-                .color(MUTED_TEXT),
+                .color(palette(ui).text2),
         );
         return;
     }
@@ -91,13 +93,13 @@ fn row_ui(ui: &mut Ui, view: &JobQueueView<'_>, item: &QueueItem, events: &mut V
         JobKind::Review => format!("{name} · corrections"),
     };
     let (mark, colour) = match &item.state {
-        JobState::Waiting => ("…", MUTED_TEXT),
-        JobState::Running(_) => ("▶", CAUTION),
-        JobState::Finished(result) if result.failures.is_empty() => ("✓", GOOD),
-        JobState::Finished(_) => ("⚠", CAUTION),
-        JobState::FinishedBefore => ("✓", GOOD),
-        JobState::Failed(_) => ("✗", BAD),
-        JobState::Cancelled => ("■", MUTED_TEXT),
+        JobState::Waiting => ("…", palette(ui).text2),
+        JobState::Running(_) => ("▶", palette(ui).warn),
+        JobState::Finished(result) if result.failures.is_empty() => ("✓", palette(ui).good),
+        JobState::Finished(_) => ("⚠", palette(ui).warn),
+        JobState::FinishedBefore => ("✓", palette(ui).good),
+        JobState::Failed(_) => ("✗", palette(ui).bad),
+        JobState::Cancelled => ("■", palette(ui).text2),
     };
     let selected = view.queue.selected == Some(item.id);
     ui.horizontal(|ui| {
@@ -114,13 +116,17 @@ fn row_ui(ui: &mut Ui, view: &JobQueueView<'_>, item: &QueueItem, events: &mut V
         JobState::Running(progress) => {
             let estimate = time_left::estimate(progress, view.rates, view.now);
             let share = estimate.map_or(0.0, |(_, share)| share as f32);
-            ui.add(ProgressBar::new(share).desired_width(150.0));
+            ui.add(
+                ProgressBar::new(share)
+                    .desired_width(150.0)
+                    .fill(palette(ui).accent_fill),
+            );
             let text = match (progress.cancelling, estimate) {
                 (true, _) => "stopping…".to_string(),
                 (false, Some((left, _))) => format!("{} left", format::duration(left)),
                 (false, None) => "starting…".to_string(),
             };
-            ui.label(RichText::new(text).color(MUTED_TEXT));
+            ui.label(RichText::new(text).color(palette(ui).text2));
             if !progress.cancelling && ui.small_button("Cancel").clicked() {
                 events.push(JobQueueEvent::Cancel(item.id));
             }

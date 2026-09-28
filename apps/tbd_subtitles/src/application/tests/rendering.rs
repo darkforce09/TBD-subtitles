@@ -6,10 +6,14 @@ use pipeline::progress::Progress;
 use pipeline::{JobOutcome, PipelineError};
 
 use super::*;
+use crate::core::color_scheme::Scheme;
 use crate::job_queue::events::JobQueueEvent;
 use crate::job_queue::models::queue::JobState;
 use crate::job_queue::services::job_runner::RunJob;
 use crate::settings::events::SettingsEvent;
+
+#[path = "window_snapshots.rs"]
+mod window_snapshots;
 
 /// A stand-in for the pipeline: one step, then success, or cancelled when the token is set.
 fn stand_in() -> RunJob {
@@ -49,9 +53,12 @@ fn settle(app: &mut TbdSubtitlesApp) {
     panic!("the queue did not settle");
 }
 
-/// Run two headless frames and return every piece of text painted, with the actions asked for.
+/// Run two headless frames in the window's theme and return every piece of text painted, with
+/// the actions asked for.
 fn render(app: &TbdSubtitlesApp) -> (String, Vec<Action>) {
     let context = egui::Context::default();
+    theme::install(&context);
+    theme::follow(&context, app.scheme);
     let mut text = String::new();
     let mut actions = Vec::new();
     // Panels settle their sizes on the first frame.
@@ -313,4 +320,47 @@ fn a_saved_correction_queues_a_review_run_that_runs_at_once() {
     settle(&mut app);
     assert!(matches!(app.queue.items[1].state, JobState::Finished(_)));
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn the_window_draws_in_the_desktops_scheme() {
+    use crate::core::ui::palette::{DARK, LIGHT};
+    let mut app = app("scheme", Vec::new());
+    let context = egui::Context::default();
+    theme::install(&context);
+    for (scheme, palette) in [(Scheme::Dark, &DARK), (Scheme::Light, &LIGHT)] {
+        app.scheme = scheme;
+        theme::follow(&context, app.scheme);
+        let mut drawn = None;
+        let mut output = context.run_ui(egui::RawInput::default(), |ui| {
+            drawn = Some(ui.visuals().clone());
+        });
+        output.textures_delta.clear();
+        let visuals = drawn.expect("a frame ran");
+        assert_eq!(visuals.dark_mode, scheme == Scheme::Dark);
+        assert_eq!(visuals.panel_fill, palette.window);
+        assert_eq!(visuals.selection.bg_fill, palette.selection_fill());
+    }
+}
+
+#[test]
+fn a_change_of_the_desktops_scheme_is_followed() {
+    let mut app = app("scheme-change", Vec::new());
+    assert_eq!(
+        app.scheme,
+        Scheme::Light,
+        "the tests start no portal thread"
+    );
+    let (send, schemes) = std::sync::mpsc::channel();
+    app.pending.scheme = Some(schemes);
+    send.send(Scheme::Dark).expect("send");
+    app.poll();
+    assert_eq!(app.scheme, Scheme::Dark);
+    drop(send);
+    app.poll();
+    assert!(
+        app.pending.scheme.is_none(),
+        "a closed portal thread ends the wait"
+    );
+    assert_eq!(app.scheme, Scheme::Dark);
 }

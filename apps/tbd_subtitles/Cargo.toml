@@ -35,11 +35,20 @@ toml = { version = "0.9", default-features = false, features = ["parse", "displa
 anyhow = "1"
 # The subcommands `gui`, `process` and `worker`.
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions", "color"] }
-# The desktop portal over D-Bus (pure Rust, zbus on async-io): the file and folder chooser, and
-# opening a video in the desktop's default player. No tokio, and no GTK or Wayland handles.
-ashpd = { version = "0.13", default-features = false, features = ["async-io", "file_chooser", "open_uri"] }
+# The desktop portal over D-Bus (pure Rust, zbus on async-io): the file and folder chooser,
+# opening a video in the desktop's default player, and the desktop's light or dark colour scheme
+# (`settings`). No tokio, and no GTK or Wayland handles.
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "file_chooser", "open_uri", "settings"] }
 # Blocks a portal call on the thread that asked for it.
 pollster = "1"
+# Reads the portal's stream of colour scheme changes (`StreamExt::next`).
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+# The window's icons: the Phosphor icon font, regular weight only, carried inside the crate.
+egui-phosphor = { version = "0.14", default-features = false, features = ["regular"] }
+# The window runs under X11 (XWayland on KDE): `EventLoopBuilderExtX11::with_x11` forces it, so
+# files can be dropped onto the window and Settings can be placed over it. eframe does not
+# re-export winit; the version matches eframe's.
+winit = { version = "=0.30.13", default-features = false }
 # Tables in the settings, queue and report views.
 egui_extras = { version = "0.36", default-features = false }
 # The desktop window. glow (OpenGL) is the renderer: wgpu fails to create a surface on the owner's
@@ -48,3 +57,10 @@ eframe = { version = "0.36", default-features = false, features = ["glow", "wayl
 # Log lines to stderr, filtered by RUST_LOG.
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "ansi", "env-filter"] }
+
+[dev-dependencies]
+# Drives the real window offscreen for the snapshot scenes (`window_snapshots`, an ignored test):
+# `eframe` runs `App::ui` itself, `wgpu` renders each frame to an image.
+egui_kittest = { version = "0.36", features = ["wgpu", "eframe"] }
+# Writes the snapshot scenes as PNG files.
+image = { version = "0.25", default-features = false, features = ["png"] }

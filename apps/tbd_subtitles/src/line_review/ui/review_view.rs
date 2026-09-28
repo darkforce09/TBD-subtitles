@@ -10,11 +10,13 @@
 //!
 //! **Invariants:** nothing is saved from here; Save is disabled while the job runs.
 
+use eframe::egui::text::{LayoutJob, TextFormat};
 use eframe::egui::{
-    self, Button, ColorImage, Id, RichText, ScrollArea, TextEdit, TextureHandle, TextureOptions, Ui,
+    self, Button, Color32, ColorImage, Id, RichText, ScrollArea, TextEdit, TextStyle,
+    TextureHandle, TextureOptions, Ui,
 };
 
-use crate::core::ui::{CAUTION, GOOD, MUTED_TEXT};
+use crate::core::ui::palette::palette;
 use crate::line_review::events::ReviewEvent;
 use crate::line_review::models::clip::{Frame, Sound};
 use crate::line_review::models::session::{ReviewLine, ReviewSession};
@@ -43,11 +45,11 @@ pub(crate) fn review_view_ui(ui: &mut Ui, view: &ReviewView<'_>, events: &mut Ve
         }
         ui.label(
             RichText::new(format!("{} corrected", session.corrections.lines.len()))
-                .color(MUTED_TEXT),
+                .color(palette(ui).text2),
         );
     });
     if let Some(notice) = &session.notice {
-        ui.label(RichText::new(notice).color(GOOD));
+        ui.label(RichText::new(notice).color(palette(ui).good));
     }
     ui.separator();
     egui::Panel::left(Id::new("review-lines"))
@@ -64,7 +66,7 @@ pub(crate) fn review_view_ui(ui: &mut Ui, view: &ReviewView<'_>, events: &mut Ve
                 ScrollArea::vertical().show(ui, |ui| detail_ui(ui, view, line, events));
             }
             None => {
-                ui.label(RichText::new("Choose a line on the left.").color(MUTED_TEXT));
+                ui.label(RichText::new("Choose a line on the left.").color(palette(ui).text2));
             }
         }
     });
@@ -81,14 +83,22 @@ fn list_ui(ui: &mut Ui, session: &ReviewSession, events: &mut Vec<ReviewEvent>) 
                 Some(c) => c.text.as_str(),
                 None => line.adjudicated.as_str(),
             };
-            let mark = if corrected {
-                "✎ "
+            // The flag mark in the warning colour; the rest in the row's own text colour.
+            let (mark, mark_colour) = if corrected {
+                ("✎ ", Color32::PLACEHOLDER)
             } else if line.flagged() {
-                "⚠ "
+                ("⚠ ", palette(ui).warn)
             } else {
-                ""
+                ("", Color32::PLACEHOLDER)
             };
-            let label = format!("{mark}{}  {}  {text}", clock(line.start_s), line.id);
+            let font = TextStyle::Button.resolve(ui.style());
+            let mut label = LayoutJob::default();
+            label.append(mark, 0.0, TextFormat::simple(font.clone(), mark_colour));
+            label.append(
+                &format!("{}  {}  {text}", clock(line.start_s), line.id),
+                0.0,
+                TextFormat::simple(font, Color32::PLACEHOLDER),
+            );
             if ui
                 .selectable_label(open == Some(line.id.as_str()), label)
                 .clicked()
@@ -97,7 +107,7 @@ fn list_ui(ui: &mut Ui, session: &ReviewSession, events: &mut Vec<ReviewEvent>) 
             }
         }
         if !any {
-            ui.label(RichText::new("No flagged lines.").color(MUTED_TEXT));
+            ui.label(RichText::new("No flagged lines.").color(palette(ui).text2));
         }
     });
 }
@@ -117,7 +127,7 @@ fn detail_ui(ui: &mut Ui, view: &ReviewView<'_>, line: &ReviewLine, events: &mut
         }
     });
     for reason in &line.reasons {
-        ui.label(RichText::new(reason).color(CAUTION));
+        ui.label(RichText::new(reason).color(palette(ui).warn));
     }
     ui.horizontal(|ui| {
         if view.playing {
@@ -153,7 +163,7 @@ fn detail_ui(ui: &mut Ui, view: &ReviewView<'_>, line: &ReviewLine, events: &mut
             .iter()
             .map(|h| (h.tag.as_str(), h.text.as_str()));
         for (tag, text) in settled.chain(heard) {
-            ui.label(RichText::new(reading_name(tag)).color(MUTED_TEXT));
+            ui.label(RichText::new(reading_name(tag)).color(palette(ui).text2));
             ui.label(text);
             if ui.small_button("Use").clicked() {
                 events.push(ReviewEvent::Pick(tag.to_string()));

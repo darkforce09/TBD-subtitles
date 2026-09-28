@@ -14,7 +14,7 @@ use eframe::egui::{self, ComboBox, DragValue, Grid, RichText, ScrollArea, TextEd
 use job_model::job::{OutputFormat, Separator, WhisperModel};
 
 use super::machine_panel::machine_ui;
-use crate::core::ui::{BAD, GOOD, MUTED_TEXT};
+use crate::core::ui::palette::palette;
 use crate::settings::events::{PathField, SettingsEvent};
 use crate::settings::models::app_settings::{AppSettings, NO_GLOSSARY, ONE_PIECE};
 use crate::settings::models::page::SettingsPage;
@@ -23,7 +23,7 @@ use crate::settings::models::page::SettingsPage;
 pub(crate) fn settings_page_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<SettingsEvent>) {
     ScrollArea::vertical().show(ui, |ui| {
         ui.heading("Settings");
-        ui.label(RichText::new(page.path.display().to_string()).color(MUTED_TEXT));
+        ui.label(RichText::new(page.path.display().to_string()).color(palette(ui).text2));
         ui.add_space(6.0);
         let mut draft = page.draft.clone();
         form_ui(ui, &mut draft, page, events);
@@ -42,11 +42,15 @@ pub(crate) fn settings_page_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Ve
                 events.push(SettingsEvent::Revert);
             }
             if edited {
-                ui.label(RichText::new("Unsaved changes").color(MUTED_TEXT));
+                ui.label(RichText::new("Unsaved changes").color(palette(ui).text2));
             }
         });
         if let Some(notice) = &page.notice {
-            ui.label(RichText::new(&notice.text).color(if notice.is_error { BAD } else { GOOD }));
+            ui.label(RichText::new(&notice.text).color(if notice.is_error {
+                palette(ui).bad
+            } else {
+                palette(ui).good
+            }));
         }
         ui.add_space(12.0);
         machine_ui(ui, page, events);
@@ -76,7 +80,7 @@ fn form_ui(
                         .map_or_else(|| "measuring…".to_string(), crate::core::format::size);
                     ui.label(
                         RichText::new(format!("{}: {size}", page.work_folder.display()))
-                            .color(MUTED_TEXT),
+                            .color(palette(ui).text2),
                     );
                     if ui.small_button("Open").clicked() {
                         events.push(SettingsEvent::OpenWorkFolder);
@@ -148,7 +152,7 @@ fn folder_ui(
     ui.horizontal(|ui| {
         match value {
             Some(path) => ui.label(path.display().to_string()),
-            None => ui.label(RichText::new("the default").color(MUTED_TEXT)),
+            None => ui.label(RichText::new("the default").color(palette(ui).text2)),
         };
         if ui.small_button("Choose…").clicked() {
             events.push(SettingsEvent::Choose(field));

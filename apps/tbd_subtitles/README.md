@@ -17,7 +17,8 @@ apps/tbd_subtitles/
 
 `src/main.rs` installs logging, parses the command line and runs the chosen subcommand. With no
 subcommand, or with `gui`, it opens a 1100 by 700 window (640 by 400 at least) titled "TBD
-Subtitles", drawn with eframe's glow renderer; videos named on the command line or dropped onto
+Subtitles", drawn with eframe's glow renderer under X11 (XWayland on a Wayland desktop), in
+Adwaita Sans and the desktop's light or dark colour scheme; videos named on the command line or dropped onto
 the window join the queue on the left, skipping any already queued. The window runs no job.
 
 `process` turns its options into the job settings, checks every video is a readable file, and
@@ -73,6 +74,9 @@ cargo gates file-length
   the settings file: `src/cli/README.md`.
 - Build features: none of its own. The `eframe` dependency is built with `glow`, `wayland`, `x11`
   and `default_fonts` only, because wgpu fails to create a surface on the owner's Wayland desktop.
+  A direct `winit` dependency (the version eframe uses) forces the X11 event loop. The dev
+  dependencies `egui_kittest` (`wgpu`, `eframe`) and `image` (`png`) serve only the ignored
+  snapshot test.
 
 ## Public surface
 

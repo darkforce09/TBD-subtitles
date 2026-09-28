@@ -59,12 +59,24 @@ Take the correction back undoes one.
 ## Design
 
 A simple two-pane window: the queue on the left, the selected job (progress, report or review) on
-the right. Code layout follows the TBD-Reforger desktop-app pattern: one folder per feature with
+the right. The owner approved a macOS-like redesign as a clickable mockup, built in phases (see
+the [roadmap](/documentation/roadmap.md#m2--desktop-gui)). Its look is in place: the mockup's
+light and dark palettes (a macOS blue accent, greys, green, orange and red whose text reads at a
+contrast of at least 4.5), Adwaita Sans from the system in regular, semibold and bold and Adwaita
+Mono for monospace text (egui's fonts when they are missing), Phosphor icons, title 22, headline
+15, body 13 and caption 11, controls 28 px high with radius 6, cards and windows with radius 10,
+1 px borders and one soft shadow, and selections in a light accent tint with accent text. The
+window follows the desktop's light or dark colour scheme as KDE sets it, through the desktop
+portal, and switches when it changes; KDE's accent colour is not followed. Code layout follows the TBD-Reforger desktop-app pattern: one folder per feature with
 `models/`, `services/` and `ui/`, where the UI draws from a borrowed view and returns events that
 the application applies after the frame. Its architecture tests
 (`apps/tbd_subtitles/src/tests/architecture_rules.rs`) hold the pattern here; no ticket system comes
 from that project. The renderer is glow (OpenGL), because wgpu fails to create a surface on the
-owner's Wayland desktop.
+owner's Wayland desktop. The window runs under X11 (XWayland), where files can be dropped onto it
+and a second window can be placed over it. An ignored test renders the real window offscreen at
+1280 by 800, light and dark, from a copy of real work folders
+(`apps/tbd_subtitles/src/application/tests/window_snapshots.rs`), so each phase of the redesign
+can be compared with the mockup.
 
 ## Open work
 
@@ -80,3 +92,6 @@ owner's Wayland desktop.
   ([the desktop portal](/documentation/decisions/desktop_gui.md#2026-09-26--the-desktop-portal-chooses-files-and-opens-videos)),
   and a review step for the owner's corrections
   ([review step](/documentation/decisions/desktop_gui.md#2026-09-26--the-owners-corrections-are-timed-by-a-review-step)).
+- The desktop's colour scheme through the portal, Adwaita Sans from the system, icons from
+  egui-phosphor, and X11 over Wayland
+  ([the window's look](/documentation/decisions/desktop_gui.md#2026-09-28--the-window-follows-the-desktops-colour-scheme-in-adwaita-sans-under-x11)).

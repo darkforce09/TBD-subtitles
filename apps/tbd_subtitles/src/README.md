@@ -10,7 +10,7 @@ owning one part of the window.
 apps/tbd_subtitles/src/
 ├── application/  the eframe window: the queue state, the frame, and the actions applied after it
 ├── cli/          the `gui`, `process` and `worker` subcommands and their dispatch
-├── core/         logging to stderr and the shared look of the window
+├── core/         logging, threads' wake, the desktop portal and colour scheme, the shared look
 ├── job_queue/    the videos waiting for subtitles: the queue panel, its view, events and edits
 ├── job_report/   the report of a finished job: quality checks, flagged lines, the output file
 ├── line_review/  reviewing a flagged line: its clip, the engines' hypotheses, the chosen text
@@ -30,17 +30,18 @@ its own `process` and `worker` runners, which hand the jobs and steps to `crates
 free of egui, and draws in `ui/` from a narrow borrowed view the application lends it each frame;
 what the user does there comes back as that feature's events (`events.rs`), which the application
 turns into its `Action`s and applies after the frame, so nothing changes state while a frame is
-drawn. `job_queue` is wired in this way; `job_report`, `line_review` and `settings` hold only their
-module headers, and their code is not written yet. `core` holds what any module may use.
+drawn. All four features are wired in this way. `core` holds what any module may use: logging,
+the wake threads use, the desktop portal and its colour scheme, number formats, and the shared look
+(the mockup's palettes, Adwaita Sans and Adwaita Mono with the Phosphor icon font, and the theme
+built from them).
 
 ```text
-main.rs ──▶ cli ──▶ application ──▶ job_queue (models, services, ui, events)
-             │           │
-             │           └── job_report, line_review, settings: headers only
+main.rs ──▶ cli ──▶ application ──▶ job_queue, job_report, line_review, settings
+             │                        (models, services, ui, events)
              └──▶ pipeline (run_job, tasks::worker_main), job_model (StepName, JobSettings),
                   stages::adjudication::glossary
 
-any module ──▶ core (logging, ui)
+any module ──▶ core (logging, background, portal, color_scheme, format, ui)
 ```
 
 ## Public surface
@@ -52,7 +53,8 @@ and its subcommands are described in the crate README and in `cli/README.md`.
 
 - Depends on: `crates/pipeline/` for running jobs and worker steps; `crates/job_model/` for
   `StepName` and the job settings; `crates/stages/` for the built-in glossary; `anyhow`, `clap`,
-  `eframe`, `tracing` and `tracing-subscriber`.
+  `eframe` with `egui-phosphor` (icons) and `winit` (the X11 event loop), `ashpd` (the desktop
+  portal), `tracing` and `tracing-subscriber`.
 - Used by: nothing in the repository links it; people run the binary, and the job runner in
   `crates/pipeline/` starts its `worker` subcommand.
 - Rules: each held by a test in `tests/architecture_rules.rs`:

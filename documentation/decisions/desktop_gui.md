@@ -3,8 +3,8 @@
 # Decisions: desktop GUI
 
 The decisions the desktop window led to: how it plays clips and hands videos to other programs,
-where models live and how they arrive, when a job passes the quality check, and how the owner's
-corrections are timed. The [decision log](/documentation/decisions/) says how entries are
+where models live and how they arrive, when a job passes the quality check, how the owner's
+corrections are timed, and how the window looks. The [decision log](/documentation/decisions/) says how entries are
 written.
 
 ### 2026-09-26 — Clips play through FFmpeg, not libmpv
@@ -143,5 +143,34 @@ so one subtitle file stays beside the video.
 
 **Consequences:** Changing the format reruns only the output step. The ASS file carries one
 dialogue style; positioned sign styles come with the Japanese on-screen text feature.
+
+**Supersedes:** none.
+
+### 2026-09-28 — The window follows the desktop's colour scheme in Adwaita Sans under X11
+
+**Context:** The owner approved a macOS-like mockup of the window, in light and dark, with
+icons. egui draws in its own dark theme and fonts and knows nothing of KDE's colour scheme. On
+Wayland, winit 0.30 delivers no dropped files (only its X11 backend emits them), places no window,
+and with vsync on a minimised second window stops the main window's frames; XWayland at the
+owner's scale factor of 1 draws the same pixels, as smoothly. Each phase of the redesign needs
+screenshots of the real window to compare with the mockup.
+
+**Decision:** The window follows the desktop's colour scheme through the desktop portal's
+`settings` interface (the `ashpd` feature `settings`, its change stream read with
+`futures-util`): it reads the scheme before the first frame, switches on every change, and treats
+"no preference" as light. The palettes are the mockup's tokens; KDE's accent colour is not
+followed. The text is Adwaita Sans read from `/usr/share/fonts` at start, with semibold and bold
+made from its weight axis, and Adwaita Mono for monospace text; egui's fonts stand in when a file
+is missing. Icons come from
+`egui-phosphor` 0.14 (regular weight; the font ships inside the crate, MIT or Apache-2.0), so no
+binary file is committed. The window runs under X11: `launch` sets winit's `with_x11` through a
+direct `winit` dependency pinned to eframe's version. The dev dependencies `egui_kittest` 0.36
+(features `wgpu` and `eframe`) and `image` 0.25 (`png`) serve an ignored test that renders the
+real window offscreen to PNG files for review.
+
+**Consequences:** Files dropped from Dolphin reach the queue, and a second window can be placed
+over the main one; the owner confirms a real drop. The window shows X11's generic icon until it
+sets one of its own. At a fractional scale factor XWayland may draw text softly; the owner's
+screens are at scale 1. Test builds compile wgpu for the snapshot test.
 
 **Supersedes:** none.

@@ -13,7 +13,7 @@ use eframe::egui::{RichText, Ui};
 use egui_extras::{Column, TableBuilder};
 
 use crate::core::format;
-use crate::core::ui::{BAD, GOOD, MUTED_TEXT};
+use crate::core::ui::palette::palette;
 use crate::job_report::events::ReportEvent;
 use crate::job_report::models::report::JobReport;
 
@@ -23,17 +23,17 @@ pub(crate) fn report_view_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<R
     if failures.is_empty() {
         ui.label(
             RichText::new("✓ Passes the quality check")
-                .color(GOOD)
+                .color(palette(ui).good)
                 .strong(),
         );
     } else {
         ui.label(
             RichText::new("✗ Does not pass the quality check")
-                .color(BAD)
+                .color(palette(ui).bad)
                 .strong(),
         );
         for reason in &failures {
-            ui.label(RichText::new(format!("  • {reason}")).color(BAD));
+            ui.label(RichText::new(format!("  • {reason}")).color(palette(ui).bad));
         }
     }
     let s = &report.qc.summary;
@@ -56,7 +56,7 @@ pub(crate) fn report_view_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<R
             s.uncovered_speech_s,
             s.voice_without_cue_s
         ))
-        .color(MUTED_TEXT),
+        .color(palette(ui).text2),
     );
     ui.add_space(6.0);
     ui.horizontal(|ui| {
@@ -101,7 +101,7 @@ pub(crate) fn report_view_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<R
 
 fn findings_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<ReportEvent>) {
     if report.qc.findings.is_empty() {
-        ui.label(RichText::new("No findings.").color(MUTED_TEXT));
+        ui.label(RichText::new("No findings.").color(palette(ui).text2));
         return;
     }
     ui.push_id("findings", |ui| {
@@ -133,7 +133,7 @@ fn findings_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<ReportEvent>) {
                             ui.label(&finding.text).on_hover_text(&finding.text);
                         });
                         row.col(|ui| {
-                            ui.label(RichText::new(&finding.detail).color(MUTED_TEXT));
+                            ui.label(RichText::new(&finding.detail).color(palette(ui).text2));
                         });
                         row.col(|ui| {
                             if let Some(id) = &finding.utterance
