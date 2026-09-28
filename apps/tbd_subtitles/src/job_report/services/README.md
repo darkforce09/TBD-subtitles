@@ -37,7 +37,8 @@ The thread sends each `FixProgress` and then the outcome, waking the window each
 `Fixing::poll` keeps the latest progress and hands over the outcome once, and `Fixing::stop`
 sets the run's `CancelToken`, which kills the running calls. The thread logs the start, each
 new pass and stage at info with its count of calls, each call at debug, and the end, under the
-`fix_it` target.
+`fix_it` target, in spans naming the video and the step `fix_it`, which the model calls made on
+the run's threads inherit.
 
 ## Boundaries
 

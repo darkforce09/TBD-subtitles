@@ -218,6 +218,7 @@ pub(super) fn print(event: Progress) {
             }
         }
         Progress::StepMessage { step, text } => eprintln!("    {step}: {text}"),
+        Progress::ModelCall { .. } => {}
         Progress::StepFinished { step, measure } => {
             let mib = |v: Option<f64>| v.map_or_else(|| "—".to_string(), |v| format!("{v:.0}"));
             eprintln!(

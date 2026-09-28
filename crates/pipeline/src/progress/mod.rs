@@ -1,10 +1,12 @@
-//! What a running job reports: which step starts, is skipped, advances or finishes, and the job's
-//! end. The command line prints these; the window shows them.
+//! What a running job reports: which step starts, is skipped, advances or finishes, the job's
+//! end, and each language-model call a worker made. The command line prints these; the window
+//! shows them.
 
 use std::path::PathBuf;
 
 use job_model::StepName;
 use job_model::job::StepMeasure;
+use job_model::model_call::ModelExchange;
 
 /// One event of a running job.
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +41,11 @@ pub enum Progress {
     StepFailed {
         step: StepName,
         message: String,
+    },
+    /// A language-model call a worker made, with everything sent and received, for the log window.
+    ModelCall {
+        step: StepName,
+        call: Box<ModelExchange>,
     },
 }
 

@@ -38,3 +38,28 @@ fn a_missing_binary_fails_naming_it() {
     .expect_err("missing");
     assert!(error.message.contains("is missing"), "{error}");
 }
+
+#[test]
+fn a_model_call_line_becomes_a_model_call_and_a_broken_one_a_short_message() {
+    let call = ModelExchange {
+        id: "9-1".into(),
+        model: "sonnet".into(),
+        system: "rules\nmore rules".into(),
+        ..ModelExchange::default()
+    };
+    let line = call.worker_line().unwrap();
+    assert_eq!(
+        parse_line(StepName::Adjudicate, &line),
+        Progress::ModelCall {
+            step: StepName::Adjudicate,
+            call: Box::new(call)
+        }
+    );
+    assert_eq!(
+        parse_line(StepName::Adjudicate, "model-call {\"id\": "),
+        Progress::StepMessage {
+            step: StepName::Adjudicate,
+            text: "a model call that could not be read (18 bytes)".into()
+        }
+    );
+}

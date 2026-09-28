@@ -10,8 +10,8 @@
 //! **Signals and state:** runs in an empty working folder with only project settings, so the
 //! owner's user-level hooks, plugins and MCP servers never reach the prompt. Resolves `claude` on
 //! `PATH`, or `$HOME/.local/bin/claude`, since a desktop-launched app often lacks the shell's
-//! `PATH`. Logs one summary line per call (model, input lines, time, tokens, cost), never the
-//! prompt or the answer.
+//! `PATH`. Logs each call through `call_log`: a summary line, and the whole exchange for the
+//! app's log window.
 //!
 //! **Invariants:** no tool is enabled (`--tools ""`), no session is saved, and an answer without
 //! `structured_output` is an error, never an empty success; once the cancel flag is set, the
@@ -25,6 +25,7 @@ use std::time::{Duration, Instant};
 
 use child_process::{Run, RunError};
 
+use super::call_log::{self, Sent};
 use super::{Completion, LanguageModel, LlmError};
 
 /// `claude -p` with a fixed model.
@@ -83,20 +84,29 @@ impl LanguageModel for ClaudeCli {
         schema: &serde_json::Value,
     ) -> Result<Completion, LlmError> {
         let started = Instant::now();
-        let answer = self.call(system, user, schema);
-        log_call(&self.model, user, started.elapsed(), &answer);
+        let (answer, printed) = self.call(system, user, schema);
+        let sent = Sent {
+            model: &self.model,
+            system,
+            message: user,
+            schema,
+        };
+        call_log::log_call(&sent, started.elapsed(), &answer, &printed);
         answer
     }
 }
 
 impl ClaudeCli {
+    /// The answer, and what `claude` printed on stdout.
     fn call(
         &self,
         system: &str,
         user: &str,
         schema: &serde_json::Value,
-    ) -> Result<Completion, LlmError> {
-        std::fs::create_dir_all(&self.cwd).map_err(|e| LlmError(e.to_string()))?;
+    ) -> (Result<Completion, LlmError>, String) {
+        if let Err(error) = std::fs::create_dir_all(&self.cwd) {
+            return (Err(LlmError(error.to_string())), String::new());
+        }
         let run = Run::new(&self.program)
             .args(["-p", "--output-format", "json", "--json-schema"])
             .arg(schema.to_string())
@@ -116,41 +126,26 @@ impl ClaudeCli {
             .cwd(&self.cwd)
             .stdin(user)
             .timeout(self.timeout);
-        let (code, stdout, stderr) = match &self.cancel {
-            Some(flag) => run_cancellable(run.cancel_on(flag.clone()))?,
-            None => {
-                let out = run.output().map_err(|e| LlmError(e.to_string()))?;
-                (out.code, out.stdout, out.stderr)
-            }
+        let ran = match &self.cancel {
+            Some(flag) => run_cancellable(run.cancel_on(flag.clone())),
+            None => run
+                .output()
+                .map(|out| (out.code, out.stdout, out.stderr))
+                .map_err(|e| LlmError(e.to_string())),
+        };
+        let (code, stdout, stderr) = match ran {
+            Ok(ran) => ran,
+            Err(error) => return (Err(error), String::new()),
         };
         if code != 0 {
-            return Err(LlmError(format!(
+            let error = LlmError(format!(
                 "claude exited {code}: {}{}",
                 stderr.trim(),
                 stdout.chars().take(500).collect::<String>()
-            )));
+            ));
+            return (Err(error), stdout);
         }
-        parse(&stdout)
-    }
-}
-
-/// One line per call: which model, how much went in, how long it took and what it cost; never
-/// the prompt or the answer themselves.
-fn log_call(model: &str, user: &str, took: Duration, answer: &Result<Completion, LlmError>) {
-    let secs = took.as_secs_f64();
-    let lines = user.lines().count();
-    match answer {
-        Ok(done) => tracing::info!(
-            "claude {model}: {lines} input lines answered in {secs:.1} s, {} tokens in, {} out{}",
-            done.input_tokens,
-            done.output_tokens,
-            done.cost_usd
-                .map(|usd| format!(", ${usd:.4}"))
-                .unwrap_or_default()
-        ),
-        Err(error) => {
-            tracing::warn!("claude {model}: {lines} input lines failed after {secs:.1} s: {error}")
-        }
+        (parse(&stdout), stdout)
     }
 }
 

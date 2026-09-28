@@ -64,7 +64,8 @@ cargo test -p inference    # unit tests; the model checks are #[ignore] and run 
   backends; `crispasr` (git tag `v0.8.37`, optional) for the ggml backend; `mistralrs`
   (git tag `v0.9.4`) and `tokio` (optional) for the local language model; `serde_json`;
   `ureq`, `sha2`, `lzma-rs`, `flate2` and `tar` for the model store; `child_process` and
-  `job_model`, declared for the other backends; `tracing` for the summary of each `claude` call.
+  `job_model`, declared for the other backends and for a model call's record; `tracing` for each
+  call's summary and exchange.
 - Used by: `crates/stages/`, `tools/stack_spike/` and `tools/stack_spike_ggml/`.
 - Rules:
   - the crate sits in layer 1 and depends only on layer 0 crates (`cargo gates crate-layering`,

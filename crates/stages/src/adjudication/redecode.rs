@@ -141,7 +141,7 @@ pub fn readjudicate(
     let batches = ids.len().div_ceil(BATCH);
     let mut asked = 0;
     // The second round asks again for what the first left out.
-    for _ in 0..2 {
+    for round in 1..=2 {
         let answered: HashSet<String> = result.lines.iter().map(|l| l.id.clone()).collect();
         let todo: Vec<String> = ids
             .iter()
@@ -152,6 +152,11 @@ pub fn readjudicate(
             break;
         }
         for batch in todo.chunks(BATCH) {
+            let _purpose = inference::llm::purpose(format!(
+                "words heard again, round {round}: {} lines from {}",
+                batch.len(),
+                batch[0]
+            ));
             let message = user_message(glossary, sheet, first, batch);
             ask_with(model, &system, &message, &batch[0], &mut result);
             asked += 1;

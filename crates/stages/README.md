@@ -77,7 +77,7 @@ cargo test -p stages    # 111 unit tests, well under a second; no model, GPU or 
 - Depends on: `media_io` (probe, PCM streams, stem files), `inference` (the ONNX models, the
   speech engines and the language models), `subtitle_formats` (the cue model), `job_model` (the
   output types); `earshot` (in `vad`), `soundevents-dataset` (in `sound_events`), `serde` and
-  `serde_json` (in `adjudication`).
+  `serde_json` (in `adjudication`), `tracing` (Fix It's call threads keep the caller's span).
 - Used by: `crates/pipeline/` (every step task, the step graph, the runner and the report);
   `apps/tbd_subtitles/` (the glossary); `tools/stack_spike/`, `tools/stack_spike_ggml/` and
   `tools/stack_spike_llm/`.

@@ -82,6 +82,11 @@ impl LanguageModel for CachedModel {
         let path = self.path(system, user, schema);
         if let Ok(kept) = work_dir::read_json::<Kept>(&path) {
             self.hits.fetch_add(1, Ordering::SeqCst);
+            let purpose = inference::llm::call_log::current_purpose();
+            tracing::info!(
+                target: "fix_it",
+                "Answer reused from an earlier run, no call made: {purpose}"
+            );
             return Ok(Completion {
                 json: kept.json,
                 input_tokens: 0,

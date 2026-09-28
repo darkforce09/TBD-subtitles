@@ -161,7 +161,14 @@ pub fn choose(
         for _ in 0..workers.max(1).min(windows.len().max(1)) {
             scope.spawn(|| {
                 let mut model = make();
-                while let Some(window) = windows.get(next.fetch_add(1, Ordering::SeqCst)) {
+                loop {
+                    let i = next.fetch_add(1, Ordering::SeqCst);
+                    let Some(window) = windows.get(i) else { break };
+                    let _purpose = inference::llm::purpose(format!(
+                        "sound cues, window {} of {}",
+                        i + 1,
+                        windows.len()
+                    ));
                     let message = user_message(glossary, window, dialogue);
                     let answer = model
                         .complete_json(SYSTEM, &message, &schema())

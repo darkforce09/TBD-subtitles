@@ -51,7 +51,7 @@ use crate::job_report::models::summary::RowSummary;
 use crate::line_review::events::ReviewEvent;
 use crate::line_review::models::session::{Parked, ReviewSession};
 use crate::line_review::services::clip_player::{ClipPlayer, Still};
-use crate::log_console::models::console::Console;
+use crate::log_console::models::console::LogConsole;
 use crate::settings::models::page::{SettingsPage, SettingsTab};
 use crate::settings::services::job_settings;
 
@@ -81,7 +81,7 @@ pub(crate) struct TbdSubtitlesApp {
     /// Whether the log window is open.
     log_window: bool,
     /// The log window.s lines and filter.
-    console: Console,
+    console: LogConsole,
     /// The short messages at the bottom of the window; a button's action is applied as is.
     toasts: Toasts<Action>,
     /// The row removed last, which Undo puts back; a newer removal replaces it.
@@ -132,7 +132,7 @@ impl TbdSubtitlesApp {
             settings,
             settings_window: None,
             log_window: false,
-            console: Console::default(),
+            console: LogConsole::default(),
             toasts: Toasts::default(),
             removed: None,
             scheme: Scheme::default(),

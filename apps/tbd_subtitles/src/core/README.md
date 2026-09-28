@@ -13,12 +13,12 @@ apps/tbd_subtitles/src/core/
 ├── background.rs    `Wake`: how a thread asks the window for a frame
 ├── color_scheme.rs  `Scheme` and `watch`: the desktop's light or dark preference, followed as it changes
 ├── format.rs        sizes, durations, rough times left, video lengths, line times, places in line, counts
-├── log_buffer.rs    `LogBuffer`, `LogLine` and `ConsoleLayer`: the newest 20,000 lines, for the log window
+├── log_buffer/      the log window's lines and model calls, and the `tracing` layers that fill them
 ├── logging.rs       `initialise` and `console`: the global subscriber: stderr, the log file, the buffer
 ├── mod.rs           the module tree
 ├── portal.rs        the desktop's chooser, opening a file in its program, showing it in the file manager
 ├── steps.rs         the six stages the window shows, and each step's plain title
-├── tests/           unit tests for the portal's file URIs, formats, stages, scheme, toasts, logging, buffer
+├── tests/           unit tests for the portal's file URIs, formats, stages, scheme, toasts, logging
 ├── toast.rs         `Toast`, `Toasts` and `ToastKind`: short messages at the bottom, with a button
 └── ui/              the palette, fonts and theme, and the widgets features draw: buttons to toasts
 ```
@@ -29,18 +29,18 @@ apps/tbd_subtitles/src/core/
 installs a `tracing` subscriber writing to stderr without target names and with colour only when
 stderr is a terminal, filtered by `RUST_LOG`, or `info` when that is unset or invalid. A worker
 process writes its stderr at `DETAIL` instead (debug lines from this workspace's crates, info from
-every other), which the job runner reads line by line. For the window two more outputs take
+every other), with each line's target, which the job runner reads line by line; it writes each
+model call to its stdout (`log_buffer::WorkerStdoutLayer`). For the window two more outputs take
 `DETAIL`: the log file at `logging::window_log_path`, without colour and with each line's target
 (`$XDG_STATE_HOME/tbd-subtitles/tbd-subtitles.log`, else `~/.local/state/…`, emptied at each
 start, because a desktop launcher such as Gear Lever drops stderr), and the log window's buffer
 (`logging::console`). A log file that cannot be opened leaves stderr alone; `RUST_LOG`, when set,
-filters all three.
+filters all three. A model call's whole exchange (its prompt, message, schema and answer, the
+`model_exchange` target) never reaches stderr or the log file: those filters drop it, while the
+window's buffer takes it whatever `RUST_LOG` says.
 
-`log_buffer::LogBuffer` keeps the newest 20,000 lines of the process, each with its sequence
-number, the time since the log started, its level, target and text; `ConsoleLayer` is the
-`tracing` layer that pushes each event into it, the message first and then the other fields as
-`key=value`. Any thread pushes; the log window reads the lines newer than the ones it has
-(`since`), and Clear empties it. Sequence numbers keep growing across a clear.
+`log_buffer/` holds the newest 20,000 lines and 500 model calls of the process, each with the video
+and step it belongs to, and the layers that fill them; its README says how.
 
 `portal` talks to the XDG desktop portal over D-Bus with `ashpd` (pure Rust, zbus on async-io): it
 shows the desktop's own chooser for videos, a folder or a JSON file on a thread of its own and

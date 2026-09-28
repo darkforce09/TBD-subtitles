@@ -17,6 +17,9 @@ crispasr = ["inference/crispasr"]
 media_io = { path = "../media_io" }
 # The model backends the GPU stages run.
 inference = { path = "../inference" }
+# Carries the caller's span onto the threads that call the language model, so the app's log window
+# shows those calls under their video.
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 # The cue model and the file writers.
 subtitle_formats = { path = "../subtitle_formats" }
 # Stage names and the contract types.

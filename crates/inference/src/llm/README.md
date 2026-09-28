@@ -10,6 +10,7 @@ CLI, and a local model through mistral.rs behind the `mistralrs` feature.
 
 ```text
 crates/inference/src/llm/
+├── call_log/    why each call is made, its summary line, and the whole exchange for the log window
 ├── claude_cli/  the headless `claude -p` CLI: a JSON schema in, the structured answer out, no tools
 ├── mistral_rs/  a local GGUF model through mistral.rs on the GPU, behind the `mistralrs` feature
 └── mod.rs       the `LanguageModel` trait, `Completion` with tokens and cost, and `LlmError`
@@ -19,11 +20,14 @@ crates/inference/src/llm/
 
 `LanguageModel::complete_json` returns a `Completion`: the JSON answer, the input and output
 tokens, and the provider's cost figure when it gives one. A backend that cannot produce JSON
-matching the schema returns `LlmError`, never an empty answer.
+matching the schema returns `LlmError`, never an empty answer. After every call a backend logs it
+through `call_log`: one summary line, and the whole exchange for the app's log window; a stage
+says why it calls with `purpose(…)`, which the summary and the exchange carry.
 
 ## Boundaries
 
-- Depends on: `serde_json`; `child_process` in `claude_cli/`; `mistralrs` and `tokio` in
+- Depends on: `serde_json`; `job_model::model_call` and `tracing` in `call_log/`;
+  `child_process` in `claude_cli/`; `mistralrs` and `tokio` in
   `mistral_rs/` (optional).
 - Used by: `crates/stages/src/adjudication/`, `crates/stages/src/fix_it/`, `crates/pipeline/`,
   `tools/stack_spike/` and `tools/stack_spike_llm/`.

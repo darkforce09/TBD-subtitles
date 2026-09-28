@@ -65,8 +65,9 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
   prompt or a schema, stands as its size), each stderr line at debug (split at carriage returns,
   blank parts skipped), and its end: exit 0 at debug, any other code, a signal or a timeout as a
   warning, a cancel at debug, a start that failed at debug, a stream dropped unwaited at debug.
-  With no subscriber installed (the repository tools) the events cost nothing; the app's window
-  shows them in its log window.
+  Every event is logged in the span the child was started in, even from a drain thread, so the
+  app's log window shows a program's lines under the job step that started it. With no subscriber
+  installed (the repository tools) the events cost nothing.
 - `lookup.rs`: `which` returns the first `PATH` entry holding a file of that name. `retry` makes at
   least one attempt, sleeps a fixed backoff between attempts, returns the last error when all fail,
   and never retries `ProgramAbsent`. `wait_for` returns `Ok` only when its condition holds;

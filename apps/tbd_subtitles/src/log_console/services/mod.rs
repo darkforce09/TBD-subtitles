@@ -1,4 +1,5 @@
-//! The log window's words: each line's time, level and source as the window writes them, and the
-//! text Copy puts on the clipboard.
+//! The log window's words: the time, a group's header and a line as the window writes them, a
+//! model call's summary, and the text Copy and Copy All hand over.
 
+pub(crate) mod call_text;
 pub(crate) mod console_text;

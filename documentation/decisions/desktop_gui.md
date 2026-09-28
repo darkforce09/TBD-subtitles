@@ -6,8 +6,8 @@ The decisions the desktop window led to: how it plays clips and hands videos to 
 where models live and how they arrive, when a job passes the quality check, how the owner's
 corrections are timed, how the window looks, which settings a job runs with, where Settings open,
 how correction runs show, how a job is tried again, how a failed language-model call is retried,
-how a change of the settings applies, what Fix It does, and what the log window shows. The
-[decision log](/documentation/decisions/) says how entries are written.
+how a change of the settings applies, what Fix It does, and what the log window shows, model
+calls too. The [decision log](/documentation/decisions/) says how entries are written.
 
 ### 2026-09-26 — Clips play through FFmpeg, not libmpv
 
@@ -428,3 +428,46 @@ they did before, since their stderr stays at `info`. The tests hold it:
 `apps/tbd_subtitles/src/application/tests/rendering_console.rs`.
 
 **Supersedes:** none.
+
+### 2026-09-28 — Model calls show in the log window, never in the log file
+
+**Context:** The owner asked to see exactly what is sent to the language model and what comes
+back, in the log window but apart from the other lines, so thousands of prompt lines never flood
+them; and for the window to make clear whether the AI, the app, a job or a program did something,
+grouped so it is clear what is happening and why, with no line wider than the window. The owner
+chose one row per line with the whole line a click away, a header per step with a chip for who
+wrote each line, and calls kept in the window only. Adjudicate, Readjudicate and SoundCues call
+`claude` in worker processes, whose logs the app saw only as stderr text; Fix It calls it in the
+app.
+
+**Decision:** `inference::llm::call_log` numbers every call and, after it, emits its summary line
+(`info`, with the call's number and why it was made) and its whole exchange: the system prompt,
+the message, the schema, the answer or what `claude` printed, tokens, cost and time
+(`job_model::model_call::ModelExchange`, as a `trace` event with target `model_exchange`, built
+only when a subscriber wants it). Each stage says why it calls (`llm::purpose`): the batch, the
+round of words heard again, the sound window, Fix It's pass and call. A worker writes each
+exchange to its stdout as one `model-call <json>` line, which the job runner reads beside the
+`progress` lines (`Progress::ModelCall`) and logs again in the app. The app's stderr and log file
+drop the `model_exchange` target; the window keeps the newest 500 calls in memory, in a Model
+Calls view beside the Activity view. For grouping, the job runner, the pipeline and Fix It open
+`job{video}` and `step{step}` spans, `child_process` logs a child's lines in the span it was
+started in, and the log window's layer gives each line its video and step; a worker logs with
+its targets, and the window reads its lines back. Each line shows a chip for its writer, found
+from its target (AI, Job, Program, App), and a header row names the video and step in words each
+time the work moves on. A line is one row, cut with `…`; a click shows it whole in a panel below.
+
+**Consequences:** A prompt or an answer is never written to disk by the log, and a call made
+while the window is closed is still there when it opens, up to 500. The log file's lines carry
+their spans (`job{video=…}:step{step=…}:`), so they say where they belong too. The worker's
+stdout carries a second kind of line, which the `process` command ignores. The tests hold it:
+`a_model_call_is_kept_as_a_call_under_its_step_and_never_as_a_line` in
+`apps/tbd_subtitles/src/core/log_buffer/tests/layer.rs`,
+`a_model_call_line_becomes_a_model_call_and_a_broken_one_a_short_message` in
+`crates/pipeline/src/workers/tests/workers.rs`,
+`a_child_logs_its_stderr_and_its_end_in_the_span_it_was_started_in` in
+`crates/child_process/src/tests/trace.rs`,
+`text_outputs_never_carry_a_model_call_and_the_window_always_does` in
+`apps/tbd_subtitles/src/core/tests/logging.rs`, and
+`apps/tbd_subtitles/src/application/tests/rendering_console.rs`.
+
+**Supersedes:** none; it adds to "A log window shows everything the app does".

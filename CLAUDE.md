@@ -19,9 +19,10 @@ macOS-like mockup and runs jobs itself: a toolbar and models banner, a sidebar o
 Up Next and Done, the selected job's progress, its Overview report and Check Lines (clip playback,
 corrections re-timed by correction runs), and Settings in a window of their own, saved as they
 change, with model downloads, and a log window (Ctrl+L) that shows everything the app, its jobs
-and the programs they start log ([GUI](/documentation/features/gui.md)). Fix It has a stronger
-`claude` model (Opus by default, beside the run's Sonnet) fix a finished job's flagged lines in
-three passes, each change kept or undone by the owner ([Fix It](/documentation/features/fix_it.md)).
+and the programs they start log, grouped by video and step, and every model call in full
+([GUI](/documentation/features/gui.md)). Fix It has a stronger `claude` model (Opus by default,
+beside the run's Sonnet) fix a finished job's flagged lines in three passes, each change kept or
+undone by the owner ([Fix It](/documentation/features/fix_it.md)).
 The owner runs it as a self-contained AppImage from Gear Lever, built by `cargo appimage`
 (section 4). Left is the batch of Dressrosa 12–48 run from the window, on the owner's go
 ([roadmap](/documentation/roadmap.md)).

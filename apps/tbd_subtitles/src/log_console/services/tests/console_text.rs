@@ -1,3 +1,5 @@
+use tracing::Level;
+
 use super::*;
 
 fn line(level: Level, target: &str, message: &str) -> LogLine {
@@ -7,6 +9,9 @@ fn line(level: Level, target: &str, message: &str) -> LogLine {
         level,
         target: target.to_string(),
         message: message.to_string(),
+        video: None,
+        step: None,
+        call: None,
     }
 }
 
@@ -23,36 +28,46 @@ fn the_time_counts_minutes_then_hours_in_one_width() {
 }
 
 #[test]
-fn the_source_is_the_module_s_last_name_in_a_fixed_width() {
-    assert_eq!(source("pipeline::workers"), "workers       ");
-    assert_eq!(source("job"), "job           ");
+fn a_header_names_the_video_and_the_step_in_words() {
     assert_eq!(
-        source("tbd_subtitles::core::a_very_long_module_name"),
-        "a_very_long_mo"
+        header(Some("Dressrosa 12"), Some("adjudicate")),
+        format!(
+            "Dressrosa 12 · {} — {}",
+            stage_of(StepName::Adjudicate).title,
+            step_title(StepName::Adjudicate)
+        )
     );
+    assert_eq!(
+        header(Some("Dressrosa 12"), Some("fix_it")),
+        "Dressrosa 12 · Fix It"
+    );
+    assert_eq!(header(Some("Dressrosa 12"), None), "Dressrosa 12");
+    assert_eq!(header(None, Some("mystery")), "mystery");
+    assert_eq!(header(None, None), "");
 }
 
 #[test]
-fn a_line_is_its_columns_then_its_message() {
+fn a_copied_line_says_when_how_bad_who_where_and_what() {
+    let mut warned = line(Level::WARN, "child_process", "claude[9] exited 1");
     assert_eq!(
-        line_text(&line(Level::WARN, "child_process", "claude[9] exited 1")),
-        "01:23.456  WARN   child_process   claude[9] exited 1"
+        line_text(&warned),
+        "01:23.456  WARN   Program  child_process  claude[9] exited 1"
     );
+    warned.video = Some("D12".into());
+    warned.step = Some("fix_it".into());
+    assert!(line_text(&warned).ends_with("child_process  [D12 · Fix It] claude[9] exited 1"));
 }
 
 #[test]
 fn copy_writes_the_shown_lines_only() {
-    let mut console = Console::default();
-    console.append(vec![
+    let mut activity = Activity::default();
+    activity.append(vec![
         line(Level::DEBUG, "a", "quiet"),
         LogLine {
             seq: 1,
             ..line(Level::ERROR, "b", "loud")
         },
     ]);
-    console.set_level(Level::ERROR);
-    assert_eq!(
-        copy_text(&console),
-        "01:23.456  ERROR  b               loud\n"
-    );
+    activity.set_level(Level::ERROR);
+    assert_eq!(copy_text(&activity), "01:23.456  ERROR  App      b  loud\n");
 }

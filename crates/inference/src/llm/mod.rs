@@ -1,8 +1,11 @@
 //! The language-model backends behind one trait: a system prompt, a user message and a JSON
 //! Schema in; a JSON value that satisfies the schema out.
 
+pub mod call_log;
 pub mod claude_cli;
 pub mod mistral_rs;
+
+pub use call_log::purpose;
 
 use std::fmt;
 

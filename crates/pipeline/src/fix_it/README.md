@@ -47,6 +47,9 @@ owner's correction and is listed in `kept_yours`.
 - `fix_job`: the same run with any model maker, for tests.
 - `merge` and `Merged`: the owner-first merge.
 
+A call answered from `fix/calls/` makes no model call; it is logged as one `fix_it` line, "Answer
+reused from an earlier run", with its purpose.
+
 ## Boundaries
 
 - Depends on: `stages::fix_it`, `stages::adjudication::redecode`, `inference::llm`,

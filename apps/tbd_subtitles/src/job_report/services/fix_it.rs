@@ -8,7 +8,8 @@
 //! `pipeline::fix_it::fix_video`, or a stand-in in the tests.
 //!
 //! **Signals and state:** one thread per run and one channel back; the run's `CancelToken`.
-//! Each new stage and the end are logged under the `fix_it` target.
+//! Each new stage and the end are logged under the `fix_it` target, in spans naming the video and
+//! the step `fix_it`, which its model calls inherit.
 //!
 //! **Invariants:** the thread lives until its run ends, so the `claude` processes it starts die
 //! with it and never outlive it; after Stop the run ends as cancelled and changes nothing; the
@@ -71,15 +72,20 @@ pub(crate) fn start(
         let name = path
             .file_stem()
             .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-        tracing::info!(target: "fix_it", "{name}: Fix It started");
+        // Its lines and model calls show under the video, as the step `fix_it`.
+        let job = tracing::info_span!("job", video = name.as_str());
+        let _in_job = job.enter();
+        let fix = tracing::info_span!("step", step = "fix_it");
+        let _in_fix = fix.enter();
+        tracing::info!(target: "fix_it", "Fix It started");
         let stage = Mutex::new(None);
         let progress = |step: FixProgress| {
-            log_progress(&name, &stage, step);
+            log_progress(&stage, step);
             let _ = sender.send(FixEvent::Progress(step));
             wake();
         };
         let outcome = run(&path, &options, &progress);
-        log_end(&name, &outcome);
+        log_end(&outcome);
         let _ = sender.send(FixEvent::Ended(Box::new(outcome)));
         wake();
     });
@@ -94,7 +100,7 @@ pub(crate) fn start(
 }
 
 /// Log a new stage at info, and each call within it at debug.
-fn log_progress(name: &str, stage: &Mutex<Option<FixStage>>, step: FixProgress) {
+fn log_progress(stage: &Mutex<Option<FixStage>>, step: FixProgress) {
     let mut last = stage
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -102,25 +108,35 @@ fn log_progress(name: &str, stage: &Mutex<Option<FixStage>>, step: FixProgress) 
         *last = Some(step.stage);
         tracing::info!(
             target: "fix_it",
-            "{name}: pass {}, {:?}, {} calls",
+            "Pass {}: {}, {} calls",
             step.stage.pass(),
-            step.stage,
+            stage_words(step.stage),
             step.total
         );
     } else {
-        tracing::debug!(target: "fix_it", "{name}: {:?} {} of {}", step.stage, step.done, step.total);
+        tracing::debug!(target: "fix_it", "{} of {} calls done", step.done, step.total);
     }
 }
 
-fn log_end(name: &str, outcome: &Result<FixOutcome, PipelineError>) {
+/// What Fix It does in `stage`, in plain words.
+fn stage_words(stage: FixStage) -> String {
+    match stage {
+        FixStage::Reading => "reading the whole video for context".to_string(),
+        FixStage::Fixing(family) => format!("fixing {}", family.describe()),
+        FixStage::Checking => "checking each change".to_string(),
+        FixStage::Saving => "saving the kept changes".to_string(),
+    }
+}
+
+fn log_end(outcome: &Result<FixOutcome, PipelineError>) {
     match outcome {
         Ok(done) => tracing::info!(
             target: "fix_it",
-            "{name}: Fix It finished; {} lines changed, {} of yours kept",
+            "Fix It finished: {} lines changed, {} of yours kept",
             done.changed.len(),
             done.kept_yours.len()
         ),
-        Err(error) => tracing::error!(target: "fix_it", "{name}: Fix It stopped: {error}"),
+        Err(error) => tracing::error!(target: "fix_it", "Fix It stopped: {error}"),
     }
 }
 

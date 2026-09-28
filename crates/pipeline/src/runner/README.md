@@ -35,8 +35,9 @@ runtime folder, goes to GPU workers only. At the end `report::write` renders `re
 
 - Depends on: `crate::{graph, resume, tasks, workers, work_dir, report, progress}`;
   `inference::cuda_runtime` and `inference::model_store`; `job_model`; `stages::output`; `tracing`
-  for its debug lines (the job, reruns asked for, where each step runs, the CUDA runtime) and the
-  report's path at info.
+  for the `step{step}` span each step runs in (its workers' and programs' lines, and the shot
+  scan's thread, log inside it), its debug lines (the job, reruns asked for, where each step runs,
+  the CUDA runtime) and the report's path at info.
 - Used by: `apps/tbd_subtitles/src/cli/process_command.rs` and the window's job queue, through
   the re-export at the crate root.
 - Rules:

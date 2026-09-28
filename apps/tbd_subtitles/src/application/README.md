@@ -211,7 +211,8 @@ everything onto disk (the frame asks for a redraw when it goes).
     files of the Dressrosa 11 and 15–17 work folders into a scratch folder and writes PNGs of the
     finished queue, the Dressrosa 15 Overview, then scrolled to its open Details and Step times
     (`overview_d15`), its lines to check, the Settings window, the log window with a job's lines
-    (`log`), the Settings window's four tabs over Dressrosa 15 with
+    (`log`), a line open below the list (`log_detail`) and its model call (`log_calls`), the
+    Settings window's four tabs over Dressrosa 15 with
     the machine checks set by hand (`settings_general`, `settings_engines`, `settings_models`,
     `settings_machine`), the first run, the models banner on the first run and during a download
     set by hand (`banner_missing`, `banner_downloading`; nothing downloads), a running queue
@@ -225,13 +226,16 @@ everything onto disk (the frame asks for a redraw when it goes).
     corrections go to the scratch copy), light and dark, at 1280 by 800, to `$TBD_SNAPSHOTS`:
     `TBD_SNAPSHOTS=<folder> cargo test -p tbd_subtitles -- --ignored window_snapshots`, on the
     host, since it renders with wgpu;
-  - the log window opens from Ctrl+L and the toolbar, shows every line with its level and source,
-    reads new lines while open and the ones logged while it was closed when it opens again, and
-    its levels and search narrow the lines while Clear empties them and the buffer
+  - the log window opens from Ctrl+L and the toolbar, shows its lines under a header per step
+    with a chip for who wrote them, reads new lines while open and the ones logged while it was
+    closed when it opens again, narrows them by level, writer and search while Clear empties the
+    view shown and the buffer, opens a line whole below the list, and leads from a call's line to
+    the call with what was sent and what came back
     (`the_log_window_opens_from_ctrl_l_and_the_toolbar`,
-    `the_open_log_window_shows_every_line_with_its_level_and_source`,
+    `lines_show_under_a_header_per_step_with_a_chip_for_who_wrote_them`,
     `lines_logged_while_the_window_is_closed_show_when_it_opens_again`,
-    `levels_and_the_search_narrow_the_lines_and_clear_empties_them` in
+    `levels_writers_and_the_search_narrow_the_lines_and_clear_empties_them`,
+    `an_open_line_shows_whole_below_and_leads_to_its_model_call` in
     `tests/rendering_console.rs`);
   - no feature imports this module
     (`dependency_boundaries_and_external_test_placement_are_enforced` in

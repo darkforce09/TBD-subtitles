@@ -24,7 +24,8 @@ group and the step fails as cancelled. A GPU step first takes `gpu_lock`, an exc
 `gpu.lock` in the app data folder, waiting (and saying so once) while another process of the app
 holds it; the kernel drops the lock when its holder dies. It reads the device's memory first and starts a `measure::gpu_monitor::Monitor` on the
 worker's pid. Each stdout line becomes a progress event: `progress <done> <total>` an advance,
-anything else a message. Its stderr lines are logged as they arrive (`child_process`), and when
+`model-call <json>` a language-model call (`Progress::ModelCall`; a line that does not parse is
+a short message saying so), anything else a message. Its stderr lines are logged as they arrive (`child_process`), and when
 the worker ends its stderr goes to `logs/<step>.log` too; a non-zero
 exit is an error quoting the last 12 lines. Otherwise the worker's measure file and the VRAM peaks
 become the step's `StepMeasure`, with the device's free memory before the step and its growth
@@ -46,6 +47,8 @@ The step's GPU lock, the free VRAM it starts with and the path of its log file a
     `tests/workers.rs`);
   - only a line of exactly `progress`, two numbers and nothing else is an advance
     (`progress_lines_become_advances_and_anything_else_a_message`);
+  - a model call's line becomes a model call, and a broken one a short message, never the line
+    itself (`a_model_call_line_becomes_a_model_call_and_a_broken_one_a_short_message`);
   - a worker that exits non-zero or leaves no measure file is a failed step, and an old measure
     file is never read as the new one's (the module header);
   - the worker runs to its end on the calling thread, which the child dies with

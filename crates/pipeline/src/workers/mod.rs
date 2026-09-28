@@ -1,5 +1,5 @@
 //! Worker processes: `<binary> worker <step> <job dir>`, one at a time for GPU steps, with the
-//! CUDA runtime's environment, its progress lines forwarded, its stderr kept, and its time, peak
+//! CUDA runtime's environment, its progress lines and model calls forwarded, its stderr kept, and its time, peak
 //! RAM and peak VRAM read back.
 //!
 //! **Role:** find the two app binaries, start a step's worker, and turn what it reports into the
@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 use child_process::Run;
 use job_model::StepName;
 use job_model::job::{StepMeasure, WorkerMeasure};
+use job_model::model_call::{ModelExchange, WORKER_LINE_PREFIX};
 
 use crate::cancel::CancelToken;
 use crate::error::{Context, PipelineError, Result};
@@ -176,8 +177,21 @@ pub fn run_worker(
     })
 }
 
-/// A worker's stdout line as a progress event.
+/// A worker's stdout line as a progress event: `progress <done> <total>` an advance, `model-call
+/// <json>` a language-model call, anything else a message.
 pub fn parse_line(step: StepName, line: &str) -> Progress {
+    if line.starts_with(WORKER_LINE_PREFIX) {
+        return match ModelExchange::from_worker_line(line) {
+            Some(call) => Progress::ModelCall {
+                step,
+                call: Box::new(call),
+            },
+            None => Progress::StepMessage {
+                step,
+                text: format!("a model call that could not be read ({} bytes)", line.len()),
+            },
+        };
+    }
     let mut parts = line.split_whitespace();
     if parts.next() == Some("progress")
         && let (Some(Ok(done)), Some(Ok(total)), None) = (

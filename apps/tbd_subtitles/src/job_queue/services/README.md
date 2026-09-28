@@ -84,9 +84,12 @@ keeps exactly the steps the failure counts.
 `RunJob` (the pipeline's `run_job`, or a stand-in in the tests) and sends every progress event and
 the outcome back, waking the window; the thread lives as long as the window, so the workers it
 starts are not killed early. `progress_tracking::apply` moves each step row as the events arrive.
-The thread also logs each event and the end under the `job` target, the video's name first:
-`progress_log::ProgressLog` writes a step's start, message, finish (its time, RAM, VRAM and notes)
-or skip as info, its advance at debug once per tenth, and a failure as an error.
+The thread runs each job in a `job{video}` span and also logs each event and the end under the
+`job` target, with the video and the step as fields: `progress_log::ProgressLog` writes a step's
+start, message, finish (its time, RAM, VRAM and notes) or skip as info, its advance at debug once
+per tenth, and a failure as an error, never naming the video or step in the words, which the log
+window shows above them. A worker's model call (`Progress::ModelCall`) is not sent to the window's
+queue: `progress_log::emit_call` logs it as the exchange event the log window keeps.
 `time_left::from_history` reads every job's `job.json` and `probe.json` in the work folder for
 each step's mean seconds per second of video, over the pilot's rates; `estimate` sums the steps
 still to run, leaving out the shot scan that runs beside them. `queue_store` keeps each job's

@@ -12,6 +12,7 @@
 //! the JSON names stay stable so a resumed job reads what an earlier run wrote.
 
 pub mod job;
+pub mod model_call;
 pub mod outputs;
 pub mod report;
 pub mod stage;

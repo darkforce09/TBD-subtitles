@@ -14,7 +14,7 @@ batch of Dressrosa 12–48 run from this window.
 - Code: `apps/tbd_subtitles/`, built with eframe (egui) on the glow renderer. The shell (state,
   frame, actions, shortcuts, the Settings and log windows) is
   `apps/tbd_subtitles/src/application/`; the shared look and widgets are
-  `apps/tbd_subtitles/src/core/ui/`, the log buffer `apps/tbd_subtitles/src/core/log_buffer.rs`;
+  `apps/tbd_subtitles/src/core/ui/`, the log buffer `apps/tbd_subtitles/src/core/log_buffer/`;
   one feature folder each holds the
   queue (`apps/tbd_subtitles/src/job_queue/`), the report (`apps/tbd_subtitles/src/job_report/`),
   the line review (`apps/tbd_subtitles/src/line_review/`), the log window
@@ -175,39 +175,65 @@ list and the line editor side by side.
 
 The log button in the toolbar, or Ctrl+L, opens the log in a second native window, 980 by 560,
 near the main window's lower right corner; asked for again while open, it comes to the front. It
-shows every line logged since the window started, newest last, and follows the newest until the
-owner scrolls up, then again once they scroll back to the end.
+has two views: **Activity**, every line logged since the window started, and **Model Calls**,
+every language-model call with what was sent and what came back.
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────────────────────────┐
-│ [ Errors 1 | Warnings 2 | Info | Debug ]  [ Filter lines ]  [Copy] [Clear] [Open Log File] │
+│ [ Activity | Model Calls 3 ]                            [Copy] [Clear] [Open Log File]     │
+│ [Errors 1 | Warnings 1 | Info | Debug]  [Everyone | App | Jobs | AI | Programs]  [Filter]  │
 ├────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 04:12.300  INFO   job             Dressrosa 12: asr_parakeet: started                      │
-│ 04:12.310  DEBUG  child_process   tbd-subtitles[4242] started: … worker asr_parakeet …     │
-│ 04:13.020  DEBUG  child_process   tbd-subtitles[4242] … a line the worker wrote to stderr  │
-│ 05:40.870  INFO   job             Dressrosa 12: asr_parakeet: finished in 88.5 s, …        │
-│ 06:02.114  INFO   claude_cli      claude sonnet: 212 input lines answered in 41.3 s, …     │
-│ 06:02.500  WARN   child_process   ffprobe[4301] exited 1 after 0.05 s                      │
+│ 04:10.101  (App)      action Queue(Start)                                                  │
+│ Dressrosa 12 · Hear the speech — Listen with Parakeet                                      │
+│ 04:12.300  (Job)      Step started                                                         │
+│ 04:12.310  (Program)  tbd-subtitles[4242] started: /app/tbd-subtitles worker asr_parak…    │
+│ 05:40.870  (Job)      Step finished in 88.5 s, 1830 MiB RAM, 2410 MiB VRAM                 │
+│ Dressrosa 12 · Settle the words — Language model settles the words                         │
+│ 06:02.114  (AI)       claude sonnet · words, batch 1 of 40: 212 lines answered in 41.3…    │
+│ 06:02.500  (Program)  ! ffprobe[4302] exited 1 after 0.05 s                                │
 ├────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 6 lines                   Times since the window opened · keeps the newest 20000 lines     │
+│ INFO  AI  inference::llm::call_log  06:02.114     [Show Model Call] [Copy] [x]             │
+│ Dressrosa 12 · Settle the words — Language model settles the words                         │
+│ claude sonnet · words, batch 1 of 40: 212 lines answered in 41.3 s, 18234 tokens in, …     │
+├────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 7 lines                  Times since the window opened · keeps the newest 20000 lines      │
 └────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-
-- **What it shows:** the window's own actions and errors; each job's start, steps (started, kept,
-  finished with time, RAM and VRAM, failed) and end, a step's progress every tenth; Fix It's passes
-  and end; where each step runs, the CUDA runtime and the GPU lock; one line per `claude` call
-  (model, lines sent, seconds, tokens, cost; never the prompt or the answer); and every program
-  the app starts (workers, FFmpeg, ffprobe, `claude`): its command line, each line it writes to
-  stderr as it writes it, and how it ended. A row is the time since the window opened, the level
-  in its colour (red errors, orange warnings, blue info, grey debug), the source and the message.
+- **Activity:** one row per line, never wider than the window: the time since the window
+  opened, a chip for who wrote it (**AI**, the language model and Fix It, in blue; **Job**, the
+  pipeline's steps, in green; **Program**, FFmpeg, ffprobe, `claude` or a worker, in grey; **App**,
+  the window itself, outlined), a mark for a warning (orange) or an error (red), and the message,
+  cut with `…` where the window ends. Debug lines are grey. A header row names the video and the
+  step in words each time the work moves on, so a step's own lines, its worker's and its programs'
+  sit under it; the owner's own actions never break a group. A worker's own log lines show with
+  the worker's level and source, not as program output.
+- **What it shows:** the owner's actions; each job's start, steps (started, kept, finished with
+  time, RAM and VRAM, failed) and end, a step's progress every tenth; Fix It's passes and end,
+  and an answer reused from an earlier run; where each step runs, the CUDA runtime and the GPU
+  lock; one line per model call (model, why it was made, lines sent, seconds, tokens, cost); and
+  every program the app starts: its command line, each line it writes to stderr as it writes it,
+  and how it ended.
+- **A line whole:** a click opens the line in a panel below the list: its level, writer, source
+  and time, its video and step, and the whole message wrapped, with Copy; a model call's line
+  offers **Show Model Call**. ✕ or Esc closes it.
+- **Model Calls:** the calls on the left, each with why it was made ("words, batch 3 of 40",
+  "words heard again, round 1", "sound cues, window 2 of 9", "words fixes, call 3 of 8"), its
+  time, video and step, model and seconds; a failed one in red. The open call shows its model,
+  id, seconds, tokens and cost, and why it failed; then **Answer** (open at first), **Message**,
+  **System prompt** and **Schema**, each foldable with its size and Copy, the text whole. Copy in
+  the bar copies the whole call. Calls made in a worker reach the window through the worker's
+  stdout; Fix It's are made in the window itself.
 - **Controls:** the levels show that level and the more severe (Debug shows everything; Errors
-  and Warnings count theirs); the search keeps the lines whose source or message holds it,
-  ignoring case; Copy puts the shown lines on the clipboard; Clear empties the window (the log
-  file keeps every line); Open Log File opens the log file in the desktop's text editor. The
-  footer counts the lines shown of those kept.
-- The window keeps the newest 20,000 lines; lines logged while it is closed show when it opens.
-  The log file holds the same lines, emptied at each start. `RUST_LOG` narrows both when set.
+  and Warnings count theirs); the writers show one kind or everyone; the search keeps the lines
+  whose text, source, video or step holds it, and the calls whose model, purpose, video or step
+  holds it, ignoring case. Copy puts the shown lines, or the open call, on the clipboard; Clear
+  empties the view shown (the log file keeps every line); Open Log File opens the log file in the
+  desktop's text editor. The footer counts what shows of what is kept.
+- The window keeps the newest 20,000 lines and 500 calls; what is logged while it is closed shows
+  when it opens. The log file holds the same lines, emptied at each start, and never a call's
+  prompt or answer: calls are kept in memory only. `RUST_LOG` narrows the lines when set, never
+  the calls.
 
 ### Main flow
 
@@ -440,3 +466,5 @@ nothing.
   ([Fix It](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-a-stronger-model-fixes-the-flagged-lines-in-three-passes)).
 - A log window shows everything the app does, from one `tracing` buffer
   ([log window](/documentation/decisions/desktop_gui.md#2026-09-28--a-log-window-shows-everything-the-app-does)).
+- Model calls show whole in the log window, never in the log file
+  ([model calls](/documentation/decisions/desktop_gui.md#2026-09-28--model-calls-show-in-the-log-window-never-in-the-log-file)).

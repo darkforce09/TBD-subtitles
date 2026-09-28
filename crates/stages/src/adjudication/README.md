@@ -70,7 +70,8 @@ adjudicated.json ◀─ merge ◀─ readjudicate ◀─ with_alternatives ◀�
 
 ## Boundaries
 
-- Depends on: `inference::llm::LanguageModel`, `crate::diff_sheet::{align, sheet}`,
+- Depends on: `inference::llm::{LanguageModel, purpose}` (each call says why it is made: the
+  batch, the round of words heard again, or the sound window), `crate::diff_sheet::{align, sheet}`,
   `job_model::outputs` (`Line`, `Findings`, `Redecode`, `SoundCandidate`, `SoundCue`,
   `SoundCues`), `serde`, `serde_json`.
 - Used by: `crates/pipeline/src/tasks/` (`llm.rs`, `speech.rs`, `sounds.rs`),

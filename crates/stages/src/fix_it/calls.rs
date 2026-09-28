@@ -70,15 +70,23 @@ impl<'a> Calls<'a> {
         let next = AtomicUsize::new(0);
         let done = AtomicUsize::new(0);
         let workers = self.workers.min(messages.len());
+        // Each thread logs under the caller's span, so its calls show under the video they are for.
+        let span = tracing::Span::current();
         std::thread::scope(|scope| {
             for _ in 0..workers {
                 scope.spawn(|| {
+                    let _span = span.enter();
                     let mut model = (self.make)();
                     loop {
                         let i = next.fetch_add(1, Ordering::SeqCst);
                         if i >= messages.len() || self.stopped() {
                             break;
                         }
+                        let _purpose = inference::llm::purpose(format!(
+                            "{label}, call {} of {}",
+                            i + 1,
+                            messages.len()
+                        ));
                         let answer = self.ask(model.as_mut(), system, &messages[i], schema);
                         match answer {
                             Ok(value) => *lock(&answers[i]) = Some(value),

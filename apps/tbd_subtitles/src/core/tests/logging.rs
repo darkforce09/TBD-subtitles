@@ -44,3 +44,22 @@ fn the_detail_filter_parses_and_keeps_workspace_debug_lines() {
 fn the_console_is_one_buffer_for_the_whole_process() {
     assert!(Arc::ptr_eq(&console(), &console()));
 }
+
+#[test]
+fn text_outputs_never_carry_a_model_call_and_the_window_always_does() {
+    assert!(
+        text_filter("trace")
+            .to_string()
+            .contains("model_exchange=off")
+    );
+    assert!(
+        with_exchanges(EnvFilter::new("warn"))
+            .to_string()
+            .contains("model_exchange=trace")
+    );
+    let only = exchanges_only().to_string();
+    assert!(
+        only.contains("off") && only.contains("model_exchange=trace"),
+        "{only}"
+    );
+}

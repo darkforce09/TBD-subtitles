@@ -1,29 +1,33 @@
 # Log console services
 
-The log window's words, with no rendering code: a line's time, level and source in fixed-width
-columns, and the shown lines as the text Copy puts on the clipboard.
+The log window's words, with no rendering code: the time, a group's header and a line as the
+window writes them, a model call's summary and place, and the text Copy and Copy All hand over.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/log_console/services/
-├── console_text.rs  `time`, `level`, `source`, `line_text` and `copy_text`
+├── call_text.rs     `summary`, `place` and `call_text`: a model call's line and the whole call
+├── console_text.rs  `time`, `step_words`, `header`, `line_text` and `copy_text`
 ├── mod.rs           the module list
-└── tests/           unit tests of each column and of Copy's text
+└── tests/           unit tests of the time, headers, copied lines and a copied call
 ```
 
 ## How it works
 
 `time` writes the time since the window opened as `01:23.456`, or `1:02:03.4` from the first hour
-on, nine characters wide. `level` pads the level's name to five characters. `source` keeps a
-target's last name (`pipeline::workers` becomes `workers`), cut or padded to fourteen. In the
-window's monospace font the three columns line up; `line_text` joins them with the message, and
-`copy_text` writes every shown line, one per text line.
+on, nine characters wide. `step_words` names a job step by its stage and plain title from
+`crate::core::steps` ("Settle the words — Language model settles the words"), and `fix_it` as
+"Fix It"; `header` puts the video before it. `line_text` writes a line in full for Copy and the
+detail panel: time, level, writer, source, where, message; `copy_text` writes every shown line.
+`summary` gives a call's seconds, tokens and cost; `call_text` writes the whole call for Copy
+All: its id, model, purpose, place and outcome, then the system prompt, the message, the schema
+and the answer under headings, in the order they were sent.
 
 ## Boundaries
 
-- Depends on: `crate::core::log_buffer::LogLine`, `crate::log_console::models::console` and
-  `tracing` (`Level`).
+- Depends on: `crate::core::log_buffer` (`LogLine`, `KeptCall`), `crate::core::steps`,
+  `crate::log_console::models`, `job_model::StepName` and `tracing` (`Level`).
 - Used by: `crate::log_console::ui`.
 - Rules: nothing here names egui or eframe
   (`dependency_boundaries_and_external_test_placement_are_enforced` in

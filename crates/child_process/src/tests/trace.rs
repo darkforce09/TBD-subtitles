@@ -9,6 +9,9 @@ use crate::Run;
 
 type Events = Arc<Mutex<Vec<(Level, String)>>>;
 
+/// Each event's message with the name of the span it was logged in.
+static SPANS: Mutex<Vec<(String, Option<&'static str>)>> = Mutex::new(Vec::new());
+
 /// Every event logged in this test binary; drain threads log from threads of their own, so the
 /// subscriber is the global one.
 fn events() -> Events {
@@ -25,8 +28,11 @@ fn events() -> Events {
 
 struct Capture(Events);
 
-impl<S: tracing::Subscriber> Layer<S> for Capture {
-    fn on_event(&self, event: &tracing::Event<'_>, _context: Context<'_, S>) {
+impl<S> Layer<S> for Capture
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+{
+    fn on_event(&self, event: &tracing::Event<'_>, context: Context<'_, S>) {
         struct Message(String);
         impl Visit for Message {
             fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
@@ -38,6 +44,8 @@ impl<S: tracing::Subscriber> Layer<S> for Capture {
         let mut message = Message(String::new());
         event.record(&mut message);
         let level = *event.metadata().level();
+        let span = context.event_span(event).map(|span| span.name());
+        SPANS.lock().unwrap().push((message.0.clone(), span));
         self.0.lock().unwrap().push((level, message.0));
     }
 }
@@ -124,4 +132,32 @@ fn long_and_multi_line_arguments_are_logged_as_their_size() {
         command_line(&run),
         format!("claude -p 'a b' '' <{} bytes> <5 bytes>", LONG_ARGUMENT + 1)
     );
+}
+
+#[test]
+fn a_child_logs_its_stderr_and_its_end_in_the_span_it_was_started_in() {
+    events();
+    let span = tracing::info_span!("step_under_test");
+    let entered = span.enter();
+    Run::new("sh")
+        .arg("-c")
+        .arg("echo inside >&2 # span-marker")
+        .output()
+        .unwrap();
+    drop(entered);
+    let tag = child_events("span-marker")[0]
+        .1
+        .split(' ')
+        .next()
+        .unwrap()
+        .to_string();
+    let spans = SPANS.lock().unwrap().clone();
+    let span_of = |text: &str| {
+        spans
+            .iter()
+            .find(|(message, _)| message == text || message.starts_with(text))
+            .and_then(|(_, span)| *span)
+    };
+    assert_eq!(span_of(&format!("{tag} inside")), Some("step_under_test"));
+    assert_eq!(span_of(&format!("{tag} exited 0")), Some("step_under_test"));
 }

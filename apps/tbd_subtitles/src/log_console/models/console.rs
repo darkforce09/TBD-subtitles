@@ -1,157 +1,57 @@
-//! The log window's copy of the log, the filter over it, and the lines it lets through.
+//! The log window's state: which view shows, the search typed, the activity list and the Model
+//! Calls list.
 //!
-//! **Role:** keep the newest lines read from the process's log buffer, the level and text the
-//! owner filters by, the positions of the lines that pass, and the count of errors and warnings.
+//! **Role:** hold both views of the log window and the search they share, and move to a call
+//! from a line that sums it up.
 //!
-//! **Position:** held by the application; filled while the log window is open; read by the log
+//! **Position:** held by the application; changed by its log-console actions; read by the log
 //! window's `ui` through a borrow.
 //!
-//! **Signals and state:** the lines, the next sequence number to read, the filter, the shown
-//! positions and the two counts; changed only through its methods, between frames.
+//! **Signals and state:** the view, the search as typed, and the two lists.
 //!
-//! **Invariants:** at most `CAPACITY` lines, oldest first; `shown` always matches the filter over
-//! the kept lines; a search matches the target or the message, ignoring case.
+//! **Invariants:** one search filters both lists, trimmed and ignoring case; showing a call opens
+//! the Model Calls view on it.
 
-use tracing::Level;
+use super::activity::Activity;
+use super::calls::Calls;
 
-use crate::core::log_buffer::{CAPACITY, LogLine};
-
-/// Which lines the window shows.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ConsoleFilter {
-    /// The least severe level shown.
-    pub(crate) level: Level,
-    /// The text a shown line holds, lower-cased; empty shows every line.
-    search: String,
+/// The log window's two views.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum ConsoleView {
+    /// Every line, grouped by video and step.
+    #[default]
+    Activity,
+    /// Every language-model call, with what was sent and what came back.
+    Calls,
 }
 
-impl Default for ConsoleFilter {
-    fn default() -> ConsoleFilter {
-        ConsoleFilter {
-            level: Level::DEBUG,
-            search: String::new(),
-        }
-    }
-}
-
-impl ConsoleFilter {
-    /// Whether `line` passes.
-    pub(crate) fn shows(&self, line: &LogLine) -> bool {
-        line.level <= self.level
-            && (self.search.is_empty()
-                || line.message.to_lowercase().contains(&self.search)
-                || line.target.to_lowercase().contains(&self.search))
-    }
-}
-
-/// The log window's lines and filter.
+/// The log window's state.
 #[derive(Debug, Default)]
-pub(crate) struct Console {
-    lines: Vec<LogLine>,
-    next: u64,
-    filter: ConsoleFilter,
-    /// The text of the search field as typed.
+pub(crate) struct LogConsole {
+    pub(crate) view: ConsoleView,
     search: String,
-    shown: Vec<usize>,
-    errors: usize,
-    warnings: usize,
+    pub(crate) activity: Activity,
+    pub(crate) calls: Calls,
 }
 
-impl Console {
-    /// The sequence number of the first line not read yet.
-    pub(crate) fn next(&self) -> u64 {
-        self.next
-    }
-
-    /// Add lines read from the log buffer, newest last, dropping the oldest past `CAPACITY`.
-    pub(crate) fn append(&mut self, fresh: Vec<LogLine>) {
-        let Some(last) = fresh.last() else {
-            return;
-        };
-        self.next = last.seq + 1;
-        let start = self.lines.len();
-        self.lines.extend(fresh);
-        if self.lines.len() > CAPACITY {
-            let excess = self.lines.len() - CAPACITY;
-            self.lines.drain(..excess);
-            self.refilter();
-        } else {
-            self.admit(start);
-        }
-    }
-
-    /// Show only the lines at `level` and more severe.
-    pub(crate) fn set_level(&mut self, level: Level) {
-        self.filter.level = level;
-        self.refilter();
-    }
-
-    /// Show only the lines holding `search`.
-    pub(crate) fn set_search(&mut self, search: String) {
-        self.filter.search = search.trim().to_lowercase();
-        self.search = search;
-        self.refilter();
-    }
-
-    /// Forget every kept line; lines logged later still arrive.
-    pub(crate) fn clear(&mut self) {
-        self.lines.clear();
-        self.refilter();
-    }
-
-    pub(crate) fn filter(&self) -> &ConsoleFilter {
-        &self.filter
-    }
-
+impl LogConsole {
     /// The search field's text as typed.
     pub(crate) fn search(&self) -> &str {
         &self.search
     }
 
-    /// How many lines are kept.
-    pub(crate) fn len(&self) -> usize {
-        self.lines.len()
+    /// Filter both lists by `search`.
+    pub(crate) fn set_search(&mut self, search: String) {
+        let lowered = search.trim().to_lowercase();
+        self.activity.set_search(lowered.clone());
+        self.calls.set_search(lowered);
+        self.search = search;
     }
 
-    /// How many lines pass the filter.
-    pub(crate) fn shown_len(&self) -> usize {
-        self.shown.len()
-    }
-
-    /// The `row`th line that passes the filter.
-    pub(crate) fn shown_line(&self, row: usize) -> Option<&LogLine> {
-        self.shown.get(row).and_then(|&at| self.lines.get(at))
-    }
-
-    /// Every line that passes the filter, oldest first.
-    pub(crate) fn shown(&self) -> impl Iterator<Item = &LogLine> {
-        self.shown.iter().filter_map(|&at| self.lines.get(at))
-    }
-
-    /// How many kept lines are errors, and how many warnings.
-    pub(crate) fn problems(&self) -> (usize, usize) {
-        (self.errors, self.warnings)
-    }
-
-    fn refilter(&mut self) {
-        self.shown.clear();
-        self.errors = 0;
-        self.warnings = 0;
-        self.admit(0);
-    }
-
-    /// Count and filter the lines from `start` on.
-    fn admit(&mut self, start: usize) {
-        for (at, line) in self.lines.iter().enumerate().skip(start) {
-            match line.level {
-                Level::ERROR => self.errors += 1,
-                Level::WARN => self.warnings += 1,
-                _ => {}
-            }
-            if self.filter.shows(line) {
-                self.shown.push(at);
-            }
-        }
+    /// Open the Model Calls view on the call `id`.
+    pub(crate) fn show_call(&mut self, id: String) {
+        self.view = ConsoleView::Calls;
+        self.calls.select(Some(id));
     }
 }
 

@@ -22,6 +22,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
 
 use super::*;
+use crate::log_console::events::LogConsoleEvent;
 
 /// The work folders the scenes are built from.
 const EPISODES: [&str; 4] = ["11", "15", "16", "17"];
@@ -212,77 +213,21 @@ fn finished_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
     log_lines(&harness.state().env.log);
     harness.get_by_label("Log").click();
     shoot(&mut harness, out, "log");
-}
-
-/// A job's lines as the log window shows them: its steps, a worker's stderr, a `claude` call and
-/// a failed probe.
-fn log_lines(log: &crate::core::log_buffer::LogBuffer) {
-    use tracing::Level;
-    let lines = [
-        (
-            Level::DEBUG,
-            "tbd_subtitles::application",
-            "action Queue(Start)",
-        ),
-        (
-            Level::INFO,
-            "job",
-            "[Muhn Pace] Dressrosa 12: started; to run: probe_decode, asr_parakeet",
-        ),
-        (
-            Level::INFO,
-            "job",
-            "[Muhn Pace] Dressrosa 12: asr_parakeet: started",
-        ),
-        (
-            Level::DEBUG,
-            "pipeline::runner",
-            "step asr_parakeet runs in a worker of /app/tbd-subtitles",
-        ),
-        (
-            Level::DEBUG,
-            "child_process",
-            "tbd-subtitles[4242] started: /app/tbd-subtitles worker asr_parakeet /work/d12",
-        ),
-        (
-            Level::DEBUG,
-            "child_process",
-            "tbd-subtitles[4242] INFO loading the Parakeet model",
-        ),
-        (
-            Level::DEBUG,
-            "job",
-            "[Muhn Pace] Dressrosa 12: asr_parakeet: 5 of 10",
-        ),
-        (
-            Level::DEBUG,
-            "child_process",
-            "tbd-subtitles[4242] exited 0 after 88.52 s",
-        ),
-        (
-            Level::INFO,
-            "job",
-            "[Muhn Pace] Dressrosa 12: asr_parakeet: finished in 88.5 s, 1830 MiB RAM, 2410 MiB VRAM",
-        ),
-        (
-            Level::INFO,
-            "claude_cli",
-            "claude sonnet: 212 input lines answered in 41.3 s, 18234 tokens in, 2210 out, $0.0874",
-        ),
-        (
-            Level::WARN,
-            "child_process",
-            "ffprobe[4301] exited 1 after 0.05 s",
-        ),
-        (
-            Level::ERROR,
-            "tbd_subtitles::core::portal",
-            "the desktop could not open it",
-        ),
-    ];
-    for (level, target, message) in lines {
-        log.push(level, target, message.to_string());
-    }
+    let summary = harness
+        .state()
+        .console
+        .activity
+        .shown()
+        .find(|line| line.call.is_some())
+        .map(|line| line.seq);
+    harness
+        .state_mut()
+        .apply(vec![Action::LogConsole(LogConsoleEvent::SelectLine(
+            summary,
+        ))]);
+    shoot(&mut harness, out, "log_detail");
+    harness.get_by_label("Show Model Call").click();
+    shoot(&mut harness, out, "log_calls");
 }
 
 /// The setup of a window with `videos` all finished in an earlier window, their rows summed up
@@ -597,4 +542,94 @@ fn copy_json(from: &Path, to: &Path, names: &[&str]) {
             std::fs::copy(&file, to.join(name)).expect("a copied file");
         }
     }
+}
+
+/// A job's lines as the log window shows them: the owner's action, the job and its steps, a
+/// worker's and a program's lines, a model call with its summary, and a failure.
+fn log_lines(log: &crate::core::log_buffer::LogBuffer) {
+    use crate::core::log_buffer::Fresh;
+    use tracing::Level;
+    let video = "[Muhn Pace] Dressrosa 12";
+    let at = |level, target, message: &str, step: Option<&str>| {
+        let mut fresh = Fresh::new(level, target, message);
+        fresh.video = Some(video.to_string());
+        fresh.step = step.map(str::to_string);
+        fresh
+    };
+    log.push(Fresh::new(
+        Level::DEBUG,
+        "tbd_subtitles::application",
+        "action Queue(Start)",
+    ));
+    log.push(at(Level::INFO, "job", "Job started for /media/one_pace/[Muhn Pace] Dressrosa 12.mkv in /work/d12; to run: probe_decode, asr_parakeet, adjudicate", None));
+    log.push(at(Level::INFO, "job", "Step started", Some("asr_parakeet")));
+    log.push(at(
+        Level::DEBUG,
+        "pipeline::runner",
+        "step asr_parakeet runs in a worker of /app/tbd-subtitles",
+        Some("asr_parakeet"),
+    ));
+    log.push(at(Level::DEBUG, "child_process", "tbd-subtitles[4242] started: /app/tbd-subtitles worker asr_parakeet /home/owner/.local/share/tbd-subtitles/work/muhn-pace-dressrosa-12-802e7ebb", Some("asr_parakeet")));
+    log.push(at(
+        Level::INFO,
+        "pipeline::tasks",
+        "loading the Parakeet model",
+        Some("asr_parakeet"),
+    ));
+    log.push(at(
+        Level::DEBUG,
+        "job",
+        "5 of 10 done",
+        Some("asr_parakeet"),
+    ));
+    log.push(at(
+        Level::INFO,
+        "job",
+        "Step finished in 88.5 s, 1830 MiB RAM, 2410 MiB VRAM",
+        Some("asr_parakeet"),
+    ));
+    log.push(at(Level::INFO, "job", "Step started", Some("adjudicate")));
+    let mut summary = at(
+        Level::INFO,
+        "inference::llm::call_log",
+        "claude sonnet · words, batch 1 of 40: 212 lines answered in 41.3 s, 18234 tokens in, 2210 out, $0.0874",
+        Some("adjudicate"),
+    );
+    summary.call = Some("4250-1".to_string());
+    log.push(summary);
+    log.push(at(
+        Level::DEBUG,
+        "child_process",
+        "claude[4301] exited 0 after 41.30 s",
+        Some("adjudicate"),
+    ));
+    log.push(at(
+        Level::WARN,
+        "child_process",
+        "ffprobe[4302] exited 1 after 0.05 s",
+        Some("adjudicate"),
+    ));
+    log.push(Fresh::new(
+        Level::ERROR,
+        "tbd_subtitles::core::portal",
+        "the desktop could not open it",
+    ));
+    log.push_call(
+        job_model::model_call::ModelExchange {
+            id: "4250-1".into(),
+            model: "sonnet".into(),
+            purpose: "words, batch 1 of 40".into(),
+            system: "You settle the words of an English dub from what two speech engines heard.\nNever invent a word no engine heard.".into(),
+            message: "GLOSSARY: Luffy, Zoro, Doflamingo\nU0001 [p] we have to get to the palace\nU0001 [w] we've got to get to the palace\nU0002 [p] Doflamingo is waiting\nU0002 [w] Doflamingo's waiting".into(),
+            schema: "{\n  \"type\": \"object\",\n  \"required\": [\"lines\"]\n}".into(),
+            answer: "{\n  \"lines\": [\n    {\"id\": \"U0001\", \"text\": \"We've got to get to the palace.\"},\n    {\"id\": \"U0002\", \"text\": \"Doflamingo's waiting.\"}\n  ]\n}".into(),
+            error: None,
+            input_tokens: 18234,
+            output_tokens: 2210,
+            cost_usd: Some(0.0874),
+            seconds: 41.3,
+        },
+        Some(video.to_string()),
+        Some("adjudicate".to_string()),
+    );
 }

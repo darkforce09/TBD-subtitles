@@ -54,6 +54,7 @@ pub(crate) fn apply(progress: &mut JobProgress, event: Progress, now: Instant) {
             },
         ),
         Progress::StepFailed { step, message } => set(progress, step, StepState::Failed(message)),
+        Progress::ModelCall { .. } => {}
     }
 }
 

@@ -12,7 +12,8 @@
 //!
 //! **Invariants:** a launcher that drops stderr (Gear Lever) still leaves the window's log on
 //! disk; a log file that cannot be opened leaves stderr alone, never stops the app; `RUST_LOG`,
-//! when set, filters every output.
+//! when set, filters every output; a model call's exchange (its prompt and answer) never reaches
+//! stderr or the log file: the window keeps it in memory, and a worker sends it on its stdout.
 
 use std::fs::{self, File};
 use std::io::IsTerminal;
@@ -23,7 +24,9 @@ use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 use tracing_subscriber::{EnvFilter, Layer as _, fmt};
 
-use super::log_buffer::{ConsoleLayer, LogBuffer};
+use inference::llm::call_log::EXCHANGE_TARGET;
+
+use super::log_buffer::{ConsoleLayer, LogBuffer, WorkerStdoutLayer};
 
 /// What the log file, the log window and a worker's stderr show: debug lines from this
 /// workspace, info from everything else (egui, winit, the GL driver).
@@ -49,16 +52,18 @@ pub(crate) fn console() -> Arc<LogBuffer> {
 
 /// Install the global subscriber for `run`; call once, first thing.
 pub(crate) fn initialise(run: LogRun) {
+    // A worker names each line's target, so the log window can tell who wrote it.
     let stderr = fmt::layer()
         .with_writer(std::io::stderr)
         .with_ansi(std::io::stderr().is_terminal())
-        .with_target(false);
+        .with_target(run == LogRun::Worker);
     match run {
         LogRun::Command => tracing_subscriber::registry()
-            .with(stderr.with_filter(filter("info")))
+            .with(stderr.with_filter(text_filter("info")))
             .init(),
         LogRun::Worker => tracing_subscriber::registry()
-            .with(stderr.with_filter(filter(DETAIL)))
+            .with(stderr.with_filter(text_filter(DETAIL)))
+            .with(WorkerStdoutLayer.with_filter(exchanges_only()))
             .init(),
         LogRun::Window => {
             let file = window_log_path().and_then(|path| open_or_report(&path));
@@ -66,12 +71,12 @@ pub(crate) fn initialise(run: LogRun) {
                 fmt::layer()
                     .with_writer(file)
                     .with_ansi(false)
-                    .with_filter(filter(DETAIL))
+                    .with_filter(text_filter(DETAIL))
             });
             tracing_subscriber::registry()
-                .with(stderr.with_filter(filter("info")))
+                .with(stderr.with_filter(text_filter("info")))
                 .with(file)
-                .with(ConsoleLayer::new(console()).with_filter(filter(DETAIL)))
+                .with(ConsoleLayer::new(console()).with_filter(with_exchanges(filter(DETAIL))))
                 .init();
         }
     }
@@ -80,6 +85,27 @@ pub(crate) fn initialise(run: LogRun) {
 /// `RUST_LOG` when set, `default` otherwise.
 fn filter(default: &str) -> EnvFilter {
     EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default))
+}
+
+/// As [`filter`], never with a model call's exchange: text outputs show its summary line only.
+fn text_filter(default: &str) -> EnvFilter {
+    filter(default).add_directive(directive(EXCHANGE_TARGET, "off"))
+}
+
+/// `filter` with every model call's exchange, whatever `RUST_LOG` says.
+fn with_exchanges(filter: EnvFilter) -> EnvFilter {
+    filter.add_directive(directive(EXCHANGE_TARGET, "trace"))
+}
+
+/// Model calls' exchanges and nothing else.
+fn exchanges_only() -> EnvFilter {
+    with_exchanges(EnvFilter::new("off"))
+}
+
+fn directive(target: &str, level: &str) -> tracing_subscriber::filter::Directive {
+    format!("{target}={level}")
+        .parse()
+        .unwrap_or_else(|_| tracing_subscriber::filter::LevelFilter::OFF.into())
 }
 
 /// `$XDG_STATE_HOME/tbd-subtitles/tbd-subtitles.log`, or under `~/.local/state`; `None` with

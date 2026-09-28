@@ -52,7 +52,8 @@ pub fn adjudicate(
     let mut result = Adjudication::default();
     let batches: Vec<&[Utterance]> = sheet.chunks(BATCH).collect();
     for (i, batch) in batches.iter().enumerate() {
-        ask(model, batch, glossary, &mut result);
+        let what = format!("words, batch {} of {}", i + 1, batches.len());
+        ask(model, &what, batch, glossary, &mut result);
         progress(i + 1, batches.len());
     }
     finish(model, sheet, glossary, &mut result);
@@ -78,8 +79,11 @@ pub fn adjudicate_concurrently(
                 scope.spawn(|| {
                     let mut model = make();
                     let mut part = Adjudication::default();
-                    while let Some(batch) = batches.get(next.fetch_add(1, Ordering::SeqCst)) {
-                        ask(model.as_mut(), batch, glossary, &mut part);
+                    loop {
+                        let i = next.fetch_add(1, Ordering::SeqCst);
+                        let Some(batch) = batches.get(i) else { break };
+                        let what = format!("words, batch {} of {}", i + 1, batches.len());
+                        ask(model.as_mut(), &what, batch, glossary, &mut part);
                         progress(done.fetch_add(1, Ordering::SeqCst) + 1, batches.len());
                     }
                     part
@@ -116,7 +120,7 @@ fn finish(
         .cloned()
         .collect();
     for batch in missing.chunks(BATCH) {
-        ask(model, batch, glossary, result);
+        ask(model, "words left out before", batch, glossary, result);
     }
     let order: HashMap<&str, usize> = sheet
         .iter()
@@ -128,12 +132,19 @@ fn finish(
         .sort_by_key(|l| order.get(l.id.as_str()).copied().unwrap_or(usize::MAX));
 }
 
+/// One call for `batch`, logged as `what` with the batch's size and first id.
 fn ask(
     model: &mut dyn LanguageModel,
+    what: &str,
     batch: &[Utterance],
     glossary: &[&str],
     result: &mut Adjudication,
 ) {
+    let _purpose = inference::llm::purpose(format!(
+        "{what}: {} lines from {}",
+        batch.len(),
+        batch[0].id
+    ));
     ask_with(
         model,
         prompt::SYSTEM,

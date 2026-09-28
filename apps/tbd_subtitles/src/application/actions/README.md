@@ -8,7 +8,7 @@ answers in before the next frame.
 ```text
 apps/tbd_subtitles/src/application/actions/
 ├── fix_it.rs       Fix It: its view, start and Stop, the lanes it holds, and what happens when it ends
-├── log_console.rs  the log window: open or close, read new lines while open, filter, clear, log file
+├── log_console.rs  the log window: open, read lines and calls, views, filters, clear, log file
 ├── mod.rs          the module list and the re-exports `application` uses
 ├── queue.rs        the queue's actions: add, select, remove and undo, move, cancel, try and run again
 ├── report.rs       the selected job's report, the finished rows' summaries, and the Overview's requests
@@ -102,12 +102,13 @@ a step, a save or a filter, the clip stops and the frame at the line's start is 
 video has a picture. After a run of the video ends, its lines are read again with what the owner did
 carried over.
 
-`log_console.rs` opens and closes the log window; opening reads every line the process's log
-buffer still holds that the console has not, and `poll_log` reads the new ones before each frame
-while the window is open, never while it is closed, so nothing logged meanwhile is lost. A level or
-a search refilters the console; Clear empties the console and the log buffer (the log file keeps
-every line); Open Log File opens the log file in the desktop's text editor through
-`open_with_desktop`.
+`log_console.rs` opens and closes the log window; opening reads every line and model call the
+process's log buffer still holds that the console has not, and `poll_log` reads the new ones
+before each frame while the window is open, never while it is closed, so nothing logged meanwhile
+is lost. It switches the view, refilters by level, writer or search, opens a line in the detail
+panel or a call on the right, and Show Model Call opens the Model Calls view on a line's call.
+Clear empties the view shown, in the console and in the log buffer (the log file keeps every
+line); Open Log File opens the log file in the desktop's text editor through `open_with_desktop`.
 
 ## Boundaries
 

@@ -10,7 +10,7 @@ crate.
 
 ```text
 crates/job_model/
-├── Cargo.toml  the `job_model` library package: `serde` with derive, and `serde_json` for the tests
+├── Cargo.toml  the `job_model` library package: `serde` with derive, and `serde_json`
 └── src/        the stage and step names, the job record, the step outputs and the report
 ```
 
@@ -34,7 +34,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p job_model   # the library
-cargo test -p job_model    # 10 unit tests for the names and the job record, well under a second
+cargo test -p job_model    # 22 unit tests for the names, the job record and a model call, well under a second
 ```
 
 ## Configuration
@@ -54,7 +54,7 @@ crate reads.
 
 ## Boundaries
 
-- Depends on: `serde` 1 with `std` and `derive`; `serde_json` 1 in the tests only. No workspace
+- Depends on: `serde` 1 with `std` and `derive`; `serde_json` 1 (a model call's worker line). No workspace
   crate.
 - Used by:
   - the apps: `apps/tbd_subtitles/src/cli/` parses step names and builds `JobSettings`, and

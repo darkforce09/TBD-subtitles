@@ -168,6 +168,9 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                 if options.cancel.is_cancelled() {
                     return Err(PipelineError::cancelled(format!("step {step}")));
                 }
+                // Everything this step logs, its workers' and programs' lines too, is under its span.
+                let step_span = tracing::info_span!("step", step = %step);
+                let _in_step = step_span.enter();
                 if graph::inputs(step).contains(&StepName::ShotScan)
                     && let Some(handle) = shots.take()
                 {
@@ -186,7 +189,11 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                 if step == StepName::ShotScan {
                     let snapshot = record.clone();
                     let run_step = &run_step;
-                    shots = Some(scope.spawn(move || run_step(StepName::ShotScan, &snapshot)));
+                    let span = step_span.clone();
+                    shots = Some(scope.spawn(move || {
+                        let _in_step = span.enter();
+                        run_step(StepName::ShotScan, &snapshot)
+                    }));
                     continue;
                 }
                 let measure = run_step(step, &record).inspect_err(|error| {

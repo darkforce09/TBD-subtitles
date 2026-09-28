@@ -75,7 +75,8 @@ failed is not.
 
 ## Boundaries
 
-- Depends on: `inference::llm::LanguageModel`, `crate::adjudication::checks`,
+- Depends on: `inference::llm::{LanguageModel, purpose}` (each call is "{label}, call i of n"),
+  `tracing` (the call threads keep the caller's span), `crate::adjudication::checks`,
   `crate::diff_sheet::{align, sheet}`, `job_model::outputs` (`FixRecord`'s parts, `Corrections`,
   `Line`, `Utterance`, `Aligned`, `EngineTranscript`), `job_model::report`, `serde`,
   `serde_json`.
