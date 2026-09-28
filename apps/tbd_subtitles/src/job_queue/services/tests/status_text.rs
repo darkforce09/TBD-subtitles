@@ -49,6 +49,7 @@ fn ended_rows_say_how_they_ended() {
         step: Some(StepName::AsrWhisper),
         message: "boom".into(),
         kept_steps: 4,
+        finished: Vec::new(),
     });
     q.items[1].state = JobState::Cancelled { kept_steps: 9 };
     q.items[2].state = JobState::FinishedBefore;
@@ -63,6 +64,7 @@ fn ended_rows_say_how_they_ended() {
         step: None,
         message: "boom".into(),
         kept_steps: 0,
+        finished: Vec::new(),
     });
     assert_eq!(
         lines(&q),
@@ -108,4 +110,104 @@ fn a_running_row_says_what_its_stage_does_and_the_time_left() {
     progress.cancelling = true;
     q.items[0].state = JobState::Running(Box::new(progress));
     assert_eq!(lines(&q), ["Stopping…"]);
+}
+
+#[test]
+fn the_detail_line_gives_a_running_jobs_length_and_a_waiting_jobs_place() {
+    let mut q = queue(&["a", "b", "c"]);
+    let now = Instant::now();
+    assert_eq!(
+        detail_line(&q.items[0], &q, now),
+        "Length known once it starts · next in line"
+    );
+    assert_eq!(
+        detail_line(&q.items[2], &q, now),
+        "Length known once it starts · Waiting"
+    );
+    let mut progress = JobProgress::new(now - Duration::from_secs(600));
+    q.items[0].state = JobState::Running(Box::new(progress.clone()));
+    q.running = true;
+    assert_eq!(detail_line(&q.items[0], &q, now), "Running for 10 min 00 s");
+    assert_eq!(
+        detail_line(&q.items[2], &q, now),
+        "Length known once it starts · 2nd in line"
+    );
+    progress.duration_s = Some(1559.0);
+    q.items[0].state = JobState::Running(Box::new(progress));
+    assert_eq!(
+        detail_line(&q.items[0], &q, now),
+        "25:59 video · running for 10 min 00 s"
+    );
+    q.items[1].state = JobState::Cancelled { kept_steps: 1 };
+    assert_eq!(
+        detail_line(&q.items[1], &q, now),
+        "Cancelled · 1 finished step kept"
+    );
+}
+
+#[test]
+fn a_waiting_job_says_when_it_starts() {
+    let mut q = queue(&["a", "b"]);
+    assert_eq!(place_in_line(&q, &q.items[1]), 2);
+    let (a, b) = (q.items[0].clone(), q.items[1].clone());
+    assert_eq!(
+        waiting_start(&q, &a, 1, false),
+        "Press Start Queue to begin."
+    );
+    q.running = true;
+    assert_eq!(
+        waiting_start(&q, &a, 1, false),
+        "It starts when the current video finishes."
+    );
+    assert_eq!(
+        waiting_start(&q, &b, 2, false),
+        "It starts when the videos before it finish."
+    );
+    assert_eq!(
+        waiting_start(&q, &b, 2, true),
+        "It can start once the models are on disk."
+    );
+    q.running = false;
+    let review = queue_review(&mut q, PathBuf::from("a"));
+    let review = q.get(review).expect("the correction run").clone();
+    assert_eq!(
+        waiting_start(&q, &review, 1, false),
+        "It starts as soon as the video is free.",
+        "a correction run starts on its own, the queue running or not"
+    );
+}
+
+#[test]
+fn a_job_tried_again_starts_at_once_only_when_its_lane_and_video_are_idle() {
+    let mut q = queue(&["a", "b"]);
+    q.items[0].state = JobState::Cancelled { kept_steps: 2 };
+    assert_eq!(
+        try_again_start(&q, &q.items[0], false),
+        "It starts at once."
+    );
+    assert_eq!(
+        try_again_start(&q, &q.items[0], true),
+        "It waits until the models are on disk."
+    );
+    q.items[1].state = JobState::Running(Box::new(JobProgress::new(Instant::now())));
+    assert_eq!(
+        try_again_start(&q, &q.items[0], false),
+        "It goes first in line and waits for Start Queue."
+    );
+    q.running = true;
+    assert_eq!(
+        try_again_start(&q, &q.items[0], false),
+        "It runs next, when the current video finishes."
+    );
+    // The full lane is idle, but a correction run of the same video runs.
+    q.running = false;
+    q.items[1].state = JobState::FinishedBefore;
+    let review = queue_review(&mut q, PathBuf::from("a"));
+    if let Some(item) = q.get_mut(review) {
+        item.state = JobState::Running(Box::new(JobProgress::new(Instant::now())));
+    }
+    assert_eq!(
+        try_again_start(&q, &q.items[0], false),
+        "It goes first in line and waits for Start Queue."
+    );
 }

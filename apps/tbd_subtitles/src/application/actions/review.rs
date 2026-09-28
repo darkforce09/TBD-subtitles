@@ -11,11 +11,13 @@
 //! `review_editing`.
 //!
 //! **Invariants:** a saved correction always queues one review run of its job; a review run never
-//! starts while a full run of the same video runs.
+//! starts while a full run of the same video runs; a review that cannot open says why in a red
+//! toast and leaves the report as it is; a review closes once its job is no longer finished.
 
 use media_io::preview::Clip;
 
 use crate::application::TbdSubtitlesApp;
+use crate::core::toast::ToastKind;
 use crate::job_queue::models::queue::{JobId, JobKind, JobState};
 use crate::job_queue::services::queue_editing;
 use crate::line_review::events::ReviewEvent;
@@ -50,8 +52,23 @@ impl TbdSubtitlesApp {
                 self.review = Some((id, session));
             }
             Err(error) => {
-                self.report = Some((id, Err(format!("the review cannot open: {error}"))));
+                self.toast(
+                    ToastKind::Error,
+                    format!("Check Lines cannot open: {error}"),
+                );
             }
+        }
+    }
+
+    /// Close the line review once its job is no longer finished: tried or run again.
+    pub(crate) fn close_review_unless_finished(&mut self) {
+        let finished = |id: JobId| {
+            self.queue.get(id).is_some_and(|item| {
+                matches!(item.state, JobState::Finished(_) | JobState::FinishedBefore)
+            })
+        };
+        if self.review.as_ref().is_some_and(|(id, _)| !finished(*id)) {
+            self.apply_review(ReviewEvent::Close);
         }
     }
 

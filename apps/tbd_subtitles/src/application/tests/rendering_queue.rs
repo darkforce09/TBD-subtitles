@@ -115,8 +115,8 @@ fn delete_removes_the_selected_row_and_undo_puts_it_back() {
     let (text, _) = render(&app);
     assert_eq!(
         text.lines().filter(|line| *line == "b").count(),
-        1,
-        "{text}"
+        2,
+        "one row, and the selected job's title: {text}"
     );
 }
 

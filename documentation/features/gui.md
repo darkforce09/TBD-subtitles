@@ -10,13 +10,15 @@ onto the window or added with Add Videos… and Add Folder… through the deskto
 or a folder for its videos without subtitles), one row per video in the sections Now, Up Next and
 Done; a row leaves the list by its ✕, its menu or Delete, and Undo puts it back. Settings open in
 a window of their own from the gear (Ctrl+,): they edit `settings.toml`, list and download the
-models, and check the machine. Start Queue runs the waiting jobs one at a time, with the stage at
-work, each step's progress under its plain title and the time left; Pause After This Video stops
-the queue once the running video ends. A running job can be cancelled and an ended one tried
-again, a failed job names the stage and step it failed at, a failed or cancelled one says how many
-finished steps it kept, and the queue is kept across windows. A finished job shows its report:
-whether it passes the quality check, its findings with their times, its steps, and buttons that
-open the video, its folder and `report.md` through the desktop. From the report the owner opens the line review: the flagged
+models, and check the machine. Start Queue runs the waiting jobs one at a time; the selected
+job's header names it with its length and time, and its cards show the stage at work, the step
+("step 9 of 18"), the time left and the six stages; Pause After This Video stops the queue once
+the running video ends. A running job can be cancelled and an ended one tried again, a failed job
+names the stage and step it failed at with the raw message, a failed or cancelled one says how
+many finished steps it kept and when Try Again would start it, and the queue is kept across
+windows. A finished job's Overview shows its report: whether it passes the quality check, its
+findings with their times, its steps, and buttons that open the video, its folder and `report.md`
+through the desktop. Its Check Lines tab opens the line review: the flagged
 lines (or every line), each with its clip (the video's sound or the voices alone, and a small
 picture), what every engine heard, the text and its flags. The owner picks a reading or types the
 line, and Save and time again writes `review.json` and starts a review run at once, which
@@ -54,14 +56,24 @@ The video's row shows the review run ("Updating subtitles · 1 correction") unti
    until it first starts, and its own from then on. A full run of a video waits while a review
    run of the same video runs, and the reverse. Toasts at the bottom centre report what the window
    shows nowhere else, with a button such as Undo; errors are red.
-2. **Progress.** Per job: current stage ("Settling the words"), stage progress, elapsed and
-   remaining time ("about 4 min"); the finished steps with their durations, each under a plain
-   title ("Listen with Whisper"). A failed job shows its stage and step ("Failed at Hear the
-   speech") with the message; a failed or cancelled job shows how many finished steps it kept.
-3. **Report.** When a job ends: the quality-check results, flagged lines (`UNSURE`, `NOVEL`) with
-   timestamps, and the output file's path. A button opens the video in the desktop's default
+2. **Progress.** The selected job's header gives its name, its length and how long it ran
+   ("25:59 video · running for 10 min 00 s", "25:59 video · finished in 4 min 37 s") or its place
+   in line, and on the right Cancel (then "Stopping…") for a running job or Overview | Check Lines
+   for a finished one. A running job's card says what its stage does ("Settling the words"), the
+   step at work ("Now: Language model settles the words · step 9 of 18"), a bar of the share
+   done, the time left ("about 4 min left", "Working out the time left…" until the length is
+   known) and the time so far; under it the six stages, each done with its time, running with its
+   time so far, failed, or still to come, the running one open to its steps and "Show all 18
+   steps" opening every stage. A waiting job's card gives its place, when it starts, its path, Run
+   Next and Remove from List. A failed job's card gives its stage and step in plain words ("Failed
+   at Hear the speech", "Listen with Whisper stopped with an error."), the raw message, the
+   finished steps kept and when Try Again starts it, with Try Again and Show in Folder, over its
+   stages; a cancelled job's card gives the finished steps kept and when Try Again starts it, with
+   Try Again and Remove from List.
+3. **Report.** When a job ends, under its Overview tab: the quality-check results, flagged lines
+   (`UNSURE`, `NOVEL`) with timestamps, and the output file's path. A button opens the video in the desktop's default
    player (VLC) through the desktop portal.
-4. **Review.** For each flagged line: play the clip (sound and a small picture, both from
+4. **Review.** Under a finished job's Check Lines tab, for each flagged line: play the clip (sound and a small picture, both from
    FFmpeg), see every engine's hypothesis, pick one or type a correction; the line is re-aligned
    and the subtitle file rewritten. Corrections never touch lines that were not flagged unless
    the owner opens them.
@@ -82,15 +94,17 @@ The video's row shows the review run ("Updating subtitles · 1 correction") unti
 
 ## Design
 
-A toolbar over two panes: the videos in a sidebar on the left, the selected job (progress, report
-or review, or with no video a card to drop or add them) on the right; Settings in a second
-window. The owner approved a macOS-like redesign as a clickable mockup, built in phases (see
+A toolbar over two panes: the videos in a sidebar on the left, the selected job (a header over
+its cards, report or review, or with no video a card to drop or add them) on the right; Settings
+in a second window. The owner approved a macOS-like redesign as a clickable mockup, built in phases (see
 the [roadmap](/documentation/roadmap.md#m2--desktop-gui)). Its look is in place: the mockup's
 light and dark palettes (a macOS blue accent, greys, green, orange and red whose text reads at a
 contrast of at least 4.5), Adwaita Sans from the system in regular, semibold and bold and Adwaita
 Mono for monospace text (egui's fonts when they are missing), Phosphor icons, title 22, headline
 15, body 13 and caption 11, controls 28 px high with radius 6, cards and windows with radius 10,
 1 px borders and one soft shadow, and selections in a light accent tint with accent text. The
+detail pane is built as mocked: the header with the 22 px title, cards in a column at most 800 px
+wide, a segmented control, disclosures, thick and thin progress bars and the stage marks. The
 window follows the desktop's light or dark colour scheme as KDE sets it, through the desktop
 portal, and switches when it changes; KDE's accent colour is not followed. Code layout follows the TBD-Reforger desktop-app pattern: one folder per feature with
 `models/`, `services/` and `ui/`, where the UI draws from a borrowed view and returns events that

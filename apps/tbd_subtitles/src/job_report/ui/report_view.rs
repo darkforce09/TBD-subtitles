@@ -3,7 +3,7 @@
 //!
 //! **Role:** draw the borrowed `JobReport` and turn the buttons into `ReportEvent`s.
 //!
-//! **Position:** called by the application's Jobs page for a finished job.
+//! **Position:** called by the application under a finished job's Overview tab.
 //!
 //! **Signals and state:** none, but for copying the subtitle path to the clipboard.
 //!
@@ -81,16 +81,7 @@ pub(crate) fn report_view_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<R
         }
     });
     ui.add_space(8.0);
-    ui.horizontal(|ui| {
-        ui.heading(format!("Findings ({})", report.qc.findings.len()));
-        if ui
-            .button("Review lines")
-            .on_hover_text("Hear each flagged line and correct it")
-            .clicked()
-        {
-            events.push(ReportEvent::Review(None));
-        }
-    });
+    ui.heading(format!("Findings ({})", report.qc.findings.len()));
     findings_ui(ui, report, events);
     ui.add_space(8.0);
     ui.heading(format!(

@@ -70,6 +70,7 @@ impl TbdSubtitlesApp {
         self.save_queue();
         self.start_next();
         self.refresh_report(false);
+        self.close_review_unless_finished();
     }
 
     /// Whether a model or runtime archive a job needs is missing.

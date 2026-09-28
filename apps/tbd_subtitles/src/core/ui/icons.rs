@@ -2,7 +2,7 @@
 //! marks of rows and toasts.
 //!
 //! **Role:** name each glyph the window uses once, and paint the status marks: a clock, a
-//! progress ring, a check, a warning, a cross, a stop, a spinner and an info mark.
+//! progress ring, an empty ring, a check, a warning, a cross, a stop, a spinner and an info mark.
 //!
 //! **Position:** used by every feature's `ui` and by `core::ui::{button, toast}`; the glyphs come
 //! from the icon font `core::ui::fonts` installs, drawn in its own family through [`font`].
@@ -34,6 +34,7 @@ pub(crate) const FOLDER: &str = egui_phosphor::regular::FOLDER;
 pub(crate) const FOLDER_PLUS: &str = egui_phosphor::regular::FOLDER_PLUS;
 pub(crate) const GEAR: &str = egui_phosphor::regular::GEAR;
 pub(crate) const INFO: &str = egui_phosphor::regular::INFO;
+pub(crate) const LIST: &str = egui_phosphor::regular::LIST;
 pub(crate) const MONITOR_PLAY: &str = egui_phosphor::regular::MONITOR_PLAY;
 pub(crate) const PAUSE: &str = egui_phosphor::regular::PAUSE;
 pub(crate) const PLAY: &str = egui_phosphor::regular::PLAY;
@@ -54,6 +55,8 @@ pub(crate) enum StatusIcon {
     Waiting,
     /// A ring filled to this share, from the top clockwise: running.
     Running(f32),
+    /// An empty ring in the quiet grey: still to come.
+    Upcoming,
     /// A white check on green: done.
     Done,
     /// A white exclamation on an orange triangle: needs a look.
@@ -117,11 +120,14 @@ pub(crate) fn paint_status(ui: &Ui, rect: Rect, icon: StatusIcon, on_accent: boo
             painter.line_segment([at(12.0, 9.3), at(12.0, 13.9)], mark);
             painter.circle_filled(at(12.0, 17.1), 1.2 * unit, mark.color);
         }
-        StatusIcon::Running(share) => {
+        StatusIcon::Running(_) | StatusIcon::Upcoming => {
+            let (share, colour) = match icon {
+                StatusIcon::Running(share) => (share, tint(p.accent)),
+                _ => (0.0, tint(p.text3)),
+            };
             let centre = rect.center();
             let radius = rect.width() * 0.4;
             let width = rect.width() * 0.12;
-            let colour = tint(p.accent);
             painter.circle_stroke(
                 centre,
                 radius,

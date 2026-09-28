@@ -58,6 +58,8 @@ fn control_text_reads_on_controls_and_tracks() {
                 assert!(ratio >= 4.5, "{scheme}: {name} on {surface} is {ratio:.2}");
             }
         }
+        let ratio = contrast(p.text, p.seg_on);
+        assert!(ratio >= 4.5, "{scheme}: text on seg_on is {ratio:.2}");
     }
 }
 

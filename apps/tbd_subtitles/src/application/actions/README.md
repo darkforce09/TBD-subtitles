@@ -47,12 +47,14 @@ as `JobOptions.rerun`; starting marks the job as keeping its settings. The runne
 into the queue: progress into the running job (its first event empties the steps to run again,
 which the pipeline has recorded by then, so a job failing before it keeps them), the end into a
 finished job, a cancelled one with the finished steps it kept, or a failed one with the step that
-failed and the steps it kept, after which the step rates, the report and an open review are read
+failed and the steps it had finished (each with its seconds, or still valid), after which the step rates, the report and an open review are read
 again and the next job of each lane starts.
 
 `report.rs` reads the selected finished job's report when it is selected or a job ends.
 `review.rs` opens the selected job's review at the line a finding names (or its first flagged
-line), applies the owner's picks, typing and flags to the draft, and on Save or Take back writes
+line), or says in a red toast why it cannot, leaving the report as it is; closes it once its job
+is no longer finished (after every queue event, so a job tried or run again shows as it is now);
+applies the owner's picks, typing and flags to the draft, and on Save or Take back writes
 `review.json` and queues a review run of the video, or adds the correction to the one that
 waits. Play starts the clip player on the open line with 0.75 s either side, with the video's
 sound or the vocal stem; opening another line, Stop and closing the review stop it.

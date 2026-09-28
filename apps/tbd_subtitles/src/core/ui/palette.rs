@@ -36,6 +36,8 @@ pub(crate) struct Palette {
     pub(crate) control_border: Color32,
     /// The fill of check boxes and slider rails.
     pub(crate) seg_bg: Color32,
+    /// The chosen segment of a segmented control, raised above `seg_bg`.
+    pub(crate) seg_on: Color32,
     /// Separators, the borders of cards, and the track of progress bars.
     pub(crate) line: Color32,
     /// Borders that must stand out: a hovered or pressed control.
@@ -69,6 +71,8 @@ pub(crate) struct Palette {
     pub(crate) press: Color32,
     /// The soft shadow under popups, menus and windows.
     pub(crate) shadow: Color32,
+    /// The faint shadow under cards.
+    pub(crate) card_shadow: Color32,
 }
 
 impl Palette {
@@ -89,6 +93,7 @@ pub(crate) static LIGHT: Palette = Palette {
     control: Color32::from_rgb(0xFF, 0xFF, 0xFF),
     control_border: Color32::from_rgb(0xCF, 0xCF, 0xD6),
     seg_bg: Color32::from_rgb(0xE6, 0xE6, 0xEA),
+    seg_on: Color32::from_rgb(0xFF, 0xFF, 0xFF),
     line: Color32::from_rgb(0xDE, 0xDE, 0xE3),
     line_strong: Color32::from_rgb(0xC9, 0xC9, 0xD0),
     text: Color32::from_rgb(0x1D, 0x1D, 0x1F),
@@ -106,6 +111,7 @@ pub(crate) static LIGHT: Palette = Palette {
     hover: Color32::from_rgba_unmultiplied_const(0, 0, 0, 13),
     press: Color32::from_rgba_unmultiplied_const(0, 0, 0, 23),
     shadow: Color32::from_rgba_unmultiplied_const(0, 0, 0, 41),
+    card_shadow: Color32::from_rgba_unmultiplied_const(0, 0, 0, 18),
 };
 
 /// The dark scheme (the mockup's `[data-theme="dark"]`).
@@ -119,6 +125,7 @@ pub(crate) static DARK: Palette = Palette {
     control: Color32::from_rgb(0x35, 0x35, 0x39),
     control_border: Color32::from_rgb(0x4A, 0x4A, 0x50),
     seg_bg: Color32::from_rgb(0x33, 0x33, 0x36),
+    seg_on: Color32::from_rgb(0x5A, 0x5A, 0x60),
     line: Color32::from_rgb(0x38, 0x38, 0x3C),
     line_strong: Color32::from_rgb(0x4A, 0x4A, 0x50),
     text: Color32::from_rgb(0xF2, 0xF2, 0xF4),
@@ -136,6 +143,7 @@ pub(crate) static DARK: Palette = Palette {
     hover: Color32::from_rgba_unmultiplied_const(255, 255, 255, 15),
     press: Color32::from_rgba_unmultiplied_const(255, 255, 255, 26),
     shadow: Color32::from_rgba_unmultiplied_const(0, 0, 0, 128),
+    card_shadow: Color32::from_rgba_unmultiplied_const(0, 0, 0, 72),
 };
 
 /// The palette of the scheme `ui` is drawn in.

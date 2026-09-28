@@ -20,7 +20,7 @@ fn running() -> StepState {
 #[test]
 fn done_and_still_valid_steps_are_kept_and_the_later_running_step_is_current() {
     let mut p = JobProgress::new(Instant::now());
-    assert_eq!(p.kept_steps(), 0);
+    assert_eq!(p.finished_steps().len(), 0);
     assert_eq!(p.current_step(), None);
     set(
         &mut p,
@@ -34,7 +34,7 @@ fn done_and_still_valid_steps_are_kept_and_the_later_running_step_is_current() {
         row.stale = false;
     }
     assert_eq!(
-        p.kept_steps(),
+        p.finished_steps().len(),
         3,
         "done, skipped, and a step this run does not do"
     );
@@ -56,6 +56,40 @@ fn a_failed_step_is_named_and_not_kept() {
         StepState::Failed("boom".into()),
     );
     assert_eq!(p.failed_step(), Some(StepName::AsrWhisper));
-    assert_eq!(p.kept_steps(), 1);
+    assert_eq!(p.finished_steps().len(), 1);
     assert_eq!(p.current_step(), None);
+}
+
+#[test]
+fn the_step_shown_is_the_last_started_and_never_the_shot_scan() {
+    let mut p = JobProgress::new(Instant::now());
+    assert_eq!(p.shown_step(), None, "nothing started yet");
+    set(&mut p, StepName::ShotScan, running());
+    assert_eq!(p.shown_step(), None);
+    set(
+        &mut p,
+        StepName::ProbeDecode,
+        StepState::Done { wall_s: 4.0 },
+    );
+    set(
+        &mut p,
+        StepName::Separation,
+        StepState::Done { wall_s: 90.0 },
+    );
+    assert_eq!(
+        p.current_step(),
+        Some(StepName::ShotScan),
+        "between two steps only the shot scan runs"
+    );
+    assert_eq!(p.shown_step(), Some(StepName::Separation));
+    set(&mut p, StepName::Vad, running());
+    assert_eq!(p.shown_step(), Some(StepName::Vad));
+    assert_eq!(
+        p.finished_steps(),
+        [
+            (StepName::ProbeDecode, FinishedStep::Done(Some(4.0))),
+            (StepName::Separation, FinishedStep::Done(Some(90.0))),
+        ],
+        "the shot scan still running is not finished"
+    );
 }

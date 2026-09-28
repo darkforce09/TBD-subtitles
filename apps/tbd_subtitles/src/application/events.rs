@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use super::detail_view::DetailTab;
 use crate::core::toast::ToastId;
 use crate::job_queue::events::JobQueueEvent;
 use crate::job_report::events::ReportEvent;
@@ -14,6 +15,8 @@ pub(crate) enum Action {
     /// Add these videos, or the videos of these folders, to the end of the queue.
     QueueVideos(Vec<PathBuf>),
     Queue(JobQueueEvent),
+    /// Show this tab of the selected finished job: its report, or its lines to check.
+    ShowTab(DetailTab),
     /// Open the Settings window, or close it.
     ShowSettings(bool),
     /// The button of this toast was pressed: take the toast away and do what it offers.

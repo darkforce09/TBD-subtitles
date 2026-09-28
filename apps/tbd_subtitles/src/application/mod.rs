@@ -15,6 +15,7 @@
 
 mod actions;
 mod background;
+mod detail_view;
 mod environment;
 mod events;
 mod feature_views;
@@ -28,6 +29,7 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use eframe::egui;
 
+use detail_view::DetailTab;
 pub(crate) use environment::Environment;
 pub(crate) use events::Action;
 
@@ -42,6 +44,7 @@ use crate::job_queue::services::job_runner::{self, JobRunner};
 use crate::job_queue::services::{queue_editing, queue_store, time_left};
 use crate::job_report::events::ReportEvent;
 use crate::job_report::models::report::JobReport;
+use crate::line_review::events::ReviewEvent;
 use crate::line_review::models::session::ReviewSession;
 use crate::line_review::services::clip_player::ClipPlayer;
 use crate::settings::models::page::SettingsPage;
@@ -88,13 +91,17 @@ pub(crate) struct TbdSubtitlesApp {
 impl TbdSubtitlesApp {
     fn new(env: Environment, videos: Vec<PathBuf>) -> TbdSubtitlesApp {
         let settings = actions::new_settings_page(&env);
-        let queue = queue_store::load(&env.queue_path).unwrap_or_else(|error| {
+        let mut queue = queue_store::load(&env.queue_path).unwrap_or_else(|error| {
             tracing::warn!(%error, "starting with an empty queue");
             Queue::default()
         });
-        let rates = job_settings::work_root(&settings.saved)
-            .map(|root| time_left::from_history(&root))
-            .unwrap_or_else(|_| time_left::pilot_rates());
+        let work_root = job_settings::work_root(&settings.saved).ok();
+        if let Some(root) = &work_root {
+            queue_store::read_finished_steps(&mut queue, root);
+        }
+        let rates = work_root.map_or_else(time_left::pilot_rates, |root| {
+            time_left::from_history(&root)
+        });
         let runner = job_runner::start(env.run_job.clone(), env.wake.clone());
         let review_runner = job_runner::start(env.run_job.clone(), env.wake.clone());
         let mut app = TbdSubtitlesApp {
@@ -133,6 +140,7 @@ impl TbdSubtitlesApp {
                     }
                 }
                 Action::Queue(event) => self.apply_queue(event),
+                Action::ShowTab(tab) => self.show_tab(tab),
                 Action::ShowSettings(open) => self.settings_window = open,
                 Action::ToastButton(id) => {
                     if let Some((_, action)) = self.toasts.take(id).and_then(|toast| toast.action) {
@@ -144,6 +152,21 @@ impl TbdSubtitlesApp {
                 Action::Report(ReportEvent::Review(line)) => self.open_review(line),
                 Action::Review(event) => self.apply_review(event),
             }
+        }
+    }
+
+    /// Show the selected finished job's report, closing its line review, or open its lines to
+    /// check.
+    fn show_tab(&mut self, tab: DetailTab) {
+        let Some(id) = self.queue.selected else {
+            return;
+        };
+        match tab {
+            DetailTab::Overview => self.apply_review(ReviewEvent::Close),
+            DetailTab::CheckLines if self.detail_tab(id) == DetailTab::Overview => {
+                self.open_review(None);
+            }
+            DetailTab::CheckLines => {}
         }
     }
 }

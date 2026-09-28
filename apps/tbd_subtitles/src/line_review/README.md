@@ -20,8 +20,8 @@ apps/tbd_subtitles/src/line_review/
 ## How it works
 
 ```text
-report ──Review lines / Review──▶ review_loading::load (sheet, re-decodes, adjudicated, qc,
-                                                      review.json, probe)
+Check Lines tab / a finding's Review ──▶ review_loading::load (sheet, re-decodes, adjudicated,
+                                        qc, review.json, probe)
 review view ──▶ ReviewEvent ──▶ review_editing (open, pick, save ──▶ review.json)
                            └──▶ clip_player (FFmpeg: sound to pulse, frames to the window)
 save ──▶ the queue: a review run of the video ──▶ review, cues, qc, output

@@ -24,6 +24,7 @@ fn failed() -> JobState {
         step: None,
         message: "boom".into(),
         kept_steps: 0,
+        finished: Vec::new(),
     })
 }
 

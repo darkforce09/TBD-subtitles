@@ -1,12 +1,15 @@
 //! The queue's views: the toolbar, the sidebar with its rows and menus, the empty list's card,
-//! the drop overlay and the selected job's progress.
+//! the drop overlay, and the selected job's cards, progress and stages.
 
 mod drop_overlay;
 mod empty_state;
+mod job_cards;
+mod progress_card;
 mod progress_view;
 mod row_menu;
 mod sidebar;
 mod sidebar_row;
+mod stage_list;
 mod toolbar;
 
 pub(crate) use drop_overlay::drop_overlay_ui;

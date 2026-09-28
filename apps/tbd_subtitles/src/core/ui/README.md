@@ -1,21 +1,26 @@
 # Shared window look
 
 The look every feature's UI shares, taken from the approved mockup: the light and dark palettes,
-the fonts, the theme built from them, and the widgets drawn the same everywhere (buttons, icons
-and status marks, toasts), so panels drawn by different features look alike.
+the fonts, the theme built from them, and the widgets drawn the same everywhere (buttons, cards,
+disclosures, progress bars, segmented controls, icons and status marks, toasts), so panels drawn
+by different features look alike.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/core/ui/
-├── button.rs   `Button` (bordered or blue primary, 24, 28 or 32 px) and `icon_button`
-├── fonts.rs    `definitions` and `install`: Adwaita Sans in three weights, Adwaita Mono, Phosphor icons
-├── icons.rs    the Phosphor glyphs by name, `font`, and the painted status marks (`StatusIcon`)
-├── mod.rs      the module tree
-├── palette.rs  `Palette`, `LIGHT` and `DARK` from the mockup's tokens; `palette(ui)` picks one
-├── tests/      unit tests for the palette's contrast, the font families and the theme's visuals
-├── theme.rs    `install`: text styles, spacing, radii, borders, shadow, visuals; `follow`: light or dark
-└── toast.rs    `toasts_ui`: the toasts at the bottom centre, each with its mark, text and button
+├── button.rs      `Button` (bordered, blue primary or red danger; 24, 28 or 32 px) and `icon_button`
+├── card.rs        `card`, `card_head`, `card_text` and `well_text`: the raised card and its parts
+├── disclosure.rs  `disclosure`: a full-width row with a turning chevron, open or closed in memory
+├── fonts.rs       `definitions` and `install`: Adwaita Sans in three weights, Adwaita Mono, Phosphor
+├── icons.rs       the Phosphor glyphs by name, `font`, and the painted status marks (`StatusIcon`)
+├── mod.rs         the module tree
+├── palette.rs     `Palette`, `LIGHT` and `DARK` from the mockup's tokens; `palette(ui)` picks one
+├── progress.rs    `bar` and `paint_bar`: the rounded progress bar, 4 px or 6 px thick
+├── segmented.rs   `segmented`: a row of segments with the chosen one raised
+├── tests/         unit tests for the palette's contrast, the font families and the theme's visuals
+├── theme.rs       `install`: text styles, spacing, radii, borders, shadow, visuals; `follow`: light or dark
+└── toast.rs       `toasts_ui`: the toasts at the bottom centre, each with its mark, text and button
 ```
 
 ## How it works
@@ -47,21 +52,39 @@ secondary text, `good`, `warn` and `bad` for states; the toolbar and the sidebar
 greys, and icons their brighter `good_icon`, `warn_icon`, `bad_icon` and the quiet `text3`. The
 accent is macOS blue as mocked; KDE's accent colour is not followed.
 
-`button::Button` paints the mockup's button from the palette: a bordered control, or the blue
-primary one with white text, 24, 28 or 32 px high, an optional icon before the label, a hover and
+`button::Button` paints the mockup's button from the palette: a bordered control, the blue
+primary one with white text, or the danger one with red text (Cancel, Remove from List), 24, 28
+or 32 px high, an optional icon before the label, a hover and
 a pressed look, 45 % opacity when disabled (it then senses no click), and its label as its
 accessible name. `icon_button` is a borderless 28 px square with an 18 px glyph. `icons` names the
 glyphs the window uses and paints the status marks on a 24-unit grid: a clock (waiting), a progress
-ring (running), a white check on green (done), a white exclamation on an orange triangle (needs a
+ring (running), an empty grey ring (still to come), a white check on green (done), a white exclamation on an orange triangle (needs a
 look), a white cross on red (failed), a stop (cancelled), a turning arc (working) and an info mark;
 on a selected row every mark is white. `toast::toasts_ui` draws the toasts at the bottom centre,
 the oldest lowest, each a card with its mark, its text and a small button; an error's border and
 text are red. It returns the toast whose button was pressed.
 
+`card::card` draws the mockup's card: the card fill, a 1 px border, radius 10 and a faint shadow
+(`card_shadow`), as wide as the space given, with 16 px above and below and 18 px beside its
+contents and 12 px between them when padded, or none (for a card of rows). `card_head` puts a 28
+px status mark beside a 15 px semibold title over lines of text 3 px apart, `card_text` writes a
+wrapped line in a given colour, and `well_text` a path or a raw message in the monospace font on
+the recessed well (cut with an ellipsis, or wrapped). `disclosure::disclosure` draws a full-width
+row 42 px high: a chevron that points right, or down while open, a semibold label that names the
+row for accessibility, and a grey note on the right; a click opens or closes it, kept in egui's
+memory under the caller's id. `progress::bar` draws a bar of a given width filled to a share, 4 px
+high, or 6 px thick, the track in the separator grey and the fill in `accent_fill`, named as a
+progress indicator; `paint_bar` paints one into a given rectangle. `segmented::segmented` draws a
+row of 24 px segments in a 2 px `seg_bg` well, radius 8, the chosen one raised in `seg_on` with a
+small shadow; each segment is named with whether it is chosen, and a click on another returns its
+value.
+
 ## Public surface
 
 - `theme::{install, follow, TITLE}`; `fonts::{definitions, install, SEMIBOLD, BOLD, ICONS}`;
   `palette::{palette, Palette, LIGHT, DARK}`; `button::{Button, ButtonSize, icon_button}`;
+  `card::{card, card_head, card_text, well_text}`; `disclosure::disclosure`;
+  `progress::{bar, paint_bar}`; `segmented::segmented`;
   `icons::{font, StatusIcon, status_icon, paint_status}` and the glyph names; `toast::toasts_ui`.
 
 ## Boundaries
@@ -76,9 +99,9 @@ text are red. It returns the toast whose button was pressed.
     (`dependency_boundaries_and_external_test_placement_are_enforced` in
     `apps/tbd_subtitles/src/tests/architecture_rules.rs`); a feature may use this folder though it
     may not use another feature's `ui`;
-  - every text colour reads at a contrast of at least 4.5 on the surfaces it is drawn on, the
-    accent and the warning colour read on the selection, white reads on the accent fill, and
-    table stripes show (`every_text_colour_reads_on_every_surface`,
+  - every text colour reads at a contrast of at least 4.5 on the surfaces it is drawn on (text on
+    a chosen segment too), the accent and the warning colour read on the selection, white reads
+    on the accent fill, and table stripes show (`every_text_colour_reads_on_every_surface`,
     `control_text_reads_on_controls_and_tracks`,
     `selected_text_and_its_marks_read_on_the_selection`, `white_reads_on_the_accent_fill`,
     `table_stripes_show_on_the_window` in `tests/palette.rs`);

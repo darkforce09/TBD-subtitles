@@ -4,7 +4,7 @@
 //! **Role:** draw the borrowed review session and the playing clip's newest frame, and turn each
 //! click and edit into a `ReviewEvent`.
 //!
-//! **Position:** called by the application's Jobs page while a job's review is open.
+//! **Position:** called by the application under a finished job's Check Lines tab.
 //!
 //! **Signals and state:** keeps the clip's texture in egui's memory, uploading each frame once.
 //!
@@ -36,9 +36,6 @@ pub(crate) struct ReviewView<'a> {
 pub(crate) fn review_view_ui(ui: &mut Ui, view: &ReviewView<'_>, events: &mut Vec<ReviewEvent>) {
     let session = view.session;
     ui.horizontal(|ui| {
-        if ui.button("← Report").clicked() {
-            events.push(ReviewEvent::Close);
-        }
         ui.heading("Review lines");
         let mut all = session.show_all;
         if ui.checkbox(&mut all, "Show every line").changed() {

@@ -1,5 +1,5 @@
 //! Buttons as the mockup draws them: a bordered button with an optional icon, the blue primary
-//! button, three heights, and a borderless icon button.
+//! button, the red-text danger button, three heights, and a borderless icon button.
 //!
 //! **Role:** paint a button from the palette, with its hover, pressed and disabled looks, and
 //! name it for accessibility.
@@ -32,12 +32,13 @@ pub(crate) enum ButtonSize {
     Large,
 }
 
-/// A bordered button with an optional icon; `primary` draws it blue.
+/// A bordered button with an optional icon; `primary` draws it blue, `danger` its text red.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Button<'a> {
     label: &'a str,
     icon: Option<&'a str>,
     primary: bool,
+    danger: bool,
     size: ButtonSize,
     enabled: bool,
     min_width: f32,
@@ -49,6 +50,7 @@ impl<'a> Button<'a> {
             label,
             icon: None,
             primary: false,
+            danger: false,
             size: ButtonSize::Regular,
             enabled: true,
             min_width: 0.0,
@@ -66,6 +68,11 @@ impl<'a> Button<'a> {
     /// The blue button: the one thing to do next.
     pub(crate) fn primary(self, primary: bool) -> Button<'a> {
         Button { primary, ..self }
+    }
+
+    /// Red text: an action that stops or removes something.
+    pub(crate) fn danger(self, danger: bool) -> Button<'a> {
+        Button { danger, ..self }
     }
 
     pub(crate) fn size(self, size: ButtonSize) -> Button<'a> {
@@ -89,7 +96,13 @@ impl<'a> Button<'a> {
             ButtonSize::Regular => (28.0, 12.0, 13.0),
             ButtonSize::Large => (32.0, 16.0, 13.0),
         };
-        let text = if self.primary { Color32::WHITE } else { p.text };
+        let text = if self.primary {
+            Color32::WHITE
+        } else if self.danger {
+            p.bad
+        } else {
+            p.text
+        };
         let label = ui.painter().layout_no_wrap(
             self.label.to_string(),
             FontId::proportional(text_size),

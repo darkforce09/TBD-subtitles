@@ -101,11 +101,7 @@ impl TbdSubtitlesApp {
         let options = match options {
             Ok(options) => options,
             Err(error) => {
-                item.state = JobState::Failed(Failure {
-                    step: None,
-                    message: format!("{error:#}"),
-                    kept_steps: 0,
-                });
+                item.state = JobState::Failed(Failure::new(None, format!("{error:#}"), Vec::new()));
                 queue_editing::newest_ended_first(&mut self.queue, id);
                 self.save_queue();
                 return None;
@@ -129,11 +125,7 @@ impl TbdSubtitlesApp {
             Ok(()) => Some((id, token)),
             Err(message) => {
                 if let Some(item) = self.queue.get_mut(id) {
-                    item.state = JobState::Failed(Failure {
-                        step: None,
-                        message,
-                        kept_steps: 0,
-                    });
+                    item.state = JobState::Failed(Failure::new(None, message, Vec::new()));
                 }
                 queue_editing::newest_ended_first(&mut self.queue, id);
                 None
@@ -215,7 +207,8 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
                         _ => None,
                     };
                     let wall_s = job.map_or(0.0, |job| job.started.elapsed().as_secs_f64());
-                    let kept_steps = job.map_or(0, JobProgress::kept_steps);
+                    let finished = job.map_or_else(Vec::new, JobProgress::finished_steps);
+                    let kept_steps = finished.len();
                     let step = job.and_then(|job| job.failed_step().or(job.current_step()));
                     item.state = match outcome {
                         Ok(outcome) => JobState::Finished(JobResult {
@@ -226,11 +219,9 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
                             wall_s,
                         }),
                         Err(error) if error.is_cancelled() => JobState::Cancelled { kept_steps },
-                        Err(error) => JobState::Failed(Failure {
-                            step,
-                            message: error.to_string(),
-                            kept_steps,
-                        }),
+                        Err(error) => {
+                            JobState::Failed(Failure::new(step, error.to_string(), finished))
+                        }
                     };
                 }
                 queue_editing::newest_ended_first(&mut app.queue, id);

@@ -1,4 +1,5 @@
-//! Numbers as the window writes them: sizes, durations, video times, places in line and counts.
+//! Numbers as the window writes them: sizes, durations, video lengths and times, places in line
+//! and counts.
 //!
 //! **Role:** turn sizes, seconds and counts into the words every view shows.
 //!
@@ -39,6 +40,16 @@ pub(crate) fn about(seconds: f64) -> String {
         "under 2 min".to_string()
     } else {
         "a few seconds".to_string()
+    }
+}
+
+/// A video's length as `25:59`, or `1:02:03` from an hour on.
+pub(crate) fn length(seconds: f64) -> String {
+    let s = seconds.max(0.0).round() as u64;
+    if s >= 3600 {
+        format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
+    } else {
+        format!("{}:{:02}", s / 60, s % 60)
     }
 }
 

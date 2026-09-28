@@ -1,7 +1,7 @@
 //! A running job's progress: every step it will do, where each stands, and the video's length.
 //!
-//! **Role:** hold one row per step with its state, and answer which step runs, which failed and
-//! how many are kept.
+//! **Role:** hold one row per step with its state, and answer which step runs, which one the
+//! window names, which failed, and which are finished and so kept.
 //!
 //! **Position:** held by a running `QueueItem`; changed by `job_queue::services::progress_tracking`;
 //! read by the time left, the views and the application when the job ends.
@@ -34,6 +34,16 @@ pub(crate) enum StepState {
         wall_s: f64,
     },
     Failed(String),
+}
+
+/// A step with a valid output when its job ended.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum FinishedStep {
+    /// Done in the run that ended, in these seconds, or in a time not known (a failure an older
+    /// window kept, with no `job.json` to read the time from).
+    Done(Option<f64>),
+    /// Skipped as still valid from an earlier run.
+    StillValid,
 }
 
 /// One step's row.
@@ -79,16 +89,18 @@ impl JobProgress {
         self.steps.iter_mut().find(|row| row.step == step)
     }
 
-    /// How many steps have a valid output: done in this run, or still valid from an earlier one.
-    pub(crate) fn kept_steps(&self) -> usize {
+    /// The steps with a valid output, in run order: done in this run with their seconds, or
+    /// still valid from an earlier one.
+    pub(crate) fn finished_steps(&self) -> Vec<(StepName, FinishedStep)> {
         self.steps
             .iter()
-            .filter(|row| match row.state {
-                StepState::Done { .. } | StepState::Skipped => true,
-                StepState::Pending => !row.stale,
-                StepState::Running { .. } | StepState::Failed(_) => false,
+            .filter_map(|row| match row.state {
+                StepState::Done { wall_s } => Some((row.step, FinishedStep::Done(Some(wall_s)))),
+                StepState::Skipped => Some((row.step, FinishedStep::StillValid)),
+                StepState::Pending if !row.stale => Some((row.step, FinishedStep::StillValid)),
+                StepState::Pending | StepState::Running { .. } | StepState::Failed(_) => None,
             })
-            .count()
+            .collect()
     }
 
     /// The step running now; beside the shot scan, the later step.
@@ -97,6 +109,22 @@ impl JobProgress {
             .iter()
             .rev()
             .find(|row| matches!(row.state, StepState::Running { .. }))
+            .map(|row| row.step)
+    }
+
+    /// The step the window names as at work: the running step, else the last one started, never
+    /// the shot scan, which runs in the background; none before the first starts.
+    pub(crate) fn shown_step(&self) -> Option<StepName> {
+        self.steps
+            .iter()
+            .rev()
+            .filter(|row| row.step != StepName::ShotScan)
+            .find(|row| {
+                matches!(
+                    row.state,
+                    StepState::Running { .. } | StepState::Done { .. } | StepState::Failed(_)
+                )
+            })
             .map(|row| row.step)
     }
 

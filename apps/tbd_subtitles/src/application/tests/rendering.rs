@@ -9,11 +9,13 @@ use pipeline::{JobOutcome, PipelineError};
 use super::*;
 use crate::core::color_scheme::Scheme;
 use crate::job_queue::events::JobQueueEvent;
-use crate::job_queue::models::progress::JobProgress;
+use crate::job_queue::models::progress::{FinishedStep, JobProgress, StepState};
 use crate::job_queue::models::queue::{Failure, JobState};
 use crate::job_queue::services::job_runner::RunJob;
 use crate::settings::events::SettingsEvent;
 
+#[path = "rendering_detail.rs"]
+mod rendering_detail;
 #[path = "rendering_queue.rs"]
 mod rendering_queue;
 #[path = "window_snapshots.rs"]
@@ -146,6 +148,26 @@ fn render_with(app: &TbdSubtitlesApp, mut events: Vec<egui::Event>) -> (String, 
     (text, actions)
 }
 
+/// A job ten minutes into a 25:59 video, its words being settled: every step before done, the
+/// language model 40 s into its fourth batch of eight, the rest to run.
+fn settling(now: Instant) -> JobProgress {
+    let mut progress = JobProgress::new(now - Duration::from_secs(600));
+    progress.duration_s = Some(1559.0);
+    for row in &mut progress.steps {
+        row.state = match row.step {
+            StepName::Adjudicate => StepState::Running {
+                started: now - Duration::from_secs(40),
+                done: 3,
+                total: 8,
+                message: Some("batch 4 of 8".into()),
+            },
+            step if step < StepName::Adjudicate => StepState::Done { wall_s: 30.0 },
+            _ => StepState::Pending,
+        };
+    }
+    progress
+}
+
 fn videos(app: &TbdSubtitlesApp) -> Vec<PathBuf> {
     app.queue.items.iter().map(|i| i.video.clone()).collect()
 }
@@ -240,9 +262,17 @@ fn a_cancelled_job_keeps_its_finished_steps_and_can_be_retried() {
         JobState::Cancelled { kept_steps: 2 }
     );
     app.apply(vec![Action::from(JobQueueEvent::Select(id))]);
-    let (text, _) = render(&app);
-    assert!(text.contains("2 finished steps kept"), "{text}");
-    assert!(text.contains("Cancelled · 2 finished steps kept"), "{text}");
+    let (text, actions) = render(&app);
+    for expected in [
+        "Cancelled",
+        "Cancelled · 2 finished steps kept",
+        "2 finished steps are kept. Try Again continues after them. It starts at once.",
+        "Try Again",
+        "Remove from List",
+    ] {
+        assert!(text.contains(expected), "{expected} not in {text}");
+    }
+    assert!(actions.is_empty(), "an idle frame asks for nothing");
     app.apply(vec![
         Action::from(JobQueueEvent::Pause),
         Action::from(JobQueueEvent::TryAgain(id, None)),
@@ -295,19 +325,28 @@ fn a_failed_job_records_its_step_and_the_steps_it_kept() {
     );
     assert_eq!(
         app.queue.items[0].state,
-        JobState::Failed(Failure {
-            step: Some(StepName::AsrWhisper),
-            message: "step asr_whisper: out of memory".into(),
-            kept_steps: 2,
-        })
+        JobState::Failed(Failure::new(
+            Some(StepName::AsrWhisper),
+            "step asr_whisper: out of memory".into(),
+            vec![
+                (StepName::ProbeDecode, FinishedStep::StillValid),
+                (StepName::ShotScan, FinishedStep::StillValid),
+            ],
+        ))
     );
     let id = app.queue.items[0].id;
     app.apply(vec![Action::from(JobQueueEvent::Select(id))]);
     let (text, _) = render(&app);
     for expected in [
-        "Failed at Hear the speech.",
-        "Listen with Whisper: step asr_whisper: out of memory",
-        "2 finished steps kept",
+        "Failed at Hear the speech",
+        "Listen with Whisper stopped with an error.",
+        "step asr_whisper: out of memory",
+        "The 2 finished steps are kept. Try Again continues after them. It starts at once.",
+        "Try Again",
+        "Show in Folder",
+        "Show all 18 steps",
+        "already done",
+        "failed",
     ] {
         assert!(text.contains(expected), "{expected} not in {text}");
     }
@@ -322,11 +361,11 @@ fn a_job_failing_before_it_starts_keeps_its_steps_to_run_again() {
     settle(&mut app);
     assert_eq!(
         app.queue.items[0].state,
-        JobState::Failed(Failure {
-            step: None,
-            message: "lock the work directory: another process runs this job".into(),
-            kept_steps: 0,
-        })
+        JobState::Failed(Failure::new(
+            None,
+            "lock the work directory: another process runs this job".into(),
+            Vec::new(),
+        ))
     );
     assert_eq!(app.queue.items[0].rerun, [StepName::Adjudicate]);
     let kept = crate::job_queue::services::queue_store::load(&app.env.queue_path).expect("kept");
@@ -454,6 +493,10 @@ fn a_finished_job_shows_its_report() {
     app.apply(vec![Action::from(JobQueueEvent::Select(id))]);
     let (text, _) = render(&app);
     for expected in [
+        "Dressrosa 12",
+        "0:00 video · finished in 0 s",
+        "Overview",
+        "Check Lines",
         "Passes the quality check",
         "Findings (1)",
         "Blaver!",
@@ -462,6 +505,17 @@ fn a_finished_job_shows_its_report() {
     ] {
         assert!(text.contains(expected), "{expected} not in {text}");
     }
+    // The work folder has no lines to check.
+    app.apply(vec![Action::ShowTab(DetailTab::CheckLines)]);
+    assert_eq!(app.detail_tab(id), DetailTab::Overview);
+    assert!(
+        matches!(app.report, Some((_, Ok(_)))),
+        "the report stays: {:?}",
+        app.report
+    );
+    let (text, _) = render(&app);
+    assert!(text.contains("Check Lines cannot open"), "{text}");
+    assert!(text.contains("Findings (1)"), "{text}");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -490,10 +544,13 @@ fn a_saved_correction_queues_a_review_run_that_runs_at_once() {
     let id = app.queue.items[0].id;
     app.apply(vec![
         Action::from(JobQueueEvent::Select(id)),
-        Action::from(crate::job_report::events::ReportEvent::Review(None)),
+        Action::ShowTab(DetailTab::CheckLines),
     ]);
+    assert_eq!(app.detail_tab(id), DetailTab::CheckLines);
     let (text, _) = render(&app);
     for expected in [
+        "Overview",
+        "Check Lines",
         "Review lines",
         "Blaver!",
         "Parakeet",
@@ -521,11 +578,30 @@ fn a_saved_correction_queues_a_review_run_that_runs_at_once() {
         "the correction run shows on its video's row: {text}"
     );
     let rows = text.lines().filter(|line| *line == "Dressrosa 13").count();
-    assert_eq!(rows, 1, "one row for the video: {text}");
+    assert_eq!(
+        rows, 2,
+        "one row for the video, and the header's title: {text}"
+    );
     settle(&mut app);
     assert!(matches!(app.queue.items[1].state, JobState::Finished(_)));
     let (text, _) = render(&app);
     assert!(text.contains("Subtitles ready"), "{text}");
+    app.apply(vec![Action::ShowTab(DetailTab::Overview)]);
+    assert!(app.review.is_none(), "Overview closes the lines to check");
+    assert_eq!(app.detail_tab(id), DetailTab::Overview);
+    app.apply(vec![Action::ShowTab(DetailTab::CheckLines)]);
+    assert_eq!(app.detail_tab(id), DetailTab::CheckLines);
+    app.apply(vec![Action::from(JobQueueEvent::RunAgain(id))]);
+    assert!(
+        app.queue
+            .get(id)
+            .is_some_and(|item| item.state.is_running()),
+        "run again at once"
+    );
+    assert!(app.review.is_none(), "a job run again leaves Check Lines");
+    let (text, _) = render(&app);
+    assert!(text.contains("Cancel"), "its running view shows: {text}");
+    settle(&mut app);
     let _ = std::fs::remove_dir_all(&root);
 }
 

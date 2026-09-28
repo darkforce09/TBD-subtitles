@@ -10,7 +10,8 @@
 //! JSON files into a scratch folder; writes PNGs only to `$TBD_SNAPSHOTS`, never into the repo.
 //!
 //! **Invariants:** the owner's work folders and videos are only read; the app runs over the
-//! scratch copy with a stand-in runner, and a running job is set by hand, so no job starts.
+//! scratch copy with a stand-in runner, and a running, failed or cancelled job is set by hand, so
+//! no job starts.
 
 use std::path::Path;
 
@@ -18,7 +19,6 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
 
 use super::*;
-use crate::job_queue::models::progress::StepState;
 
 /// The work folders the scenes are built from.
 const EPISODES: [&str; 4] = ["11", "15", "16", "17"];
@@ -48,6 +48,7 @@ fn window_snapshots() {
     finished_scenes(&root, &out, &videos);
     first_run_scene(&root.join("first-run"), &out);
     queue_scenes(&root, &out, &videos);
+    detail_scenes(&root, &out, &videos);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -68,7 +69,7 @@ fn harness(
         })
 }
 
-/// Every video finished: the list, the Dressrosa 15 report, its review and the settings.
+/// Every video finished: the list, the Dressrosa 15 report, its lines to check and the settings.
 fn finished_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
     let videos = videos.to_vec();
     let mut harness = harness(root, move |app| {
@@ -81,7 +82,7 @@ fn finished_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
     shoot(&mut harness, out, "queue");
     harness.get_by_label("[Muhn Pace] Dressrosa 15").click();
     shoot(&mut harness, out, "report");
-    harness.get_by_label("Review lines").click();
+    harness.get_by_label("Check Lines").click();
     shoot(&mut harness, out, "review");
     harness.get_by_label("Settings").click();
     shoot(&mut harness, out, "settings");
@@ -96,39 +97,9 @@ fn first_run_scene(root: &Path, out: &Path) {
 /// A running queue: Dressrosa 16 settling its words, the rest waiting, 15 and 11 done; then a
 /// waiting row's menu, and the toast after it is removed.
 fn queue_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
-    // A queue of its own, not the one the finished scenes kept.
-    let _ = std::fs::remove_dir_all(root.join("data"));
-    let mut queued = videos.to_vec();
-    let folder = root.join("videos");
-    queued.extend(
-        WAITING
-            .iter()
-            .map(|n| folder.join(format!("[Muhn Pace] Dressrosa {n}.mp4"))),
-    );
+    let queued = queued_videos(root, videos);
     let mut harness = harness(root, move |app| {
-        app.settings.items.iter_mut().for_each(|i| i.present = true);
-        app.apply(vec![Action::QueueVideos(queued)]);
-        let now = Instant::now();
-        let id_of = |app: &TbdSubtitlesApp, episode: &str| {
-            let name = format!("[Muhn Pace] Dressrosa {episode}");
-            app.queue
-                .items
-                .iter()
-                .find(|item| item.name() == name)
-                .map(|item| item.id)
-        };
-        for episode in ["11", "15"] {
-            if let Some(item) = id_of(app, episode).and_then(|id| app.queue.get_mut(id)) {
-                item.state = JobState::FinishedBefore;
-            }
-        }
-        let running = id_of(app, "16");
-        if let Some(item) = running.and_then(|id| app.queue.get_mut(id)) {
-            item.state = JobState::Running(Box::new(settling(now)));
-        }
-        app.queue.running = true;
-        // The full lane holds the running job, with no thread behind it.
-        app.cancel = running.map(|id| (id, CancelToken::new()));
+        running_queue(app, queued);
         app.queue.selected = id_of(app, "15");
         app.refresh_report(false);
     });
@@ -137,27 +108,98 @@ fn queue_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
         .get_by_label("[Muhn Pace] Dressrosa 17")
         .click_secondary();
     shoot(&mut harness, out, "row_menu");
-    harness.get_by_label("Remove from List").click();
+    // The menu's command, left of the selected row's card, which offers it too.
+    harness
+        .get_all_by_label("Remove from List")
+        .min_by(|a, b| a.rect().left().total_cmp(&b.rect().left()))
+        .expect("the menu offers Remove from List")
+        .click();
     shoot(&mut harness, out, "undo_toast");
 }
 
-/// A job ten minutes in, its words being settled: every step before done, the rest to run.
-fn settling(now: Instant) -> JobProgress {
-    let mut progress = JobProgress::new(now - Duration::from_secs(600));
-    progress.duration_s = Some(1559.0);
-    for row in &mut progress.steps {
-        row.state = match row.step {
-            StepName::Adjudicate => StepState::Running {
-                started: now - Duration::from_secs(40),
-                done: 3,
-                total: 8,
-                message: Some("batch 4 of 8".into()),
-            },
-            step if step < StepName::Adjudicate => StepState::Done { wall_s: 30.0 },
-            _ => StepState::Pending,
-        };
+/// The detail pane of the running queue: Dressrosa 16 running, 17 next in line, 19 failed while
+/// hearing the speech and 20 cancelled.
+fn detail_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
+    let queued = queued_videos(root, videos);
+    let mut harness = harness(root, move |app| {
+        running_queue(app, queued);
+        if let Some(item) = id_of(app, "19").and_then(|id| app.queue.get_mut(id)) {
+            let finished = [
+                (StepName::ProbeDecode, 7.5),
+                (StepName::ShotScan, 41.0),
+                (StepName::Separation, 190.0),
+                (StepName::Vad, 1.1),
+                (StepName::AsrParakeet, 16.0),
+            ]
+            .map(|(step, seconds)| (step, FinishedStep::Done(Some(seconds))))
+            .to_vec();
+            item.state = JobState::Failed(Failure::new(
+                Some(StepName::AsrWhisper),
+                "the Whisper worker stopped early (exit status 1); its log is \
+                 logs/asr_whisper.log"
+                    .into(),
+                finished,
+            ));
+        }
+        if let Some(item) = id_of(app, "20").and_then(|id| app.queue.get_mut(id)) {
+            item.state = JobState::Cancelled { kept_steps: 9 };
+        }
+    });
+    for (episode, scene) in [
+        ("16", "running_detail"),
+        ("17", "waiting_card"),
+        ("19", "failed_card"),
+        ("20", "cancelled_card"),
+    ] {
+        let id = id_of(harness.state(), episode).expect("the episode is queued");
+        harness
+            .state_mut()
+            .apply(vec![Action::from(JobQueueEvent::Select(id))]);
+        shoot(&mut harness, out, scene);
     }
-    progress
+}
+
+/// The finished videos and the waiting episodes, in a queue of their own rather than the one the
+/// finished scenes kept.
+fn queued_videos(root: &Path, videos: &[PathBuf]) -> Vec<PathBuf> {
+    let _ = std::fs::remove_dir_all(root.join("data"));
+    let mut queued = videos.to_vec();
+    let folder = root.join("videos");
+    queued.extend(
+        WAITING
+            .iter()
+            .map(|n| folder.join(format!("[Muhn Pace] Dressrosa {n}.mp4"))),
+    );
+    queued
+}
+
+/// Queue `queued` with the models on disk, 11 and 15 finished, 16 settling its words, and the
+/// queue running.
+fn running_queue(app: &mut TbdSubtitlesApp, queued: Vec<PathBuf>) {
+    app.settings.items.iter_mut().for_each(|i| i.present = true);
+    app.apply(vec![Action::QueueVideos(queued)]);
+    for episode in ["11", "15"] {
+        if let Some(item) = id_of(app, episode).and_then(|id| app.queue.get_mut(id)) {
+            item.state = JobState::FinishedBefore;
+        }
+    }
+    let running = id_of(app, "16");
+    if let Some(item) = running.and_then(|id| app.queue.get_mut(id)) {
+        item.state = JobState::Running(Box::new(settling(Instant::now())));
+    }
+    app.queue.running = true;
+    // The full lane holds the running job, with no thread behind it.
+    app.cancel = running.map(|id| (id, CancelToken::new()));
+}
+
+/// The job of Dressrosa `episode`.
+fn id_of(app: &TbdSubtitlesApp, episode: &str) -> Option<JobId> {
+    let name = format!("[Muhn Pace] Dressrosa {episode}");
+    app.queue
+        .items
+        .iter()
+        .find(|item| item.name() == name)
+        .map(|item| item.id)
 }
 
 /// Render the scene in light and in dark, as `<scene>_light.png` and `<scene>_dark.png`.

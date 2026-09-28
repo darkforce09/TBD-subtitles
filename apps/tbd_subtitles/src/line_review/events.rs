@@ -25,6 +25,6 @@ pub(crate) enum ReviewEvent {
     ShowAll(bool),
     Play(Sound),
     Stop,
-    /// Leave the review for the job's report.
+    /// Leave the review for the job's report: the Overview tab, or another job selected.
     Close,
 }

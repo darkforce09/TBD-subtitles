@@ -1,9 +1,9 @@
 # Job queue
 
 The feature that runs the videos' jobs: the toolbar across the top of the window, the sidebar of
-videos on the left, the empty list's card and the drop overlay, the selected job's progress on the
-right, the edits of the queue, the thread that runs one job at a time, the time left, and the
-queue kept across windows.
+videos on the left, the empty list's card and the drop overlay, the selected job's cards,
+progress and stages on the right, the edits of the queue, the thread that runs one job at a time,
+the time left, and the queue kept across windows.
 
 ## Contents
 
@@ -12,8 +12,8 @@ apps/tbd_subtitles/src/job_queue/
 ├── events.rs  `JobQueueEvent`: every request of the toolbar, the sidebar and its menus
 ├── mod.rs     the module tree
 ├── models/    the queue and its jobs, the sidebar's rows, a job's progress, the borrowed view
-├── services/  edits, sidebar rows and status lines, the runner, progress, time left, queue.json
-└── ui/        the toolbar, the sidebar, its rows and menus, the empty card, the drop overlay
+├── services/  edits, sidebar rows and status lines, the runner, progress, stages, time left, queue.json
+└── ui/        the toolbar, the sidebar, its rows and menus, the empty card, the drop overlay, job cards
 ```
 
 ## How it works

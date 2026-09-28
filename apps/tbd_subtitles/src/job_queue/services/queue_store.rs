@@ -2,12 +2,14 @@
 //! the window closing.
 //!
 //! **Role:** write each job's video, kind, coarse state, whether it keeps its own settings, the
-//! steps it runs again, its corrections and how it failed, and read them back as a queue.
+//! steps it runs again, its corrections and how it failed with the steps it had finished, and read
+//! them back as a queue; give a failure an older window kept its finished steps from `job.json`.
 //!
 //! **Position:** called by the application after every change of the queue and when the window
 //! opens.
 //!
-//! **Signals and state:** reads and writes `queue.json` (through a part file).
+//! **Signals and state:** reads and writes `queue.json` (through a part file); reads a failed
+//! job's `job.json` in the work folder.
 //!
 //! **Invariants:** a job running when the window closed waits again; a loaded queue does not run
 //! until the owner presses Start; a file written before a field existed still loads, the field
@@ -16,13 +18,15 @@
 use std::path::{Path, PathBuf};
 
 use job_model::StepName;
+use job_model::job::JobRecord;
 use serde::{Deserialize, Serialize};
 
+use crate::job_queue::models::progress::FinishedStep;
 use crate::job_queue::models::queue::{Failure, JobKind, JobState, Queue};
 use crate::job_queue::services::queue_editing;
 
 /// One job as the file keeps it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Stored {
     video: PathBuf,
     /// `waiting`, `finished`, `failed` or `cancelled`; a job running when the window closed is
@@ -46,6 +50,19 @@ struct Stored {
     /// How many finished steps a failed or cancelled job kept.
     #[serde(default)]
     kept_steps: usize,
+    /// The steps a failed job had finished; missing from files older than the list.
+    #[serde(default)]
+    finished: Vec<StoredStep>,
+}
+
+/// A step a failed job had finished: done in its seconds, or still valid from an earlier run.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct StoredStep {
+    step: StepName,
+    #[serde(default)]
+    seconds: Option<f64>,
+    #[serde(default)]
+    still_valid: bool,
 }
 
 /// Write the queue's jobs to `path` (through a part file); finished jobs are kept, so their
@@ -71,6 +88,9 @@ pub(crate) fn save(path: &Path, queue: &Queue) -> Result<(), String> {
                 failed_step: failure.and_then(|f| f.step),
                 message: failure.map(|f| f.message.clone()),
                 kept_steps,
+                finished: failure
+                    .map(|f| f.finished.iter().map(stored_step).collect())
+                    .unwrap_or_default(),
             }
         })
         .collect();
@@ -111,6 +131,7 @@ pub(crate) fn load(path: &Path) -> Result<Queue, String> {
                         .message
                         .unwrap_or_else(|| "failed in an earlier window".to_string()),
                     kept_steps: item.kept_steps,
+                    finished: item.finished.iter().map(finished_step).collect(),
                 }),
                 "cancelled" => JobState::Cancelled {
                     kept_steps: item.kept_steps,
@@ -124,6 +145,74 @@ pub(crate) fn load(path: &Path) -> Result<Queue, String> {
         }
     }
     Ok(queue)
+}
+
+/// Give each failure an older window kept, which knows only how many steps it kept, its finished
+/// steps: the steps before the failed one that its job's `job.json` under `work_root` records,
+/// with their seconds, else the first of them it kept, done in a time not known; it then keeps as
+/// many as it lists.
+pub(crate) fn read_finished_steps(queue: &mut Queue, work_root: &Path) {
+    for item in &mut queue.items {
+        let JobState::Failed(failure) = &mut item.state else {
+            continue;
+        };
+        if !failure.finished.is_empty() || failure.kept_steps == 0 {
+            continue;
+        }
+        let at = failure
+            .step
+            .and_then(|failed| StepName::ALL.iter().position(|&step| step == failed))
+            .unwrap_or(StepName::ALL.len());
+        let before = &StepName::ALL[..at];
+        let record = std::fs::canonicalize(&item.video)
+            .ok()
+            .map(|video| {
+                work_root
+                    .join(pipeline::work_dir::job_id(&video))
+                    .join("job.json")
+            })
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str::<JobRecord>(&text).ok());
+        failure.finished = match record {
+            Some(record) => before
+                .iter()
+                .filter_map(|step| {
+                    let done = record.steps.get(step)?;
+                    Some((*step, FinishedStep::Done(Some(done.measure.wall_s))))
+                })
+                .collect(),
+            None => before
+                .iter()
+                .take(failure.kept_steps)
+                .map(|&step| (step, FinishedStep::Done(None)))
+                .collect(),
+        };
+        failure.kept_steps = failure.finished.len();
+    }
+}
+
+fn stored_step(&(step, finished): &(StepName, FinishedStep)) -> StoredStep {
+    match finished {
+        FinishedStep::Done(seconds) => StoredStep {
+            step,
+            seconds,
+            still_valid: false,
+        },
+        FinishedStep::StillValid => StoredStep {
+            step,
+            seconds: None,
+            still_valid: true,
+        },
+    }
+}
+
+fn finished_step(stored: &StoredStep) -> (StepName, FinishedStep) {
+    let finished = if stored.still_valid {
+        FinishedStep::StillValid
+    } else {
+        FinishedStep::Done(stored.seconds)
+    };
+    (stored.step, finished)
 }
 
 #[cfg(test)]

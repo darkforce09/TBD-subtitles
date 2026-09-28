@@ -32,6 +32,14 @@ fn video_times_read_as_clocks() {
 }
 
 #[test]
+fn a_videos_length_reads_as_minutes_and_seconds_below_an_hour() {
+    assert_eq!(length(1559.4), "25:59");
+    assert_eq!(length(59.6), "1:00");
+    assert_eq!(length(3723.0), "1:02:03");
+    assert_eq!(length(-1.0), "0:00");
+}
+
+#[test]
 fn places_in_line_and_counts_read_as_words() {
     let places: Vec<String> = [1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111]
         .into_iter()

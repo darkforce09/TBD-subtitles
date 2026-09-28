@@ -15,7 +15,7 @@ use std::path::PathBuf;
 
 use job_model::StepName;
 
-use crate::job_queue::models::progress::JobProgress;
+use crate::job_queue::models::progress::{FinishedStep, JobProgress};
 
 /// A job's number in the queue, unique for the window's life.
 pub(crate) type JobId = u64;
@@ -41,13 +41,33 @@ pub(crate) struct JobResult {
 }
 
 /// Why and where a job failed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Failure {
     /// The step that failed; none when the job failed before its first step.
     pub(crate) step: Option<StepName>,
     pub(crate) message: String,
-    /// How many finished steps stay valid, so a retry resumes after them.
+    /// How many finished steps stay valid, so a retry resumes after them: as many as `finished`
+    /// lists, once it is known.
     pub(crate) kept_steps: usize,
+    /// The steps that had finished, in run order; empty for a failure an older window kept until
+    /// it is read from the job's `job.json`.
+    pub(crate) finished: Vec<(StepName, FinishedStep)>,
+}
+
+impl Failure {
+    /// A failure at `step` with `message`, keeping the steps in `finished`.
+    pub(crate) fn new(
+        step: Option<StepName>,
+        message: String,
+        finished: Vec<(StepName, FinishedStep)>,
+    ) -> Failure {
+        Failure {
+            step,
+            message,
+            kept_steps: finished.len(),
+            finished,
+        }
+    }
 }
 
 /// Where a job stands.

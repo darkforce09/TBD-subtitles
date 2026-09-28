@@ -104,6 +104,7 @@ fn a_failed_or_lone_correction_run_keeps_its_own_row() {
             step: None,
             message: "boom".into(),
             kept_steps: 0,
+            finished: Vec::new(),
         });
     }
     let lone = queue_review(&mut q, PathBuf::from("b"));

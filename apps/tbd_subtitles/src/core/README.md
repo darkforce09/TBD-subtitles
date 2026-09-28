@@ -11,14 +11,14 @@ window. It sits below the composition modules and the features, and imports none
 apps/tbd_subtitles/src/core/
 ├── background.rs    `Wake`: how a thread asks the window for a frame
 ├── color_scheme.rs  `Scheme` and `watch`: the desktop's light or dark preference, followed as it changes
-├── format.rs        sizes, durations, rough times left, video clocks, places in line and counts
+├── format.rs        sizes, durations, rough times left, video lengths and clocks, places in line, counts
 ├── logging.rs       `initialise`: the global log subscriber, filtered by `RUST_LOG`, writing to stderr
 ├── mod.rs           the module tree
 ├── portal.rs        the desktop's chooser, opening a file in its program, showing it in the file manager
 ├── steps.rs         the six stages the window shows, and each step's plain title
 ├── tests/           unit tests for the portal's file URIs, the formats, the stages, the scheme, toasts
 ├── toast.rs         `Toast`, `Toasts` and `ToastKind`: short messages at the bottom, with a button
-└── ui/              the palette, fonts and theme, and the buttons, icons and toasts features draw
+└── ui/              the palette, fonts and theme, and the widgets features draw: buttons to toasts
 ```
 
 ## How it works
@@ -40,8 +40,9 @@ the window after each. KDE's colour scheme reaches it as "prefer dark", "prefer 
 preference", and "no preference" is light. A desktop without the portal leaves the window light.
 
 `format` writes the numbers every view shows: sizes as MiB or GiB, durations as `4 min 05 s`, a
-time left loosely (`about 4 min`, `under 2 min`, `a few seconds`), video times as `h:mm:ss` or
-`h:mm:ss.d`, places in line (`2nd`) and counts with their noun (`2 corrections`).
+time left loosely (`about 4 min`, `under 2 min`, `a few seconds`), a video's length as `25:59`
+(`1:02:03` from an hour on), video times as `h:mm:ss` or `h:mm:ss.d`, places in line (`2nd`) and
+counts with their noun (`2 corrections`).
 
 `steps` groups the eighteen pipeline steps into the six stages the window shows, from "Read the
 video" to "Write the subtitles", each with its title and what it does while running ("Settling
@@ -55,7 +56,8 @@ oldest out. The application adds them in `apply`, lets them expire in `poll`, an
 with its action when its button is pressed.
 
 `ui` holds the look and the widgets every feature shares: the palette, the fonts and the theme
-built from them, the buttons, the icons and status marks, and the toasts' drawing. Each feature
+built from them, the buttons, cards, disclosures, progress bars and segmented controls, the icons
+and status marks, and the toasts' drawing. Each feature
 draws its own panels with them, so the window looks the same across features.
 
 ## Public surface
@@ -63,11 +65,11 @@ draws its own panels with them, so the window looks the same across features.
 - `logging::initialise`, called by `apps/tbd_subtitles/src/main.rs`.
 - `background::Wake`; `portal::{choose, open, reveal, Choose, Chosen}`;
   `toast::{Toast, Toasts, ToastKind, ToastId, SHOWN}`.
-- `format::{size, duration, about, clock, clock_tenths, ordinal, plural}`.
+- `format::{size, duration, about, length, clock, clock_tenths, ordinal, plural}`.
 - `steps::{STAGES, Stage, stage_of, step_title}`.
 - `color_scheme::{Scheme, watch}`.
 - `ui::theme::{install, follow}`, `ui::fonts`, `ui::palette::palette`, the shared colours, and
-  the widgets `ui::{button, icons, toast}`.
+  the widgets `ui::{button, card, disclosure, icons, progress, segmented, toast}`.
 
 ## Boundaries
 

@@ -82,7 +82,9 @@ impl TbdSubtitlesApp {
                 bottom: 0,
             }))
             .show(ui, |ui| feature_views::sidebar_ui(ui, self, &mut actions));
-        egui::CentralPanel::default().show(ui, |ui| feature_views::jobs_ui(ui, self, &mut actions));
+        egui::CentralPanel::default()
+            .frame(Frame::new().fill(p.window))
+            .show(ui, |ui| feature_views::jobs_ui(ui, self, &mut actions));
         drop_overlay_ui(&ctx);
         if let Some(id) = toasts_ui(&ctx, self.toasts.shown()) {
             actions.push(Action::ToastButton(id));

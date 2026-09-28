@@ -22,9 +22,10 @@ When the owner selects a finished job, or the selected job ends, the application
 through `services::report_loading::load`: the video's work directory is found as the pipeline
 names it (the canonical path's job id under the work folder), then `job.json` gives the steps'
 measures, `qc.json` the quality check and `output.json` the subtitle file. The view draws it under
-the job's progress on the Jobs page. Open asks the desktop portal, so the video opens in the
-desktop's default player (VLC) and the app starts no program. Review lines opens the line review
-at the first flagged line, and a finding's Review button at the line it names.
+the job's header while its Overview tab shows. Open asks the desktop portal, so the video opens in
+the desktop's default player (VLC) and the app starts no program. The header's Check Lines tab
+opens the line review at the first flagged line, and a finding's Review button at the line it
+names.
 
 ## Public surface
 
