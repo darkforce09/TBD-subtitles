@@ -468,3 +468,35 @@ fn taking_back_a_line_without_a_correction_queues_nothing() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn take_back_stays_on_its_line_in_check_lines_while_the_subtitles_update() {
+    let (mut app, root) = reviewing("lines-take-back");
+    let job = work_dir(&root, &root.join("Dressrosa 14.mp4"));
+    let id = app.queue.selected.expect("a job is selected");
+    app.apply(vec![Action::from(ReviewEvent::Pick("P".into()))]);
+    app.apply(vec![Action::from(ReviewEvent::Save)]);
+    app.apply(vec![Action::from(ReviewEvent::LooksRight)]);
+    settle(&mut app);
+    // Taken back from the Checked list, which no longer shows the line: U1 while U3 stays
+    // corrected, then U3, the last correction, which removes `review.json`.
+    for (line, last) in [("U1", false), ("U3", true)] {
+        app.apply(vec![
+            Action::from(ReviewEvent::List(LineList::Checked)),
+            Action::from(ReviewEvent::Open(line.into())),
+            Action::from(ReviewEvent::Revert(line.into())),
+        ]);
+        assert_eq!(job.join("review.json").exists(), !last, "{line}");
+        assert_eq!(open(&app).as_deref(), Some(line), "still on {line}");
+        let (text, _) = render(&app);
+        assert!(text.contains("Updating subtitles…"), "{line}: {text}");
+        settle(&mut app);
+        assert_eq!(app.detail_tab(id), DetailTab::CheckLines, "{line}");
+        assert_eq!(open(&app).as_deref(), Some(line), "{line} after its run");
+        let (text, _) = render(&app);
+        for expected in [format!("{line} · 1.5 s"), "Subtitles updated".into()] {
+            assert!(text.contains(&expected), "{expected} not in {text}");
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}

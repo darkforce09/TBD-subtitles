@@ -165,7 +165,13 @@ fn reverting_the_last_correction_removes_the_file_and_waits_for_a_run() {
         Some(RunState::Saved),
         "taken back, it is timed again"
     );
-    assert_eq!(s.open, None, "the checked list is empty now");
+    assert_eq!(
+        s.open.as_deref(),
+        Some("U1"),
+        "the editor stays on the line"
+    );
+    assert_eq!(s.list, LineList::All, "the checked list no longer shows it");
+    assert_eq!(s.run_shown(), Some(RunState::Saved));
 }
 
 #[test]

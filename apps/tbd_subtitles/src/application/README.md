@@ -175,10 +175,11 @@ everything onto disk (the frame asks for a redraw when it goes).
     video's review run runs (`a_full_run_waits_while_its_videos_review_run_runs`);
   - Check Lines opens on the first line to check with its list, why, clip, readings, text box,
     flags and Looks Right; Use edits the line and Save moves on while the status chip goes from
-    Updating subtitles… to Subtitles updated; Looks Right keeps the language model's reading until
-    every line is checked; a group on the Overview narrows the list to it; an edit waits while
-    Check Lines is closed; and the keys save, keep, play and move through the lines, but not while
-    typing (`tests/rendering_review.rs`);
+    Updating subtitles… to Subtitles updated; Take Back, also from the Checked list and of the
+    last correction, stays on its line while its chip does the same; Looks Right keeps the
+    language model's reading until every line is checked; a group on the Overview narrows the
+    list to it; an edit waits while Check Lines is closed; and the keys save, keep, play and move
+    through the lines, but not while typing (`tests/rendering_review.rs`);
   - a running job shows its length and time so far, Cancel (or "Stopping…"), what its stage does,
     "step 9 of 18", the time left (or that it is being worked out) and its stages with "Show all
     18 steps"; a waiting job its place and when it starts; a job that failed before its first step

@@ -207,7 +207,8 @@ list and the line editor side by side.
      the review step re-times the saved lines alone on the CPU ─▶ cues ─▶ quality check ─▶ output
   status chip:  Saved ─▶ Updating subtitles… ─▶ Subtitles updated   (or Subtitles not updated)
   sidebar row:  "Updating subtitles · 1 correction" until it ends
-  Take Back on a checked line returns it to the app's reading, with a correction run of its own
+  Take Back on a checked line returns it to the app's reading, with a correction run of its own;
+  the line stays open (the list shows All once Checked no longer holds it) and its chip follows
 ```
 
 An edit not saved, and the status chip of a saved line, stay while the window is open, also when

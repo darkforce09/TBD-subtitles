@@ -15,6 +15,7 @@
 //! carries `UNSURE`; an empty text is saved only for a line the owner drops; a draft lives only
 //! while it differs from what its line has saved, and survives opening other lines and reading
 //! the lines again; a save moves on to the next line of the list, or stays on the last; a line
+//! taken back stays open, the list showing every line when its own no longer shows it; a line
 //! with no correction has nothing to take back; a closed review keeps its drafts and runs.
 
 use std::collections::BTreeMap;
@@ -23,7 +24,8 @@ use std::path::Path;
 use job_model::outputs::{Chosen, Correction, Corrections};
 
 use crate::line_review::models::session::{
-    Draft, LineStatus, Parked, ReviewLine, ReviewSession, RunState, same_flags, without_unsure,
+    Draft, LineList, LineStatus, Parked, ReviewLine, ReviewSession, RunState, same_flags,
+    without_unsure,
 };
 use crate::line_review::services::line_filter;
 
@@ -170,8 +172,10 @@ fn commit(session: &mut ReviewSession, correction: Correction) -> Result<Option<
     Ok(next)
 }
 
-/// Take back the correction of line `id` and write `review.json`; the editor stays on the line
-/// while the list shows it. Whether there was a correction to take back.
+/// Take back the correction of line `id` and write `review.json`; the editor stays on the line,
+/// on the list of every line when its list (Checked) no longer shows it, so its run's status
+/// shows. Only a search that no longer matches moves it on. Whether there was a correction to
+/// take back.
 pub(crate) fn revert(session: &mut ReviewSession, id: &str) -> Result<bool, String> {
     let at = place(session, id);
     let mut corrections = session.corrections.clone();
@@ -182,10 +186,16 @@ pub(crate) fn revert(session: &mut ReviewSession, id: &str) -> Result<bool, Stri
     session.corrections = corrections;
     session.drafts.remove(id);
     mark_saved(session, id);
-    let shown = line_filter::shown(session).iter().any(|line| line.id == id);
-    if !shown {
-        session.open = after(session, id, at);
+    let shown = |session: &ReviewSession| line_filter::shown(session).iter().any(|l| l.id == id);
+    if !shown(session) {
+        let list = std::mem::replace(&mut session.list, LineList::All);
+        if !shown(session) {
+            session.list = list;
+            session.open = after(session, id, at);
+            return Ok(true);
+        }
     }
+    session.open = Some(id.to_string());
     Ok(true)
 }
 

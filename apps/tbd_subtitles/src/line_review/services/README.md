@@ -41,12 +41,15 @@ settled text, or typed), drops `UNSURE`, refuses an empty text unless the line i
 writes the whole file through a part file; `looks_right` saves the line unchanged as the
 language model's reading. Both mark the line Saved and return the next line of the list, which
 they open: the one after it when the list still shows it (the line itself when it is the last),
-else the one now in its place. Taking back the last correction removes the file; a line with no
-correction has nothing to take back (`revert` says so). `run_started` turns Saved and Failed
-lines to Updating and `run_ended` Updating ones to Updated or Failed (`start_runs` and `end_runs`
-do the same for a closed review's runs); `carry_over` keeps the open line, the list, the search,
-the group, the runs and the drafts still worth keeping when the lines are read again, and `park`
-and `unpark` keep a closed review's drafts and runs until it opens again.
+else the one now in its place. `revert` keeps the line it takes back open, so its run's status
+shows: when its list (Checked) no longer shows it, the list becomes All, and only a search that
+no longer matches its text moves the editor on. Taking back the last correction removes the
+file; a line with no correction has nothing to take back (`revert` says so). `run_started`
+turns Saved and Failed lines to Updating and `run_ended` Updating ones to Updated or Failed
+(`start_runs` and `end_runs` do the same for a closed review's runs); `carry_over` keeps the open
+line, the list, the search, the group, the runs and the drafts still worth keeping when the
+lines are read again, and `park` and `unpark` keep a closed review's drafts and runs until it
+opens again.
 
 `clip_player::play` runs both FFmpeg processes from a thread that waits for them, paces the
 frames at 12 per second from one start clock taken before either process spawns, and stops both
@@ -72,11 +75,13 @@ frame carries a serial, so the view uploads each once.
   - every reading of a line is gathered in sheet order, with its groups
     (`every_reading_of_a_line_is_gathered_in_sheet_order` in `tests/review_loading.rs`);
   - a draft survives switching lines, a save moves on, Looks Right saves the language model's
-    reading, the last line of a list that keeps it stays open, nothing is taken back from a line
-    without a correction, and the runs move Saved → Updating → Updated or Failed
+    reading, the last line of a list that keeps it stays open, a line taken back stays open,
+    nothing is taken back from a line without a correction, and the runs move Saved → Updating →
+    Updated or Failed
     (`a_draft_survives_switching_lines_and_goes_when_it_matches_again`,
     `a_picked_reading_is_saved_as_that_engines_and_the_list_moves_on`,
     `looks_right_saves_the_language_models_text_unchanged`,
+    `reverting_the_last_correction_removes_the_file_and_waits_for_a_run`,
     `a_saved_line_follows_its_correction_run`,
     `saving_the_last_line_of_a_list_that_keeps_it_stays_on_it`,
     `nothing_is_taken_back_from_a_line_without_a_correction`,
