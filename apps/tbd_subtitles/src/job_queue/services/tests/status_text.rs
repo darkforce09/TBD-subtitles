@@ -319,3 +319,37 @@ fn a_job_tried_again_starts_at_once_only_when_its_lane_and_video_are_idle() {
         "It goes first in line and waits for Start Queue."
     );
 }
+
+#[test]
+fn a_correction_run_tried_again_starts_at_once_while_a_review_lane_is_idle() {
+    let names: Vec<String> = (0..=REVIEW_LANES).map(|n| format!("v{n}")).collect();
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut q = queue(&names);
+    let reviews: Vec<JobId> = names
+        .iter()
+        .map(|name| queue_review(&mut q, PathBuf::from(name), 1))
+        .collect();
+    let run = |q: &mut Queue, id| {
+        if let Some(item) = q.get_mut(id) {
+            item.state = JobState::Running(Box::new(JobProgress::new(Instant::now())));
+        }
+    };
+    if let Some(item) = q.get_mut(reviews[0]) {
+        item.state = JobState::Cancelled { kept_steps: 1 };
+    }
+    for &id in &reviews[1..REVIEW_LANES] {
+        run(&mut q, id);
+    }
+    let cancelled = q.get(reviews[0]).expect("the cancelled run").clone();
+    assert_eq!(
+        try_again_start(&q, &cancelled, false),
+        "It starts at once.",
+        "three correction runs leave a lane idle"
+    );
+    run(&mut q, reviews[REVIEW_LANES]);
+    assert_eq!(
+        try_again_start(&q, &cancelled, false),
+        "It runs next, when the current video finishes.",
+        "four fill every lane"
+    );
+}

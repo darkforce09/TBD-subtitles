@@ -1,12 +1,12 @@
 //! Running the queue's jobs: starting the next job of each lane with its options, and folding the
 //! job runners' events in.
 //!
-//! **Role:** hand the next waiting job of each lane to its runner when nothing in that lane runs,
-//! build the job's options, empty its steps to run again once the pipeline has recorded them, and
-//! record how each job ends: finished, cancelled with the steps it kept, or failed at a step with
-//! the steps it kept, moving it ahead of the jobs that ended before it; tell the open line review
-//! when a review run of its video starts and ends, and Fix It when one ends, once the summaries
-//! and the report are read again.
+//! **Role:** hand the next waiting full run to the full runner when no full run runs, and waiting
+//! review runs to the review lanes while one is idle; build the job's options, empty its steps to
+//! run again once the pipeline has recorded them, and record how each job ends: finished,
+//! cancelled with the steps it kept, or failed at a step with the steps it kept, moving it ahead
+//! of the jobs that ended before it; tell the open line review when a review run of its video
+//! starts and ends, and Fix It when one ends, once the summaries and the report are read again.
 //!
 //! **Position:** called by `application::TbdSubtitlesApp::apply` (through the queue and review
 //! actions) and before each frame; uses `job_queue::services` and the settings.
@@ -14,12 +14,13 @@
 //! **Signals and state:** the queue, the running jobs' cancel tokens, the step rates, and the
 //! summaries of the rows of a video whose run ended; writes `queue.json` after every change.
 //!
-//! **Invariants:** at most one full run and one review run run at once, each on its own runner;
-//! no job starts while a model is missing; a job started at once (Try Again, Run Again) leaves
-//! the queue off, and a pause ends once the full lane is idle; a run of a video never starts
-//! while a run of the other kind of the same video runs or Fix It fixes it, and a waiting full
-//! run holds its lane meanwhile; a job takes the settings saved now until it has started once, and its own
-//! `job.json` settings after that, as a review run always does.
+//! **Invariants:** at most one full run runs at once, on its own runner, and up to four review
+//! runs, each on its own review lane (`REVIEW_LANES`), never two of the same video; no job starts
+//! while a model is missing; a job started at once (Try Again, Run Again) leaves the queue off,
+//! and a pause ends once the full lane is idle; a run of a video never starts while another run
+//! of the same video runs or Fix It fixes it, and a waiting full run holds its lane meanwhile; a
+//! job takes the settings saved now until it has started once, and its own `job.json` settings
+//! after that, as a review run always does.
 
 use std::path::Path;
 use std::time::Instant;
@@ -38,8 +39,8 @@ use crate::settings::services::job_settings;
 
 impl TbdSubtitlesApp {
     /// Hand the next job of each lane to its runner: the first waiting full run when the queue
-    /// runs, no full run does, and no review run or Fix It of its video does; the first waiting
-    /// review run whose video no full run and no Fix It holds, when no review run runs.
+    /// runs, no full run does, and no review run or Fix It of its video does; then, while a
+    /// review lane is idle, the first waiting review run whose video no run and no Fix It holds.
     pub(crate) fn start_next(&mut self) {
         if self.cancel.is_none() {
             self.queue.pausing = false;
@@ -50,16 +51,22 @@ impl TbdSubtitlesApp {
         if self.queue.running && self.cancel.is_none() {
             match queue_editing::next_waiting(&self.queue, JobKind::Full) {
                 Some(id) if self.video_running(id, JobKind::Review) || self.video_fixing(id) => {}
-                Some(id) => self.cancel = self.start(id),
+                Some(id) => self.start(id),
                 None => self.queue.running = false,
             }
         }
-        let startable = |id| !self.video_running(id, JobKind::Full) && !self.video_fixing(id);
-        if self.review_cancel.is_none()
-            && let Some(id) =
-                queue_editing::first_startable(&self.queue, JobKind::Review, startable)
-        {
-            self.review_cancel = self.start(id);
+        // Each pass starts or fails one waiting run, so the loop ends.
+        while self.review_lanes.free() {
+            let startable = |id| {
+                !self.video_running(id, JobKind::Full)
+                    && !self.video_running(id, JobKind::Review)
+                    && !self.video_fixing(id)
+            };
+            let Some(id) = queue_editing::first_startable(&self.queue, JobKind::Review, startable)
+            else {
+                break;
+            };
+            self.start(id);
         }
     }
 
@@ -73,7 +80,7 @@ impl TbdSubtitlesApp {
             Some(JobKind::Full) => {
                 let held = self.video_running(id, JobKind::Review) || self.video_fixing(id);
                 if self.cancel.is_none() && !held {
-                    self.cancel = self.start(id);
+                    self.start(id);
                 }
             }
             Some(JobKind::Review) => self.start_next(),
@@ -95,13 +102,16 @@ impl TbdSubtitlesApp {
             .any(|item| &item.video == video && item.kind == kind && item.state.is_running())
     }
 
-    /// Start job `id` on its lane's runner; the job and its cancel token when it started. From
-    /// now on the job keeps its own settings; its steps to run again stay until the pipeline has
-    /// recorded them (`poll_runner`).
-    fn start(&mut self, id: JobId) -> Option<(JobId, CancelToken)> {
+    /// Start job `id` on its lane's runner, which holds it with its cancel token: the full
+    /// runner, or an idle review lane. Either way the job no longer waits: it runs, or it failed
+    /// to start. From now on the job keeps its own settings; its steps to run again stay until
+    /// the pipeline has recorded them (`poll_runner`).
+    fn start(&mut self, id: JobId) {
         let token = CancelToken::new();
         let options = self.options(id, token.clone());
-        let item = self.queue.get_mut(id)?;
+        let Some(item) = self.queue.get_mut(id) else {
+            return;
+        };
         let options = match options {
             Ok(options) => options,
             Err(error) => {
@@ -113,7 +123,7 @@ impl TbdSubtitlesApp {
                     self.review_run_started(&video);
                     self.review_run_ended(&video, false);
                 }
-                return None;
+                return;
             }
         };
         item.state = JobState::Running(Box::new(JobProgress::new(Instant::now())));
@@ -125,26 +135,27 @@ impl TbdSubtitlesApp {
             options,
         };
         let video = command.video.clone();
-        let runner = match kind {
-            JobKind::Full => &self.runner,
-            JobKind::Review => &self.review_runner,
+        let started = match kind {
+            JobKind::Full => {
+                let started = self.runner.run(command);
+                if started.is_ok() {
+                    self.cancel = Some((id, token));
+                }
+                started
+            }
+            JobKind::Review => self.review_lanes.run(id, command, token),
         };
-        let started = runner.run(command);
         self.save_queue();
         if kind == JobKind::Review {
             self.review_run_started(&video);
         }
-        match started {
-            Ok(()) => Some((id, token)),
-            Err(message) => {
-                if let Some(item) = self.queue.get_mut(id) {
-                    item.state = JobState::Failed(Failure::new(None, message, Vec::new()));
-                }
-                queue_editing::newest_ended_first(&mut self.queue, id);
-                if kind == JobKind::Review {
-                    self.review_run_ended(&video, false);
-                }
-                None
+        if let Err(message) = started {
+            if let Some(item) = self.queue.get_mut(id) {
+                item.state = JobState::Failed(Failure::new(None, message, Vec::new()));
+            }
+            queue_editing::newest_ended_first(&mut self.queue, id);
+            if kind == JobKind::Review {
+                self.review_run_ended(&video, false);
             }
         }
     }
@@ -187,15 +198,14 @@ pub(crate) fn recorded_settings(work_root: &Path, video: &Path) -> Option<JobSet
     Some(record.settings)
 }
 
-/// Fold what both job runners sent into the queue, and start the next job when one ended.
+/// Fold what the full runner and the review lanes sent into the queue, and start the next jobs
+/// when one ended.
 pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
     let mut events = Vec::new();
     while let Ok(event) = app.runner.events.try_recv() {
         events.push(event);
     }
-    while let Ok(event) = app.review_runner.events.try_recv() {
-        events.push(event);
-    }
+    app.review_lanes.drain(&mut events);
     let (mut ended, mut recorded) = (false, false);
     let mut ended_videos = Vec::new();
     let mut reviewed = Vec::new();
@@ -247,11 +257,14 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
                     ended_videos.push(item.video.clone());
                 }
                 queue_editing::newest_ended_first(&mut app.queue, id);
-                for lane in [&mut app.cancel, &mut app.review_cancel] {
-                    if lane.as_ref().is_some_and(|(running, _)| *running == id) {
-                        *lane = None;
-                    }
+                if app
+                    .cancel
+                    .as_ref()
+                    .is_some_and(|(running, _)| *running == id)
+                {
+                    app.cancel = None;
                 }
+                app.review_lanes.release(id);
                 ended = true;
             }
         }

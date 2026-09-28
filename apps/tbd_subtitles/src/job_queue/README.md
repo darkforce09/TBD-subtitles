@@ -37,9 +37,10 @@ paused while a full run still runs; it counts full runs only, since correction r
 themselves. Pressing Start runs the waiting full runs in order, one at a time, on their runner's
 long-lived thread, and the queue stops when none is left or after the running video once paused.
 A review run (a correction run), queued when the owner saves a correction and counting each
-correction saved while it waits, runs at once on a second runner, unless a full run of the same
-video is running; only its review step and the steps after it run. Both lanes live in one process,
-so the job lock does not keep them apart: a full run whose video has a review run running waits,
+correction saved while it waits, runs at once on one of four review lanes, each a runner of its
+own, unless a run of the same video is running; only its review step and the steps after it run,
+and up to four correction runs of different videos run at once. Every lane lives in one process, so
+the job lock does not keep them apart: a full run whose video has a review run running waits,
 and the full lane waits with it. No job starts while a model or runtime archive is missing.
 
 The sidebar shows one row per video in the sections Now, Up Next and Done (the newest ended job
@@ -99,9 +100,11 @@ after every change: a job running when the window closed waits again next time.
   - `models/` and `services/` never name egui or eframe, and the feature imports neither
     `application` nor `cli` (`dependency_boundaries_and_external_test_placement_are_enforced` in
     `apps/tbd_subtitles/src/tests/architecture_rules.rs`);
-  - one full run runs at a time, a review run starts at once, and none while a model is missing
+  - one full run runs at a time, a review run starts at once, up to four of different videos run
+    at once, and none while a model is missing
     (`started_jobs_run_one_after_another_and_the_queue_is_kept`,
     `a_saved_correction_queues_a_review_run_that_runs_at_once`,
+    `four_correction_runs_run_at_once_but_never_two_of_one_video`,
     `no_job_starts_while_a_model_is_missing` in `apps/tbd_subtitles/src/application/tests/rendering.rs`);
   - review runs wait in their own lane and one video has at most one waiting
     (`review_runs_wait_in_their_own_lane_and_are_queued_once` in `services/tests/queue_editing.rs`);

@@ -24,8 +24,10 @@ use crate::settings::models::app_settings::AppSettings;
 use crate::settings::models::page::{Field, FieldError, SettingsPage};
 use crate::settings::services::{job_settings, settings_file};
 
-/// How many language-model processes may run at once, and the shot cut scores allowed.
+/// How many language-model processes may run at once, how many `claude` calls Fix It may make at
+/// once, and the shot cut scores allowed.
 pub(crate) const PROCESSES: RangeInclusive<usize> = 1..=16;
+pub(crate) const FIX_CALLS: RangeInclusive<usize> = 1..=100;
 pub(crate) const CUT_SCORES: RangeInclusive<f64> = 1.0..=100.0;
 
 /// What a written edit makes stale.
@@ -116,6 +118,10 @@ fn out_of_bounds(page: &SettingsPage, field: Field, edited: &AppSettings) -> Opt
             "Processes at once",
             format!("{} to {}", PROCESSES.start(), PROCESSES.end()),
         )),
+        Field::FixCalls if !FIX_CALLS.contains(&edited.language_model.fix_calls) => Some(range(
+            "Claude calls at once",
+            format!("{} to {}", FIX_CALLS.start(), FIX_CALLS.end()),
+        )),
         Field::CutScore
             if !(edited.cut_score.is_finite() && CUT_SCORES.contains(&edited.cut_score)) =>
         {
@@ -183,6 +189,14 @@ pub(crate) fn changed_field(before: &AppSettings, after: &AppSettings) -> Option
         (
             b.language_model.fix_model != a.language_model.fix_model,
             Field::FixModel,
+        ),
+        (
+            b.language_model.fix_calls != a.language_model.fix_calls,
+            Field::FixCalls,
+        ),
+        (
+            b.language_model.fix_after_run != a.language_model.fix_after_run,
+            Field::FixAfterRun,
         ),
         (
             b.language_model.processes != a.language_model.processes,

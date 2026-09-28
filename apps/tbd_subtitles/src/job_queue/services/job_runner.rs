@@ -3,8 +3,9 @@
 //! **Role:** own one long-lived thread that runs each job it is handed through the pipeline's
 //! `run_job` (or a stand-in in the tests), forwarding every progress event and the outcome.
 //!
-//! **Position:** started by the application when the window opens; handed jobs by the
-//! application's queue actions, which also cancel them through each job's `CancelToken`.
+//! **Position:** started by the application when the window opens, once for full runs and four
+//! times through `review_lanes` for correction runs; handed jobs by the application's queue
+//! actions, which also cancel them through each job's `CancelToken`.
 //!
 //! **Signals and state:** a command channel in and an event channel out; the runner thread
 //! starts the job's worker processes, which die with it. Each event and each end is also logged
@@ -65,12 +66,12 @@ impl JobRunner {
     }
 }
 
-/// Start the runner thread; `wake` runs after each event it sends.
-pub(crate) fn start(run: RunJob, wake: Wake) -> JobRunner {
+/// Start the runner thread, named `name`; `wake` runs after each event it sends.
+pub(crate) fn start(name: &str, run: RunJob, wake: Wake) -> JobRunner {
     let (commands, inbox) = channel::<Command>();
     let (send, events) = channel();
     std::thread::Builder::new()
-        .name("job-runner".to_string())
+        .name(name.to_string())
         .spawn(move || {
             for command in inbox {
                 let id = command.id;

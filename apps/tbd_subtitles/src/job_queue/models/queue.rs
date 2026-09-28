@@ -8,8 +8,9 @@
 //!
 //! **Signals and state:** none; plain data.
 //!
-//! **Invariants:** ids are never reused in one window; at most one job runs in each lane, one
-//! full run and one review run; a job that has started keeps its own settings.
+//! **Invariants:** ids are never reused in one window; at most one full run runs, and up to four
+//! review runs of different videos (one in each review lane); a job that has started keeps its
+//! own settings.
 
 use std::path::PathBuf;
 

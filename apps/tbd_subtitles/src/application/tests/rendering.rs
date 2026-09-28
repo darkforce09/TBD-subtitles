@@ -1,4 +1,5 @@
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use job_model::StepName;
@@ -391,18 +392,18 @@ fn a_full_run_waits_while_its_videos_review_run_runs() {
     let mut app = app("guard", vec![PathBuf::from("a.mp4")]);
     app.settings.items.iter_mut().for_each(|i| i.present = true);
     let review = queue_editing::queue_review(&mut app.queue, PathBuf::from("a.mp4"), 1);
-    // The review lane holds the review run, with no thread behind it.
+    // A review lane holds the review run, with no thread behind it.
     if let Some(item) = app.queue.get_mut(review) {
         item.state = JobState::Running(Box::new(JobProgress::new(Instant::now())));
     }
-    app.review_cancel = Some((review, CancelToken::new()));
+    assert!(app.review_lanes.hold(review, CancelToken::new()));
     app.apply(vec![Action::from(JobQueueEvent::Start)]);
     assert!(app.queue.items[0].state.is_waiting(), "the full run waits");
     assert!(app.queue.running, "and holds its lane");
     if let Some(item) = app.queue.get_mut(review) {
         item.state = JobState::FinishedBefore;
     }
-    app.review_cancel = None;
+    app.review_lanes.release(review);
     app.start_next();
     assert!(
         app.queue.items[0].state.is_running(),
@@ -410,6 +411,95 @@ fn a_full_run_waits_while_its_videos_review_run_runs() {
     );
     settle(&mut app);
     assert!(matches!(app.queue.items[0].state, JobState::Finished(_)));
+}
+
+/// A stand-in correction run that runs until `release` is set, or ends cancelled when its token
+/// is.
+fn held_until(release: Arc<AtomicBool>) -> RunJob {
+    Arc::new(move |video, options, progress| {
+        progress(Progress::StepStarted(StepName::Cues));
+        while !release.load(Ordering::SeqCst) {
+            if options.cancel.is_cancelled() {
+                return Err(PipelineError::cancelled("step cues"));
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Ok(JobOutcome {
+            work_dir: options.work_root.join("job"),
+            subtitles: video.with_extension("srt"),
+            report: options.work_root.join("job").join("report.md"),
+            qc: QcReport::default(),
+            ran: vec![StepName::Cues],
+            skipped: Vec::new(),
+        })
+    })
+}
+
+#[test]
+fn four_correction_runs_run_at_once_but_never_two_of_one_video() {
+    let release = Arc::new(AtomicBool::new(false));
+    let videos: Vec<PathBuf> = (1..=5)
+        .map(|n| PathBuf::from(format!("/v/Dressrosa {n}.mp4")))
+        .collect();
+    let mut app = app_with("four-lanes", videos.clone(), held_until(release.clone()));
+    app.settings.items.iter_mut().for_each(|i| i.present = true);
+    for item in &mut app.queue.items {
+        item.state = JobState::FinishedBefore;
+    }
+    let reviews: Vec<JobId> = videos
+        .iter()
+        .map(|video| queue_editing::queue_review(&mut app.queue, video.clone(), 1))
+        .collect();
+    app.start_next();
+    let running = |app: &TbdSubtitlesApp, id| {
+        app.queue
+            .get(id)
+            .is_some_and(|item| item.state.is_running())
+    };
+    for &id in &reviews[..4] {
+        assert!(running(&app, id), "run {id} runs");
+    }
+    assert!(
+        app.queue
+            .get(reviews[4])
+            .is_some_and(|i| i.state.is_waiting())
+    );
+    assert!(!app.review_lanes.free(), "the fifth waits for a lane");
+    // A second correction run of a video whose run runs waits, even with lanes free.
+    let again = queue_editing::queue_review(&mut app.queue, videos[0].clone(), 1);
+    assert_ne!(again, reviews[0]);
+    app.apply(vec![
+        Action::from(JobQueueEvent::Cancel(reviews[1])),
+        Action::from(JobQueueEvent::Cancel(reviews[2])),
+    ]);
+    for _ in 0..500 {
+        app.poll();
+        let cancelled = |id| {
+            app.queue
+                .get(id)
+                .is_some_and(|i| matches!(i.state, JobState::Cancelled { .. }))
+        };
+        if cancelled(reviews[1]) && cancelled(reviews[2]) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(running(&app, reviews[4]), "the fifth takes a freed lane");
+    assert!(app.review_lanes.free(), "a lane is free");
+    assert!(
+        app.queue.get(again).is_some_and(|i| i.state.is_waiting()),
+        "yet the second run of Dressrosa 1 waits"
+    );
+    release.store(true, Ordering::SeqCst);
+    settle(&mut app);
+    for id in [reviews[0], reviews[3], reviews[4], again] {
+        assert!(
+            app.queue
+                .get(id)
+                .is_some_and(|i| matches!(i.state, JobState::Finished(_))),
+            "run {id} finished"
+        );
+    }
 }
 
 #[test]

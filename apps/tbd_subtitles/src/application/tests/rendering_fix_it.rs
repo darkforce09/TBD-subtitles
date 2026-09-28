@@ -492,7 +492,7 @@ fn fix_it_is_off_while_the_video_s_subtitles_are_updated_and_hidden_with_nothing
         waiting_fix(Arc::new(AtomicBool::new(true))),
     );
     app.queue.running = false;
-    app.review_cancel = Some((id, pipeline::CancelToken::new()));
+    assert!(app.review_lanes.hold(id, pipeline::CancelToken::new()));
     let video = app.queue.items[0].video.clone();
     queue_editing::queue_review(&mut app.queue, video.clone(), 1);
     let (text, _) = render(&app);

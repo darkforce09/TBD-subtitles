@@ -59,6 +59,8 @@ pub(crate) enum Field {
     Whisper,
     Model,
     FixModel,
+    FixCalls,
+    FixAfterRun,
     Processes,
     CutScore,
 }

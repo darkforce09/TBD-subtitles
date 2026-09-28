@@ -52,7 +52,8 @@ pub(crate) struct Engines {
 }
 
 /// The program that settles the text and fixes flagged lines: the backend, the model a run asks,
-/// the model Fix It asks, and how many run at once.
+/// the model Fix It asks, how many run at once in a run and in Fix It, and whether Fix It follows
+/// each run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(crate) struct LanguageModel {
@@ -64,6 +65,10 @@ pub(crate) struct LanguageModel {
     pub(crate) fix_model: String,
     /// How many backend processes run at once.
     pub(crate) processes: usize,
+    /// How many `claude` calls Fix It makes at once across every video it fixes.
+    pub(crate) fix_calls: usize,
+    /// Whether Fix It starts on each video when its full run finishes.
+    pub(crate) fix_after_run: bool,
 }
 
 /// The language-model backends the app runs.
@@ -105,6 +110,8 @@ impl Default for LanguageModel {
             model: "sonnet".to_string(),
             fix_model: "opus".to_string(),
             processes: 8,
+            fix_calls: 32,
+            fix_after_run: false,
         }
     }
 }

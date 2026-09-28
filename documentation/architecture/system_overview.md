@@ -33,7 +33,9 @@ each job's report and lets the owner review and correct its flagged lines
                  <video folder>/<video base name>.srt
 ```
 
-- **gui** — the eframe desktop app ([GUI feature](/documentation/features/gui.md)).
+- **gui** — the eframe desktop app ([GUI feature](/documentation/features/gui.md)). It runs one
+  full job at a time and, beside it, up to four correction runs of different videos at once, each
+  on a runner thread of its own; a correction run's one model step, `review`, runs on the CPU.
 - **process** — headless run for one or more files; used by the Dolphin entry and watch folders
   ([automation](/documentation/features/automation.md)).
 - **worker `<step>`** — one step in its own process: it loads its model once, processes the whole
@@ -129,8 +131,9 @@ No model conversion ever happens locally.
 The settings file `~/.config/tbd-subtitles/settings.toml` (TOML; `XDG_CONFIG_HOME` moves it)
 holds the owner's choices: the models folder, the work folder, the glossary (the built-in One
 Piece glossary by default), the separator and Whisper model, the language-model backend, the
-model a run asks and the one Fix It asks, the process count, the cut score and the output
-format. A missing file means the defaults; an
+model a run asks and the one Fix It asks, the process count, how many `claude` calls Fix It makes
+at once across every video, whether Fix It starts on each video when its job finishes, the cut
+score and the output format. A missing file means the defaults; an
 unknown key or a bad value stops the run with its name. The window edits the file and the command
 line reads it; `tbd-subtitles process --help` lists the options that win over it for one run,
 plus the audio track and the steps to run again. The job record keeps the job's settings in

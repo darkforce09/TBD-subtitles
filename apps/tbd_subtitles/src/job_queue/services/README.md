@@ -1,7 +1,7 @@
 # Job queue services
 
 The queue logic, with no rendering code: editing the queue, the sidebar's rows and their status
-lines, the detail pane's words for the selected job, the thread that runs its jobs, following
+lines, the detail pane's words for the selected job, the threads that run its jobs, following
 their progress, a job's six stages, the time left, and the queue kept across windows.
 
 ## Contents
@@ -14,6 +14,7 @@ apps/tbd_subtitles/src/job_queue/services/
 ├── progress_tracking.rs  a runner event folded into the running job's progress
 ├── queue_editing.rs      add, remove and restore, move, try and run again, the next job, the button
 ├── queue_store.rs        `queue.json`: the queue written after each change and read at start
+├── review_lanes.rs       four runners for correction runs, each holding one run and its cancel token
 ├── sidebar_rows.rs       one row per video in Now, Up Next and Done, correction runs folded in
 ├── stage_progress.rs     six stage rows, each with its steps, from the step states or the failure
 ├── status_text.rs        a row's status line, the detail pane's line, when a job starts
@@ -40,7 +41,7 @@ both even while a model is missing, else Start Queue (with the reason it is off:
 models first", "Nothing is waiting", "Add videos to start"). `next_waiting(queue, kind)` names the
 job that runs next in a lane: full runs in queue order, review runs in theirs;
 `first_startable(queue, kind, startable)` the first waiting one the application lets start (the
-review lane skips a video a full run or Fix It holds); `queue_review` queues a video's review run
+review lanes skip a video another run or Fix It holds); `queue_review` queues a video's review run
 carrying the corrections it is given (one per save, or every line a Fix It run changed), or adds
 them to the one that already waits.
 
@@ -67,7 +68,8 @@ failed or cancelled job; `place_in_line` counts a waiting job's place among the 
 kind; `waiting_start` says when a waiting job starts (a correction run as soon as its video is
 free; a full run after the current video, after the videos before it, or on Start Queue; either
 once the models are on disk), and `try_again_start` when an ended
-job tried again now would: at once when its lane is idle and its video runs nothing else, next
+job tried again now would: at once when its lane is idle (for a correction run, fewer than four
+run) and its video runs nothing else, next
 while the queue runs (a correction run always), else first in line waiting for Start Queue, and
 never before the models are on disk. `stage_progress::running` turns a running job's step states
 into the six stages of `core::steps`, each with its steps' lines: kept (skipped, or not stale),
@@ -83,10 +85,13 @@ video's details are read. A failed job's stages come from its `Failure`'s finish
 done in the run that failed are done with their seconds, those skipped as still valid are kept,
 the failed step failed and every other step, a shot scan never joined too, to run, so the list
 keeps exactly the steps the failure counts.
-`job_runner::start` spawns one thread that runs each `Command` it is handed with the given
+`job_runner::start` spawns one named thread that runs each `Command` it is handed with the given
 `RunJob` (the pipeline's `run_job`, or a stand-in in the tests) and sends every progress event and
 the outcome back, waking the window; the thread lives as long as the window, so the workers it
-starts are not killed early. `progress_tracking::apply` moves each step row as the events arrive.
+starts are not killed early. `review_lanes::ReviewLanes` starts `REVIEW_LANES` (four) such
+threads, "review-runner-1" to "review-runner-4", for correction runs: `run` hands a run to the
+first idle lane, which holds it with its cancel token until `release`; `token` finds a run's
+token to cancel it, and `drain` gathers every lane's events. `progress_tracking::apply` moves each step row as the events arrive.
 The thread runs each job in a `job{video}` span and also logs each event and the end under the
 `job` target, with the video and the step as fields: `progress_log::ProgressLog` writes a step's
 start, message, finish (its time, RAM, VRAM and notes) or skip as info, its advance at debug once
@@ -149,11 +154,15 @@ of them it kept, done in a time not known, and then keeps as many as it lists.
     starts, and a job tried again starts at once only when its lane and video are idle
     (`the_detail_line_gives_a_running_jobs_length_and_a_waiting_jobs_place`,
     `a_waiting_job_says_when_it_starts`,
-    `a_job_tried_again_starts_at_once_only_when_its_lane_and_video_are_idle` in
+    `a_job_tried_again_starts_at_once_only_when_its_lane_and_video_are_idle`,
+    `a_correction_run_tried_again_starts_at_once_while_a_review_lane_is_idle` in
     `tests/status_text.rs`);
   - jobs run in order and a cancelled job ends cancelled
     (`jobs_run_in_order_and_report_each_event`, `a_cancelled_job_ends_cancelled` in
     `tests/job_runner.rs`);
+  - four review lanes hold one run each, a fifth is refused, a released lane takes a new run,
+    and a run's token is its own (`four_lanes_fill_and_a_fifth_run_is_refused`,
+    `releasing_a_run_frees_its_lane`, `a_runs_token_is_its_own` in `tests/review_lanes.rs`);
   - the shot scan never adds to the time left, and a step keeps its own pace
     (`done_skipped_and_the_shot_scan_add_nothing_and_a_step_keeps_its_own_pace` in
     `tests/time_left.rs`);

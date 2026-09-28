@@ -172,7 +172,11 @@ When Claude changed nothing, Fix It finishes at once, with no correction run, an
 - Settings: the Fix It model is `fix_model` in the `[language_model]` table of `settings.toml`,
   `opus` by default, chosen in Settings, Engines, "Fix It model" (Sonnet, Opus, Fable or Haiku);
   the run's own model stays `model`, `sonnet` by default. Fix It runs as many calls at once as
-  `processes`.
+  `processes`. `fix_calls`, "Claude calls at once" in Settings, Engines (1–100, 32 by default),
+  is how many `claude` calls Fix It makes at once across every video it fixes; the rest wait
+  their turn, videos started first going first. `fix_after_run`, the switch "Fix It after each
+  job" beside it (off by default), starts Fix It on each video when its job finishes, if it has
+  lines to fix. A file written before either setting existed loads their defaults.
 - `review.json`: each kept change as a correction whose `chosen` is `fix_it` with the model and
   the reason; Keep Change makes it `kept_fix_it`, the owner's. The window and Fix It change the
   file only under its lock, `review.json.lock`.

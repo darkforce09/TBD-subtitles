@@ -8,7 +8,7 @@ and the banner while a model is missing or downloads. They return events and cha
 
 ```text
 apps/tbd_subtitles/src/settings/ui/
-├── engines_tab.rs      separation, second engine, language model, processes, Fix It model, cut score
+├── engines_tab.rs      the engines, the language model, Fix It's model, calls and switch, cut score
 ├── form.rs             the forms' rows, help and error lines, divider, path well, list, field, stepper
 ├── general_tab.rs      the models and work folders with their sizes, subtitle format, glossary
 ├── machine_tab.rs      each machine check with its mark and detail, and Check Again
@@ -16,7 +16,7 @@ apps/tbd_subtitles/src/settings/ui/
 ├── models_banner.rs    the banner under the toolbar: missing, downloading, or all on disk
 ├── models_tab.rs       the models and runtime table, and Download Missing, Stop or all on disk
 ├── settings_window.rs  `settings_window_ui`: the tab bar, the open tab, the footer
-└── tests/              unit tests of the typed numbers and the home written as `~`
+└── tests/              unit tests of the typed numbers, the home written as `~`, and Fix It's rows
 ```
 
 ## How it works
@@ -38,10 +38,12 @@ home as `~` and cut in the middle when too long, the whole path on hover; SRT | 
 the glossary with its count of names. Engines shows the separator, the Whisper model, the
 `claude` model a run asks and the one Fix It asks (Sonnet, Opus, Fable or Haiku, or a name kept
 in `settings.toml`; each list marks its own default, Sonnet and Opus) in lists as wide as their
-column, with help that follows the choice, processes at once (1–16) and the shot cut score
-(1–100). Models lists the rows of
-`model_list::rows` (Name, Kind, Size, Status: On disk, Missing, or a bar with its share), then
-Download Missing (size), or Stop with "Downloading … of …. A stopped file resumes next time.",
+column, with help that follows the choice, processes at once (1–16), Fix It's Claude calls at
+once (1–100, 32 by default: how many `claude` calls it makes across every video it fixes) and the
+switch Fix It after each job (off by default; a click sends the edit at once), and the shot cut
+score (1–100); the tab scrolls in its body when it is taller than the window. Models lists the
+rows of `model_list::rows` (Name, Kind, Size, Status: On disk, Missing, or a bar with its share),
+then Download Missing (size), or Stop with "Downloading … of …. A stopped file resumes next time.",
 or "Everything a job needs is on disk." This Computer lists each check with ✓, ⚠ or ✗ (a spinner
 while they run again), its name and what it found; the CUDA runtime's folder stays on one line
 like the General tab's, or reads "in the models folder" when it is inside it; a failed CUDA
@@ -54,8 +56,8 @@ wide, with Details… (the Models tab) and Download, or Stop.
 ## Boundaries
 
 - Depends on: `crate::settings` (`events`, `models`, `services::{model_list,
-  system_check::CUDA_RUNTIME, page_editing::{PROCESSES, CUT_SCORES}}`); `crate::core` (`format`,
-  `ui`); `job_model::job` for the choices;
+  system_check::CUDA_RUNTIME, page_editing::{PROCESSES, FIX_CALLS, CUT_SCORES}}`); `crate::core`
+  (`format`, `ui`, `ui::switch` for Fix It after each job); `job_model::job` for the choices;
   `eframe`.
 - Used by: `crate::application::feature_views`.
 - Rules: no module outside the feature but `application` may import this folder
@@ -66,6 +68,11 @@ wide, with Details… (the Models tab) and Download, or Stop.
   `the_banner_says_what_is_missing_and_details_opens_the_models_tab` in
   `apps/tbd_subtitles/src/application/tests/rendering_settings.rs`); a typed number must be finite
   and in range, and the home reads as `~` (`a_typed_number_must_be_finite_and_in_range`,
-  `the_home_folder_reads_as_a_tilde` in `tests/form.rs`); a folder reads from home on one line
+  `the_home_folder_reads_as_a_tilde` in `tests/form.rs`); Fix It's calls at once and its switch
+  say what they do, a click turns the switch over, and a refused number of calls shows its error
+  (`fix_it_s_calls_at_once_and_its_switch_say_what_they_do`,
+  `the_switch_turns_fix_it_after_each_job_over`,
+  `a_refused_number_of_calls_shows_its_error_under_it` in `tests/engines_tab.rs`); a folder reads
+  from home on one line
   (`folders_read_from_home_on_one_line_and_a_runtime_in_the_models_folder_says_so` in
   `rendering_settings.rs`).

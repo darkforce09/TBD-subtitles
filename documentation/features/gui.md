@@ -168,7 +168,10 @@ list and the line editor side by side.
   tabs. General: the models folder and the work folder with their sizes, the subtitle format, the
   glossary with its count of names. Engines: vocal separation, the second speech engine, the
   `claude` model a run asks and the one Fix It asks (Sonnet, Opus, Fable or Haiku; Sonnet and
-  Opus by default), processes at once, the shot cut score. Models:
+  Opus by default), processes at once, Fix It's Claude calls at once (1–100, 32 by default: how
+  many `claude` calls Fix It makes at once across every video it fixes; the rest wait their turn,
+  videos started first going first) and the switch Fix It after each job (off by default: Fix It
+  starts on each video when its job finishes, if it has lines to fix), the shot cut score. Models:
   each model and runtime library with its size and state, Download Missing or Stop. This Computer: the GPU with its driver and
   free VRAM, the CUDA libraries, FFmpeg and its clip sound, ffprobe, `claude`, the Whisper worker;
   a missing CUDA runtime links to Models. A change is saved to `settings.toml` as it is made (a
@@ -262,13 +265,16 @@ every language-model call with what was sent and what came back.
  video ends                        Overview ─▶ Check Lines
 ```
 
-- One job runs at a time and its GPU stages run one after another. A job takes the settings
+- One job runs at a time and its GPU stages run one after another. Beside it, up to four
+  correction runs of different videos run at once, each on a review lane of its own; the rest
+  wait for a lane. A job takes the settings
   saved now until it first starts, and its own from then on; the queue is kept across windows.
 - Try Again puts a failed or cancelled job first in line and resumes after the steps it kept.
   Run Again with Current Settings runs only the steps the settings saved now change, and says so
   in a toast when nothing changed. Either starts at once when nothing runs, without turning the
   queue on, and neither puts back a video that is already in the list.
-- A full run of a video waits while a correction run of the same video runs, and the reverse.
+- A full run of a video waits while a correction run of the same video runs, and the reverse; a
+  second correction run of a video waits while its first runs, even with a lane free.
 
 ### Overview to Check Lines
 

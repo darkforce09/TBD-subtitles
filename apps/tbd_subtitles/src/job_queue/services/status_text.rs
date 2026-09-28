@@ -16,11 +16,11 @@
 //!
 //! **Invariants:** a place in line past the first shows only while the queue runs, since a paused
 //! queue starts nothing after the next video; a job tried again is said to start at once only
-//! when its lane is idle, its video runs nothing else and every model is on disk; a finished
-//! job's verdict comes from its files when they were read, so a row finished in an earlier window
-//! shows its real verdict; while Fix It fixes a video, through its correction run, its finished
-//! row says so first; a job is said fixed by Claude only while it passes and nothing is left to
-//! check.
+//! when its lane is idle (for a correction run, one of the four review lanes), its video runs
+//! nothing else and every model is on disk; a finished job's verdict comes from its files when
+//! they were read, so a row finished in an earlier window shows its real verdict; while Fix It
+//! fixes a video, through its correction run, its finished row says so first; a job is said fixed
+//! by Claude only while it passes and nothing is left to check.
 
 use std::time::Instant;
 
@@ -29,6 +29,7 @@ use crate::core::steps::stage_of;
 use crate::job_queue::models::progress::{JobProgress, Rates};
 use crate::job_queue::models::queue::{Failure, JobKind, JobState, Queue, QueueItem};
 use crate::job_queue::models::sidebar::SidebarRow;
+use crate::job_queue::services::review_lanes::REVIEW_LANES;
 use crate::job_queue::services::time_left;
 use crate::job_report::models::fixing::FIX_STEPS;
 use crate::job_report::models::summary::RowSummary;
@@ -152,9 +153,10 @@ pub(crate) fn waiting_start(
     }
 }
 
-/// When ended job `item` starts if it is tried again now: at once when its lane is idle and its
-/// video runs nothing else, else next while the queue runs (a correction run always), else when
-/// Start Queue is pressed; never before the models are on disk.
+/// When ended job `item` starts if it is tried again now: at once when its lane is idle (a
+/// correction run while fewer than four run) and its video runs nothing else, else next while the
+/// queue runs (a correction run always), else when Start Queue is pressed; never before the
+/// models are on disk.
 pub(crate) fn try_again_start(
     queue: &Queue,
     item: &QueueItem,
@@ -163,11 +165,18 @@ pub(crate) fn try_again_start(
     if models_missing {
         return "It waits until the models are on disk.";
     }
-    let busy = queue.items.iter().any(|other| {
-        other.id != item.id
-            && other.state.is_running()
-            && (other.kind == item.kind || other.video == item.video)
-    });
+    let others = || {
+        queue
+            .items
+            .iter()
+            .filter(|other| other.id != item.id && other.state.is_running())
+    };
+    let same_kind = others().filter(|other| other.kind == item.kind).count();
+    let lanes = match item.kind {
+        JobKind::Full => 1,
+        JobKind::Review => REVIEW_LANES,
+    };
+    let busy = same_kind >= lanes || others().any(|other| other.video == item.video);
     if !busy {
         "It starts at once."
     } else if item.kind == JobKind::Review || queue.running {

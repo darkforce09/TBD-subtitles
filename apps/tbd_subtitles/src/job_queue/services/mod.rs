@@ -7,6 +7,7 @@ pub(crate) mod progress_log;
 pub(crate) mod progress_tracking;
 pub(crate) mod queue_editing;
 pub(crate) mod queue_store;
+pub(crate) mod review_lanes;
 pub(crate) mod sidebar_rows;
 pub(crate) mod stage_progress;
 pub(crate) mod status_text;

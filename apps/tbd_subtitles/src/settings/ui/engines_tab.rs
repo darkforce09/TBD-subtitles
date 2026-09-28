@@ -1,5 +1,6 @@
 //! The Engines tab: the vocal separation, the second speech engine, the language model with its
-//! processes at once, Fix It's model, and the shot cut score.
+//! processes at once, Fix It's model with its `claude` calls at once and whether it follows each
+//! job, and the shot cut score.
 //!
 //! **Role:** draw the saved settings of this tab as a form, and turn each change into an `Edit`
 //! of the saved settings with that one change.
@@ -11,19 +12,20 @@
 //! **Invariants:** a list sends its choice at once; a model name kept in `settings.toml` that the
 //! model list does not offer is shown as its own choice until another is picked; each model list
 //! marks its own default (Sonnet for a run, Opus for Fix It); the steppers send each press at
-//! once and a typed number only when it is finite and within 1–16 processes or a score of 1–100;
-//! the lists fill their column.
+//! once and a typed number only when it is finite and within 1–16 processes, 1–100 calls or a
+//! score of 1–100; the switch sends each click at once; the lists fill their column.
 
 use eframe::egui::{RichText, Ui};
 use job_model::job::{Separator, WhisperModel};
 
 use super::form;
 use crate::core::ui::palette::palette;
+use crate::core::ui::switch::switch;
 use crate::settings::events::SettingsEvent;
 use crate::settings::models::app_settings::AppSettings;
 use crate::settings::models::claude_models::{self, CLAUDE_MODELS};
 use crate::settings::models::page::{Field, SettingsPage};
-use crate::settings::services::page_editing::{CUT_SCORES, PROCESSES};
+use crate::settings::services::page_editing::{CUT_SCORES, FIX_CALLS, PROCESSES};
 
 /// Draw the Engines tab from `page` and push what the owner asked for onto `events`; while the
 /// window is `closing`, a number still being typed is sent.
@@ -126,6 +128,32 @@ pub(super) fn engines_ui(
         );
         form::field_error(ui, page, Field::FixModel);
     });
+    form::row(ui, "Claude calls at once", |ui| {
+        let calls = saved.language_model.fix_calls as f64;
+        let range = *FIX_CALLS.start() as f64..=*FIX_CALLS.end() as f64;
+        if let Some(calls) = form::stepper(ui, "fix calls", calls, range, closing) {
+            edit(&|s| s.language_model.fix_calls = calls.round() as usize);
+        }
+        form::help(
+            ui,
+            "How many claude calls Fix It makes at once across every video it fixes (1–100). \
+             The rest wait their turn; videos started first go first.",
+        );
+        form::field_error(ui, page, Field::FixCalls);
+    });
+    form::row(ui, "Fix It after each job", |ui| {
+        // The switch sits level with the label's middle.
+        ui.add_space(4.5);
+        let on = saved.language_model.fix_after_run;
+        if switch(ui, on, "Fix It after each job").clicked() {
+            edit(&|s| s.language_model.fix_after_run = !on);
+        }
+        form::help(
+            ui,
+            "Fix It starts on each video when its job finishes, if it has lines to fix.",
+        );
+        form::field_error(ui, page, Field::FixAfterRun);
+    });
     form::divider(ui);
     form::row(ui, "Shot cut score", |ui| {
         if let Some(score) = form::stepper(ui, "cut", saved.cut_score, CUT_SCORES, closing) {
@@ -165,3 +193,7 @@ fn model_choice(ui: &mut Ui, id: &str, current: &String, default: &str) -> Optio
 fn model_help(current: &str) -> &'static str {
     claude_models::find(current).map_or("A model name from settings.toml.", |m| m.how)
 }
+
+#[cfg(test)]
+#[path = "tests/engines_tab.rs"]
+mod tests;

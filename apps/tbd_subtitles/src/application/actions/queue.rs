@@ -167,12 +167,12 @@ impl TbdSubtitlesApp {
     }
 
     fn cancel(&mut self, id: JobId) {
-        let lanes = [&self.cancel, &self.review_cancel];
-        if let Some((_, token)) = lanes
-            .into_iter()
-            .flatten()
-            .find(|(running, _)| *running == id)
-        {
+        let full = self
+            .cancel
+            .as_ref()
+            .filter(|(running, _)| *running == id)
+            .map(|(_, token)| token);
+        if let Some(token) = full.or_else(|| self.review_lanes.token(id)) {
             token.cancel();
             if let Some(item) = self.queue.get_mut(id)
                 && let JobState::Running(progress) = &mut item.state

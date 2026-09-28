@@ -44,6 +44,8 @@ backend = "claude"
 model = "opus"
 fix_model = "fable"
 processes = 4
+fix_calls = 64
+fix_after_run = true
 "#,
     )
     .expect("parse");
@@ -57,6 +59,8 @@ processes = 4
     assert_eq!(settings.language_model.model, "opus");
     assert_eq!(settings.language_model.fix_model, "fable");
     assert_eq!(settings.language_model.processes, 4);
+    assert_eq!(settings.language_model.fix_calls, 64);
+    assert!(settings.language_model.fix_after_run);
 }
 
 #[test]
@@ -66,6 +70,17 @@ fn a_file_from_before_fix_it_keeps_its_model_and_asks_opus_to_fix() {
             .expect("parse");
     assert_eq!(settings.language_model.model, "haiku");
     assert_eq!(settings.language_model.fix_model, "opus");
+}
+
+#[test]
+fn a_file_from_before_fix_it_ran_at_scale_makes_32_calls_and_waits_to_be_asked() {
+    let settings = parse(
+        "[language_model]\nbackend = \"claude\"\nmodel = \"sonnet\"\nfix_model = \"opus\"\n\
+         processes = 8\n",
+    )
+    .expect("parse");
+    assert_eq!(settings.language_model.fix_calls, 32);
+    assert!(!settings.language_model.fix_after_run);
 }
 
 #[test]

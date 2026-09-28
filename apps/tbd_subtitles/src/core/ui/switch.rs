@@ -4,7 +4,8 @@
 //! **Role:** paint the switch, say when it was clicked, and name it for accessibility with
 //! whether it is on.
 //!
-//! **Position:** used by the line editor's four flags.
+//! **Position:** used by the line editor's four flags and the Settings window's Fix It after each
+//! job.
 //!
 //! **Signals and state:** none; the caller holds whether it is on.
 //!

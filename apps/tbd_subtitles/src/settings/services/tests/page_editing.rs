@@ -126,6 +126,44 @@ fn numbers_out_of_range_or_not_finite_are_never_written() {
 }
 
 #[test]
+fn claude_calls_at_once_stay_from_1_to_100() {
+    let mut page = page("fix-calls");
+    for calls in [0, 101] {
+        let mut edited = page.saved.clone();
+        edited.language_model.fix_calls = calls;
+        apply(&mut page, edited);
+        let error = page.error.clone().expect("an error");
+        assert_eq!(error.field, Field::FixCalls, "{calls}");
+        assert_eq!(
+            error.message,
+            "Claude calls at once must be 1 to 100. It was not changed."
+        );
+    }
+    assert!(!page.path.exists(), "nothing invalid is written");
+    for calls in [1, 100] {
+        let mut edited = page.saved.clone();
+        edited.language_model.fix_calls = calls;
+        apply(&mut page, edited);
+        assert_eq!(page.saved.language_model.fix_calls, calls);
+        assert!(page.error.is_none());
+    }
+    remove(&page);
+}
+
+#[test]
+fn fix_it_s_calls_and_its_switch_are_fields_of_their_own_that_make_nothing_stale() {
+    let before = AppSettings::default();
+    let mut calls = before.clone();
+    calls.language_model.fix_calls = 64;
+    assert_eq!(changed_field(&before, &calls), Some(Field::FixCalls));
+    assert_eq!(stale(&before, &calls), Stale::default());
+    let mut after_run = before.clone();
+    after_run.language_model.fix_after_run = true;
+    assert_eq!(changed_field(&before, &after_run), Some(Field::FixAfterRun));
+    assert_eq!(stale(&before, &after_run), Stale::default());
+}
+
+#[test]
 fn the_models_folder_stays_while_a_download_runs() {
     let mut page = page("downloading");
     page.download = Some(DownloadProgress {

@@ -165,7 +165,7 @@ fn review_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
         apply(&mut harness, ReviewEvent::LooksRight);
     }
     shoot(&mut harness, out, "all_checked");
-    if let Some((_, token)) = &harness.state().review_cancel {
+    for token in harness.state().review_lanes.tokens() {
         token.cancel();
     }
 }

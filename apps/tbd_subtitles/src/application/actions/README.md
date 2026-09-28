@@ -47,11 +47,13 @@ another run waiting or running is not put back ("… is already in the list."). 
 with the ones in the job's `job.json` first, and when they are the same queues nothing and says
 so. Check Lines selects the job and opens its review; Show in Folder and Open in Player go to the
 desktop portal through `open_with_desktop`, which says so in a toast and, when the desktop answers
-that it could not, in a red one; a copied subtitle path says so in a toast. `runner.rs` keeps two
-lanes, each with its own runner: full runs start one after another
-while the queue runs, and review runs start as soon as one waits. Both lanes run in this one
-process, so the job lock does not keep them apart: a review run waits while a full run of its
-video runs, and the full lane waits while a review run of its next video runs. A pause ends once the full
+that it could not, in a red one; a copied subtitle path says so in a toast. `runner.rs` keeps a
+full lane on its own runner and four review lanes (`job_queue::services::review_lanes`), each with
+a runner of its own: full runs start one after another while the queue runs, and review runs
+start as soon as one waits and a review lane is idle, up to four at once and never two of the same
+video. Every lane runs in this one process, so the job lock does not keep them apart: a review run
+waits while another run of its video runs, and the full lane waits while a review run of its next
+video runs. A pause ends once the full
 lane is idle. A job starts only
 when every model is on disk, with options built from the saved settings until it first starts,
 and from its own `job.json` after that (a review run always), with the steps it is to run again
@@ -79,8 +81,8 @@ steps after them run again; and Fix It and its Stop.
 `fix_it.rs` starts Fix It on the selected video with the Fix It model and processes saved now, on
 `job_report::services::fix_it`'s thread, one run at a time and never while a run of the video
 runs or its correction run waits ("Wait until this video's subtitles are updated."). While it
-runs, the full lane holds a waiting run of that video, the review lane starts the first waiting
-correction run whose video is neither running nor being fixed, and the queue refuses to remove,
+runs, the full lane holds a waiting run of that video, the review lanes start the first waiting
+correction runs whose videos are neither running nor being fixed, and the queue refuses to remove,
 try again or run again its row. `fix_view` gives the Overview its Fix It: hidden with nothing to
 ask about, ready, off with why, running with its stage and Stop, or updating while its
 correction run waits or runs; `fix_steps` gives the sidebar each video Fix It fixes with its step
@@ -134,9 +136,11 @@ line); Open Log File opens the log file in the desktop's text editor through `op
   when it can make a job's settings (the header of `settings.rs`,
   `a_bad_glossary_is_not_written_and_names_its_field` in
   `apps/tbd_subtitles/src/application/tests/rendering_settings.rs`); a saved correction always
-  queues one review run, and no run of a video starts beside a run of the other kind of the same video (the headers of `review.rs` and
-  `runner.rs`, `a_saved_correction_queues_a_review_run_that_runs_at_once` and
-  `a_full_run_waits_while_its_videos_review_run_runs` in
+  queues one review run, and no run of a video starts beside another run of the same video, while
+  up to four correction runs of different videos run at once (the headers of `review.rs` and
+  `runner.rs`, `a_saved_correction_queues_a_review_run_that_runs_at_once`,
+  `a_full_run_waits_while_its_videos_review_run_runs` and
+  `four_correction_runs_run_at_once_but_never_two_of_one_video` in
   `apps/tbd_subtitles/src/application/tests/rendering.rs`); a failed job records its step and a
   cancelled one its kept steps (`a_failed_job_records_its_step_and_the_steps_it_kept`,
   `a_cancelled_job_keeps_its_finished_steps_and_can_be_retried` in the same file); a job tried

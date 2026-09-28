@@ -49,7 +49,7 @@ fn next(runner: &JobRunner) -> RunnerEvent {
 
 #[test]
 fn jobs_run_in_order_and_report_each_event() {
-    let runner = start(stand_in(), crate::core::background::no_wake());
+    let runner = start("job-runner", stand_in(), crate::core::background::no_wake());
     for id in [4, 5] {
         runner
             .run(Command {
@@ -73,7 +73,7 @@ fn jobs_run_in_order_and_report_each_event() {
 
 #[test]
 fn a_cancelled_job_ends_cancelled() {
-    let runner = start(stand_in(), crate::core::background::no_wake());
+    let runner = start("job-runner", stand_in(), crate::core::background::no_wake());
     let cancel = CancelToken::new();
     cancel.cancel();
     runner

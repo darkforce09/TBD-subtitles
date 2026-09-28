@@ -70,6 +70,10 @@ fn each_settings_tab_shows_its_settings_under_the_tab_bar_and_over_the_footer() 
             "Fix It model",
             "Claude Opus (default)",
             "Fix It reads the whole video, fixes the flagged lines",
+            // The rows below scroll into view; their labels are painted all the same.
+            "Claude calls at once",
+            "Fix It after each job",
+            "Shot cut score",
         ],
     );
     let text = render_tab(&mut app, SettingsTab::Models);

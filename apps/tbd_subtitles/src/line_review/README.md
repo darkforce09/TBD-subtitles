@@ -43,9 +43,9 @@ lines, while Check Lines is closed.
 Save Correction writes the draft; Looks Right writes the line unchanged as the language model's
 reading, so the review step times it again and its warnings clear; Keep Change makes a Fix It
 change the owner's as it is, and Undo Change writes the language model's reading in its place; both move on to the next line
-of the list and queue one review run of the video, which runs at once on its own runner beside a
-full job (its one model step runs on the CPU), unless a full run of the same video is running;
-saving is disabled then. The saved line is Saved until the run starts, Updating subtitles… while
+of the list and queue one review run of the video, which runs at once on a review lane of its own
+beside a full job and up to three other videos' correction runs (its one model step runs on the
+CPU), unless a full run of the same video is running; saving is disabled then. The saved line is Saved until the run starts, Updating subtitles… while
 it runs and Subtitles updated (or not) when it ends. A clip plays 0.75 s either side of the
 line: one FFmpeg sends the sound to the desktop's sound server through its `pulse` output, a
 second decodes 360-line RGBA frames at 12 per second that the window shows in time with it, and

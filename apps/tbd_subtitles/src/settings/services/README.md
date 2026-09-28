@@ -34,9 +34,9 @@ or a glossary file's name without its extension);
 returning what they made stale (the models list when the models folder or an engine changed, the
 models folder's size, the work folder's size; never the machine checks). It refuses, writing
 nothing, with a `FieldError` naming the field and why: a number out of its range (`PROCESSES`
-1–16, `CUT_SCORES` 1–100, and never one that is not finite), the models folder while a download
-runs ("Stop the download first."), or a new glossary that cannot be read ("Can't use names.json:
-… The glossary was not changed."). The glossary is read only when it changes, so an unreadable
+1–16, `FIX_CALLS` 1–100, `CUT_SCORES` 1–100, and never one that is not finite), the models
+folder while a download runs ("Stop the download first."), or a new glossary that cannot be read
+("Can't use names.json: … The glossary was not changed."). The glossary is read only when it changes, so an unreadable
 one blocks no other edit, and its error stays under it until it changes. Before the first write
 over a settings file that could not be read, the file is kept beside itself as
 `settings.toml.broken` (`Applied::kept`). `read_glossary` counts the saved glossary's names, or
@@ -69,13 +69,16 @@ found in as its `path`), asks FFmpeg, ffprobe and `claude` for their versions, l
   measure}`; `inference::{model_store, cuda_runtime}`; `child_process`; `anyhow`.
 - Used by: the `process` subcommand in `apps/tbd_subtitles/src/cli/process_command.rs`;
   `crate::application`; `crate::settings::ui` (`model_list`, `system_check::CUDA_RUNTIME`,
-  `page_editing::{PROCESSES, CUT_SCORES}`).
+  `page_editing::{PROCESSES, FIX_CALLS, CUT_SCORES}`).
 - Rules:
   - nothing here names egui or eframe
     (`dependency_boundaries_and_external_test_placement_are_enforced` in
     `apps/tbd_subtitles/src/tests/architecture_rules.rs`);
-  - an empty file is the measured defaults, and every key is read
-    (`an_empty_file_is_the_measured_defaults`, `every_key_is_read` in `tests/settings_file.rs`);
+  - an empty file is the measured defaults, every key is read, and a file from before Fix It's
+    calls at once and its switch makes 32 calls and waits to be asked
+    (`an_empty_file_is_the_measured_defaults`, `every_key_is_read`,
+    `a_file_from_before_fix_it_ran_at_scale_makes_32_calls_and_waits_to_be_asked` in
+    `tests/settings_file.rs`);
   - an unknown key or a bad value is an error naming it, and a missing file is the defaults
     (`an_unknown_key_is_an_error_naming_it`, `a_bad_value_is_an_error_naming_it`,
     `a_missing_file_is_the_defaults_and_a_broken_one_an_error`);
@@ -87,6 +90,8 @@ found in as its `path`), asks FFmpeg, ffprobe and `claude` for their versions, l
     stale (`a_valid_edit_is_written_at_once`, `a_bad_glossary_is_not_written_and_names_its_field`,
     `an_unreadable_saved_glossary_blocks_no_other_edit_and_its_error_stays`,
     `numbers_out_of_range_or_not_finite_are_never_written`,
+    `claude_calls_at_once_stay_from_1_to_100`,
+    `fix_it_s_calls_and_its_switch_are_fields_of_their_own_that_make_nothing_stale`,
     `the_models_folder_stays_while_a_download_runs`,
     `an_unreadable_settings_file_is_kept_before_the_first_write`,
     `only_the_models_folder_and_the_engines_make_the_models_list_stale` in

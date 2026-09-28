@@ -39,9 +39,9 @@ and log file, and wakes the window from any thread (`request_repaint`); the test
 a scratch folder with a stand-in runner, a log buffer of its own and no log file, a Fix It that
 refuses to run unless a test gives it one, and a notifier that records each notification in that
 log under the target `notification`, and start no portal thread.
-`TbdSubtitlesApp` holds the queue loaded from `queue.json`, two job runners with the cancel token
-of the job each runs (one for full runs, one for the review runs that re-time the owner's
-corrections), the step rates for the time left, the settings page, the Settings window's tab while
+`TbdSubtitlesApp` holds the queue loaded from `queue.json`, the job runners with the cancel token
+of the job each runs (one for full runs, and four review lanes for the review runs that re-time
+the owner's corrections, up to four videos at once), the step rates for the time left, the settings page, the Settings window's tab while
 it is open, whether the log window is open with its lines and filter (`log_console`), the toasts,
 the row removed last (for Undo), the desktop's colour scheme, the selected finished job's report,
 every finished row's summary (its verdict and lines to check, read from its work folder when the

@@ -47,6 +47,7 @@ use crate::core::ui::theme;
 use crate::job_queue::models::progress::Rates;
 use crate::job_queue::models::queue::{JobId, Queue, Removed};
 use crate::job_queue::services::job_runner::{self, JobRunner};
+use crate::job_queue::services::review_lanes::ReviewLanes;
 use crate::job_queue::services::{queue_editing, queue_store, time_left};
 use crate::job_report::models::report::JobReport;
 use crate::job_report::models::summary::RowSummary;
@@ -70,11 +71,10 @@ pub(crate) struct TbdSubtitlesApp {
     runner: JobRunner,
     /// The running full job and the token that stops it.
     cancel: Option<(JobId, CancelToken)>,
-    /// The thread that runs review runs, beside a full job: their one stale model step runs on
-    /// the CPU.
-    review_runner: JobRunner,
-    /// The running review run and the token that stops it.
-    review_cancel: Option<(JobId, CancelToken)>,
+    /// The threads that run correction runs beside a full job, up to four of different videos at
+    /// once: their one stale model step runs on the CPU. Each holds its running run and the
+    /// token that stops it.
+    review_lanes: ReviewLanes,
     /// Each step's seconds per second of video, for the time left.
     rates: Rates,
     settings: SettingsPage,
@@ -129,15 +129,14 @@ impl TbdSubtitlesApp {
         let rates = work_root.map_or_else(time_left::pilot_rates, |root| {
             time_left::from_history(&root)
         });
-        let runner = job_runner::start(env.run_job.clone(), env.wake.clone());
-        let review_runner = job_runner::start(env.run_job.clone(), env.wake.clone());
+        let runner = job_runner::start("job-runner", env.run_job.clone(), env.wake.clone());
+        let review_lanes = ReviewLanes::start(env.run_job.clone(), env.wake.clone());
         let mut app = TbdSubtitlesApp {
             env,
             queue,
             runner,
             cancel: None,
-            review_runner,
-            review_cancel: None,
+            review_lanes,
             rates,
             settings,
             settings_window: None,
