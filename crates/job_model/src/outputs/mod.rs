@@ -15,7 +15,9 @@ pub mod words;
 
 pub use adjudication::{AdjudicationPass, Findings, Line, Redecode};
 pub use aligned::{Aligned, AlignedUtterance, AlignedWord, TimingSource};
-pub use fix_it::{FixBrief, FixFamily, FixRecord, FixStep, FixVerdict, LineFix, Suspect};
+pub use fix_it::{
+    FixBefore, FixBrief, FixFamily, FixRecord, FixStep, FixVerdict, LineFix, Suspect,
+};
 pub use output::OutputRecord;
 pub use probe::{AudioStream, ProbeDecoded, ProbeResult, VideoStream};
 pub use review::{Chosen, Correction, Corrections};

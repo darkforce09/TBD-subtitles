@@ -55,10 +55,14 @@ candidate at the candidate's times with its bracketed text. The cue track in `cu
 A `Correction` says where its text came from in `Chosen`: an engine's hypothesis, text the owner
 typed, a Fix It change the owner has not checked yet (`fix_it`, with the model and its reason), or
 one the owner kept (`kept_fix_it`). Every choice but an unchecked Fix It change is the owner's
-(`Correction::by_owner`). A `FixRecord` keeps one Fix It run: the brief the model worked out from
-the video's names and lines, and for each line asked about its problems, each change that passed
-the guard (`FixStep`), the proposals refused, the heard words left out, the `FixVerdict` and
-whether the correction was applied.
+(`Correction::by_owner`). A `FixRecord` keeps the Fix It runs of a video since it was last
+adjudicated: the brief the model worked out from the video's names and lines, and for each line
+asked about its problems and their `QcCheck`s, each change that passed the guard (`FixStep`), the
+proposals refused, the heard words left out, the `FixVerdict` and whether the correction was
+applied. `FixVerdict::answered` says whether a verdict settles the line's checks (not for
+`not_judged` or `not_answered`, a line whose every call failed). The record also keeps the
+problems before the first run (`FixBefore::of` the quality check) and the re-adjudication
+fingerprint the runs read; `FixRecord::is_current` is false once the job's differs.
 
 ## Boundaries
 

@@ -10,6 +10,7 @@ use job_model::outputs::{
 use job_model::report::{QcCheck, QcFinding, QcReport};
 use serde_json::Value;
 
+use super::items::Answered;
 use super::{Episode, Make};
 
 /// One call as the model saw it.
@@ -99,6 +100,7 @@ pub struct Fixture {
     pub qc: QcReport,
     pub timing: Aligned,
     pub heard: EngineTranscript,
+    pub answered: Answered,
 }
 
 fn utterance(id: &str, start_s: f64, end_s: f64, p: &str, w: &str) -> Utterance {
@@ -272,6 +274,7 @@ impl Fixture {
             qc,
             timing,
             heard,
+            answered: Answered::none(),
         }
     }
 
@@ -287,6 +290,7 @@ impl Fixture {
             qc: &self.qc,
             timing: &self.timing,
             heard: &self.heard,
+            answered: &self.answered,
         }
     }
 }

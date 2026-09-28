@@ -12,7 +12,7 @@ crates/pipeline/src/fix_it/
 ├── inputs.rs  whether the job is ready, and everything Fix It reads from its work directory
 ├── merge.rs   the kept changes into the corrections, the owner's own corrections first
 ├── mod.rs     `fix_video`, `fix_job`, `FixOptions`, `FixStage`, `FixProgress` and `FixOutcome`
-└── tests/     unit tests for the merge, a run end to end, an owner's save meanwhile, a stop
+└── tests/     unit tests for the merge, whole runs, a stop, a second run and a stale record
 ```
 
 ## How it works
@@ -28,17 +28,26 @@ so Stop kills the running `claude` processes. `fix_job` takes the job lock and r
 whose quality check or output step has not finished, or whose corrections changed since its last
 run ("your latest corrections are not in the subtitles yet"). It reads the sheet with the
 re-decoded alternatives, the lines with the corrections in place, the corrections, `qc.json`,
-`reviewed.json` and the main engine's words, and runs the passes with each model wrapped in
+`reviewed.json`, the main engine's words and the earlier runs' `fix.json` when it is current
+(`FixRecord::is_current`: its `adjudication` is empty or matches the job's re-adjudication
+fingerprint; a missing, unreadable or stale one counts as none). What that record answered
+(`stages::fix_it::items::Answered`) is not asked again. It runs the passes with each model wrapped in
 `cache::CachedModel`: a call whose answer is kept under `fix/calls/` is answered from disk at no
 cost, and every new answer is kept first. Progress comes out as a `FixStage` (reading, fixing a
 family, checking, saving) with the calls done.
 
 A stopped run returns a cancelled `PipelineError` and changes nothing; its answered calls stay, so
 the next run asks only what is left. A finished run writes `fix.json`, then puts each kept or
-accepted line into `review.json` inside `work_dir::update_corrections` as a `Chosen::FixIt`
-correction with the model and the reason, writes `fix.json` again with what was applied, and
-removes `fix/calls/`. A line the owner settled, even one saved while Fix It ran, keeps the
-owner's correction and is listed in `kept_yours`.
+accepted line of this run into `review.json` inside `work_dir::update_corrections` as a
+`Chosen::FixIt` correction with the model and the reason, writes `fix.json` again with what was
+applied, and removes `fix/calls/`. A line the owner settled, even one saved while Fix It ran,
+keeps the owner's correction and is listed in `kept_yours`.
+
+The written record is this run's lines and the earlier record's lines this run did not ask about,
+sorted by id; its calls, cached calls, tokens, cost and failed calls add to the earlier ones.
+`before` is the earlier record's, or `FixBefore::of` this run's `qc.json` when there is none, so
+it keeps the problems before the first run. `adjudication` is the job's re-adjudication
+fingerprint, empty when the job has none.
 
 ## Public surface
 
@@ -62,7 +71,11 @@ reused from an earlier run", with its purpose.
     (`a_correction_the_owner_saves_during_the_run_wins` in `tests/fix_it.rs`);
   - a stopped run changes nothing and the next run reuses its answers
     (`a_stopped_run_changes_nothing_and_the_next_run_reuses_its_answers`);
-  - a job that is not ready is refused (`a_job_that_is_not_ready_is_refused`).
+  - a job that is not ready is refused (`a_job_that_is_not_ready_is_refused`);
+  - a second run asks only what is left, keeps the first run's other lines and `before`, and adds
+    up the cost (`a_second_run_asks_only_what_is_left_and_keeps_what_the_first_answered`);
+  - a record from before the video was adjudicated again is ignored
+    (`a_record_from_before_the_video_was_adjudicated_again_is_ignored`).
 
 ## Related documentation
 

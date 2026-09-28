@@ -182,7 +182,7 @@ fn only_the_judge_s_accepted_changes_are_kept() {
 }
 
 #[test]
-fn a_failed_repair_call_leaves_its_lines_as_they_were() {
+fn a_failed_repair_call_leaves_its_lines_as_they_were_and_not_answered() {
     let fixture = Fixture::new();
     let (make, calls) = scripted(|system, _| {
         if is_brief(system) {
@@ -198,15 +198,60 @@ fn a_failed_repair_call_leaves_its_lines_as_they_were() {
         &AtomicBool::new(false),
     )
     .unwrap();
-    assert!(
-        result
-            .lines
-            .iter()
-            .all(|l| l.verdict == FixVerdict::Unchanged)
-    );
+    assert!(!result.lines.is_empty());
+    for line in &result.lines {
+        assert_eq!(line.after_text, line.before_text);
+        assert!(
+            matches!(&line.verdict, FixVerdict::NotAnswered { why } if why.contains("rate limited")),
+            "{}: {:?}",
+            line.id,
+            line.verdict
+        );
+        assert!(!line.verdict.answered());
+    }
     assert!(result.usage.failed[0].contains("rate limited"));
     // Nothing changed, so the judge is not called.
     assert_eq!(calls.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn an_unreadable_answer_leaves_its_lines_not_answered() {
+    let fixture = Fixture::new();
+    let (make, _) = scripted(|system, _| {
+        if is_brief(system) {
+            return Ok(brief_answer());
+        }
+        Ok(serde_json::json!({"verdicts": []}))
+    });
+    let result = run(
+        &fixture.episode(&GLOSSARY),
+        &*make,
+        1,
+        &|_, _, _| {},
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    assert!(result.lines.iter().all(|l| matches!(
+        &l.verdict,
+        FixVerdict::NotAnswered { why } if why.contains("does not match the schema")
+    )));
+}
+
+#[test]
+fn an_asked_line_records_the_checks_it_was_asked_about() {
+    let fixture = Fixture::new();
+    let (make, _) = scripted(dressrosa_script);
+    let result = run(
+        &fixture.episode(&GLOSSARY),
+        &*make,
+        1,
+        &|_, _, _| {},
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    assert_eq!(line(&result, "U0061").checks, [QcCheck::TooShort]);
+    assert_eq!(line(&result, "U0295").checks, [QcCheck::UncoveredSpeech]);
+    assert!(result.lines.iter().all(|l| l.verdict.answered()));
 }
 
 #[test]

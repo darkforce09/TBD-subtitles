@@ -72,7 +72,9 @@ pub(crate) fn line_counts(qc: &QcReport, corrections: &Corrections) -> LineCount
 pub(crate) fn fixable(qc: &QcReport, corrections: &Corrections) -> usize {
     qc.findings
         .iter()
-        .filter(|finding| items::asks_about(finding, corrections).is_some())
+        .filter(|finding| {
+            items::asks_about(finding, corrections, &items::Answered::none()).is_some()
+        })
         .count()
 }
 

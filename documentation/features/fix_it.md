@@ -36,7 +36,11 @@ language-model calls (Try Again runs those again):
 | Reading speed | subtitles over 20 characters per second | only take words out: pure filler, a stutter or a repeat that adds nothing |
 
 A line the owner saved, kept or took from Fix It is never asked about. A Fix It change the owner
-has not checked is not asked about its words again.
+has not checked is not asked about its words again. A finding an earlier Fix It answered (its
+line, about the same check) is not asked about again, nor a line the brief names that an earlier
+run answered; a new problem on the same line is. Speech with no subtitle is asked about every
+time. A line whose every call failed, or whose change the judge gave no verdict on, is not
+answered, so the next Fix It asks about it again.
 
 ### The three passes
 
@@ -101,9 +105,16 @@ A 27-minute episode takes about ten calls.
 - `review.json`: each kept change as a correction whose `chosen` is `fix_it` with the model and
   the reason; Keep Change makes it `kept_fix_it`, the owner's. The window and Fix It change the
   file only under its lock, `review.json.lock`.
-- `fix.json`: the last run: the brief, and for each line asked about its problems, each change
-  that passed the guard, the proposals refused, the heard words left out, the verdict and whether
-  it was applied; the calls, tokens and cost.
+- `fix.json`: every Fix It run of the video since it was last adjudicated: the last run's brief;
+  for each line asked about, by id, its problems and the checks behind them, each change that
+  passed the guard, the proposals refused, the heard words left out, the verdict and whether it
+  was applied; the calls, tokens and cost of all the runs; the quality check's problems before
+  the first run (the count per check, where the first speech with no subtitle starts, the share
+  of cues within 20 characters per second and the number of cues); and the fingerprint of the
+  re-adjudication the runs read. Each run keeps the earlier runs' lines it did not ask about
+  again and replaces the ones it did. Once the video is adjudicated again (the fingerprint
+  differs), the record counts for nothing: the next run asks about everything and starts a new
+  one.
 - `fix/calls/`: each answered call of a run not finished yet, removed once the run writes its
   corrections.
 

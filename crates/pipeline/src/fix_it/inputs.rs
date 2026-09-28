@@ -2,25 +2,28 @@
 //!
 //! **Role:** check that the job finished and that its subtitles already hold every correction,
 //! then read the sheet with the re-decoded alternatives, the lines as the subtitles have them, the
-//! corrections, the quality check, the timing and the main engine's words.
+//! corrections, the quality check, the timing, the main engine's words, and the earlier runs'
+//! record with what they answered.
 //!
 //! **Position:** called by `fix_it::fix_job` under the job lock.
 //!
 //! **Signals and state:** reads the work directory only.
 //!
 //! **Invariants:** a job whose quality check or output step has not finished, or whose
-//! corrections changed since its last run, is refused with a message the owner can act on.
+//! corrections changed since its last run, is refused with a message the owner can act on; an
+//! earlier record that is missing, unreadable or not current counts as no record.
 
 use std::path::Path;
 
 use job_model::StepName;
 use job_model::job::JobRecord;
 use job_model::outputs::{
-    AdjudicationPass, Aligned, Corrections, EngineTranscript, Line, Redecode, Utterance,
+    AdjudicationPass, Aligned, Corrections, EngineTranscript, FixRecord, Line, Redecode, Utterance,
 };
 use job_model::report::QcReport;
 use stages::adjudication::redecode;
 use stages::fix_it::Episode;
+use stages::fix_it::items::Answered;
 
 use crate::error::{PipelineError, Result};
 use crate::tasks::corrected_lines;
@@ -38,6 +41,10 @@ pub struct Inputs {
     pub qc: QcReport,
     pub timing: Aligned,
     pub heard: EngineTranscript,
+    /// The earlier runs' `fix.json`, when it belongs to the job's re-adjudication as it stands.
+    pub earlier: Option<FixRecord>,
+    /// What the earlier runs answered.
+    pub answered: Answered,
 }
 
 impl Inputs {
@@ -54,6 +61,7 @@ impl Inputs {
             qc: &self.qc,
             timing: &self.timing,
             heard: &self.heard,
+            answered: &self.answered,
         }
     }
 
@@ -106,6 +114,12 @@ pub fn load(work: &WorkDir, video: &Path, glossary_name: &str) -> Result<Inputs>
         path.map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default()
     };
+    let earlier = work_dir::read_json::<FixRecord>(&work.fix_record())
+        .ok()
+        .filter(|fix| fix.is_current(&record));
+    let answered = earlier
+        .as_ref()
+        .map_or_else(Answered::none, Answered::from_record);
     Ok(Inputs {
         video_name: name(video.file_stem()),
         folder_name: name(video.parent().and_then(Path::file_name)),
@@ -116,6 +130,8 @@ pub fn load(work: &WorkDir, video: &Path, glossary_name: &str) -> Result<Inputs>
         qc: work_dir::read_json(&work.qc())?,
         timing: work_dir::read_json(&work.reviewed())?,
         heard: work_dir::read_json(&work.asr("parakeet"))?,
+        earlier,
+        answered,
         record,
     })
 }

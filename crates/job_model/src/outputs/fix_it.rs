@@ -1,18 +1,27 @@
 //! Fix It's record, `fix.json`: what the model worked out about the video, every line it was
-//! asked about with each change it proposed, what the guard and the judge made of it, and what
-//! the calls cost.
+//! asked about with each change it proposed, what the guard and the judge made of it, what the
+//! calls cost, and the problems before the first run.
 //!
-//! **Role:** keep the whole of one Fix It run, so the owner can see why a line changed and the
-//! window can mark the changed lines.
+//! **Role:** keep what every Fix It run of a video answered, so the owner can see why a line
+//! changed, the window can mark the changed lines, and a later run does not ask again what an
+//! earlier one answered.
 //!
-//! **Position:** written by `pipeline::fix_it`; read by the window's line review and report.
+//! **Position:** written by `pipeline::fix_it`, which reads it back to carry earlier answers
+//! into the next run; read by the window's line review and its report.
 //!
 //! **Signals and state:** none; plain data.
 //!
 //! **Invariants:** a line is changed only when its verdict writes a correction; `applied` is set
-//! only for a correction that reached `review.json`.
+//! only for a correction that reached `review.json`; a record whose `adjudication` differs from
+//! the job's re-adjudication is not current, and nothing in it counts.
+
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+
+use crate::StepName;
+use crate::job::JobRecord;
+use crate::report::{QcCheck, QcReport};
 
 /// The kinds of problem Fix It asks about, in the order it asks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -85,12 +94,26 @@ pub enum FixVerdict {
     TurnedDown { why: String },
     /// The judge gave no verdict: its answer left the line out, or its call failed.
     NotJudged { why: String },
+    /// Every call that asked about the line failed, so the model never answered it.
+    NotAnswered { why: String },
 }
 
 impl FixVerdict {
     /// Whether the line gets a Fix It correction.
     pub fn writes_correction(&self) -> bool {
         matches!(self, FixVerdict::Kept { .. } | FixVerdict::Accepted { .. })
+    }
+
+    /// Whether the model answered the line and the answer came to a verdict, so a later run does
+    /// not ask about it again.
+    pub fn answered(&self) -> bool {
+        matches!(
+            self,
+            FixVerdict::Unchanged
+                | FixVerdict::Kept { .. }
+                | FixVerdict::Accepted { .. }
+                | FixVerdict::TurnedDown { .. }
+        )
     }
 }
 
@@ -100,6 +123,10 @@ pub struct LineFix {
     pub id: String,
     /// The problems it was asked about, in words.
     pub problems: Vec<String>,
+    /// The quality checks it was asked about; empty in a record that predates them, which then
+    /// covers every check of the line.
+    #[serde(default)]
+    pub checks: Vec<QcCheck>,
     pub before_text: String,
     pub before_flags: Vec<String>,
     pub after_text: String,
@@ -140,7 +167,37 @@ impl LineFix {
     }
 }
 
-/// One whole Fix It run of a video.
+/// The quality check's problems before the first Fix It run.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct FixBefore {
+    /// Findings per check.
+    pub counts: BTreeMap<QcCheck, usize>,
+    /// Where the first speech with no subtitle starts, in video seconds.
+    pub first_uncovered_s: Option<f64>,
+    /// Share of cues at or under 20 characters per second.
+    pub cps_ok_share: f64,
+    pub cues: usize,
+}
+
+impl FixBefore {
+    /// The problems `qc` names.
+    pub fn of(qc: &QcReport) -> FixBefore {
+        FixBefore {
+            counts: qc.counts(),
+            first_uncovered_s: qc
+                .findings
+                .iter()
+                .filter(|f| f.check == QcCheck::UncoveredSpeech)
+                .map(|f| f.time_s)
+                .min_by(f64::total_cmp),
+            cps_ok_share: qc.summary.cps_ok_share,
+            cues: qc.summary.cues,
+        }
+    }
+}
+
+/// Every Fix It run of a video: the latest run's lines with the lines earlier runs answered, and
+/// what all the calls cost.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FixRecord {
     /// The `claude` model, such as `opus`.
@@ -148,6 +205,7 @@ pub struct FixRecord {
     /// The video's file name without its extension.
     pub video: String,
     pub brief: FixBrief,
+    /// Each line asked about, by id.
     pub lines: Vec<LineFix>,
     pub calls: usize,
     /// Calls answered from an earlier, stopped run.
@@ -159,6 +217,24 @@ pub struct FixRecord {
     /// Why a call failed, per failed call.
     #[serde(default)]
     pub failed_calls: Vec<String>,
+    /// The fingerprint of the job's re-adjudication the runs read; empty when unknown.
+    #[serde(default)]
+    pub adjudication: String,
+    /// The problems before the first Fix It run.
+    #[serde(default)]
+    pub before: Option<FixBefore>,
+}
+
+impl FixRecord {
+    /// Whether the record belongs to `job`'s re-adjudication as it stands: its `adjudication` is
+    /// empty, or matches the fingerprint of the job's re-adjudication step.
+    pub fn is_current(&self, job: &JobRecord) -> bool {
+        self.adjudication.is_empty()
+            || job
+                .steps
+                .get(&StepName::Readjudicate)
+                .is_some_and(|step| step.fingerprint == self.adjudication)
+    }
 }
 
 #[cfg(test)]

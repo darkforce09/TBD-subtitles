@@ -3,8 +3,9 @@
 //!
 //! **Role:** read the job (refusing one that is not ready), run `stages::fix_it` with a `claude`
 //! backend that the cancel token stops, keep every answered call so a stopped run resumes without
-//! paying again, write `fix.json`, and put the kept changes into `review.json` without touching a
-//! line the owner settled.
+//! paying again, write `fix.json` with this run's lines and the earlier runs' answers it did not
+//! ask again, and put this run's kept changes into `review.json` without touching a line the
+//! owner settled.
 //!
 //! **Position:** called by the window's Fix It and the `fix` subcommand; uses `inputs.rs`,
 //! `cache.rs` and `merge.rs`. The caller queues the correction run that times the changes.
@@ -13,19 +14,23 @@
 //! `fix/calls/` and `review.json`; starts `claude` processes in `claude-cwd/`.
 //!
 //! **Invariants:** a stopped or failed run changes no correction; the owner's corrections always
-//! win; `fix/calls/` goes once a run has written its corrections.
+//! win; only this run's lines are merged; `fix.json` keeps the problems before the first run and
+//! the calls and cost of every run since the job was last adjudicated, and a record from before
+//! that counts for nothing; `fix/calls/` goes once a run has written its corrections.
 
 mod cache;
 mod inputs;
 mod merge;
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use inference::llm::LanguageModel;
 use inference::llm::claude_cli::ClaudeCli;
-use job_model::outputs::{FixFamily, FixRecord};
+use job_model::StepName;
+use job_model::outputs::{FixBefore, FixFamily, FixRecord, LineFix};
 use stages::fix_it::{self, FixFailure, Make, Pass};
 
 use crate::cancel::CancelToken;
@@ -155,7 +160,8 @@ pub fn fix_job(
         Err(FixFailure::Brief(why)) => return Err(PipelineError::new("Fix It", why)),
     };
     let usage = run.usage;
-    let mut record = FixRecord {
+    let earlier = inputs.earlier.as_ref();
+    let mut this_run = FixRecord {
         model: options.model.clone(),
         video: inputs.video_name.clone(),
         brief: run.brief,
@@ -166,16 +172,28 @@ pub fn fix_job(
         output_tokens: usage.output_tokens,
         cost_usd: usage.cost_usd,
         failed_calls: usage.failed,
+        adjudication: inputs
+            .record
+            .steps
+            .get(&StepName::Readjudicate)
+            .map(|step| step.fingerprint.clone())
+            .unwrap_or_default(),
+        before: Some(
+            earlier
+                .and_then(|e| e.before.clone())
+                .unwrap_or_else(|| FixBefore::of(&inputs.qc)),
+        ),
     };
     progress(FixProgress {
         stage: FixStage::Saving,
         done: 0,
         total: 1,
     });
-    work_dir::write_json(&work.fix_record(), &record)?;
+    work_dir::write_json(&work.fix_record(), &carried(this_run.clone(), earlier))?;
     let (_, merged) = work_dir::update_corrections(work, |corrections| {
-        merge(corrections, &mut record.lines, &options.model)
+        merge(corrections, &mut this_run.lines, &options.model)
     })?;
+    let record = carried(this_run, earlier);
     work_dir::write_json(&work.fix_record(), &record)?;
     let _ = std::fs::remove_dir_all(work.fix_calls());
     progress(FixProgress {
@@ -189,6 +207,30 @@ pub fn fix_job(
         changed: merged.applied,
         kept_yours: merged.kept_yours,
     })
+}
+
+/// `run` with the lines `earlier` holds that `run` did not ask about, every line by id, and the
+/// calls, tokens, cost and failures of both.
+fn carried(mut run: FixRecord, earlier: Option<&FixRecord>) -> FixRecord {
+    if let Some(earlier) = earlier {
+        let asked: HashSet<&str> = run.lines.iter().map(|l| l.id.as_str()).collect();
+        let kept: Vec<LineFix> = earlier
+            .lines
+            .iter()
+            .filter(|l| !asked.contains(l.id.as_str()))
+            .cloned()
+            .collect();
+        run.lines.extend(kept);
+        run.calls += earlier.calls;
+        run.cached_calls += earlier.cached_calls;
+        run.input_tokens += earlier.input_tokens;
+        run.output_tokens += earlier.output_tokens;
+        run.cost_usd += earlier.cost_usd;
+        let failed = std::mem::take(&mut run.failed_calls);
+        run.failed_calls = earlier.failed_calls.iter().cloned().chain(failed).collect();
+    }
+    run.lines.sort_by(|a, b| a.id.cmp(&b.id));
+    run
 }
 
 #[cfg(test)]

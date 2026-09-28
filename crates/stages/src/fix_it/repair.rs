@@ -9,7 +9,7 @@
 //! then reading speed, so each family sees the lines as the earlier ones left them.
 //!
 //! **Signals and state:** one call per batch of `BATCH` lines, several at once; changes the
-//! drafts in place.
+//! drafts in place, and notes on each line of a batch whose call failed why it failed.
 //!
 //! **Invariants:** a family with no items makes no call; only an id the batch asked about is
 //! read, once; a change reaches the draft only through the guard.
@@ -61,9 +61,26 @@ pub(crate) fn repair(
         &messages,
         progress,
     );
+    // A failed call is recorded before `ask_all` returns; an unreadable answer as it is read.
+    let call_failure = calls.last_failure();
     for (batch, answer) in batches.iter().zip(answers) {
-        let Some(answer) = answer.and_then(|value| calls.read::<Answers>(&label, value)) else {
-            continue;
+        let read = match answer {
+            Some(value) => calls
+                .read::<Answers>(&label, value)
+                .ok_or_else(|| calls.last_failure()),
+            None => Err(call_failure.clone()),
+        };
+        let answer = match read {
+            Ok(answer) => answer,
+            Err(why) => {
+                let why = why.unwrap_or_else(|| format!("the {label} call failed"));
+                for item in batch.iter() {
+                    if let Some(draft) = drafts.get_mut(&item.id) {
+                        draft.failed.get_or_insert_with(|| why.clone());
+                    }
+                }
+                continue;
+            }
         };
         let asked: HashMap<&str, &Item> = batch.iter().map(|i| (i.id.as_str(), *i)).collect();
         let mut seen = HashSet::new();

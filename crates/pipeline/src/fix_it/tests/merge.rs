@@ -6,6 +6,7 @@ fn line(id: &str, verdict: FixVerdict) -> LineFix {
     LineFix {
         id: id.into(),
         problems: vec!["too short".into()],
+        checks: Vec::new(),
         before_text: "Go!".into(),
         before_flags: Vec::new(),
         after_text: "Uh, go!".into(),

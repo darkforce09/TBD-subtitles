@@ -8,19 +8,22 @@
 //!
 //! **Position:** called by `pipeline::fix_it` with any `inference::llm::LanguageModel`; the
 //! passes are `brief.rs`, `repair.rs` and `judge.rs`, the lines asked about come from `items.rs`,
-//! what the model reads about each from `evidence.rs`, and `guard.rs` holds the rules.
+//! what the model reads about each from `evidence.rs`, and `guard.rs` holds the rules;
+//! `change.rs` names the words a recorded change touched, for the window.
 //!
 //! **Signals and state:** one model call per brief part and per batch; the working copy of each
 //! asked line lives only for the run. The model sees each utterance's start, its length and the
 //! gaps around it, never a word's time.
 //!
 //! **Invariants:** no word no engine heard reaches a change (law 8); a line the owner settled is
-//! never asked about; a change is kept only when the judge accepts it; a line whose words stay
-//! is kept only to be timed again, or when the model confirms a word it was asked about; once
-//! `stop` is set no call starts and the run ends as stopped.
+//! never asked about, nor a finding an earlier run answered; a change is kept only when the judge
+//! accepts it; a line whose words stay is kept only to be timed again, or when the model confirms
+//! a word it was asked about; a line that stays only because its call failed is not answered;
+//! once `stop` is set no call starts and the run ends as stopped.
 
 pub mod brief;
 pub mod calls;
+pub mod change;
 pub mod evidence;
 pub mod guard;
 pub mod items;
@@ -35,9 +38,10 @@ use job_model::outputs::{
     Aligned, Corrections, EngineTranscript, FixBrief, FixFamily, FixStep, FixVerdict, Line,
     LineFix, Utterance,
 };
-use job_model::report::QcReport;
+use job_model::report::{QcCheck, QcReport};
 
 pub use calls::{Make, Usage};
+pub use change::changed_words;
 
 /// Everything Fix It reads about one video.
 pub struct Episode<'a> {
@@ -58,6 +62,8 @@ pub struct Episode<'a> {
     pub timing: &'a Aligned,
     /// The main engine's words, to tell what was heard where speech has no subtitle.
     pub heard: &'a EngineTranscript,
+    /// What earlier runs answered, which this run does not ask again.
+    pub answered: &'a items::Answered,
 }
 
 /// Which pass is running, for progress.
@@ -92,6 +98,7 @@ pub(crate) struct Draft {
     /// Its index in the sheet.
     pub(crate) index: usize,
     pub(crate) problems: Vec<String>,
+    pub(crate) checks: Vec<QcCheck>,
     pub(crate) before_text: String,
     pub(crate) before_flags: Vec<String>,
     pub(crate) text: String,
@@ -100,6 +107,8 @@ pub(crate) struct Draft {
     pub(crate) refused: Vec<String>,
     /// Why the line may be kept as it is: timed again, or its words confirmed.
     pub(crate) kept: Option<String>,
+    /// Why a repair call that asked about the line gave nothing usable, the first such.
+    pub(crate) failed: Option<String>,
 }
 
 impl Draft {
@@ -181,6 +190,7 @@ fn drafts(ep: &Episode, asked: &[items::Item]) -> HashMap<String, Draft> {
                 id: item.id.clone(),
                 index: i,
                 problems: Vec::new(),
+                checks: Vec::new(),
                 before_text: text.clone(),
                 before_flags: flags.clone(),
                 text,
@@ -188,6 +198,7 @@ fn drafts(ep: &Episode, asked: &[items::Item]) -> HashMap<String, Draft> {
                 steps: Vec::new(),
                 refused: Vec::new(),
                 kept: None,
+                failed: None,
             }
         });
         for problem in &item.problems {
@@ -195,12 +206,18 @@ fn drafts(ep: &Episode, asked: &[items::Item]) -> HashMap<String, Draft> {
                 draft.problems.push(problem.clone());
             }
         }
+        for check in &item.checks {
+            if !draft.checks.contains(check) {
+                draft.checks.push(*check);
+            }
+        }
     }
     drafts
 }
 
 /// The line as it came out, with its sheet index: a changed line takes the judge's verdict; a
-/// line whose words stay is kept when it may be, else unchanged.
+/// line whose words stay is kept when it may be, not answered when a call about it failed, else
+/// unchanged.
 fn finish(draft: Draft, verdicts: &HashMap<String, judge::Verdict>) -> (LineFix, usize) {
     let verdict = if draft.changed() {
         match verdicts.get(&draft.id) {
@@ -211,9 +228,10 @@ fn finish(draft: Draft, verdicts: &HashMap<String, judge::Verdict>) -> (LineFix,
             },
         }
     } else {
-        match &draft.kept {
-            Some(why) => FixVerdict::Kept { why: why.clone() },
-            None => FixVerdict::Unchanged,
+        match (&draft.kept, &draft.failed) {
+            (Some(why), _) => FixVerdict::Kept { why: why.clone() },
+            (None, Some(why)) => FixVerdict::NotAnswered { why: why.clone() },
+            (None, None) => FixVerdict::Unchanged,
         }
     };
     let removed = guard::removed(&draft.before_text, &draft.text);
@@ -221,6 +239,7 @@ fn finish(draft: Draft, verdicts: &HashMap<String, judge::Verdict>) -> (LineFix,
     let line = LineFix {
         id: draft.id,
         problems: draft.problems,
+        checks: draft.checks,
         before_text: draft.before_text,
         before_flags: draft.before_flags,
         after_text: draft.text,

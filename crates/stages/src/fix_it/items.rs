@@ -2,20 +2,23 @@
 //! family, put in words, and the brief's suspects.
 //!
 //! **Role:** decide for each finding whether Fix It asks about it (`asks_about`, which the window
-//! also uses to show the button), find the lines behind speech with no subtitle, and gather one
-//! item per line and family with its problems in words.
+//! also uses to show the button), know what an earlier run answered (`Answered`), find the lines
+//! behind speech with no subtitle, and gather one item per line and family with its problems in
+//! words and the checks behind them.
 //!
 //! **Position:** called by `fix_it::run` after the brief, and by the window's report.
 //!
 //! **Signals and state:** none; pure.
 //!
 //! **Invariants:** a line the owner settled is never asked about; a Fix It change the owner has
-//! not checked is not asked about its words again; the aligner's offset and failed calls are not
-//! Fix It's; items come out by family, then in sheet order.
+//! not checked is not asked about its words again; a finding an earlier run answered is not asked
+//! about again, and a suspect line it answered is not either; speech with no subtitle is always
+//! asked about; the aligner's offset and failed calls are not Fix It's; items come out by family,
+//! then in sheet order.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use job_model::outputs::{Corrections, FixBrief, FixFamily, Utterance};
+use job_model::outputs::{Corrections, FixBrief, FixFamily, FixRecord, Utterance};
 use job_model::report::{QcCheck, QcFinding};
 
 use super::Episode;
@@ -32,13 +35,73 @@ pub struct Item {
     pub id: String,
     pub family: FixFamily,
     pub problems: Vec<String>,
+    /// The quality checks behind its problems; a suspect adds none.
+    pub checks: Vec<QcCheck>,
     /// Whether an answer that keeps the words settles the line: it is timed again (timing) or
     /// the model confirms a word it was asked about (unsure, a heard word replaced).
     pub keep_settles: bool,
 }
 
-/// The family Fix It asks about `finding` in, or `None` when it does not ask.
-pub fn asks_about(finding: &QcFinding, corrections: &Corrections) -> Option<FixFamily> {
+/// The lines earlier Fix It runs answered, and the checks each was answered about.
+#[derive(Debug, Clone, Default)]
+pub struct Answered {
+    /// Each answered line's checks; `None` covers every check of the line.
+    lines: HashMap<String, Option<BTreeSet<QcCheck>>>,
+}
+
+impl Answered {
+    /// Nothing answered.
+    pub fn none() -> Answered {
+        Answered::default()
+    }
+
+    /// The lines of `record` whose verdict answered them; a line recorded with no checks covers
+    /// every check of that line.
+    pub fn from_record(record: &FixRecord) -> Answered {
+        let mut lines: HashMap<String, Option<BTreeSet<QcCheck>>> = HashMap::new();
+        for line in record.lines.iter().filter(|l| l.verdict.answered()) {
+            let checks = lines
+                .entry(line.id.clone())
+                .or_insert_with(|| Some(BTreeSet::new()));
+            if line.checks.is_empty() {
+                *checks = None;
+            } else if let Some(checks) = checks {
+                checks.extend(line.checks.iter().copied());
+            }
+        }
+        Answered { lines }
+    }
+
+    /// Whether an earlier run answered `finding`: its line, about its check. A finding about no
+    /// line, such as speech with no subtitle, is never covered.
+    pub fn covers(&self, finding: &QcFinding) -> bool {
+        if finding.check == QcCheck::UncoveredSpeech {
+            return false;
+        }
+        let Some(id) = finding.utterance.as_deref() else {
+            return false;
+        };
+        match self.lines.get(id) {
+            Some(None) => true,
+            Some(Some(checks)) => checks.contains(&finding.check),
+            None => false,
+        }
+    }
+
+    /// Whether an earlier run answered line `id` about anything.
+    pub fn line(&self, id: &str) -> bool {
+        self.lines.contains_key(id)
+    }
+}
+
+/// The family Fix It asks about `finding` in, or `None` when it does not ask: not Fix It's, the
+/// owner settled the line, a Fix It change is not asked about its words again, or `answered`
+/// covers it.
+pub fn asks_about(
+    finding: &QcFinding,
+    corrections: &Corrections,
+    answered: &Answered,
+) -> Option<FixFamily> {
     use QcCheck::*;
     let family = match finding.check {
         Unsure | Novel | RemovedLocked => FixFamily::Words,
@@ -47,6 +110,9 @@ pub fn asks_about(finding: &QcFinding, corrections: &Corrections) -> Option<FixF
         TooFast => FixFamily::ReadingSpeed,
         Offset | FailedCall => return None,
     };
+    if answered.covers(finding) {
+        return None;
+    }
     if finding.check == UncoveredSpeech {
         return Some(family);
     }
@@ -68,7 +134,11 @@ pub fn items(ep: &Episode, brief: &FixBrief) -> Vec<Item> {
         .map(|(i, u)| (u.id.as_str(), i))
         .collect();
     let mut gathered: BTreeMap<(FixFamily, usize), Item> = BTreeMap::new();
-    let mut add = |id: &str, family: FixFamily, problem: String, keep_settles: bool| {
+    let mut add = |id: &str,
+                   family: FixFamily,
+                   problem: String,
+                   check: Option<QcCheck>,
+                   keep_settles: bool| {
         let Some(&index) = order.get(id) else {
             return;
         };
@@ -76,34 +146,41 @@ pub fn items(ep: &Episode, brief: &FixBrief) -> Vec<Item> {
             id: id.to_string(),
             family,
             problems: Vec::new(),
+            checks: Vec::new(),
             keep_settles: false,
         });
         if !item.problems.contains(&problem) {
             item.problems.push(problem);
         }
+        if let Some(check) = check
+            && !item.checks.contains(&check)
+        {
+            item.checks.push(check);
+        }
         item.keep_settles |= keep_settles;
     };
     for finding in &ep.qc.findings {
-        let Some(family) = asks_about(finding, ep.corrections) else {
+        let Some(family) = asks_about(finding, ep.corrections, ep.answered) else {
             continue;
         };
         let settles = family == FixFamily::Timing
             || matches!(finding.check, QcCheck::Unsure | QcCheck::RemovedLocked);
+        let check = Some(finding.check);
         if finding.check == QcCheck::UncoveredSpeech {
             let (from, to) = uncovered_span(finding);
             let problem = uncovered_problem(ep, from, to);
             for id in lines_near(ep.sheet, ep.corrections, from, to) {
-                add(&id, family, problem.clone(), settles);
+                add(&id, family, problem.clone(), check, settles);
             }
         } else if let Some(id) = &finding.utterance {
-            add(id, family, describe(finding), settles);
+            add(id, family, describe(finding), check, settles);
         }
     }
     for suspect in &brief.suspects {
-        let open = ep.corrections.get(&suspect.id).is_none();
+        let open = ep.corrections.get(&suspect.id).is_none() && !ep.answered.line(&suspect.id);
         if open {
             let problem = format!("does not fit the conversation: {}", suspect.why);
-            add(&suspect.id, FixFamily::Words, problem, false);
+            add(&suspect.id, FixFamily::Words, problem, None, false);
         }
     }
     gathered.into_values().collect()

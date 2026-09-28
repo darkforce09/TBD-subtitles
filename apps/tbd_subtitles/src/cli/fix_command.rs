@@ -127,6 +127,7 @@ fn print_outcome(outcome: &FixOutcome) {
             FixVerdict::Accepted { why } => format!("accepted: {why}"),
             FixVerdict::TurnedDown { why } => format!("turned down: {why}"),
             FixVerdict::NotJudged { why } => format!("not judged: {why}"),
+            FixVerdict::NotAnswered { why } => format!("not answered: {why}"),
         };
         eprintln!("  {} {verdict}", line.id);
         if line.changed() {
