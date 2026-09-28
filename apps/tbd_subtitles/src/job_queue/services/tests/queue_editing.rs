@@ -29,7 +29,7 @@ fn adding_skips_queued_videos_and_empty_paths_and_keeps_order() {
 #[test]
 fn a_finished_video_can_be_queued_again() {
     let mut q = queue(&["a.mp4"]);
-    q.items[0].state = JobState::Cancelled;
+    q.items[0].state = JobState::Cancelled { kept_steps: 0 };
     assert_eq!(add_videos(&mut q, [PathBuf::from("a.mp4")]), 1);
     assert_eq!(q.items.len(), 2);
 }
@@ -50,7 +50,7 @@ fn a_running_job_cannot_be_removed() {
 #[test]
 fn waiting_jobs_move_among_themselves() {
     let mut q = queue(&["a", "b", "c", "d"]);
-    q.items[1].state = JobState::Cancelled;
+    q.items[1].state = JobState::Cancelled { kept_steps: 0 };
     move_job(&mut q, 3, Move::Up);
     assert_eq!(order(&q), ["a", "b", "d", "c"]);
     move_job(&mut q, 0, Move::Down);
@@ -70,7 +70,11 @@ fn waiting_jobs_move_among_themselves() {
 #[test]
 fn only_an_ended_job_is_retried_and_the_first_waiting_runs_next() {
     let mut q = queue(&["a", "b"]);
-    q.items[0].state = JobState::Failed("boom".into());
+    q.items[0].state = JobState::Failed(crate::job_queue::models::queue::Failure {
+        step: None,
+        message: "boom".into(),
+        kept_steps: 0,
+    });
     assert_eq!(next_waiting(&q, JobKind::Full), Some(1));
     assert!(retry(&mut q, 0));
     assert!(!retry(&mut q, 1), "already waiting");
@@ -103,6 +107,12 @@ fn review_runs_wait_in_their_own_lane_and_are_queued_once() {
     let mut q = queue(&["a"]);
     let first = queue_review(&mut q, PathBuf::from("b"));
     assert_eq!(queue_review(&mut q, PathBuf::from("b")), first);
+    assert_eq!(
+        q.get(first).map(|i| i.corrections),
+        Some(2),
+        "one run carries both"
+    );
+    assert_eq!(q.items[0].corrections, 0, "a full run carries none");
     assert_eq!(next_waiting(&q, JobKind::Full), Some(0));
     assert_eq!(next_waiting(&q, JobKind::Review), Some(first));
 }

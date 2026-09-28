@@ -1,4 +1,5 @@
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use job_model::StepName;
 use job_model::report::QcReport;
@@ -8,7 +9,8 @@ use pipeline::{JobOutcome, PipelineError};
 use super::*;
 use crate::core::color_scheme::Scheme;
 use crate::job_queue::events::JobQueueEvent;
-use crate::job_queue::models::queue::JobState;
+use crate::job_queue::models::progress::JobProgress;
+use crate::job_queue::models::queue::{Failure, JobState};
 use crate::job_queue::services::job_runner::RunJob;
 use crate::settings::events::SettingsEvent;
 
@@ -34,11 +36,64 @@ fn stand_in() -> RunJob {
     })
 }
 
+/// A stand-in whose Whisper step fails after two steps still valid; it keeps the steps it was
+/// asked to run again in `rerun`.
+fn failing(rerun: Arc<Mutex<Vec<StepName>>>) -> RunJob {
+    Arc::new(move |_video, options, progress| {
+        if let Ok(mut seen) = rerun.lock() {
+            seen.clone_from(&options.rerun);
+        }
+        progress(Progress::StepSkipped(StepName::ProbeDecode));
+        progress(Progress::StepSkipped(StepName::ShotScan));
+        progress(Progress::StepStarted(StepName::AsrWhisper));
+        progress(Progress::StepFailed {
+            step: StepName::AsrWhisper,
+            message: "step asr_whisper: out of memory".into(),
+        });
+        Err(PipelineError::new("step asr_whisper", "out of memory"))
+    })
+}
+
+/// A stand-in that fails before its job starts, as when another process holds the job's lock.
+fn locked() -> RunJob {
+    Arc::new(|_video, _options, _progress| {
+        Err(PipelineError::new(
+            "lock the work directory",
+            "another process runs this job",
+        ))
+    })
+}
+
+/// A stand-in that keeps two steps still valid, then runs its separation until it is cancelled.
+fn until_cancelled() -> RunJob {
+    Arc::new(|_video, options, progress| {
+        progress(Progress::StepSkipped(StepName::ProbeDecode));
+        progress(Progress::StepSkipped(StepName::ShotScan));
+        progress(Progress::StepStarted(StepName::Separation));
+        for _ in 0..500 {
+            if options.cancel.is_cancelled() {
+                progress(Progress::StepFailed {
+                    step: StepName::Separation,
+                    message: "step separation: cancelled".into(),
+                });
+                return Err(PipelineError::cancelled("step separation"));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Err(PipelineError::new("step separation", "never cancelled"))
+    })
+}
+
 /// An application over files in a scratch folder of its own, never the owner's home.
 fn app(name: &str, videos: Vec<PathBuf>) -> TbdSubtitlesApp {
+    app_with(name, videos, stand_in())
+}
+
+/// An application whose jobs run through `run`, in a scratch folder of its own.
+fn app_with(name: &str, videos: Vec<PathBuf>, run: RunJob) -> TbdSubtitlesApp {
     let root = std::env::temp_dir().join(format!("tbd-app-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
-    TbdSubtitlesApp::new(Environment::scratch(&root, stand_in()), videos)
+    TbdSubtitlesApp::new(Environment::scratch(&root, run), videos)
 }
 
 /// Poll the runner until nothing runs, or fail after five seconds.
@@ -145,25 +200,123 @@ fn started_jobs_run_one_after_another_and_the_queue_is_kept() {
 }
 
 #[test]
-fn a_cancelled_job_ends_cancelled_and_can_be_retried() {
-    let mut app = app("cancel", vec![PathBuf::from("a.mp4")]);
+fn a_cancelled_job_keeps_its_finished_steps_and_can_be_retried() {
+    let mut app = app_with("cancel", vec![PathBuf::from("a.mp4")], until_cancelled());
     app.settings.items.iter_mut().for_each(|i| i.present = true);
-    app.queue.running = true;
-    // Cancel before the stand-in looks at its token.
-    app.cancel = None;
-    app.start_next();
+    app.apply(vec![Action::from(JobQueueEvent::Start)]);
     let id = app.queue.items[0].id;
     app.apply(vec![Action::from(JobQueueEvent::Cancel(id))]);
     settle(&mut app);
-    assert!(matches!(
+    assert_eq!(
         app.queue.items[0].state,
-        JobState::Cancelled | JobState::Finished(_)
-    ));
+        JobState::Cancelled { kept_steps: 2 }
+    );
+    app.apply(vec![Action::from(JobQueueEvent::Select(id))]);
+    let (text, _) = render(&app);
+    assert!(text.contains("2 finished steps kept"), "{text}");
     app.apply(vec![
         Action::from(JobQueueEvent::Pause),
         Action::from(JobQueueEvent::Retry(id)),
     ]);
     assert!(app.queue.items[0].state.is_waiting());
+    assert!(
+        app.queue.items[0].keep_settings,
+        "a retry keeps its own settings"
+    );
+}
+
+#[test]
+fn a_failed_job_records_its_step_and_the_steps_it_kept() {
+    let rerun = Arc::new(Mutex::new(Vec::new()));
+    let mut app = app_with(
+        "failed",
+        vec![PathBuf::from("a.mp4")],
+        failing(rerun.clone()),
+    );
+    app.settings.items.iter_mut().for_each(|i| i.present = true);
+    app.queue.items[0].rerun = vec![StepName::AsrWhisper];
+    app.apply(vec![Action::from(JobQueueEvent::Start)]);
+    assert!(
+        app.queue.items[0].keep_settings,
+        "a started job keeps its settings"
+    );
+    settle(&mut app);
+    assert_eq!(
+        rerun.lock().map(|seen| seen.clone()).unwrap_or_default(),
+        [StepName::AsrWhisper]
+    );
+    assert!(
+        app.queue.items[0].rerun.is_empty(),
+        "once a step started, the pipeline holds the steps to run again"
+    );
+    assert_eq!(
+        app.queue.items[0].state,
+        JobState::Failed(Failure {
+            step: Some(StepName::AsrWhisper),
+            message: "step asr_whisper: out of memory".into(),
+            kept_steps: 2,
+        })
+    );
+    let id = app.queue.items[0].id;
+    app.apply(vec![Action::from(JobQueueEvent::Select(id))]);
+    let (text, _) = render(&app);
+    for expected in [
+        "Failed at Hear the speech.",
+        "Listen with Whisper: step asr_whisper: out of memory",
+        "2 finished steps kept",
+    ] {
+        assert!(text.contains(expected), "{expected} not in {text}");
+    }
+}
+
+#[test]
+fn a_job_failing_before_it_starts_keeps_its_steps_to_run_again() {
+    let mut app = app_with("locked", vec![PathBuf::from("a.mp4")], locked());
+    app.settings.items.iter_mut().for_each(|i| i.present = true);
+    app.queue.items[0].rerun = vec![StepName::Adjudicate];
+    app.apply(vec![Action::from(JobQueueEvent::Start)]);
+    settle(&mut app);
+    assert_eq!(
+        app.queue.items[0].state,
+        JobState::Failed(Failure {
+            step: None,
+            message: "lock the work directory: another process runs this job".into(),
+            kept_steps: 0,
+        })
+    );
+    assert_eq!(app.queue.items[0].rerun, [StepName::Adjudicate]);
+    let kept = crate::job_queue::services::queue_store::load(&app.env.queue_path).expect("kept");
+    assert_eq!(
+        kept.items[0].rerun,
+        [StepName::Adjudicate],
+        "and so does queue.json"
+    );
+}
+
+#[test]
+fn a_full_run_waits_while_its_videos_review_run_runs() {
+    let mut app = app("guard", vec![PathBuf::from("a.mp4")]);
+    app.settings.items.iter_mut().for_each(|i| i.present = true);
+    let review = queue_editing::queue_review(&mut app.queue, PathBuf::from("a.mp4"));
+    // The review lane holds the review run, with no thread behind it.
+    if let Some(item) = app.queue.get_mut(review) {
+        item.state = JobState::Running(Box::new(JobProgress::new(Instant::now())));
+    }
+    app.review_cancel = Some((review, CancelToken::new()));
+    app.apply(vec![Action::from(JobQueueEvent::Start)]);
+    assert!(app.queue.items[0].state.is_waiting(), "the full run waits");
+    assert!(app.queue.running, "and holds its lane");
+    if let Some(item) = app.queue.get_mut(review) {
+        item.state = JobState::FinishedBefore;
+    }
+    app.review_cancel = None;
+    app.start_next();
+    assert!(
+        app.queue.items[0].state.is_running(),
+        "it starts once the review run ends"
+    );
+    settle(&mut app);
+    assert!(matches!(app.queue.items[0].state, JobState::Finished(_)));
 }
 
 #[test]
@@ -317,8 +470,11 @@ fn a_saved_correction_queues_a_review_run_that_runs_at_once() {
         .filter(|i| i.kind == crate::job_queue::models::queue::JobKind::Review)
         .count();
     assert_eq!(review_runs, 1);
+    assert_eq!(app.queue.items[1].corrections, 1);
     settle(&mut app);
     assert!(matches!(app.queue.items[1].state, JobState::Finished(_)));
+    let (text, _) = render(&app);
+    assert!(text.contains("Dressrosa 13.mp4 · 1 correction"), "{text}");
     let _ = std::fs::remove_dir_all(&root);
 }
 

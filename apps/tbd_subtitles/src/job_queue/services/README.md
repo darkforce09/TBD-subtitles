@@ -21,21 +21,25 @@ apps/tbd_subtitles/src/job_queue/services/
 `queue_editing::add_videos` queues each video not already waiting or running; a folder stands for
 its videos with no subtitle file beside them. `next_waiting(queue, kind)` names the job that runs
 next in a lane: full runs in queue order, review runs in theirs; `queue_review` queues a video's
-review run unless one already waits. `job_runner::start` spawns one thread that runs each
-`Command` it is handed with the given `RunJob` (the pipeline's `run_job`, or a stand-in in the
-tests) and sends every progress event and the outcome back, waking the window; the thread lives as
-long as the window, so the workers it starts are not killed early. `progress_tracking::apply`
-moves each step row as the events arrive. `time_left::from_history` reads every job's `job.json`
-and `probe.json` in the work folder for each step's mean seconds per second of video, over the
-pilot's rates; `estimate` sums the steps still to run, leaving out the shot scan that runs beside
-them. `queue_store` keeps each job's video, kind and coarse state.
+review run carrying one correction, or adds the correction to the one that already waits.
+`job_runner::start` spawns one thread that runs each `Command` it is handed with the given
+`RunJob` (the pipeline's `run_job`, or a stand-in in the tests) and sends every progress event and
+the outcome back, waking the window; the thread lives as long as the window, so the workers it
+starts are not killed early. `progress_tracking::apply` moves each step row as the events arrive.
+`time_left::from_history` reads every job's `job.json` and `probe.json` in the work folder for
+each step's mean seconds per second of video, over the pilot's rates; `estimate` sums the steps
+still to run, leaving out the shot scan that runs beside them. `queue_store` keeps each job's
+video, kind and coarse state, whether it keeps its own settings, the steps it runs again, its
+corrections, and where it failed with the finished steps it kept; each of those fields has a
+default, so a file written before it existed still loads, a job there that no longer waits
+keeping its own settings.
 
 ## Boundaries
 
 - Depends on: `crate::job_queue::models`; `crate::core::background::Wake`; `pipeline`;
   `job_model`; `serde` and `serde_json`.
-- Used by: `crate::application` (`actions::queue`, `mod.rs`); `crate::job_queue::ui`
-  (`time_left::estimate`).
+- Used by: `crate::application` (`actions::{queue, review, runner}`, `mod.rs`);
+  `crate::job_queue::ui` (`time_left::estimate`).
 - Rules:
   - nothing here names egui or eframe
     (`dependency_boundaries_and_external_test_placement_are_enforced` in
@@ -48,5 +52,6 @@ them. `queue_store` keeps each job's video, kind and coarse state.
   - the shot scan never adds to the time left, and a step keeps its own pace
     (`done_skipped_and_the_shot_scan_add_nothing_and_a_step_keeps_its_own_pace` in
     `tests/time_left.rs`);
-  - a job running when the window closed waits again
-    (`a_saved_queue_loads_back_with_the_running_job_waiting` in `tests/queue_store.rs`).
+  - a job running when the window closed waits again, and a file without the newer fields loads
+    (`a_saved_queue_loads_back_with_the_running_job_waiting`,
+    `a_file_written_before_the_new_fields_still_loads` in `tests/queue_store.rs`).

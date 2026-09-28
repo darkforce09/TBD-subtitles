@@ -52,8 +52,9 @@ frame_ui(&self)
   └── the page: jobs_ui (the review, or progress then the report) or settings_ui
                   ──▶ Queue / Report / Review / Settings
 apply(&mut self, actions)
-  └── actions::queue (edits, Start, Pause, Cancel, the next job of each lane), actions::review
-      (open, edit, save and queue a review run, play), actions::report or actions::settings
+  └── actions::queue (edits, Start, Pause, Cancel), actions::runner (the next job of each lane,
+      its options, how it ended), actions::review (open, edit, save and queue a review run, play),
+      actions::report or actions::settings
 ```
 
 `frame_ui` borrows the state immutably and only collects actions; `apply` and `poll` are the only
@@ -77,11 +78,13 @@ thread; its answer goes into the queue or the settings draft.
     (`an_empty_queue_says_how_to_add_videos`,
     `queued_videos_show_by_file_name_and_wait_for_start`,
     `the_settings_page_shows_the_form_models_and_checks`);
-  - jobs run one after another and a cancelled job can be retried
-    (`started_jobs_run_one_after_another_and_the_queue_is_kept`,
-    `a_cancelled_job_ends_cancelled_and_can_be_retried`), a finished job shows its report
-    (`a_finished_job_shows_its_report`), and a saved correction queues a review run that starts
-    at once (`a_saved_correction_queues_a_review_run_that_runs_at_once`);
+  - jobs run one after another, a cancelled job keeps its finished steps and can be retried, a
+    failed job records its step (`started_jobs_run_one_after_another_and_the_queue_is_kept`,
+    `a_cancelled_job_keeps_its_finished_steps_and_can_be_retried`,
+    `a_failed_job_records_its_step_and_the_steps_it_kept`), a finished job shows its report
+    (`a_finished_job_shows_its_report`), a saved correction queues a review run that starts at
+    once (`a_saved_correction_queues_a_review_run_that_runs_at_once`), and a full run waits while
+    its video's review run runs (`a_full_run_waits_while_its_videos_review_run_runs`);
   - the window draws in the desktop's scheme and follows its changes
     (`the_window_draws_in_the_desktops_scheme`, `a_change_of_the_desktops_scheme_is_followed`);
     the rendering harness installs the theme;

@@ -1,4 +1,15 @@
 //! A running job's progress: every step it will do, where each stands, and the video's length.
+//!
+//! **Role:** hold one row per step with its state, and answer which step runs, which failed and
+//! how many are kept.
+//!
+//! **Position:** held by a running `QueueItem`; changed by `job_queue::services::progress_tracking`;
+//! read by the time left, the views and the application when the job ends.
+//!
+//! **Signals and state:** none; plain data.
+//!
+//! **Invariants:** one row per step, in run order; a step this run does not do is never counted
+//! as lost.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -67,6 +78,35 @@ impl JobProgress {
     pub(crate) fn row_mut(&mut self, step: StepName) -> Option<&mut StepRow> {
         self.steps.iter_mut().find(|row| row.step == step)
     }
+
+    /// How many steps have a valid output: done in this run, or still valid from an earlier one.
+    pub(crate) fn kept_steps(&self) -> usize {
+        self.steps
+            .iter()
+            .filter(|row| match row.state {
+                StepState::Done { .. } | StepState::Skipped => true,
+                StepState::Pending => !row.stale,
+                StepState::Running { .. } | StepState::Failed(_) => false,
+            })
+            .count()
+    }
+
+    /// The step running now; beside the shot scan, the later step.
+    pub(crate) fn current_step(&self) -> Option<StepName> {
+        self.steps
+            .iter()
+            .rev()
+            .find(|row| matches!(row.state, StepState::Running { .. }))
+            .map(|row| row.step)
+    }
+
+    /// The first step that failed, if one did.
+    pub(crate) fn failed_step(&self) -> Option<StepName> {
+        self.steps
+            .iter()
+            .find(|row| matches!(row.state, StepState::Failed(_)))
+            .map(|row| row.step)
+    }
 }
 
 /// Seconds each step takes per second of video, measured on earlier jobs.
@@ -74,3 +114,7 @@ impl JobProgress {
 pub(crate) struct Rates {
     pub(crate) per_step: std::collections::BTreeMap<StepName, f64>,
 }
+
+#[cfg(test)]
+#[path = "tests/progress.rs"]
+mod tests;

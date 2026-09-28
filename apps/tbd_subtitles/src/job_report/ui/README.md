@@ -15,12 +15,12 @@ apps/tbd_subtitles/src/job_report/ui/
 The verdict comes first: passes, or each failed rule in red. Then the counts, the subtitle file
 with Copy path, the buttons that open the video, its folder and `report.md`, the findings (time as
 `h:mm:ss.d`, check, text, detail, and Review for a finding about one line) with a Review lines
-button above them, and the steps (time, peak RAM, peak VRAM) in tables.
+button above them, and the steps (by their plain titles, with time, peak RAM and peak VRAM) in tables.
 
 ## Boundaries
 
-- Depends on: `crate::job_report::{events, models}`; `crate::core::{format, ui}`; `eframe` and
-  `egui_extras`.
+- Depends on: `crate::job_report::{events, models}`; `crate::core::{format, steps, ui}`; `eframe`
+  and `egui_extras`.
 - Used by: `crate::application::feature_views`.
 - Rules: no module outside the feature but `application` may import this folder
   (`dependency_boundaries_and_external_test_placement_are_enforced` in

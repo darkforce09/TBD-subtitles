@@ -13,6 +13,7 @@ use eframe::egui::{RichText, Ui};
 use egui_extras::{Column, TableBuilder};
 
 use crate::core::format;
+use crate::core::steps::step_title;
 use crate::core::ui::palette::palette;
 use crate::job_report::events::ReportEvent;
 use crate::job_report::models::report::JobReport;
@@ -124,7 +125,7 @@ fn findings_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<ReportEvent>) {
                 for finding in &report.qc.findings {
                     body.row(20.0, |mut row| {
                         row.col(|ui| {
-                            ui.monospace(clock(finding.time_s));
+                            ui.monospace(format::clock_tenths(finding.time_s));
                         });
                         row.col(|ui| {
                             ui.label(finding.check.describe());
@@ -166,7 +167,7 @@ fn steps_ui(ui: &mut Ui, report: &JobReport) {
                 for (step, measure) in &report.steps {
                     body.row(20.0, |mut row| {
                         row.col(|ui| {
-                            ui.label(step.as_str());
+                            ui.label(step_title(*step));
                         });
                         row.col(|ui| {
                             ui.label(format::duration(measure.wall_s));
@@ -185,16 +186,4 @@ fn steps_ui(ui: &mut Ui, report: &JobReport) {
                 }
             });
     });
-}
-
-/// A video time as `h:mm:ss.d`, as `report.md` writes it.
-fn clock(seconds: f64) -> String {
-    let tenths = (seconds.max(0.0) * 10.0).round() as u64;
-    format!(
-        "{}:{:02}:{:02}.{}",
-        tenths / 36_000,
-        tenths / 600 % 60,
-        tenths / 10 % 60,
-        tenths % 10
-    )
 }

@@ -1,8 +1,9 @@
 //! The selected job on the right: its state, its time, and a row per step.
 //!
-//! **Role:** draw the running job's clock, time left and share done, with each step's state (to
-//! run, still valid, running with its progress, done with its time, failed with its reason), or
-//! where a job that is not running stands.
+//! **Role:** draw the running job's stage, clock, time left and share done, with each step's
+//! state (to run, still valid, running with its progress, done with its time, failed with its
+//! reason), or where a job that is not running stands: its place in line, the stage and step it
+//! failed at, or the finished steps it kept.
 //!
 //! **Position:** called by the application's Jobs page for the selected job.
 //!
@@ -13,10 +14,11 @@
 use eframe::egui::{Grid, ProgressBar, RichText, Ui};
 
 use crate::core::format;
+use crate::core::steps::{stage_of, step_title};
 use crate::core::ui::palette::palette;
 use crate::job_queue::events::JobQueueEvent;
 use crate::job_queue::models::progress::{JobProgress, StepState};
-use crate::job_queue::models::queue::{JobState, QueueItem};
+use crate::job_queue::models::queue::{Failure, JobState, QueueItem};
 use crate::job_queue::models::view::JobQueueView;
 use crate::job_queue::services::time_left;
 
@@ -36,19 +38,46 @@ pub(crate) fn progress_view_ui(
     ui.add_space(6.0);
     match &item.state {
         JobState::Waiting => {
-            ui.label("Waiting to run.");
+            let place = view
+                .queue
+                .items
+                .iter()
+                .filter(|other| other.kind == item.kind && other.state.is_waiting())
+                .position(|other| other.id == item.id)
+                .map_or(1, |at| at + 1);
+            ui.label(format!(
+                "Waiting to run · {} in line.",
+                format::ordinal(place)
+            ));
         }
         JobState::Running(progress) => running_ui(ui, view, item, progress, events),
-        JobState::Failed(reason) => {
-            ui.label(RichText::new(format!("Failed: {reason}")).color(palette(ui).bad));
-        }
-        JobState::Cancelled => {
-            ui.label("Cancelled. Its finished steps are kept; Retry resumes after them.");
+        JobState::Failed(failure) => failed_ui(ui, failure),
+        JobState::Cancelled { kept_steps } => {
+            ui.label(format!(
+                "Cancelled. {} kept; Retry resumes after them.",
+                format::plural(*kept_steps, "finished step")
+            ));
         }
         JobState::Finished(_) | JobState::FinishedBefore => {
             ui.label("Finished.");
         }
     }
+}
+
+fn failed_ui(ui: &mut Ui, failure: &Failure) {
+    let (heading, detail) = match failure.step {
+        Some(step) => (
+            format!("Failed at {}.", stage_of(step).title),
+            format!("{}: {}", step_title(step), failure.message),
+        ),
+        None => ("Failed.".to_string(), failure.message.clone()),
+    };
+    ui.label(RichText::new(heading).color(palette(ui).bad).strong());
+    ui.label(RichText::new(detail).color(palette(ui).bad));
+    ui.label(format!(
+        "{} kept; Retry resumes after them.",
+        format::plural(failure.kept_steps, "finished step")
+    ));
 }
 
 fn running_ui(
@@ -63,6 +92,9 @@ fn running_ui(
         .saturating_duration_since(progress.started)
         .as_secs_f64();
     let estimate = time_left::estimate(progress, view.rates, view.now);
+    if let Some(step) = progress.current_step() {
+        ui.label(RichText::new(format!("{}…", stage_of(step).doing)).strong());
+    }
     ui.horizontal(|ui| {
         ui.add(
             ProgressBar::new(estimate.map_or(0.0, |(_, s)| s as f32))
@@ -71,7 +103,7 @@ fn running_ui(
         );
         let left = estimate.map_or_else(
             || "time left: once the video is probed".to_string(),
-            |(left, _)| format!("about {} left", format::duration(left)),
+            |(left, _)| format!("{} left", format::about(left)),
         );
         ui.label(format!("{} running · {left}", format::duration(elapsed)));
         if progress.cancelling {
@@ -87,7 +119,7 @@ fn running_ui(
         .spacing([16.0, 4.0])
         .show(ui, |ui| {
             for row in &progress.steps {
-                ui.label(row.step.as_str());
+                ui.label(step_title(row.step));
                 match &row.state {
                     StepState::Pending if row.stale => {
                         ui.label(RichText::new("to run").color(palette(ui).text2));

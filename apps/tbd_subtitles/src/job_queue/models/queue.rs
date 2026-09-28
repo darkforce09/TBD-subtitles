@@ -8,9 +8,12 @@
 //!
 //! **Signals and state:** none; plain data.
 //!
-//! **Invariants:** ids are never reused in one window; at most one job is running.
+//! **Invariants:** ids are never reused in one window; at most one job runs in each lane, one
+//! full run and one review run; a job that has started keeps its own settings.
 
 use std::path::PathBuf;
+
+use job_model::StepName;
 
 use crate::job_queue::models::progress::JobProgress;
 
@@ -37,6 +40,16 @@ pub(crate) struct JobResult {
     pub(crate) wall_s: f64,
 }
 
+/// Why and where a job failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Failure {
+    /// The step that failed; none when the job failed before its first step.
+    pub(crate) step: Option<StepName>,
+    pub(crate) message: String,
+    /// How many finished steps stay valid, so a retry resumes after them.
+    pub(crate) kept_steps: usize,
+}
+
 /// Where a job stands.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum JobState {
@@ -45,8 +58,11 @@ pub(crate) enum JobState {
     Finished(JobResult),
     /// Finished in an earlier window; its report is read from its work directory when shown.
     FinishedBefore,
-    Failed(String),
-    Cancelled,
+    Failed(Failure),
+    /// Stopped by the owner; `kept_steps` finished steps stay valid.
+    Cancelled {
+        kept_steps: usize,
+    },
 }
 
 impl JobState {
@@ -66,8 +82,16 @@ pub(crate) struct QueueItem {
     pub(crate) video: PathBuf,
     pub(crate) kind: JobKind,
     pub(crate) state: JobState,
-    /// Whether this job ran before in this window, so a retry keeps its own settings.
-    pub(crate) ran_before: bool,
+    /// Whether the job has started, so every later run of it takes the settings in its own
+    /// `job.json` rather than the ones saved now.
+    pub(crate) keep_settings: bool,
+    /// Steps the next run does again even when their output is valid; the steps after them
+    /// follow. Emptied once the pipeline has recorded them in the job's `job.json`; kept when a
+    /// run fails before that.
+    pub(crate) rerun: Vec<StepName>,
+    /// How many corrections the owner saved or took back for this review run; none for a full
+    /// run.
+    pub(crate) corrections: usize,
 }
 
 /// Every job, in run order, and the one the right side shows.

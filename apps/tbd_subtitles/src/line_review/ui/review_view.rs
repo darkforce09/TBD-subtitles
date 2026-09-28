@@ -16,6 +16,7 @@ use eframe::egui::{
     TextureHandle, TextureOptions, Ui,
 };
 
+use crate::core::format;
 use crate::core::ui::palette::palette;
 use crate::line_review::events::ReviewEvent;
 use crate::line_review::models::clip::{Frame, Sound};
@@ -95,7 +96,7 @@ fn list_ui(ui: &mut Ui, session: &ReviewSession, events: &mut Vec<ReviewEvent>) 
             let mut label = LayoutJob::default();
             label.append(mark, 0.0, TextFormat::simple(font.clone(), mark_colour));
             label.append(
-                &format!("{}  {}  {text}", clock(line.start_s), line.id),
+                &format!("{}  {}  {text}", format::clock(line.start_s), line.id),
                 0.0,
                 TextFormat::simple(font, Color32::PLACEHOLDER),
             );
@@ -118,7 +119,7 @@ fn detail_ui(ui: &mut Ui, view: &ReviewView<'_>, line: &ReviewLine, events: &mut
         return;
     };
     ui.horizontal(|ui| {
-        ui.heading(format!("{}  {}", line.id, clock(line.start_s)));
+        ui.heading(format!("{}  {}", line.id, format::clock(line.start_s)));
         if ui.small_button("◀ Previous").clicked() {
             events.push(ReviewEvent::Step { forward: false });
         }
@@ -260,10 +261,4 @@ fn flag_name(flag: &str) -> &str {
         "DROP" => "drop the line",
         other => other,
     }
-}
-
-/// A video time as `h:mm:ss`.
-fn clock(seconds: f64) -> String {
-    let s = seconds.max(0.0).floor() as u64;
-    format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
 }

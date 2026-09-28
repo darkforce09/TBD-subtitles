@@ -142,12 +142,7 @@ impl TbdSubtitlesApp {
 
     /// Whether a full run of job `job`'s video is running now.
     pub(crate) fn video_busy(&self, job: JobId) -> bool {
-        let Some(video) = self.queue.get(job).map(|item| &item.video) else {
-            return false;
-        };
-        self.queue.items.iter().any(|item| {
-            &item.video == video && item.kind == JobKind::Full && item.state.is_running()
-        })
+        self.video_running(job, JobKind::Full)
     }
 
     /// Read the open review's lines again after a run of its video ended, keeping the line open.

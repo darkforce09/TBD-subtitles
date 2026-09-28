@@ -54,7 +54,9 @@ pub(crate) fn push(queue: &mut Queue, video: PathBuf, kind: JobKind) -> JobId {
         video,
         kind,
         state: JobState::Waiting,
-        ran_before: false,
+        keep_settings: false,
+        rerun: Vec::new(),
+        corrections: 0,
     });
     id
 }
@@ -146,15 +148,22 @@ pub(crate) fn next_waiting(queue: &Queue, kind: JobKind) -> Option<JobId> {
         .map(|item| item.id)
 }
 
-/// Queue a review run of `video` unless one already waits; returns the waiting run's id.
+/// Queue a review run of `video` carrying one more correction, unless one already waits, which
+/// then carries it; returns the waiting run's id.
 pub(crate) fn queue_review(queue: &mut Queue, video: PathBuf) -> JobId {
-    let waiting = queue.items.iter().find(|item| {
+    let waiting = queue.items.iter().position(|item| {
         item.kind == JobKind::Review && item.video == video && item.state.is_waiting()
     });
-    match waiting {
-        Some(item) => item.id,
-        None => push(queue, video, JobKind::Review),
-    }
+    let at = match waiting {
+        Some(at) => at,
+        None => {
+            push(queue, video, JobKind::Review);
+            queue.items.len() - 1
+        }
+    };
+    let item = &mut queue.items[at];
+    item.corrections += 1;
+    item.id
 }
 
 #[cfg(test)]

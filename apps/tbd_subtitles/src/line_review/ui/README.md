@@ -21,8 +21,8 @@ uploaded only when a new frame arrives.
 
 ## Boundaries
 
-- Depends on: `crate::line_review::{events, models, services::review_editing}`; `crate::core::ui`;
-  `eframe`.
+- Depends on: `crate::line_review::{events, models, services::review_editing}`; `crate::core::{format,
+  ui}`; `eframe`.
 - Used by: `crate::application::feature_views`.
 - Rules: no module outside the feature but `application` may import this folder
   (`dependency_boundaries_and_external_test_placement_are_enforced` in

@@ -88,9 +88,11 @@ fn row_ui(ui: &mut Ui, view: &JobQueueView<'_>, item: &QueueItem, events: &mut V
         || item.video.display().to_string(),
         |name| name.to_string_lossy().into_owned(),
     );
-    let name = match item.kind {
-        JobKind::Full => name,
-        JobKind::Review => format!("{name} · corrections"),
+    // A review run read from a queue file with no count says "corrections" alone.
+    let name = match (item.kind, item.corrections) {
+        (JobKind::Full, _) => name,
+        (JobKind::Review, 0) => format!("{name} · corrections"),
+        (JobKind::Review, n) => format!("{name} · {}", format::plural(n, "correction")),
     };
     let (mark, colour) = match &item.state {
         JobState::Waiting => ("…", palette(ui).text2),
@@ -99,7 +101,7 @@ fn row_ui(ui: &mut Ui, view: &JobQueueView<'_>, item: &QueueItem, events: &mut V
         JobState::Finished(_) => ("⚠", palette(ui).warn),
         JobState::FinishedBefore => ("✓", palette(ui).good),
         JobState::Failed(_) => ("✗", palette(ui).bad),
-        JobState::Cancelled => ("■", palette(ui).text2),
+        JobState::Cancelled { .. } => ("■", palette(ui).text2),
     };
     let selected = view.queue.selected == Some(item.id);
     ui.horizontal(|ui| {
@@ -123,7 +125,7 @@ fn row_ui(ui: &mut Ui, view: &JobQueueView<'_>, item: &QueueItem, events: &mut V
             );
             let text = match (progress.cancelling, estimate) {
                 (true, _) => "stopping…".to_string(),
-                (false, Some((left, _))) => format!("{} left", format::duration(left)),
+                (false, Some((left, _))) => format!("{} left", format::about(left)),
                 (false, None) => "starting…".to_string(),
             };
             ui.label(RichText::new(text).color(palette(ui).text2));

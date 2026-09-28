@@ -4,8 +4,8 @@
 
 The decisions the desktop window led to: how it plays clips and hands videos to other programs,
 where models live and how they arrive, when a job passes the quality check, how the owner's
-corrections are timed, and how the window looks. The [decision log](/documentation/decisions/) says how entries are
-written.
+corrections are timed, how the window looks, and which settings a job runs with. The
+[decision log](/documentation/decisions/) says how entries are written.
 
 ### 2026-09-26 — Clips play through FFmpeg, not libmpv
 
@@ -172,5 +172,30 @@ real window offscreen to PNG files for review.
 over the main one; the owner confirms a real drop. The window shows X11's generic icon until it
 sets one of its own. At a fractional scale factor XWayland may draw text softly; the owner's
 screens are at scale 1. Test builds compile wgpu for the snapshot test.
+
+**Supersedes:** none.
+
+### 2026-09-28 — A job keeps its own settings once it has started
+
+**Context:** A job reads its settings when it starts and records them in its `job.json`; each
+step's output is valid only for the settings it was made with. The window remembered whether a job
+had run only until it closed, so a failed or cancelled job retried in a later window took the
+settings saved since, and its finished steps ran again under them. A retry is meant to resume, and
+the window is to offer running a job again with the settings saved now as a command of its own.
+
+**Decision:** A job takes the settings saved now until it first starts. From then on every run of
+it, a retry after a failure or a cancel included, takes the settings in its own `job.json`, as a
+review run always does. `QueueItem.keep_settings` records this, and `queue.json` keeps it across
+windows; in an older file without the field, a job that no longer waits has started and keeps its
+settings. Running a job again with the settings saved now is a separate, explicit command that
+names the steps to run again: they reach the pipeline as `JobOptions.rerun`, as the CLI's
+`--rerun` does, and leave the queue once the pipeline has recorded them in `job.json`, so a run
+that fails before that keeps them.
+
+**Consequences:** A retry resumes after the finished steps the job kept, whatever changed in the
+settings since; a settings change reaches new jobs and the runs the owner asks for again. A job
+that failed before writing its `job.json` has no settings of its own and takes the saved ones.
+`queue.json` also keeps each failed job's step, message and kept steps, a cancelled job's kept
+steps, and a review run's count of corrections.
 
 **Supersedes:** none.

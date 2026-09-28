@@ -8,15 +8,17 @@ pipeline was unsure about; milestone M2. What exists now: the window opens (`tbd
 command line, dropped onto the window or added through the desktop's chooser (files, or a folder
 for its videos without subtitles), each with a button that takes it out again. The Settings page
 edits `settings.toml`, lists and downloads the models, and checks the machine. Start runs the
-waiting jobs one at a time, with each step's progress and the time left; a running job can be
-cancelled and an ended one retried, and the queue is kept across windows. A finished job shows
-its report: whether it passes the quality check, its findings with their times, its steps, and
-buttons that open the video, its folder and `report.md` through the desktop. From the report the
-owner opens the line review: the flagged lines (or every line), each with its clip (the video's
-sound or the voices alone, and a small picture), what every engine heard, the text and its flags.
-The owner picks a reading or types the line, and Save and time again writes `review.json` and
-starts a review run at once, which re-times the corrected lines and rewrites the subtitle file;
-Take the correction back undoes one.
+waiting jobs one at a time, with the stage at work, each step's progress under its plain title
+and the time left; a running job can be cancelled and an ended one retried, a failed job names the
+stage and step it failed at, a failed or cancelled one says how many finished steps it kept, and
+the queue is kept across windows. A finished job shows its report: whether it passes the quality
+check, its findings with their times, its steps, and buttons that open the video, its folder and
+`report.md` through the desktop. From the report the owner opens the line review: the flagged
+lines (or every line), each with its clip (the video's sound or the voices alone, and a small
+picture), what every engine heard, the text and its flags. The owner picks a reading or types the
+line, and Save and time again writes `review.json` and starts a review run at once, which
+re-times the corrected lines and rewrites the subtitle file; Take the correction back undoes one.
+The queue shows the review run with the number of corrections it carries.
 
 ## Where it lives
 
@@ -32,9 +34,14 @@ Take the correction back undoes one.
 ## Behaviour
 
 1. **Queue.** Add videos by file picker, drag and drop, or folder (every video without a subtitle
-   file). Reorder, cancel, retry. One job runs at a time; GPU stages run one after another.
-2. **Progress.** Per job: current stage, stage progress, elapsed and remaining time; the finished
-   stages with their durations.
+   file). Reorder, cancel, retry: a retry resumes after the finished steps the job kept. One job
+   runs at a time; GPU stages run one after another. A job takes the settings saved now until it
+   first starts, and its own from then on. A full run of a video waits while a review run of the
+   same video runs, and the reverse.
+2. **Progress.** Per job: current stage ("Settling the words"), stage progress, elapsed and
+   remaining time ("about 4 min"); the finished steps with their durations, each under a plain
+   title ("Listen with Whisper"). A failed job shows its stage and step ("Failed at Hear the
+   speech") with the message; a failed or cancelled job shows how many finished steps it kept.
 3. **Report.** When a job ends: the quality-check results, flagged lines (`UNSURE`, `NOVEL`) with
    timestamps, and the output file's path. A button opens the video in the desktop's default
    player (VLC) through the desktop portal.
@@ -95,3 +102,5 @@ can be compared with the mockup.
 - The desktop's colour scheme through the portal, Adwaita Sans from the system, icons from
   egui-phosphor, and X11 over Wayland
   ([the window's look](/documentation/decisions/desktop_gui.md#2026-09-28--the-window-follows-the-desktops-colour-scheme-in-adwaita-sans-under-x11)).
+- A job keeps its own settings once it has started
+  ([a job keeps its settings](/documentation/decisions/desktop_gui.md#2026-09-28--a-job-keeps-its-own-settings-once-it-has-started)).
