@@ -2,8 +2,8 @@
 //!
 //! **Role:** hold the receiving end of every thread the application started (the desktop's
 //! chooser, the files the desktop was asked to open, the model download, the machine checks, the
-//! work folder's size, the desktop's colour scheme) and apply what they sent; let the toasts
-//! whose time is up go.
+//! sizes of the work and models folders, the desktop's colour scheme) and apply what they sent;
+//! let the toasts whose time is up go.
 //!
 //! **Position:** owned by `TbdSubtitlesApp`; polled by `window` before each frame; the settings
 //! part lives in `actions::settings`.
@@ -56,6 +56,7 @@ pub(crate) struct Pending {
     pub(crate) download: Option<Downloading>,
     pub(crate) checks: Option<Receiver<Vec<Check>>>,
     pub(crate) work_size: Option<Receiver<u64>>,
+    pub(crate) models_size: Option<Receiver<u64>>,
     pub(crate) scheme: Option<Receiver<Scheme>>,
     /// The desktop's answers to the files it was asked to open, each with the words a failure
     /// starts with.

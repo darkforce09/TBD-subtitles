@@ -9,10 +9,12 @@ and the selected job on the right. The sidebar lists the videos given on the com
 onto the window or added with Add Videos… and Add Folder… through the desktop's chooser (files,
 or a folder for its videos without subtitles), one row per video in the sections Now, Up Next and
 Done; a row leaves the list by its ✕, its menu or Delete, and Undo puts it back. Settings open in
-a window of their own from the gear (Ctrl+,): they edit `settings.toml`, list and download the
-models, and check the machine. Start Queue runs the waiting jobs one at a time; the selected
-job's header names it with its length and time, and its cards show the stage at work, the step
-("step 9 of 18"), the time left and the six stages; Pause After This Video stops the queue once
+a window of their own from the gear (Ctrl+,), in four tabs that save each change as it is made:
+they edit `settings.toml`, list and download the models, and check the machine; a banner under
+the toolbar says when models are missing and downloads them. Start Queue runs the waiting jobs
+one at a time; the selected job's header names it with its length and time, and its cards show
+the stage at work, the step ("step 9 of 18"), the time left and the six stages; Pause After This
+Video stops the queue once
 the running video ends. A running job can be cancelled and an ended one tried again, a failed job
 names the stage and step it failed at with the raw message, a failed or cancelled one says how
 many finished steps it kept and when Try Again would start it, and the queue is kept across
@@ -122,13 +124,24 @@ goes Saved → Updating subtitles… → Subtitles updated, and the video's row 
    has the keyboard's focus), Esc leaves the text box and
    then stops the clip; Space and the arrows are the text box's while typing. Nothing is saved
    while a full run of the video runs. Corrections never touch lines the owner did not save.
-5. **Settings.** In a window of their own, centred over the main one when they open: models
-   folder and download status, work folder and its size, engines per stage, language-model
-   backend, output format, GPU check (driver, free VRAM, CUDA libraries found, FFmpeg, ffprobe,
-   `claude`, the Whisper worker). Watch folders come with the
+5. **Settings.** In a window of their own, centred over the main one when they open, in four
+   tabs: General (the models folder and the work folder with their sizes, the subtitle format,
+   the glossary with its count of names), Engines (vocal separation, the second speech engine,
+   the `claude` model, processes at once, the shot cut score), Models (each model and runtime
+   library with its size and state, Download Missing or Stop) and This Computer (the GPU with its
+   driver and free VRAM, the CUDA libraries, FFmpeg and its clip sound, ffprobe, `claude`, the
+   Whisper worker; a missing CUDA runtime links to Models). A change is saved to `settings.toml`
+   as it is made (a list or the format on a choice, a stepper on each press, a text field on
+   Enter, when it loses the focus or when the window closes) and applies to videos that have not
+   started; a number out of its range, a glossary that cannot be read, or a models folder moved
+   while a download runs is not saved and says why in red under its field, and a `settings.toml`
+   that could not be read is kept as `settings.toml.broken` before the first change is saved.
+   Folders show the home as `~`, on one line. Watch folders come with the
    [automation](/documentation/features/automation.md) feature.
-6. **Models on first use.** Missing models are listed with their sizes and downloaded with
-   progress before the first job starts.
+6. **Models on first use.** A banner under the toolbar says what is missing ("5 models and 2
+   runtime libraries are missing (10.7 GiB)"), with Details… (the Models tab) and Download; while
+   they download it shows the bytes on disk, the item now and a bar, with Stop (a stopped file
+   resumes next time); then for a moment "All models are on disk." No job starts before then.
 
 ## Data
 
@@ -155,7 +168,10 @@ wide, a segmented control with a count, disclosures, pills, thick and thin progr
 stage marks, and the Overview's cards. Check Lines is built as mocked too: the 330 px list, the
 editor over the grouped grey, switches, the clip's still frame and a painted timeline. Two things
 differ: the playhead follows the time since the sound started, so it may lead the audio by tens of
-milliseconds, and Looks Right re-times the line on its own, as its hover text says. The
+milliseconds, and Looks Right re-times the line on its own, as its hover text says. The Settings
+window is built as mocked: the tab bar of icons over names, forms with right-aligned labels, grey
+help and red errors, steppers, the models table and the footer; the banner under the toolbar is
+too, and says "models and runtime libraries" when both are missing. The
 window follows the desktop's light or dark colour scheme as KDE sets it, through the desktop
 portal, and switches when it changes; KDE's accent colour is not followed. Code layout follows the TBD-Reforger desktop-app pattern: one folder per feature with
 `models/`, `services/` and `ui/`, where the UI draws from a borrowed view and returns events that
@@ -195,3 +211,5 @@ can be compared with the mockup.
   ([Try Again](/documentation/decisions/desktop_gui.md#2026-09-28--try-again-resumes-after-the-kept-steps-and-starts-at-once-when-nothing-runs)),
   which reruns adjudication for a failed language-model call
   ([a failed call is retried](/documentation/decisions/desktop_gui.md#2026-09-28--a-failed-language-model-call-is-retried-by-running-adjudication-again)).
+- Settings apply as they change, with no Save
+  ([settings apply as they change](/documentation/decisions/desktop_gui.md#2026-09-28--settings-apply-as-they-change)).

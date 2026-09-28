@@ -1,52 +1,120 @@
-//! The settings page's state: the file's settings, the owner's unsaved edits, the models a job
-//! needs with any download in progress, the machine checks and the work folder's size.
+//! The settings' state as the Settings window draws it: the file's settings, the error of an edit
+//! that was refused, the models a job needs with any download in progress, the machine checks and
+//! the sizes of the folders.
+//!
+//! **Role:** hold what the four tabs and the models banner show, and name the tabs and the fields
+//! an error can sit under.
+//!
+//! **Position:** built by the application when the window opens; changed by
+//! `settings::services::{page_editing, model_downloads}` and the application's settings actions;
+//! read by `settings::ui`.
+//!
+//! **Signals and state:** plain data.
+//!
+//! **Invariants:** `saved` is always what the settings file holds (or the defaults when it cannot
+//! be read); an edit that was refused is never in `saved`, only its `error`.
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crate::settings::models::app_settings::AppSettings;
 use crate::settings::models::machine::{Check, DownloadItem};
 
-/// A line under the settings form: what the last save or download did.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Notice {
-    pub(crate) text: String,
-    pub(crate) is_error: bool,
+/// A tab of the Settings window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SettingsTab {
+    General,
+    Engines,
+    Models,
+    ThisComputer,
 }
 
-/// How far a download has got.
+impl SettingsTab {
+    pub(crate) const ALL: [SettingsTab; 4] = [
+        SettingsTab::General,
+        SettingsTab::Engines,
+        SettingsTab::Models,
+        SettingsTab::ThisComputer,
+    ];
+
+    /// The tab's name in the tab bar.
+    pub(crate) fn title(self) -> &'static str {
+        match self {
+            SettingsTab::General => "General",
+            SettingsTab::Engines => "Engines",
+            SettingsTab::Models => "Models",
+            SettingsTab::ThisComputer => "This Computer",
+        }
+    }
+}
+
+/// A setting the Settings window edits, which an error can sit under.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Field {
+    ModelsFolder,
+    WorkFolder,
+    OutputFormat,
+    Glossary,
+    Separator,
+    Whisper,
+    Model,
+    Processes,
+    CutScore,
+}
+
+/// Why an edit of `field` was not written: shown in red under the field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FieldError {
+    pub(crate) field: Field,
+    pub(crate) message: String,
+}
+
+/// How far a download has got: the item downloading now, by its id, and the whole download.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DownloadProgress {
-    /// The item being downloaded, by its place in the list.
-    pub(crate) index: usize,
+    /// The id of the item downloading now.
+    pub(crate) id: String,
+    /// That item's bytes on disk, and its size.
     pub(crate) held: u64,
     pub(crate) total: u64,
+    /// The bytes of the items this download finished, and of every item it downloads.
+    pub(crate) finished: u64,
+    pub(crate) size: u64,
 }
 
-/// Everything the settings view draws.
+impl DownloadProgress {
+    /// The bytes of the whole download on disk.
+    pub(crate) fn done(&self) -> u64 {
+        (self.finished + self.held).min(self.size)
+    }
+}
+
+/// Everything the Settings window and the models banner draw.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SettingsPage {
     /// The settings file.
     pub(crate) path: PathBuf,
-    /// The settings as saved in the file.
+    /// The settings as the file holds them.
     pub(crate) saved: AppSettings,
-    /// The settings as the owner is editing them.
-    pub(crate) draft: AppSettings,
-    pub(crate) notice: Option<Notice>,
+    /// Why the last edit was not written, until an edit is.
+    pub(crate) error: Option<FieldError>,
+    /// Why the settings file could not be read, when the defaults show instead.
+    pub(crate) unreadable: Option<String>,
+    /// The names in the saved glossary, once it has been read.
+    pub(crate) glossary_names: Option<usize>,
     /// The models and runtime archives the saved settings need.
     pub(crate) items: Vec<DownloadItem>,
     /// `Some` while a download runs.
     pub(crate) download: Option<DownloadProgress>,
+    /// When a download last ended with every item on disk.
+    pub(crate) downloaded_at: Option<Instant>,
     /// `None` until the first check finishes.
     pub(crate) checks: Option<Vec<Check>>,
     pub(crate) checking: bool,
+    /// The models folder and its size in bytes, once measured.
+    pub(crate) models_folder: PathBuf,
+    pub(crate) models_size: Option<u64>,
     /// The work folder and its size in bytes, once measured.
     pub(crate) work_folder: PathBuf,
     pub(crate) work_size: Option<u64>,
-}
-
-impl SettingsPage {
-    /// Whether the draft differs from the file.
-    pub(crate) fn has_edits(&self) -> bool {
-        self.draft != self.saved
-    }
 }

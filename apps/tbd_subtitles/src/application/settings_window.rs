@@ -1,8 +1,8 @@
 //! The Settings window: a second native window, centred over the main window when it opens,
-//! that shows the settings page.
+//! that shows the settings' tab bar, the open tab and the footer.
 //!
-//! **Role:** show the settings in their own window while it is open, and close it when the owner
-//! closes it.
+//! **Role:** show the settings in their own window while it is open, on the tab the application
+//! holds, and close it when the owner closes it.
 //!
 //! **Position:** drawn by the application's frame through `show_viewport_immediate`; where the
 //! backend has one window only (the headless tests), egui draws it as a window inside the main
@@ -11,12 +11,11 @@
 //! **Signals and state:** the place it opened at lives in egui's memory until it closes, so it
 //! stays where the owner put it.
 //!
-//! **Invariants:** it is drawn only while `settings_window` is set; asking for it while it is
-//! open brings it to the front.
+//! **Invariants:** it is drawn only while `settings_window` holds a tab; asking for it while it is
+//! open brings it to the front; the frame it closes in is still drawn, so a field being typed in
+//! sends its text.
 
-use eframe::egui::{
-    CentralPanel, Context, Id, Pos2, ViewportBuilder, ViewportCommand, ViewportId, vec2,
-};
+use eframe::egui::{Context, Id, Pos2, ViewportBuilder, ViewportCommand, ViewportId, vec2};
 
 use super::{Action, TbdSubtitlesApp, feature_views};
 
@@ -37,10 +36,10 @@ pub(super) fn settings_window_ui(
     actions: &mut Vec<Action>,
 ) {
     let place = Id::new("settings-window-place");
-    if !app.settings_window {
+    let Some(tab) = app.settings_window else {
         ctx.data_mut(|data| data.remove::<Pos2>(place));
         return;
-    }
+    };
     let position = ctx.data(|data| data.get_temp::<Pos2>(place)).or_else(|| {
         let main = ctx.input(|input| input.viewport().outer_rect)?;
         let at = main.center() - vec2(SIZE[0], SIZE[1]) / 2.0;
@@ -58,9 +57,11 @@ pub(super) fn settings_window_ui(
         ctx.send_viewport_cmd_to(viewport(), ViewportCommand::Focus);
     }
     ctx.show_viewport_immediate(viewport(), builder, |ui, _class| {
-        if ui.ctx().input(|input| input.viewport().close_requested()) {
+        let closing = ui.ctx().input(|input| input.viewport().close_requested());
+        if closing {
             actions.push(Action::ShowSettings(false));
         }
-        CentralPanel::default().show(ui, |ui| feature_views::settings_ui(ui, app, actions));
+        // A closing window still sends what is being typed in a field.
+        feature_views::settings_ui(ui, app, tab, closing, actions);
     });
 }

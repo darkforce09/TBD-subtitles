@@ -1,16 +1,17 @@
 # Settings models
 
 The data the settings views draw, with no rendering code: the owner's settings as kept in
-`settings.toml`, the settings page's state, and what the page shows about this machine.
+`settings.toml`, the Settings window's state with its tabs and the fields an error sits under,
+and what the window shows about this machine.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/settings/models/
 ├── app_settings.rs  `AppSettings` with `Engines`, `LanguageModel` and `Backend`, and their defaults
-├── machine.rs       `DownloadItem` and `ItemKind`, `Check` and `CheckState`
+├── machine.rs       `DownloadItem` and `ItemKind`, `Check` (with the folder it found) and `CheckState`
 ├── mod.rs           the module list
-└── page.rs          `SettingsPage`, `Notice` and `DownloadProgress`
+└── page.rs          `SettingsPage`, `SettingsTab`, `Field`, `FieldError` and `DownloadProgress`
 ```
 
 ## How it works
@@ -19,9 +20,14 @@ apps/tbd_subtitles/src/settings/models/
 data folder), the glossary (`one_piece`, `none` or a file), the shot-cut score, the output format,
 the engines (separator and Whisper model) and the language model (backend, model name and how many
 run at once). Every struct takes its defaults for missing keys and refuses unknown ones. The one
-backend is the `claude` CLI. `SettingsPage` holds the saved settings and the owner's draft, the
-notice from the last save or download, the model folders and runtime archives with a running
-download, the checks, and the work folder with its size.
+backend is the `claude` CLI. `SettingsPage` holds the settings as the file has them (`saved`; an
+edit is written at once, so there is no draft), the `FieldError` of the last edit that was
+refused (its `Field` and why), why the file could not be read, the saved glossary's count of
+names, the model folders and runtime archives with a running download and when a download last
+brought everything onto disk, the checks, and the models and work folders with their sizes.
+`SettingsTab` names the Settings window's four tabs (General, Engines, Models, This Computer) and
+their titles. `DownloadProgress` names the item downloading now by its id, with its bytes held,
+and the bytes of the whole download.
 
 ## Boundaries
 

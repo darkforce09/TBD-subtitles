@@ -3,7 +3,7 @@
 //! **Role:** build each feature's narrow view from the application state, call the feature's
 //! `ui`, and wrap the events it returns as `Action`s.
 //!
-//! **Position:** called by `window` (toolbar, sidebar, the selected job) and by
+//! **Position:** called by `window` (toolbar, models banner, sidebar, the selected job) and by
 //! `settings_window`; the only place the application calls the features' `ui` modules; the
 //! selected job's header is `detail_view`'s.
 //!
@@ -27,7 +27,9 @@ use crate::job_queue::services::sidebar_rows;
 use crate::job_queue::ui as job_queue_ui;
 use crate::job_report::ui::{OverviewView, overview_ui};
 use crate::line_review::ui::{Playing, ReviewView, review_view_ui};
-use crate::settings::ui::settings_page_ui;
+use crate::settings::models::page::SettingsTab;
+use crate::settings::services::model_list::{self, Banner};
+use crate::settings::ui as settings_ui;
 
 /// The widest the selected job's column grows, and the space between its cards.
 const COLUMN_WIDTH: f32 = 800.0;
@@ -153,9 +155,28 @@ fn body_ui(ui: &mut Ui, app: &TbdSubtitlesApp, item: &QueueItem, actions: &mut V
     }
 }
 
-/// Draw the settings page and collect its events as actions.
-pub(super) fn settings_ui(ui: &mut Ui, app: &TbdSubtitlesApp, actions: &mut Vec<Action>) {
+/// Draw the Settings window's content on `tab`, `closing` when the owner closes it, and collect
+/// its events as actions.
+pub(super) fn settings_ui(
+    ui: &mut Ui,
+    app: &TbdSubtitlesApp,
+    tab: SettingsTab,
+    closing: bool,
+    actions: &mut Vec<Action>,
+) {
     let mut events = Vec::new();
-    settings_page_ui(ui, &app.settings, &mut events);
+    settings_ui::settings_window_ui(ui, &app.settings, tab, closing, &mut events);
+    actions.extend(events.into_iter().map(Action::from));
+}
+
+/// The models banner the window shows under the toolbar now, if any.
+pub(super) fn models_banner(app: &TbdSubtitlesApp) -> Option<Banner> {
+    model_list::banner(&app.settings, Instant::now())
+}
+
+/// Draw `banner` and collect its events as actions.
+pub(super) fn models_banner_ui(ui: &mut Ui, banner: &Banner, actions: &mut Vec<Action>) {
+    let mut events = Vec::new();
+    settings_ui::models_banner_ui(ui, banner, &mut events);
     actions.extend(events.into_iter().map(Action::from));
 }

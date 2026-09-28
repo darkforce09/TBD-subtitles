@@ -5,8 +5,8 @@
 The decisions the desktop window led to: how it plays clips and hands videos to other programs,
 where models live and how they arrive, when a job passes the quality check, how the owner's
 corrections are timed, how the window looks, which settings a job runs with, where Settings open,
-how correction runs show, how a job is tried again, and how a failed language-model call is. The
-[decision log](/documentation/decisions/) says how entries are written.
+how correction runs show, how a job is tried again, how a failed language-model call is, and how
+a change of the settings applies. The [decision log](/documentation/decisions/) says how entries are written.
 
 ### 2026-09-26 — Clips play through FFmpeg, not libmpv
 
@@ -300,3 +300,47 @@ the second listen to the unsure lines on the GPU; it needs no new pipeline optio
 are applied again by the review step, as after any run.
 
 **Supersedes:** none.
+
+### 2026-09-28 — Settings apply as they change
+
+**Context:** The Settings window showed one page with Save and Revert: the owner edited a draft,
+and nothing reached `settings.toml` until Save, which refused a draft whose glossary could not be
+read. The approved mockup splits the settings into four tabs (General, Engines, Models, This
+Computer) with no Save: its footer says "Changes save as you make them. They apply to videos that
+haven't started.", and a bad glossary file shows a red error under the glossary and is not used.
+A job takes the settings saved when it first starts and keeps them after that, so a saved change
+never reaches a job that has started.
+
+**Decision:** Each change is written to `settings.toml` at once, as the saved settings with that
+one field changed; it is refused, with nothing written and a red error under the field until an
+edit of it is written, when a number is out of its range or not finite (1–16 processes, a cut
+score of 1–100), when the models folder changes while a download runs ("Stop the download
+first."; its buttons are off meanwhile), or when a new glossary cannot be read ("Can't use
+names.json: … The glossary was not changed."). The glossary is read only when it changes, so an
+unreadable one blocks no other edit and its error stays under it. A list, the subtitle format and
+a stepper's arrows send their change on the click; a text field and a stepper's typed number on
+Enter, when the field loses the focus, or when the window closes with it typed. Before the first
+write over a settings file that could not be read, the file is kept beside itself as
+`settings.toml.broken`, which an info toast says. An edit refreshes only what it made stale: the
+models list when the models folder or an engine changed, a folder's size when that folder
+changed, never the machine checks. Save, Revert and the draft are gone. A banner under the
+toolbar says what is missing, counting models and runtime libraries apart, with Details… (the
+Models tab) and Download; it shows the download's progress with Stop, and "All models are on
+disk." for 4 s after a download that brought everything onto disk. Download events name their
+item by id.
+
+**Consequences:** No change is lost by closing the window, and nothing out of range is written.
+A settings file that could not be read is never lost: its first edit keeps it as
+`settings.toml.broken` and writes the defaults with the owner's change. A glossary that can no
+longer be read still stops a job from starting, with its error under the glossary. The models
+list can be planned again while a download runs (another engine chosen) and its items are still
+marked right. The tests hold it: `a_valid_edit_is_written_at_once`,
+`a_bad_glossary_is_not_written_and_names_its_field`,
+`numbers_out_of_range_or_not_finite_are_never_written` and
+`an_unreadable_settings_file_is_kept_before_the_first_write` in
+`apps/tbd_subtitles/src/settings/services/tests/page_editing.rs`,
+`a_list_planned_again_during_a_download_is_marked_by_id` in
+`apps/tbd_subtitles/src/settings/services/tests/model_downloads.rs`, and the rendering tests in
+`apps/tbd_subtitles/src/application/tests/rendering_settings.rs`.
+
+**Supersedes:** the Save and Revert of 2026-09-28 — Settings open in a window of their own.

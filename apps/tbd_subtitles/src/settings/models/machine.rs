@@ -1,6 +1,8 @@
 //! What the settings view shows about this machine: the models and runtime libraries a job needs,
 //! and the checks of the GPU and the programs a job runs.
 
+use std::path::PathBuf;
+
 /// What a download item is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ItemKind {
@@ -29,10 +31,13 @@ pub(crate) enum CheckState {
     Failed,
 }
 
-/// One check: what was looked at, how it came out, and what was found.
+/// One check: what was looked at, how it came out, and what was found, with the folder it was
+/// found in when that is worth showing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Check {
     pub(crate) name: &'static str,
     pub(crate) state: CheckState,
     pub(crate) detail: String,
+    /// The folder the detail names: the CUDA runtime's.
+    pub(crate) path: Option<PathBuf>,
 }

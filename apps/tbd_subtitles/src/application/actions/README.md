@@ -12,17 +12,25 @@ apps/tbd_subtitles/src/application/actions/
 ├── report.rs    the selected job's report, the finished rows' summaries, and the Overview's requests
 ├── review.rs    the line review: open (on a group), edit, save or keep and queue a run, clips, stills
 ├── runner.rs    starting the next job of each lane with its options, and the runners' events
-└── settings.rs  the settings page as the window opens, its actions, and its threads' answers
+└── settings.rs  the settings page as the window opens, edits written at once, tabs, downloads
 ```
 
 ## How it works
 
 `settings.rs` builds the settings page from the settings file (the defaults, with the reason, when
-the file cannot be read) and the models its settings need. Its actions change the draft, save it
-through `settings::services::page_editing`, open the desktop's chooser for a path setting, start or
-stop the model download, and run the machine checks again. `poll_settings` folds the download's
-progress, the checks and the work folder's size into the page; a finished download lists the
-models again.
+the file cannot be read), the saved glossary's names and the models its settings need. An edit
+and a chosen path go through `settings::services::page_editing::apply`, written at once or
+refused with an error under their field; a settings file that could not be read is kept as
+`settings.toml.broken` before the first write, which an info toast says; what the edit made
+stale is refreshed and nothing else:
+the models list when the models folder or an engine changed, a folder's size when that folder
+changed, never the machine checks. `Open` shows a tab of the Settings window (the tab bar, the
+banner's Details…, This Computer's link to Models); the other actions open the desktop's chooser
+for a path setting, start or stop the model download, and run the machine checks again.
+`poll_settings` folds the download's events (by item id), the checks and the folders' sizes into
+the page. A download that ends lists the models again, runs the checks again and measures the
+models folder: when everything is on disk the banner says so for a moment; a stopped one says in a
+toast that it resumes where it left off, and a failed one says why in a red toast.
 
 `queue.rs` applies each queue event, writes `queue.json` and lets the runner start what may
 start. Remove takes a row out and keeps it for Undo, which a toast offers for 6 s; a newer removal
@@ -87,9 +95,11 @@ carried over.
   (`Clip`); `crate::core::{portal, steps, toast}`; `crate::application` (`TbdSubtitlesApp`,
   `Action`, `Environment`, `background::{Chooser, Opening}`).
 - Used by: `crate::application`, in `apply` and `poll`.
-- Rules: one download and one check run at a time, and a chooser's answer changes only the draft
-  (the header of `settings.rs`); a saved correction always queues one review run, and no run of a
-  video starts beside a run of the other kind of the same video (the headers of `review.rs` and
+- Rules: one download and one check run at a time, and an edit or a chosen path is written only
+  when it can make a job's settings (the header of `settings.rs`,
+  `a_bad_glossary_is_not_written_and_names_its_field` in
+  `apps/tbd_subtitles/src/application/tests/rendering_settings.rs`); a saved correction always
+  queues one review run, and no run of a video starts beside a run of the other kind of the same video (the headers of `review.rs` and
   `runner.rs`, `a_saved_correction_queues_a_review_run_that_runs_at_once` and
   `a_full_run_waits_while_its_videos_review_run_runs` in
   `apps/tbd_subtitles/src/application/tests/rendering.rs`); a failed job records its step and a

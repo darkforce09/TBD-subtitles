@@ -2,16 +2,19 @@
 //! ones on a thread of their own, with progress and a stop switch.
 //!
 //! **Role:** list every model folder the settings need and every runtime archive the GPU workers
-//! load, each with its size and whether it is present; download the missing ones in that order.
+//! load, each with its size and whether it is present; download the missing ones in that order,
+//! reporting each item by its id; fold those reports into the page.
 //!
-//! **Position:** called by the application for the settings view and before a job starts; uses
-//! `pipeline::models` for the list and `inference::model_store` for the pinned downloads.
+//! **Position:** called by the application for the Settings window and the models banner, and
+//! before a job starts; uses `pipeline::models` for the list and `inference::model_store` for the
+//! pinned downloads.
 //!
 //! **Signals and state:** reads the models and runtime folders; the download thread writes into
 //! them and sends `DownloadEvent`s, then wakes the window.
 //!
 //! **Invariants:** only pinned files are downloaded, each checked against its SHA-256 before it is
-//! used; a stopped download keeps its part file, so the next one resumes it.
+//! used; a stopped download keeps its part file, so the next one resumes it; an event names its
+//! item by id, so a list planned again while a download runs is marked right.
 
 use std::ops::ControlFlow;
 use std::path::PathBuf;
@@ -25,6 +28,7 @@ use job_model::job::JobSettings;
 
 use crate::core::background::Wake;
 use crate::settings::models::machine::{DownloadItem, ItemKind};
+use crate::settings::models::page::{DownloadProgress, SettingsPage};
 
 /// Where the items go.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,15 +39,26 @@ pub(crate) struct Folders {
     pub(crate) exe_dir: Option<PathBuf>,
 }
 
-/// What the download thread reports.
+/// What the download thread reports, each item by its id.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum DownloadEvent {
-    /// `held` of `total` bytes of item `index`.
-    Advanced { index: usize, held: u64, total: u64 },
-    /// Item `index` is on disk.
-    Finished { index: usize },
-    /// The downloads ended: every item done, or stopped, or failed with a reason.
-    Ended(Result<(), String>),
+    /// `held` of `total` bytes of item `id` are on disk.
+    Advanced { id: String, held: u64, total: u64 },
+    /// Item `id`, of `bytes`, is on disk.
+    Finished { id: String, bytes: u64 },
+    /// The download ended.
+    Ended(DownloadEnd),
+}
+
+/// How a download ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum DownloadEnd {
+    /// Every item it was given is on disk.
+    Done,
+    /// The owner stopped it; the part file stays for the next attempt.
+    Stopped,
+    /// It failed, for this reason.
+    Failed(String),
 }
 
 /// A running download: its events and its stop switch.
@@ -89,9 +104,46 @@ pub(crate) fn plan(folders: &Folders, settings: &JobSettings) -> Vec<DownloadIte
     models.chain(runtime).collect()
 }
 
-/// Bytes still to download.
-pub(crate) fn missing_bytes(items: &[DownloadItem]) -> u64 {
-    items.iter().filter(|i| !i.present).map(|i| i.bytes).sum()
+/// The progress of a download of `items` as it starts: at the first missing item, nothing held;
+/// `None` when nothing is missing.
+pub(crate) fn begun(items: &[DownloadItem]) -> Option<DownloadProgress> {
+    let mut missing = items.iter().filter(|item| !item.present);
+    let first = missing.next()?;
+    Some(DownloadProgress {
+        id: first.id.clone(),
+        held: 0,
+        total: first.bytes,
+        finished: 0,
+        size: first.bytes + missing.map(|item| item.bytes).sum::<u64>(),
+    })
+}
+
+/// Fold one event of the running download into `page`, finding its item by id wherever the item
+/// sits in the list now; how the download ended, once it has.
+pub(crate) fn fold(page: &mut SettingsPage, event: DownloadEvent) -> Option<DownloadEnd> {
+    match event {
+        DownloadEvent::Advanced { id, held, total } => {
+            if let Some(progress) = &mut page.download {
+                progress.id = id;
+                progress.held = held;
+                progress.total = total;
+            }
+            None
+        }
+        DownloadEvent::Finished { id, bytes } => {
+            for item in page.items.iter_mut().filter(|item| item.id == id) {
+                item.present = true;
+            }
+            if let Some(progress) = &mut page.download {
+                progress.finished += bytes;
+                if progress.id == id {
+                    progress.held = 0;
+                }
+            }
+            None
+        }
+        DownloadEvent::Ended(end) => Some(end),
+    }
 }
 
 /// Download every missing item of `items` on a new thread; `wake` is called after each event.
@@ -100,8 +152,8 @@ pub(crate) fn start(items: Vec<DownloadItem>, folders: Folders, wake: Wake) -> D
     let stop = Arc::new(AtomicBool::new(false));
     let flag = stop.clone();
     std::thread::spawn(move || {
-        let result = download_all(&items, &folders, &flag, &send, &wake);
-        let _ = send.send(DownloadEvent::Ended(result));
+        let end = download_all(&items, &folders, &flag, &send, &wake);
+        let _ = send.send(DownloadEvent::Ended(end));
         wake();
     });
     Downloading { events, stop }
@@ -113,8 +165,8 @@ fn download_all(
     stop: &AtomicBool,
     send: &Sender<DownloadEvent>,
     wake: &Wake,
-) -> Result<(), String> {
-    for (index, item) in items.iter().enumerate().filter(|(_, i)| !i.present) {
+) -> DownloadEnd {
+    for item in items.iter().filter(|i| !i.present) {
         // A model's files download in manifest order; the files before one count as held.
         let offset = |file: &str| -> u64 {
             manifest::files_of(&item.id)
@@ -124,7 +176,7 @@ fn download_all(
         };
         let report = |file: &str, held: u64| {
             let _ = send.send(DownloadEvent::Advanced {
-                index,
+                id: item.id.clone(),
                 held: (offset(file) + held).min(item.bytes),
                 total: item.bytes,
             });
@@ -143,9 +195,9 @@ fn download_all(
                 .map(|_| ())
             }
             ItemKind::Runtime => {
-                let archive = runtime_archives()
-                    .find(|a| a.id == item.id)
-                    .ok_or_else(|| format!("no runtime archive named {}", item.id))?;
+                let Some(archive) = runtime_archives().find(|a| a.id == item.id) else {
+                    return DownloadEnd::Failed(format!("no runtime archive named {}", item.id));
+                };
                 model_store::install_archive(archive, &folders.runtime, &mut |held, _| {
                     report(archive.id, held)
                 })
@@ -153,14 +205,17 @@ fn download_all(
         };
         match result {
             Ok(()) => {
-                let _ = send.send(DownloadEvent::Finished { index });
+                let _ = send.send(DownloadEvent::Finished {
+                    id: item.id.clone(),
+                    bytes: item.bytes,
+                });
                 wake();
             }
-            Err(model_store::StoreError::Cancelled) => return Err("stopped".to_string()),
-            Err(error) => return Err(format!("{}: {error}", item.id)),
+            Err(model_store::StoreError::Cancelled) => return DownloadEnd::Stopped,
+            Err(error) => return DownloadEnd::Failed(format!("{}: {error}", item.id)),
         }
     }
-    Ok(())
+    DownloadEnd::Done
 }
 
 #[cfg(test)]

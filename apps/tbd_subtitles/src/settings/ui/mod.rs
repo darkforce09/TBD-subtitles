@@ -1,6 +1,13 @@
-//! The settings view: the form, the models and runtime list, and the machine checks.
+//! The Settings window's content (its tab bar, four tabs and footer) and the models banner under
+//! the toolbar.
 
-mod machine_panel;
-mod settings_panel;
+mod engines_tab;
+mod form;
+mod general_tab;
+mod machine_tab;
+mod models_banner;
+mod models_tab;
+mod settings_window;
 
-pub(crate) use settings_panel::settings_page_ui;
+pub(crate) use models_banner::models_banner_ui;
+pub(crate) use settings_window::settings_window_ui;

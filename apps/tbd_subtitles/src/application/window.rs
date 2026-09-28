@@ -1,6 +1,6 @@
 //! One frame of the window: the desktop's colour scheme, the shortcuts, the toolbar across the
-//! top, the sidebar on the left, the selected job on the right, then the drop overlay, the
-//! toasts, the Settings window, and the actions they asked for.
+//! top, the models banner under it, the sidebar on the left, the selected job on the right, then
+//! the drop overlay, the toasts, the Settings window, and the actions they asked for.
 //!
 //! **Role:** run `poll`, draw the frame from the borrowed state, and apply the actions it
 //! collected.
@@ -8,11 +8,12 @@
 //! **Position:** `eframe::App::ui` of `TbdSubtitlesApp`; lays out the panels and calls
 //! `shortcuts`, `feature_views`, `settings_window`, the queue's drop overlay and the toasts.
 //!
-//! **Signals and state:** reads dropped files; asks for a frame each second while a job runs and
-//! when the next toast is due to go.
+//! **Signals and state:** reads dropped files; asks for a frame each second while a job runs,
+//! when the next toast is due to go, and when the banner that says every model is on disk goes.
 //!
 //! **Invariants:** `frame_ui` changes nothing; the toolbar is 52 px high and the sidebar 272 px
-//! wide; the toasts, the overlay and the Settings window are drawn over the panes.
+//! wide; the banner spans the window under the toolbar while it shows; the toasts, the overlay
+//! and the Settings window are drawn over the panes.
 
 use std::time::{Duration, Instant};
 
@@ -23,6 +24,8 @@ use crate::core::ui::palette::palette;
 use crate::core::ui::theme;
 use crate::core::ui::toast::toasts_ui;
 use crate::job_queue::ui::drop_overlay_ui;
+use crate::settings::events::SettingsEvent;
+use crate::settings::services::model_list::Banner;
 
 /// How often the window redraws while a job runs, so its clock and time left move.
 const RUNNING_REDRAW: Duration = Duration::from_secs(1);
@@ -72,6 +75,16 @@ impl TbdSubtitlesApp {
                 bottom: 0,
             }))
             .show(ui, |ui| feature_views::toolbar_ui(ui, self, &mut actions));
+        if let Some(banner) = feature_views::models_banner(self) {
+            if let Banner::AllOnDisk { until } = &banner {
+                ctx.request_repaint_after(until.saturating_duration_since(Instant::now()));
+            }
+            Panel::top(Id::new("models-banner"))
+                .frame(Frame::new())
+                .show(ui, |ui| {
+                    feature_views::models_banner_ui(ui, &banner, &mut actions)
+                });
+        }
         Panel::left(Id::new("sidebar"))
             .exact_size(SIDEBAR_WIDTH)
             .resizable(false)
@@ -89,7 +102,12 @@ impl TbdSubtitlesApp {
         if let Some(id) = toasts_ui(&ctx, self.toasts.shown()) {
             actions.push(Action::ToastButton(id));
         }
-        let raise = actions.contains(&Action::ShowSettings(true));
+        let raise = actions.iter().any(|action| {
+            matches!(
+                action,
+                Action::ShowSettings(true) | Action::Settings(SettingsEvent::Open(_))
+            )
+        });
         settings_window::settings_window_ui(&ctx, self, raise, &mut actions);
         actions
     }

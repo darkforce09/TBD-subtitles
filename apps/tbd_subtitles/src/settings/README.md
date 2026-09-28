@@ -3,17 +3,18 @@
 The feature for the app's settings: the models folder and its downloads, the work folder, the
 glossary, the engines per stage, the language-model backend, the cut score and the output format,
 kept in `~/.config/tbd-subtitles/settings.toml`, and the check of this machine. The window's
-Settings page edits them; the `process` subcommand reads the same file.
+Settings window edits them in four tabs, each change written as it is made, and a banner under
+the toolbar says when a model is missing; the `process` subcommand reads the same file.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/settings/
-├── events.rs  `SettingsEvent` and `PathField`: what the settings page asks for
+├── events.rs  `SettingsEvent` and `PathField`: what the Settings window and the banner ask for
 ├── mod.rs     the module tree and the feature's header
-├── models/    the settings, the page's state and the machine data, with no rendering code
-├── services/  the file, the job settings, saving, downloads, checks and sizes; no rendering code
-└── ui/        the settings page, drawn from a borrowed view
+├── models/    the settings, the window's state and tabs, and the machine data; no rendering code
+├── services/  the file, the job settings, edits, downloads, the models list, checks and sizes
+└── ui/        the Settings window's tabs and the models banner, drawn from a borrowed view
 ```
 
 ## How it works
@@ -21,18 +22,22 @@ apps/tbd_subtitles/src/settings/
 The folder follows the layout every feature shares: `models/` and `services/` hold data and logic
 free of egui, and `ui/` draws from a view the application lends it and returns events for the
 application to apply after the frame. `models/app_settings.rs` holds every setting with its
-default and `models/page.rs` the page: the file's settings, the draft, the models list, a running
-download, the checks and the work folder's size. `services/` reads and writes the file, turns the
-settings into a job's `JobSettings`, saves the draft only when it can make a job, lists and
-downloads the models and runtime archives, runs the machine checks and measures the work folder,
-the slow parts each on a thread of its own. Watch folders belong to the automation feature.
+default and `models/page.rs` the window's state: the file's settings, the error of an edit that
+was refused, the glossary's names, the models list, a running download by item id, the checks
+and the sizes of the models and work folders; it names the tabs (`SettingsTab`) and the fields an
+error sits under (`Field`, `FieldError`). `services/` reads and writes the file, turns the
+settings into a job's `JobSettings`, applies an edit (written at once when it can make a job,
+refused with an error under its field otherwise, and saying what it made stale), lists and
+downloads the models and runtime archives, turns them into the Models tab's rows, what is missing
+and the banner, runs the machine checks and measures a folder, the slow parts each on a thread of
+its own. Watch folders belong to the automation feature.
 
 ## Public surface
 
 - `models::app_settings::AppSettings` and `services::{settings_file, job_settings}`, for the
   `process` subcommand and the application.
-- `events::SettingsEvent`, `models::page::SettingsPage`, `ui::settings_page_ui` and the other
-  services, for the application.
+- `events::SettingsEvent`, `models::page::{SettingsPage, SettingsTab}`,
+  `ui::{settings_window_ui, models_banner_ui}` and the other services, for the application.
 
 ## Boundaries
 
@@ -51,3 +56,5 @@ the slow parts each on a thread of its own. Watch folders belong to the automati
 - [Desktop GUI](/documentation/features/gui.md) — the settings the window edits.
 - [System overview](/documentation/architecture/system_overview.md#configuration) — the TOML
   settings file and what it holds.
+- [Settings apply as they change](/documentation/decisions/desktop_gui.md#2026-09-28--settings-apply-as-they-change)
+  — why there is no Save.

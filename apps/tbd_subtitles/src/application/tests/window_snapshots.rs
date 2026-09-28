@@ -11,9 +11,10 @@
 //! the Check Lines scenes write Dressrosa 15's corrections into the scratch copy and decode still
 //! frames of its video with FFmpeg.
 //!
-//! **Invariants:** the owner's work folders and videos are only read; the app runs over the
-//! scratch copy with a stand-in runner, and a running, failed or cancelled job is set by hand, so
-//! no job starts; the correction run of the Check Lines scenes waits until it is stopped.
+//! **Invariants:** the owner's work folders and videos are only read, and the settings file
+//! written is the scratch one; the app runs over the scratch copy with a stand-in runner, and a
+//! running, failed or cancelled job, a download and the machine checks are set by hand, so no job
+//! or download starts; the correction run of the Check Lines scenes waits until it is stopped.
 
 use std::path::Path;
 
@@ -48,7 +49,9 @@ fn window_snapshots() {
     let _ = std::fs::remove_dir_all(&root);
     let videos = copy_work_folders(&root.join("work"));
     finished_scenes(&root, &out, &videos);
+    settings_scenes(&root, &out, &videos);
     first_run_scene(&root.join("first-run"), &out);
+    banner_scenes(&root.join("banners"), &out);
     queue_scenes(&root, &out, &videos);
     detail_scenes(&root, &out, &videos);
     attention_scene(&root, &out, &videos);
@@ -258,6 +261,90 @@ fn attention_scene(root: &Path, out: &Path, videos: &[PathBuf]) {
 fn first_run_scene(root: &Path, out: &Path) {
     let mut harness = harness(root, |_| {});
     shoot(&mut harness, out, "first_run");
+}
+
+/// The Settings window on each of its four tabs, over the finished list with Dressrosa 15
+/// selected; the machine checks are set by hand, as the mockup shows them, and none runs.
+fn settings_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
+    use crate::settings::models::machine::{Check, CheckState};
+    use crate::settings::models::page::SettingsTab;
+    let _ = std::fs::remove_dir_all(root.join("data"));
+    let finished = all_finished(videos);
+    let mut harness = harness(root, move |app| {
+        finished(app);
+        app.queue.selected = id_of(app, "15");
+        app.refresh_report(false);
+        let page = &mut app.settings;
+        page.work_size = Some(crate::settings::services::work_folder::size(
+            &page.work_folder,
+        ));
+        page.models_size = Some(
+            page.items
+                .iter()
+                .filter(|item| item.kind == crate::settings::models::machine::ItemKind::Model)
+                .map(|item| item.bytes)
+                .sum(),
+        );
+        let check = |name, detail: String| Check {
+            name,
+            state: CheckState::Ok,
+            detail,
+            path: None,
+        };
+        app.settings.checks = Some(vec![
+            check(
+                "GPU",
+                "NVIDIA GeForce RTX 3070, driver 615.71.09, 6566 of 8192 MiB free".into(),
+            ),
+            Check {
+                path: Some(app.env.runtime_dir.clone()),
+                ..check("CUDA runtime", "CUDA, cuDNN and ONNX Runtime found".into())
+            },
+            check("FFmpeg", "ffmpeg version 8.1.2".into()),
+            check(
+                "Clip playback",
+                "FFmpeg plays sound through its pulse output".into(),
+            ),
+            check("ffprobe", "ffprobe version 8.1.2".into()),
+            check("claude CLI", "2.1.282 (Claude Code)".into()),
+            check(
+                "Whisper worker",
+                "~/Projects/TBD-subtitles/target/release/tbd-subtitles-ggml".into(),
+            ),
+        ]);
+    });
+    for (tab, scene) in [
+        (SettingsTab::General, "settings_general"),
+        (SettingsTab::Engines, "settings_engines"),
+        (SettingsTab::Models, "settings_models"),
+        (SettingsTab::ThisComputer, "settings_machine"),
+    ] {
+        harness
+            .state_mut()
+            .apply(vec![Action::from(SettingsEvent::Open(tab))]);
+        shoot(&mut harness, out, scene);
+    }
+}
+
+/// The first window with the models banner: what is missing, then a download under way (its
+/// first model on disk and the second 40 % in), set by hand so nothing downloads.
+fn banner_scenes(root: &Path, out: &Path) {
+    use crate::settings::models::page::DownloadProgress;
+    let mut harness = harness(root, |_| {});
+    shoot(&mut harness, out, "banner_missing");
+    let page = &mut harness.state_mut().settings;
+    let size = page.items.iter().map(|item| item.bytes).sum();
+    let finished = page.items[0].bytes;
+    page.items[0].present = true;
+    let next = &page.items[1];
+    page.download = Some(DownloadProgress {
+        id: next.id.clone(),
+        held: next.bytes * 2 / 5,
+        total: next.bytes,
+        finished,
+        size,
+    });
+    shoot(&mut harness, out, "banner_downloading");
 }
 
 /// A running queue: Dressrosa 16 settling its words, the rest waiting, 15 and 11 done; then a

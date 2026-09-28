@@ -17,7 +17,7 @@ pub(crate) enum Action {
     Queue(JobQueueEvent),
     /// Show this tab of the selected finished job: its report, or its lines to check.
     ShowTab(DetailTab),
-    /// Open the Settings window, or close it.
+    /// Open the Settings window (on General, unless it is open on a tab), or close it.
     ShowSettings(bool),
     /// The button of this toast was pressed: take the toast away and do what it offers.
     ToastButton(ToastId),

@@ -1,4 +1,5 @@
-//! The work folder's size: every job's work directory, measured on a thread of its own.
+//! A folder's size: the work folder, with every job's work directory, or the models folder,
+//! measured on a thread of its own.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};

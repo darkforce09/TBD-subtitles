@@ -24,6 +24,8 @@ use pipeline::measure::gpu_monitor::{self, DeviceInfo};
 use crate::core::background::Wake;
 use crate::settings::models::machine::{Check, CheckState};
 
+/// The name of the CUDA runtime's check, whose failure the Settings window links to the Models tab.
+pub(crate) const CUDA_RUNTIME: &str = "CUDA runtime";
 /// The free VRAM a GPU step needs with the desktop running, in MiB.
 pub(crate) const VRAM_BUDGET_MIB: u64 = 5_632;
 /// How long a version query may take.
@@ -63,6 +65,7 @@ pub(crate) fn gpu(info: Option<DeviceInfo>) -> Check {
     match info {
         None => Check {
             name,
+            path: None,
             state: CheckState::Failed,
             detail: "the NVIDIA driver's NVML library could not be loaded: no GPU steps can run"
                 .to_string(),
@@ -75,12 +78,14 @@ pub(crate) fn gpu(info: Option<DeviceInfo>) -> Check {
             if info.free_mib >= VRAM_BUDGET_MIB {
                 Check {
                     name,
+                    path: None,
                     state: CheckState::Ok,
                     detail: described,
                 }
             } else {
                 Check {
                     name,
+                    path: None,
                     state: CheckState::Warning,
                     detail: format!(
                         "{described}: a GPU step needs {VRAM_BUDGET_MIB} MiB; close programs that \
@@ -93,20 +98,25 @@ pub(crate) fn gpu(info: Option<DeviceInfo>) -> Check {
 }
 
 fn cuda_runtime(exe_dir: Option<&Path>, runtime_dir: &Path) -> Check {
-    let name = "CUDA runtime";
+    let name = CUDA_RUNTIME;
     match CudaRuntime::locate(exe_dir, runtime_dir) {
         Ok(runtime) => Check {
             name,
-            state: CheckState::Ok,
-            detail: format!(
-                "CUDA, cuDNN and ONNX Runtime found under {}",
-                runtime.cuda_root.parent().unwrap_or(runtime_dir).display()
+            path: Some(
+                runtime
+                    .cuda_root
+                    .parent()
+                    .unwrap_or(runtime_dir)
+                    .to_path_buf(),
             ),
+            state: CheckState::Ok,
+            detail: "CUDA, cuDNN and ONNX Runtime found".to_string(),
         },
         Err(missing) => Check {
             name,
+            path: None,
             state: CheckState::Failed,
-            detail: format!("{missing}; download it in Models below"),
+            detail: missing.to_string(),
         },
     }
 }
@@ -149,6 +159,7 @@ pub(crate) fn version_check(name: &'static str, output: Result<String, String>) 
     match output {
         Ok(text) => Check {
             name,
+            path: None,
             state: CheckState::Ok,
             detail: text
                 .lines()
@@ -159,6 +170,7 @@ pub(crate) fn version_check(name: &'static str, output: Result<String, String>) 
         },
         Err(reason) => Check {
             name,
+            path: None,
             state: CheckState::Failed,
             detail: reason,
         },
@@ -176,17 +188,20 @@ pub(crate) fn pulse_output(devices: Result<String, String>) -> Check {
         {
             Check {
                 name,
+                path: None,
                 state: CheckState::Ok,
                 detail: "FFmpeg plays sound through its pulse output".to_string(),
             }
         }
         Ok(_) => Check {
             name,
+            path: None,
             state: CheckState::Warning,
             detail: "this FFmpeg has no pulse output: clips play without sound".to_string(),
         },
         Err(reason) => Check {
             name,
+            path: None,
             state: CheckState::Warning,
             detail: format!("FFmpeg's devices could not be listed: {reason}"),
         },
@@ -198,11 +213,13 @@ fn whisper_worker(exe_dir: Option<&Path>) -> Check {
     match exe_dir.map(|dir| dir.join("tbd-subtitles-ggml")) {
         Some(path) if path.is_file() => Check {
             name,
+            path: None,
             state: CheckState::Ok,
             detail: format!("{}", path.display()),
         },
         Some(path) => Check {
             name,
+            path: None,
             state: CheckState::Failed,
             detail: format!(
                 "{} is missing; build it as the development environment runbook says",
@@ -211,6 +228,7 @@ fn whisper_worker(exe_dir: Option<&Path>) -> Check {
         },
         None => Check {
             name,
+            path: None,
             state: CheckState::Failed,
             detail: "the running binary's folder is unknown".to_string(),
         },

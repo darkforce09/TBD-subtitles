@@ -22,6 +22,8 @@ mod rendering_queue;
 mod rendering_report;
 #[path = "rendering_review.rs"]
 mod rendering_review;
+#[path = "rendering_settings.rs"]
+mod rendering_settings;
 #[path = "window_snapshots.rs"]
 mod window_snapshots;
 
@@ -404,47 +406,6 @@ fn a_full_run_waits_while_its_videos_review_run_runs() {
     );
     settle(&mut app);
     assert!(matches!(app.queue.items[0].state, JobState::Finished(_)));
-}
-
-#[test]
-fn the_settings_window_shows_the_form_and_the_models() {
-    let mut app = app("settings", Vec::new());
-    let (text, _) = render(&app);
-    assert!(!text.contains("Models folder"), "closed at first: {text}");
-    app.apply(vec![Action::ShowSettings(true)]);
-    let (text, _) = render(&app);
-    for expected in [
-        "Settings",
-        "Models folder",
-        "Subtitle format",
-        "SRT (default)",
-        "Models and runtime",
-        "parakeet-tdt-0.6b-v2",
-        "missing",
-    ] {
-        assert!(text.contains(expected), "{expected} not in {text}");
-    }
-}
-
-#[test]
-fn an_edit_is_saved_only_by_save() {
-    let mut app = app("save", Vec::new());
-    let mut draft = app.settings.draft.clone();
-    draft.cut_score = 33.0;
-    let before = std::fs::read_to_string(&app.env.settings_path).expect("scratch settings");
-    app.apply(vec![Action::from(SettingsEvent::Edit(draft))]);
-    assert!(app.settings.has_edits());
-    assert_eq!(
-        std::fs::read_to_string(&app.env.settings_path).expect("unchanged"),
-        before
-    );
-    app.apply(vec![Action::from(SettingsEvent::Save)]);
-    assert!(!app.settings.has_edits());
-    assert!(
-        std::fs::read_to_string(&app.env.settings_path)
-            .expect("saved")
-            .contains("33")
-    );
 }
 
 #[test]

@@ -18,7 +18,7 @@ apps/tbd_subtitles/src/application/
 ├── settings_window.rs  the Settings window, a second native window centred over the main one
 ├── shortcuts.rs        Ctrl+O, Ctrl+Shift+O, Ctrl+, , Delete, the arrows; Check Lines' keys
 ├── tests/              headless tests of the frame and of applying actions; the snapshot scenes
-└── window.rs           one frame: toolbar, sidebar, the selected job, drop overlay, toasts, Settings
+└── window.rs           one frame: toolbar, banner, sidebar, the selected job, overlay, toasts, Settings
 ```
 
 ## How it works
@@ -36,7 +36,7 @@ from any thread (`request_repaint`); the tests build one over a scratch folder w
 runner, and start no portal thread. `TbdSubtitlesApp` holds the queue loaded from `queue.json`,
 two job runners with the cancel token of the job each runs (one for full runs, one for the review
 runs that re-time the owner's corrections), the step rates for the time left, the settings page,
-whether the Settings window is open, the toasts, the row removed last (for Undo), the desktop's
+the Settings window's tab while it is open, the toasts, the row removed last (for Undo), the desktop's
 colour scheme, the selected finished job's report, every finished row's summary (its verdict and
 lines to check, read from its work folder when the window opens, after each run of its video and
 after each correction), its line review while open, the clip playing in it, the line its editor
@@ -44,7 +44,7 @@ shows with that line's still frame, the unsaved edits and run states of each job
 closed (`parked`, until it opens again; they are lost when the window closes), and `Pending`, the receiving end of
 every other thread it started (the choosers, the files the desktop was asked to open, the
 downloads and checks). The videos passed to `launch` enter the queue as the first `Action`; the
-machine checks and the work folder's measure start at once. While a job runs the window redraws
+machine checks and the measures of the work and models folders start at once. While a job runs the window redraws
 every second; a playing clip wakes it at each frame and a still frame when it is decoded.
 
 Each frame runs in three steps:
@@ -57,23 +57,28 @@ frame_ui(&self)
   ├── dropped files ──▶ Action::QueueVideos
   ├── shortcuts ──▶ Queue(AddVideos / AddFolder / Remove / Select), ShowSettings, Review
   ├── toolbar (52 px) ──▶ JobQueueEvent ──▶ Action::Queue; the gear ──▶ Action::ShowSettings
+  ├── models banner (while a model is missing, downloads, or 4 s after) ──▶ Settings(Open(Models)
+  │   / Download / StopDownload)
   ├── sidebar (272 px) ──▶ JobQueueEvent ──▶ Action::Queue
   ├── the selected job: jobs_ui (the empty card, the hint, or the header over the job's cards,
   │   its Overview or its lines to check) ──▶ Queue / ShowTab / Report / Review
   ├── the drop overlay while files hover; the toasts ──▶ Action::ToastButton
-  └── settings_window (while open) ──▶ Settings / ShowSettings(false)
+  └── settings_window (while open, on its tab) ──▶ Settings (Edit, Open(tab), …) /
+      ShowSettings(false)
 apply(&mut self, actions)
   ├── ShowTab: Overview closes the line review, Check Lines opens it
   └── actions::queue (edits, Undo, Try Again, Run Again, Start, Pause, Cancel, toasts),
       actions::runner (the next job of each lane, its options, how it ended, a review run's start
       and end for the status chip), actions::review (open on a group, edit, save or keep and
-      queue a review run, play, the still frame), actions::report or actions::settings
+      queue a review run, play, the still frame), actions::report or actions::settings (an edit
+      written at once, the tab, the download)
 ```
 
 `frame_ui` borrows the state immutably and only collects actions; `apply` and `poll` are the only
 places the state changes, between frames. A chooser opens through `core::portal` on its own
-thread; its answer goes into the queue or the settings draft, and a chooser that fails says so in
-a red toast. Open in Player, Show in Folder and Open Full Report ask the portal on a thread too:
+thread; its answer goes into the queue or, as an edit written at once, into the settings, and a
+chooser that fails says so in a red toast. Open in Player, Show in Folder and Open Full Report
+ask the portal on a thread too:
 a toast says what opens ("Opening … in your video player."), and a red one says so when the
 desktop answers that it could not. Toasts are added in `apply` (a removed row's "Removed … Its
 files stay on disk." with Undo for 6 s, the pause, Try Again and Run Again, a copied path, a file
@@ -107,11 +112,14 @@ one (Looks Right), neither while a full run of its video runs; ↑ and ↓ move 
 instead of the rows, Space plays the clip or stops it unless a button or switch has the
 keyboard's focus (then Space presses it), Delete removes nothing, and Esc takes the
 focus from a text box, or else stops the clip; Space and the arrows do nothing while a text box
-has focus. Settings opens in
-a second native window through `show_viewport_immediate`, 660 by 600, centred over the main window
-when it opens (which X11 allows), and closes when the owner closes it; asking for it while it is
-open brings it to the front. Where the backend has one window only, as in the headless tests, egui
-draws it as a window inside the main one.
+has focus. Settings opens in a second native window through `show_viewport_immediate`, 660 by
+600, centred over the main window when it opens (which X11 allows), on General (the gear, Ctrl+,)
+or on Models (the banner's Details…), and closes when the owner closes it, sending what is still
+typed in a field in its last frame; asking for it while it is open brings it to the front and
+keeps its tab. Where the backend has one window only, as in
+the headless tests, egui draws it as a window inside the main one. The banner under the toolbar
+spans the window while a model is missing or downloads, and for 4 s after a download that brought
+everything onto disk (the frame asks for a redraw when it goes).
 
 ## Boundaries
 
@@ -124,11 +132,18 @@ draws it as a window inside the main one.
 - Rules:
   - nothing changes state while a frame is drawn: every change is an `Action` applied after the
     frame (`actions_change_the_queue_only_when_applied` in `tests/rendering.rs`), and an edit is
-    written only by Save (`an_edit_is_saved_only_by_save`);
+    written at once, while a bad glossary is not written and names its field
+    (`an_edit_is_written_at_once`, `a_bad_glossary_is_not_written_and_names_its_field` in
+    `tests/rendering_settings.rs`);
   - an empty queue tells the user how to add videos, queued videos show by name and wait for
-    Start, and the Settings window shows the form and the models
+    Start, and the Settings window shows each tab under its tab bar and over its footer
     (`an_empty_queue_says_how_to_add_videos`, `queued_videos_show_by_name_and_wait_for_start`,
-    `the_settings_window_shows_the_form_and_the_models`);
+    `each_settings_tab_shows_its_settings_under_the_tab_bar_and_over_the_footer`); the banner
+    says what is missing, Details… opens the Models tab, and a download shows its progress and
+    then briefly that all is on disk
+    (`the_banner_says_what_is_missing_and_details_opens_the_models_tab`,
+    `a_download_shows_its_progress_and_then_briefly_that_all_is_on_disk` in
+    `tests/rendering_settings.rs`);
   - a running queue shows NOW, UP NEXT and DONE with Pause After This Video, a waiting correction
     run does not enable Start, Delete removes the selected row with an Undo toast that puts it
     back (only the row removed last, and not while its video is in the list again), a job tried
@@ -180,7 +195,10 @@ draws it as a window inside the main one.
     ignored snapshot test `window_snapshots` (`tests/window_snapshots.rs`), which copies the JSON
     files of the Dressrosa 11 and 15–17 work folders into a scratch folder and writes PNGs of the
     finished queue, the Dressrosa 15 Overview, then scrolled to its open Details and Step times
-    (`overview_d15`), its lines to check, the Settings window, the first run, a running queue
+    (`overview_d15`), its lines to check, the Settings window, its four tabs over Dressrosa 15 with
+    the machine checks set by hand (`settings_general`, `settings_engines`, `settings_models`,
+    `settings_machine`), the first run, the models banner on the first run and during a download
+    set by hand (`banner_missing`, `banner_downloading`; nothing downloads), a running queue
     whose done rows show their counts, a waiting row's menu, the Undo toast, the running Dressrosa
     16's detail, the waiting 17's card, the cards of 19 failed and 20 cancelled
     (`running_detail`, `waiting_card`, `failed_card`, `cancelled_card`), Dressrosa 16 with a

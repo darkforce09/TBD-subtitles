@@ -6,10 +6,10 @@
 //! **Position:** started by `cli` for the `gui` subcommand; draws the features' `ui` modules and
 //! changes state through their `services`. No feature imports this module.
 //!
-//! **Signals and state:** holds the queue, the toasts, the row removed last, whether the Settings
-//! window is open, the settings page, the desktop's colour scheme, the finished rows' summaries,
-//! the open line review with its clip and still frame, the edits of closed reviews, and the
-//! threads it waits on; reads files dropped onto the window.
+//! **Signals and state:** holds the queue, the toasts, the row removed last, the Settings window's
+//! tab while it is open, the settings page, the desktop's colour scheme, the finished rows'
+//! summaries, the open line review with its clip and still frame, the edits of closed reviews,
+//! and the threads it waits on; reads files dropped onto the window.
 //!
 //! **Invariants:** nothing changes state while a frame is drawn: every change is an [`Action`]
 //! applied after the frame, or a thread's answer folded in before it.
@@ -49,7 +49,7 @@ use crate::job_report::models::summary::RowSummary;
 use crate::line_review::events::ReviewEvent;
 use crate::line_review::models::session::{Parked, ReviewSession};
 use crate::line_review::services::clip_player::{ClipPlayer, Still};
-use crate::settings::models::page::SettingsPage;
+use crate::settings::models::page::{SettingsPage, SettingsTab};
 use crate::settings::services::job_settings;
 
 /// The window's name, title and desktop application id.
@@ -73,8 +73,8 @@ pub(crate) struct TbdSubtitlesApp {
     /// Each step's seconds per second of video, for the time left.
     rates: Rates,
     settings: SettingsPage,
-    /// Whether the Settings window is open.
-    settings_window: bool,
+    /// The Settings window's tab while it is open; `None` while it is closed.
+    settings_window: Option<SettingsTab>,
     /// The short messages at the bottom of the window; a button's action is applied as is.
     toasts: Toasts<Action>,
     /// The row removed last, which Undo puts back; a newer removal replaces it.
@@ -123,7 +123,7 @@ impl TbdSubtitlesApp {
             review_cancel: None,
             rates,
             settings,
-            settings_window: false,
+            settings_window: None,
             toasts: Toasts::default(),
             removed: None,
             scheme: Scheme::default(),
@@ -155,7 +155,10 @@ impl TbdSubtitlesApp {
                 }
                 Action::Queue(event) => self.apply_queue(event),
                 Action::ShowTab(tab) => self.show_tab(tab),
-                Action::ShowSettings(open) => self.settings_window = open,
+                Action::ShowSettings(true) => {
+                    self.settings_window.get_or_insert(SettingsTab::General);
+                }
+                Action::ShowSettings(false) => self.settings_window = None,
                 Action::ToastButton(id) => {
                     if let Some((_, action)) = self.toasts.take(id).and_then(|toast| toast.action) {
                         self.apply(vec![action]);
