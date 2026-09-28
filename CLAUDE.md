@@ -18,7 +18,8 @@ M2, the desktop GUI. The window (`tbd-subtitles gui`) is redesigned to the owner
 macOS-like mockup and runs jobs itself: a toolbar and models banner, a sidebar of videos in Now,
 Up Next and Done, the selected job's progress, its Overview report and Check Lines (clip playback,
 corrections re-timed by correction runs), and Settings in a window of their own, saved as they
-change, with model downloads ([GUI](/documentation/features/gui.md)). Left is the batch of
+change, with model downloads ([GUI](/documentation/features/gui.md)). The owner runs it as a
+self-contained AppImage from Gear Lever, built by `cargo appimage` (section 4). Left is the batch of
 Dressrosa 12–48 run from the window, on the owner's go ([roadmap](/documentation/roadmap.md)).
 
 ## 1. Project laws
@@ -125,9 +126,22 @@ narrows it, `--with-untracked` includes new files. Open the window on the host:
 `distrobox-host-exec target/debug/tbd-subtitles gui`. Build both app binaries (the ggml
 worker under the CUDA 13.4 toolkit) and generate subtitles on the host as in steps 12 and 13 of
 the [development environment](/documentation/runbooks/development_environment.md#steps) runbook:
-`distrobox-host-exec target/release/tbd-subtitles process <video>`. Package a self-contained
-AppImage: `cargo appimage` (see the [AppImage
-runbook](/documentation/runbooks/building_the_appimage.md)).
+`distrobox-host-exec target/release/tbd-subtitles process <video>`.
+
+**Shipping the app (AppImage).** The owner runs the app as an AppImage from Gear Lever, not from
+`target/`. After any change the owner should see in the app, rebuild it:
+
+```bash
+cargo appimage                     # in the container; about 2 minutes once the build is cached
+```
+
+It builds both binaries, bundles CUDA, cuDNN, ONNX Runtime and a pinned static FFmpeg, and writes
+`dist/TBD-subtitles-x86_64.AppImage` (stable name) plus a copy named with the version and commit;
+`--skip-build` repacks without building. Smoke-test on the host with
+`distrobox-host-exec dist/TBD-subtitles-x86_64.AppImage --version`, then tell the owner to
+re-import that file into Gear Lever, which keeps its own copy. If the FFmpeg download fails, the
+BtbN autobuild is gone: re-pin it in `tools/appimage_builder/src/ffmpeg/`. Details: the
+[AppImage runbook](/documentation/runbooks/building_the_appimage.md).
 
 ## 5. Where to look
 
