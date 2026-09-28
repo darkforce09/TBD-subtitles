@@ -197,6 +197,10 @@ When Claude changed nothing, Fix It finishes at once, with no correction run, an
 - The model sees each line's start, its length and the gaps around it, never a word's time.
 - The `claude` calls run with no tools, as for adjudication; the context is the model's own
   knowledge and the job's own files.
+- Every run's `claude` calls pass one shared gate, so many videos fixed at once never start more
+  calls than its cap; the calls go in the order the runs started, an answer kept from an earlier
+  run skips the gate, and a call the provider answers as busy (rate limit, overloaded) is asked
+  again after 30, 60 and 120 s without holding a slot while it waits.
 - The finish waits for the correction run, so the card, the toast and the notification speak of
   subtitles already rebuilt. The notification and the flashing taskbar entry come only when the
   window is away, since the card says it all when the owner is looking.

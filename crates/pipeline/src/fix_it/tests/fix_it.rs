@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
+use inference::llm::call_gate::{CallGate, Gated};
 use inference::llm::{Completion, LlmError};
 use job_model::StepName;
 use job_model::job::{JobRecord, JobSettings, StepMeasure, StepRecord};
@@ -159,6 +161,7 @@ fn finished_job(name: &str) -> (WorkDir, PathBuf, FixOptions) {
         model: "opus".into(),
         glossary_name: "one_piece".into(),
         processes: 2,
+        calls: CallGate::new(2).seat(),
         cancel: CancelToken::new(),
     };
     (work, video, options)
@@ -414,4 +417,50 @@ fn a_run_that_cannot_make_its_brief_changes_nothing() {
     assert!(!work.review().exists());
     assert!(!work.fix_record().exists());
     let _ = std::fs::remove_dir_all(options.work_root.parent().unwrap());
+}
+
+#[test]
+fn a_kept_answer_takes_no_claude_slot() {
+    let dir = std::env::temp_dir().join(format!("tbd-fix-it-slot-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let gate = CallGate::new(1);
+    let cancel = Arc::new(AtomicBool::new(false));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let fake = Scripted {
+        script: Arc::new(|_: &str, _: &str| Ok(json!({"ok": true}))),
+        calls: calls.clone(),
+    };
+    let gated = Gated::new(fake, gate.seat(), cancel.clone());
+    let hits = Arc::new(AtomicUsize::new(0));
+    let mut model = cache::CachedModel::new(Box::new(gated), dir.clone(), "opus", hits.clone());
+    model.complete_json("system", "user", &json!({})).unwrap();
+
+    let blocker = gate.seat().acquire(&AtomicBool::new(false)).unwrap();
+    let done = Arc::new(AtomicBool::new(false));
+    let timer = {
+        let (cancel, done) = (cancel.clone(), done.clone());
+        std::thread::spawn(move || {
+            let started = Instant::now();
+            while !done.load(Ordering::SeqCst) {
+                if started.elapsed() > Duration::from_millis(500) {
+                    cancel.store(true, Ordering::SeqCst);
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        })
+    };
+    let again = model.complete_json("system", "user", &json!({}));
+    done.store(true, Ordering::SeqCst);
+    timer.join().unwrap();
+    assert_eq!(
+        again.unwrap().json,
+        json!({"ok": true}),
+        "waited for a slot"
+    );
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(gate.held(), 1, "the other run still holds the only slot");
+    drop(blocker);
+    let _ = std::fs::remove_dir_all(&dir);
 }

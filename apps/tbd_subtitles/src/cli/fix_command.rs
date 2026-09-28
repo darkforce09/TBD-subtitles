@@ -19,6 +19,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::Args;
+use inference::llm::call_gate::CallGate;
 use job_model::job::JobRecord;
 use job_model::outputs::FixVerdict;
 use pipeline::fix_it::{FixOptions, FixOutcome, FixProgress, FixStage, fix_video};
@@ -78,6 +79,7 @@ pub(super) fn run(args: &FixArgs) -> anyhow::Result<()> {
         model: chosen.language_model.fix_model.clone(),
         glossary_name: job_settings::glossary_name(&chosen),
         processes: chosen.language_model.processes.max(1),
+        calls: CallGate::new(chosen.language_model.processes.max(1)).seat(),
         cancel: CancelToken::new(),
     };
     eprintln!("fix {} with claude {}", args.video.display(), options.model);

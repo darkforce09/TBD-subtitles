@@ -2,8 +2,8 @@
 //! becomes corrections a correction run then times.
 //!
 //! **Role:** read the job (refusing one that is not ready), run `stages::fix_it` with a `claude`
-//! backend that the cancel token stops, keep every answered call so a stopped run resumes without
-//! paying again, write `fix.json` with this run's lines and the earlier runs' answers it did not
+//! backend that the cancel token stops and whose calls take a slot at the shared call gate, keep
+//! every answered call so a stopped run resumes without paying again, write `fix.json` with this run's lines and the earlier runs' answers it did not
 //! ask again, and put this run's kept changes into `review.json` without touching a line the
 //! owner settled.
 //!
@@ -13,7 +13,8 @@
 //! **Signals and state:** takes the job lock; reads the work directory; writes `fix.json`,
 //! `fix/calls/` and `review.json`; starts `claude` processes in `claude-cwd/`.
 //!
-//! **Invariants:** a stopped or failed run changes no correction; the owner's corrections always
+//! **Invariants:** each model is `CachedModel(Gated(ClaudeCli))`, so an answer kept on disk never
+//! takes a slot at the gate; a stopped or failed run changes no correction; the owner's corrections always
 //! win; only this run's lines are merged; `fix.json` keeps the problems before the first run and
 //! the calls and cost of every run since the job was last adjudicated, and a record from before
 //! that counts for nothing; `fix/calls/` goes once a run has written its corrections.
@@ -28,6 +29,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use inference::llm::LanguageModel;
+use inference::llm::call_gate::{CallSeat, Gated};
 use inference::llm::claude_cli::ClaudeCli;
 use job_model::StepName;
 use job_model::outputs::{FixBefore, FixFamily, FixRecord, LineFix};
@@ -51,6 +53,8 @@ pub struct FixOptions {
     pub glossary_name: String,
     /// Calls at once.
     pub processes: usize,
+    /// The seat this run's `claude` calls take at the shared gate.
+    pub calls: CallSeat,
     /// Stops the run: no call starts and the running `claude` processes are killed.
     pub cancel: CancelToken,
 }
@@ -106,14 +110,15 @@ pub fn fix_video(
 ) -> Result<FixOutcome> {
     let video = std::fs::canonicalize(video).context(format!("cannot find {}", video.display()))?;
     let work = WorkDir::new(options.work_root.join(work_dir::job_id(&video)));
-    let (model, cwd, flag) = (
+    let (model, cwd, flag, seat) = (
         options.model.clone(),
         work.claude_cwd(),
         options.cancel.flag(),
+        options.calls.clone(),
     );
     let make = move || {
-        Box::new(ClaudeCli::new(&model, cwd.clone()).with_cancel(flag.clone()))
-            as Box<dyn LanguageModel + Send>
+        let claude = ClaudeCli::new(&model, cwd.clone()).with_cancel(flag.clone());
+        Box::new(Gated::new(claude, seat.clone(), flag.clone())) as Box<dyn LanguageModel + Send>
     };
     fix_job(&video, &work, options, &make, progress)
 }

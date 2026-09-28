@@ -173,6 +173,8 @@ impl TbdSubtitlesApp {
             model: saved.language_model.fix_model.clone(),
             glossary_name: job_settings::glossary_name(saved),
             processes: saved.language_model.processes.max(1),
+            calls: inference::llm::call_gate::CallGate::new(saved.language_model.processes.max(1))
+                .seat(),
             cancel: pipeline::CancelToken::new(),
         };
         let model = claude_models::display_name(&options.model);

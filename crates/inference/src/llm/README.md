@@ -10,6 +10,7 @@ CLI, and a local model through mistral.rs behind the `mistralrs` feature.
 
 ```text
 crates/inference/src/llm/
+├── call_gate/   one cap on calls at once across runs, and `Gated`, whose calls pass it and retry
 ├── call_log/    why each call is made, its summary line, and the whole exchange for the log window
 ├── claude_cli/  the headless `claude -p` CLI: a JSON schema in, the structured answer out, no tools
 ├── mistral_rs/  a local GGUF model through mistral.rs on the GPU, behind the `mistralrs` feature
@@ -22,7 +23,9 @@ crates/inference/src/llm/
 tokens, and the provider's cost figure when it gives one. A backend that cannot produce JSON
 matching the schema returns `LlmError`, never an empty answer. After every call a backend logs it
 through `call_log`: one summary line, and the whole exchange for the app's log window; a stage
-says why it calls with `purpose(…)`, which the summary and the exchange carry.
+says why it calls with `purpose(…)`, which the summary and the exchange carry. Fix It wraps each
+backend in `call_gate::Gated`, so the calls of every run pass one shared cap, in the order the runs
+started, and a call the provider answers as busy is asked again after a pause.
 
 ## Boundaries
 
@@ -30,7 +33,7 @@ says why it calls with `purpose(…)`, which the summary and the exchange carry.
   `child_process` in `claude_cli/`; `mistralrs` and `tokio` in
   `mistral_rs/` (optional).
 - Used by: `crates/stages/src/adjudication/`, `crates/stages/src/fix_it/`, `crates/pipeline/`,
-  `tools/stack_spike/` and `tools/stack_spike_llm/`.
+  `apps/tbd_subtitles/` (the call gate), `tools/stack_spike/` and `tools/stack_spike_llm/`.
 - Rules: a backend never sees a word's time: the adjudication prompt carries each utterance's
   start and length only, and Fix It adds the gaps around a flagged line (the headers in
   `crates/stages/src/adjudication/mod.rs` and `crates/stages/src/fix_it/mod.rs`).

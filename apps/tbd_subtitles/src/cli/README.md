@@ -89,7 +89,8 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
   each line asked about with its verdict, its change and any refused proposal, and the calls with
   their cost. When it changed a line, it runs the job again with the job's own settings, so the
   review step and the steps after it put the changes into the subtitle file, and prints the
-  quality line as `process` does. `--processes` sets how many `claude` calls run at once.
+  quality line as `process` does. `--processes` sets how many `claude` calls run at once; a call
+  the provider answers as busy (rate limit, overloaded) is asked again after 30, 60 and 120 s.
 - Exit codes: 0 done, changed or not; 1 a missing video, an unreadable settings file, a job that
   is not finished or whose corrections are not in its subtitles yet, a brief that could not be
   made, or a correction run that failed; 2 on a usage error, including no video.

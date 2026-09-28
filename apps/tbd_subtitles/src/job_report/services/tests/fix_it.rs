@@ -12,6 +12,7 @@ fn options() -> FixOptions {
         model: "opus".into(),
         glossary_name: "one_piece".into(),
         processes: 2,
+        calls: inference::llm::call_gate::CallGate::new(2).seat(),
         cancel: CancelToken::new(),
     }
 }

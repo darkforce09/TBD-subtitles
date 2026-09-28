@@ -24,7 +24,10 @@ fix_video ─▶ job lock ─▶ inputs::load ─▶ stages::fix_it::run (claude
 ```
 
 `fix_video` makes one `ClaudeCli` of the chosen model per worker, with the cancel token's flag,
-so Stop kills the running `claude` processes. `fix_job` takes the job lock and refuses a job
+so Stop kills the running `claude` processes, and wraps it in `inference::llm::call_gate::Gated`
+on the run's seat (`FixOptions::calls`): each call takes a slot at the gate the runs share, runs
+started earlier go first, a Stop ends a wait, and a busy answer is asked again after 30, 60 and
+120 s. `fix_job` takes the job lock and refuses a job
 whose quality check or output step has not finished, or whose corrections changed since its last
 run ("your latest corrections are not in the subtitles yet"). It reads the sheet with the
 re-decoded alternatives, the lines with the corrections in place, the corrections, `qc.json`,
@@ -33,7 +36,7 @@ re-decoded alternatives, the lines with the corrections in place, the correction
 fingerprint; a missing, unreadable or stale one counts as none). What that record answered
 (`stages::fix_it::items::Answered`) is not asked again. It runs the passes with each model wrapped in
 `cache::CachedModel`: a call whose answer is kept under `fix/calls/` is answered from disk at no
-cost, and every new answer is kept first. Progress comes out as a `FixStage` (reading, fixing a
+cost and without a slot at the gate, and every new answer is kept first. Progress comes out as a `FixStage` (reading, fixing a
 family, checking, saving) with the calls done.
 
 A stopped run returns a cancelled `PipelineError` and changes nothing; its answered calls stay, so
@@ -75,7 +78,8 @@ reused from an earlier run", with its purpose.
   - a second run asks only what is left, keeps the first run's other lines and `before`, and adds
     up the cost (`a_second_run_asks_only_what_is_left_and_keeps_what_the_first_answered`);
   - a record from before the video was adjudicated again is ignored
-    (`a_record_from_before_the_video_was_adjudicated_again_is_ignored`).
+    (`a_record_from_before_the_video_was_adjudicated_again_is_ignored`);
+  - an answer kept on disk takes no slot at the gate (`a_kept_answer_takes_no_claude_slot`).
 
 ## Related documentation
 
