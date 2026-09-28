@@ -8,16 +8,17 @@
 //! `pipeline::fix_it::fix_video`, or a stand-in in the tests.
 //!
 //! **Signals and state:** one thread per run and one channel back; the run's `CancelToken`.
+//! Each new stage and the end are logged under the `fix_it` target.
 //!
 //! **Invariants:** the thread lives until its run ends, so the `claude` processes it starts die
 //! with it and never outlive it; after Stop the run ends as cancelled and changes nothing; the
 //! window wakes after each message.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::mpsc::{Receiver, channel};
+use std::sync::{Arc, Mutex};
 
-use pipeline::fix_it::{FixOptions, FixOutcome, FixProgress};
+use pipeline::fix_it::{FixOptions, FixOutcome, FixProgress, FixStage};
 use pipeline::{CancelToken, PipelineError};
 
 use crate::core::background::Wake;
@@ -67,11 +68,18 @@ pub(crate) fn start(
     let cancel = options.cancel.clone();
     let path = video.clone();
     std::thread::spawn(move || {
+        let name = path
+            .file_stem()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        tracing::info!(target: "fix_it", "{name}: Fix It started");
+        let stage = Mutex::new(None);
         let progress = |step: FixProgress| {
+            log_progress(&name, &stage, step);
             let _ = sender.send(FixEvent::Progress(step));
             wake();
         };
         let outcome = run(&path, &options, &progress);
+        log_end(&name, &outcome);
         let _ = sender.send(FixEvent::Ended(Box::new(outcome)));
         wake();
     });
@@ -82,6 +90,37 @@ pub(crate) fn start(
         stopping: false,
         events,
         cancel,
+    }
+}
+
+/// Log a new stage at info, and each call within it at debug.
+fn log_progress(name: &str, stage: &Mutex<Option<FixStage>>, step: FixProgress) {
+    let mut last = stage
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if *last != Some(step.stage) {
+        *last = Some(step.stage);
+        tracing::info!(
+            target: "fix_it",
+            "{name}: pass {}, {:?}, {} calls",
+            step.stage.pass(),
+            step.stage,
+            step.total
+        );
+    } else {
+        tracing::debug!(target: "fix_it", "{name}: {:?} {} of {}", step.stage, step.done, step.total);
+    }
+}
+
+fn log_end(name: &str, outcome: &Result<FixOutcome, PipelineError>) {
+    match outcome {
+        Ok(done) => tracing::info!(
+            target: "fix_it",
+            "{name}: Fix It finished; {} lines changed, {} of yours kept",
+            done.changed.len(),
+            done.kept_yours.len()
+        ),
+        Err(error) => tracing::error!(target: "fix_it", "{name}: Fix It stopped: {error}"),
     }
 }
 

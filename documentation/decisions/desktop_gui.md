@@ -5,8 +5,9 @@
 The decisions the desktop window led to: how it plays clips and hands videos to other programs,
 where models live and how they arrive, when a job passes the quality check, how the owner's
 corrections are timed, how the window looks, which settings a job runs with, where Settings open,
-how correction runs show, how a job is tried again, how a failed language-model call is, and how
-a change of the settings applies. The [decision log](/documentation/decisions/) says how entries are written.
+how correction runs show, how a job is tried again, how a failed language-model call is retried,
+how a change of the settings applies, what Fix It does, and what the log window shows. The
+[decision log](/documentation/decisions/) says how entries are written.
 
 ### 2026-09-26 — Clips play through FFmpeg, not libmpv
 
@@ -393,3 +394,37 @@ plan beside any Sonnet run of another video. The tests hold it:
 `apps/tbd_subtitles/src/application/tests/rendering_fix_it.rs`.
 
 **Supersedes:** none; it adds a writer of `review.json` beside the owner's line review.
+
+### 2026-09-28 — A log window shows everything the app does
+
+**Context:** The owner asked for a button that opens a log console in a window of its own and
+shows everything that is happening. The window logged about ten events, all of them its own
+errors, to stderr and to `~/.local/state/tbd-subtitles/tbd-subtitles.log`; the library crates
+logged nothing. A job's events reached the window but only its current line showed, and a child
+process's stderr (workers, FFmpeg, `claude`) was kept until it exited and shown only on failure.
+
+**Decision:** One `tracing` subscriber feeds three outputs in the window's run: stderr at `info`,
+the log file and an in-memory buffer of the newest 20,000 lines (`core::log_buffer`) at debug for
+this workspace's crates and info for the rest, all three filtered by `RUST_LOG` when it is set.
+Every source becomes a `tracing` event rather than a channel of its own: `child_process` logs each
+child's start with its command line (long or multi-line arguments, such as a prompt, as their
+size), each stderr line as it arrives, and its end; a worker writes its own debug lines to stderr,
+which arrive that way; the job runner logs each job event (a step's advance once per tenth); Fix
+It logs its passes; the pipeline logs where each step runs, the CUDA runtime, the GPU lock and
+the report; the `claude` backend logs one summary line per call (model, input lines, seconds,
+tokens, cost), never the prompt or the answer, as the owner chose; and the window logs each action
+it applies, cut to 160 characters. The log window is a second native window like Settings, opened
+from a terminal button left of the gear or Ctrl+L, with the levels (Errors and Warnings counted,
+Info, Debug), a search, Copy, Clear and Open Log File; it follows the newest line until the owner
+scrolls up. While it is open it reads the new lines four times a second.
+
+**Consequences:** The log file now holds the debug lines too, so it grows faster, and each launch
+still empties it. FFmpeg's and the workers' stderr cost a `tracing` event per line; with no
+subscriber (the repository tools) they cost nothing. The `process` and `fix` commands print what
+they did before, since their stderr stays at `info`. The tests hold it:
+`a_captured_child_logs_its_start_its_stderr_lines_and_its_exit` in
+`crates/child_process/src/tests/trace.rs`, `a_step_advance_is_logged_once_per_tenth` in
+`apps/tbd_subtitles/src/job_queue/services/tests/progress_log.rs`, and
+`apps/tbd_subtitles/src/application/tests/rendering_console.rs`.
+
+**Supersedes:** none.

@@ -21,6 +21,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use job_model::StepName;
 
+use crate::core::logging::LogRun;
+
 /// Generates English subtitles for local videos.
 #[derive(Debug, Parser)]
 #[command(name = "tbd-subtitles", version, about)]
@@ -53,9 +55,12 @@ enum Command {
 /// Parse the command line and run the chosen subcommand.
 pub(crate) fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let window = matches!(cli.command, None | Some(Command::Gui { .. }));
-    let log_file = window.then(crate::core::logging::window_log_path).flatten();
-    crate::core::logging::initialise(log_file.as_deref());
+    let run = match cli.command {
+        None | Some(Command::Gui { .. }) => LogRun::Window,
+        Some(Command::Worker { .. }) => LogRun::Worker,
+        Some(Command::Process(_) | Command::Fix(_)) => LogRun::Command,
+    };
+    crate::core::logging::initialise(run);
     dispatch(cli)
 }
 

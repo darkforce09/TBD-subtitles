@@ -7,20 +7,22 @@
 //! application's queue actions, which also cancel them through each job's `CancelToken`.
 //!
 //! **Signals and state:** a command channel in and an event channel out; the runner thread
-//! starts the job's worker processes, which die with it.
+//! starts the job's worker processes, which die with it. Each event and each end is also logged
+//! (`progress_log`).
 //!
 //! **Invariants:** one job runs at a time; the thread lives as long as the window, so a worker it
 //! starts is never killed by its parent thread ending early (`PR_SET_PDEATHSIG`).
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex};
 
 use pipeline::progress::Progress;
 use pipeline::{JobOptions, JobOutcome, PipelineError};
 
 use crate::core::background::Wake;
 use crate::job_queue::models::queue::JobId;
+use crate::job_queue::services::progress_log::{self, ProgressLog};
 
 /// How a job is run: the pipeline's `run_job`, or a stand-in in the tests.
 pub(crate) type RunJob = Arc<
@@ -72,11 +74,24 @@ pub(crate) fn start(run: RunJob, wake: Wake) -> JobRunner {
         .spawn(move || {
             for command in inbox {
                 let id = command.id;
+                let name = command
+                    .video
+                    .file_stem()
+                    .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+                let log = Mutex::new(ProgressLog::default());
                 let sink = |event: Progress| {
+                    let line = log
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .describe(&event);
+                    if let Some(line) = line {
+                        progress_log::emit(&name, line);
+                    }
                     let _ = send.send(RunnerEvent::Progress(id, event));
                     wake();
                 };
                 let outcome = run(&command.video, &command.options, &sink);
+                progress_log::emit(&name, progress_log::describe_end(&outcome));
                 let _ = send.send(RunnerEvent::Ended(id, outcome));
                 wake();
             }

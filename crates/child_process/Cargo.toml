@@ -13,3 +13,10 @@ publish = false
 # setsid, setpgid and killpg: a timeout kills the whole process tree, not only its leader;
 # prctl(PR_SET_PDEATHSIG): a child dies with the thread that started it.
 libc = { version = "0.2", default-features = false }
+# Each child's start, stderr lines and end as `tracing` events, for the app's log window; a
+# process without a subscriber (the repository tools) pays nothing.
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# A capturing subscriber for the tests of those events.
+tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "registry"] }

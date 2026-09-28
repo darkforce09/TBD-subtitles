@@ -1,7 +1,8 @@
 //! The window's keyboard shortcuts: Ctrl+O adds videos, Ctrl+Shift+O a folder, Ctrl+, opens
-//! Settings, Delete removes the selected row, and ↑ and ↓ move through the sidebar; in Check
-//! Lines, Ctrl+S saves an edited line, Ctrl+Enter keeps an unedited one, ↑ and ↓ move through
-//! the lines, Space plays or stops the clip, and Esc leaves the text box, then stops the clip.
+//! Settings, Ctrl+L the log window, Delete removes the selected row, and ↑ and ↓ move through the
+//! sidebar; in Check Lines, Ctrl+S saves an edited line, Ctrl+Enter keeps an unedited one, ↑ and ↓
+//! move through the lines, Space plays or stops the clip, and Esc leaves the text box, then stops
+//! the clip.
 //!
 //! **Role:** turn the shortcut keys of a frame into actions.
 //!
@@ -29,11 +30,12 @@ use crate::line_review::services::{line_filter, review_editing};
 pub(super) fn shortcuts(ctx: &Context, app: &TbdSubtitlesApp, actions: &mut Vec<Action>) {
     let typing = ctx.text_edit_focused();
     let busy = typing || Popup::is_any_open(ctx);
-    let (folder, videos, settings) = ctx.input_mut(|input| {
+    let (folder, videos, settings, log) = ctx.input_mut(|input| {
         let folder = input.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::O);
         let videos = !folder && input.consume_key(Modifiers::COMMAND, Key::O);
         let settings = input.consume_key(Modifiers::COMMAND, Key::Comma);
-        (folder, videos, settings)
+        let log = input.consume_key(Modifiers::COMMAND, Key::L);
+        (folder, videos, settings, log)
     });
     if folder {
         actions.push(Action::Queue(JobQueueEvent::AddFolder));
@@ -43,6 +45,9 @@ pub(super) fn shortcuts(ctx: &Context, app: &TbdSubtitlesApp, actions: &mut Vec<
     }
     if settings {
         actions.push(Action::ShowSettings(true));
+    }
+    if log {
+        actions.push(Action::ShowLog(true));
     }
     if review_keys(ctx, app, typing, busy, actions) || busy {
         return;

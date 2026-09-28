@@ -13,7 +13,9 @@ crates/inference/src/llm/claude_cli/
 
 ## Boundaries
 
-- Depends on: `child_process::Run` (the `claude` program with a deadline), `serde_json`.
+- Depends on: `child_process::Run` (the `claude` program with a deadline), `serde_json`, and
+  `tracing` for one info line per call (model, input lines, seconds, tokens, cost; a failure as a
+  warning), never the prompt or the answer.
 - Used by: `crates/pipeline/` (the adjudication tasks and Fix It) and `tools/stack_spike/`
   (through `stages::adjudication`).
 - Rules:

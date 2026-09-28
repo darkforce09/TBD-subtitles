@@ -19,6 +19,7 @@ mod core;
 mod job_queue;
 mod job_report;
 mod line_review;
+mod log_console;
 mod settings;
 
 use std::process::ExitCode;

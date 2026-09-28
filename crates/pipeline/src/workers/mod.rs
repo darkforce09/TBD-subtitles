@@ -91,6 +91,7 @@ pub fn run_worker(
     }
     let gpu = graph::uses_gpu(step);
     let _held = if gpu {
+        tracing::debug!("step {step} takes the GPU lock {}", gpu_lock.display());
         Some(gpu_lock::acquire(gpu_lock, cancel, &|| {
             progress(Progress::StepMessage {
                 step,
@@ -105,6 +106,9 @@ pub fn run_worker(
     } else {
         None
     };
+    if let Some(b) = &baseline {
+        tracing::debug!("step {step} starts with {} MiB of VRAM free", b.free_mib);
+    }
     let mut worker = run.spawn().context(context.clone())?;
     let monitor = baseline
         .as_ref()
@@ -126,6 +130,7 @@ pub fn run_worker(
         other => other.context(context.clone())?,
     };
     work_dir::write_text(&work.log(step), &finished.stderr)?;
+    tracing::debug!("step {step} worker log: {}", work.log(step).display());
     if finished.code != 0 {
         let tail: Vec<&str> = finished.stderr.lines().rev().take(STDERR_TAIL).collect();
         let tail: Vec<&str> = tail.into_iter().rev().collect();

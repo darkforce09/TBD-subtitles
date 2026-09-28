@@ -5,6 +5,7 @@
 pub(crate) mod background;
 pub(crate) mod color_scheme;
 pub(crate) mod format;
+pub(crate) mod log_buffer;
 pub(crate) mod logging;
 pub(crate) mod portal;
 pub(crate) mod steps;

@@ -98,8 +98,12 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
     record.settings = options.settings.clone();
     record.models_dir = Some(options.models_dir.to_string_lossy().into_owned());
     record.corrections = work_dir::corrections_digest(&work);
+    tracing::debug!("job {} for {}", work.root().display(), video.display());
     for step in &options.rerun {
         record.steps.remove(step);
+    }
+    if !options.rerun.is_empty() {
+        tracing::debug!("rerunning on request: {:?}", options.rerun);
     }
     work_dir::write_json(&work.job_json(), &record)?;
     progress(Progress::JobStarted {
@@ -114,13 +118,21 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
             return Ok(Vec::new());
         }
         cuda_env
-            .get_or_init(|| locate_cuda(&options.binaries).map_err(|e| e.to_string()))
+            .get_or_init(|| {
+                let located = locate_cuda(&options.binaries).map_err(|e| e.to_string());
+                match &located {
+                    Ok(_) => tracing::debug!("the CUDA runtime is found for ONNX Runtime workers"),
+                    Err(error) => tracing::warn!("no CUDA runtime for ONNX Runtime: {error}"),
+                }
+                located
+            })
             .clone()
             .map_err(|e| PipelineError::new(format!("step {step}"), e))
     };
     let run_step = |step: StepName, record: &JobRecord| -> Result<StepMeasure> {
         match graph::placement(step) {
             Placement::InProcess => {
+                tracing::debug!("step {step} runs in this process");
                 let job = Job {
                     work: work.clone(),
                     record: record.clone(),
@@ -130,6 +142,10 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                 })
             }
             Placement::Worker(binary) => {
+                tracing::debug!(
+                    "step {step} runs in a worker of {}",
+                    options.binaries.path(binary).display()
+                );
                 let env = env_for(step)?;
                 workers::run_worker(
                     options.binaries.path(binary),
@@ -196,6 +212,7 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
     })?;
 
     let qc = report::write(&work, &record)?;
+    tracing::info!("the report is written to {}", work.report().display());
     Ok(JobOutcome {
         work_dir: work.root().to_path_buf(),
         subtitles: stages::output::subtitle_path(&video, record.settings.output_format),

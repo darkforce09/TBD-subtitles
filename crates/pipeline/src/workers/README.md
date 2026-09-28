@@ -24,14 +24,17 @@ group and the step fails as cancelled. A GPU step first takes `gpu_lock`, an exc
 `gpu.lock` in the app data folder, waiting (and saying so once) while another process of the app
 holds it; the kernel drops the lock when its holder dies. It reads the device's memory first and starts a `measure::gpu_monitor::Monitor` on the
 worker's pid. Each stdout line becomes a progress event: `progress <done> <total>` an advance,
-anything else a message. When the worker ends, its stderr goes to `logs/<step>.log`; a non-zero
+anything else a message. Its stderr lines are logged as they arrive (`child_process`), and when
+the worker ends its stderr goes to `logs/<step>.log` too; a non-zero
 exit is an error quoting the last 12 lines. Otherwise the worker's measure file and the VRAM peaks
 become the step's `StepMeasure`, with the device's free memory before the step and its growth
 during it as notes.
+The step's GPU lock, the free VRAM it starts with and the path of its log file are debug
+`tracing` events.
 
 ## Boundaries
 
-- Depends on: `child_process` (`Run`, `Running`), `libc` (`flock`), `crate::cancel`, `job_model`
+- Depends on: `child_process` (`Run`, `Running`), `libc` (`flock`), `tracing`, `crate::cancel`, `job_model`
   (`StepMeasure`, `WorkerMeasure`),
   `crate::graph`, `crate::measure::gpu_monitor`, `crate::progress` and `crate::work_dir`.
 - Used by: `crate::runner` for every step placed in a worker;

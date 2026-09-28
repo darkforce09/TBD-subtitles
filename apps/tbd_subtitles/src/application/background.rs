@@ -20,7 +20,7 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
 use super::TbdSubtitlesApp;
-use super::actions::{poll_fix, poll_runner, poll_settings};
+use super::actions::{poll_fix, poll_log, poll_runner, poll_settings};
 use crate::core::color_scheme::{self, Scheme};
 use crate::core::portal::{self, Choose, Chosen, Opened};
 use crate::core::toast::ToastKind;
@@ -97,6 +97,7 @@ impl TbdSubtitlesApp {
         poll_settings(self);
         poll_runner(self);
         poll_fix(self);
+        poll_log(self);
         self.poll_chooser();
         self.poll_scheme();
         self.poll_opens(Instant::now());

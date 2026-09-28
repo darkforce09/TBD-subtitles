@@ -18,15 +18,15 @@ apps/tbd_subtitles/src/job_queue/ui/
 ├── sidebar.rs        the sections Now, Up Next and Done with their headings, or the empty hint
 ├── sidebar_row.rs    one row: status mark, name, status line, bar, ✕ on hover, drag and drop
 ├── stage_list.rs     the six stages with their marks and times, "Show all 18 steps", step lines
-└── toolbar.rs        Add Videos…, Add Folder…, the queue button with its reason, the gear
+└── toolbar.rs        Add Videos…, Add Folder…, the queue button with its reason, the log button, gear
 ```
 
 ## How it works
 
 `toolbar_ui` draws Add Videos… and Add Folder… on the left and, on the right, the reason the queue
 button is off with an info mark, the button `queue_editing::queue_control` chooses (the blue Start
-Queue or Resume Queue, or Pause After This Video) and the gear, which it reports so the
-application opens Settings. `sidebar_ui` draws the rows of `sidebar_rows::rows` under the headings
+Queue or Resume Queue, or Pause After This Video), the log button and the gear, which it reports
+(`ToolbarPress`) so the application opens the log window or Settings. `sidebar_ui` draws the rows of `sidebar_rows::rows` under the headings
 NOW, UP NEXT and DONE with their counts; a click on a heading folds its section away (kept in
 egui's memory), and `row_order` gives the rows the arrow keys move through. With no video it shows
 a film strip, "No videos yet" and how to add some.

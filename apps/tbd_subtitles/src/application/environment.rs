@@ -2,7 +2,8 @@
 //! the real paths and the pipeline when it runs, scratch paths and stand-in runners in the tests,
 //! which never touch the owner's home or start a worker or `claude`.
 //!
-//! **Role:** hold the paths, the job runner, Fix It's runner and the wake the application uses.
+//! **Role:** hold the paths, the job runner, Fix It's runner, the wake and the log the application
+//! uses.
 //!
 //! **Position:** built by `application::launch` (`real`) or by the tests (`scratch`); owned by
 //! `TbdSubtitlesApp`.
@@ -10,17 +11,20 @@
 //! **Signals and state:** reads the data and config folders' locations; the scratch one writes
 //! its settings file.
 //!
-//! **Invariants:** a test environment never names the owner's files, and its Fix It refuses to run
-//! unless the test gives it a stand-in.
+//! **Invariants:** a test environment never names the owner's files, keeps a log of its own, and
+//! its Fix It refuses to run unless the test gives it a stand-in.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::core::background::Wake;
+use crate::core::log_buffer::LogBuffer;
+use crate::core::logging;
 use crate::job_queue::services::job_runner::{self, RunJob};
 use crate::job_report::services::fix_it::{self, FixVideo};
 use crate::settings::services::settings_file;
 
-/// The paths, the job runner and the wake the application uses.
+/// The paths, the job runner, the wake and the log the application uses.
 pub(crate) struct Environment {
     /// The settings file.
     pub(crate) settings_path: PathBuf,
@@ -40,6 +44,10 @@ pub(crate) struct Environment {
     pub(crate) fix_video: FixVideo,
     /// Whether to start the machine checks and the size measure when the window opens.
     pub(crate) background: bool,
+    /// The lines logged in this process, which the log window shows.
+    pub(crate) log: Arc<LogBuffer>,
+    /// The log file the window writes, which the log window opens.
+    pub(crate) log_file: Option<PathBuf>,
 }
 
 impl Environment {
@@ -58,6 +66,8 @@ impl Environment {
             run_job: job_runner::pipeline_runner(),
             fix_video: fix_it::pipeline_fix(),
             background: true,
+            log: logging::console(),
+            log_file: logging::window_log_path(),
         })
     }
 
@@ -89,6 +99,8 @@ impl Environment {
                 ))
             }),
             background: false,
+            log: Arc::new(LogBuffer::new()),
+            log_file: None,
         }
     }
 }

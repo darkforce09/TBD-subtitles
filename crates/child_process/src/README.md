@@ -13,7 +13,8 @@ crates/child_process/src/
 ├── runner.rs   the calls `output`, `merged_output` and `status`: spawn in a new session, feed, reap
 ├── running.rs  the call `spawn`: a streamed stdout, a watchdog deadline and cancel flag, kill on drop
 ├── stream.rs   the drain threads: one per pipe for separate capture, one for the shared pipe
-└── tests/      unit tests for the four calls, the error variants and the lookup helpers
+├── tests/      unit tests for the four calls, the error variants, the lookup helpers and the log
+└── trace.rs    `Tag`: each child's start, stderr lines and end as `tracing` events
 ```
 
 ## How it works
@@ -49,6 +50,8 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
   is dead, both pipes are at EOF, and the drains join at once; after any other wait error the runner
   returns without joining, since a live child may still hold the pipes. Text decodes as lossy UTF-8,
   and a panicked drain yields an empty string, so captured text never costs the exit status.
+  Stderr, and the shared pipe, is read line by line so each line is logged as it arrives; the
+  text handed back is still every byte, and stdout is never logged.
 - `merged_output` passes both write ends of one pipe to the child and then drops its own copies;
   otherwise the reader would never see EOF. The interleaving is the child's own, never a join of
   two strings.
@@ -57,6 +60,13 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
   kills the group when the deadline passes or the flag is set, so a caller blocked on a read sees
   EOF; `wait` then reports `Timeout` or `Cancelled`. `wait` closes an unread
   stdout before reaping, and dropping a `Running` that was never waited on kills its group.
+- `trace.rs` names each child `program[pid]` and logs under the `child_process` target: its start
+  with its command line at debug (an argument over 160 bytes or on several lines, such as a
+  prompt or a schema, stands as its size), each stderr line at debug (split at carriage returns,
+  blank parts skipped), and its end: exit 0 at debug, any other code, a signal or a timeout as a
+  warning, a cancel at debug, a start that failed at debug, a stream dropped unwaited at debug.
+  With no subscriber installed (the repository tools) the events cost nothing; the app's window
+  shows them in its log window.
 - `lookup.rs`: `which` returns the first `PATH` entry holding a file of that name. `retry` makes at
   least one attempt, sleeps a fixed backoff between attempts, returns the last error when all fail,
   and never retries `ProgramAbsent`. `wait_for` returns `Ok` only when its condition holds;
@@ -80,7 +90,7 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
 
 - Depends on: `std` (processes, `std::io::pipe`, threads and the `std::os::unix` process
   extensions) and `libc` for `setsid`, `setpgid`, `prctl`, `getpid`, `getppid`, `killpg` and
-  `SIGKILL`.
+  `SIGKILL`. `tracing` for the events of `trace.rs`; `tracing-subscriber` in the tests only.
 - Used by: `tools/verification_core/src/proc.rs`; `crates/media_io/` (ffprobe, the shot scan and
   the PCM stream), `crates/inference/src/llm/claude_cli/mod.rs`,
   `crates/pipeline/src/workers/mod.rs` and `tools/stack_spike/src/measure/mod.rs`.

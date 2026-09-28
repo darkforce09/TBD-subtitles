@@ -208,6 +208,81 @@ fn finished_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
     shoot(&mut harness, out, "review");
     harness.get_by_label("Settings").click();
     shoot(&mut harness, out, "settings");
+    harness.state_mut().apply(vec![Action::ShowSettings(false)]);
+    log_lines(&harness.state().env.log);
+    harness.get_by_label("Log").click();
+    shoot(&mut harness, out, "log");
+}
+
+/// A job's lines as the log window shows them: its steps, a worker's stderr, a `claude` call and
+/// a failed probe.
+fn log_lines(log: &crate::core::log_buffer::LogBuffer) {
+    use tracing::Level;
+    let lines = [
+        (
+            Level::DEBUG,
+            "tbd_subtitles::application",
+            "action Queue(Start)",
+        ),
+        (
+            Level::INFO,
+            "job",
+            "[Muhn Pace] Dressrosa 12: started; to run: probe_decode, asr_parakeet",
+        ),
+        (
+            Level::INFO,
+            "job",
+            "[Muhn Pace] Dressrosa 12: asr_parakeet: started",
+        ),
+        (
+            Level::DEBUG,
+            "pipeline::runner",
+            "step asr_parakeet runs in a worker of /app/tbd-subtitles",
+        ),
+        (
+            Level::DEBUG,
+            "child_process",
+            "tbd-subtitles[4242] started: /app/tbd-subtitles worker asr_parakeet /work/d12",
+        ),
+        (
+            Level::DEBUG,
+            "child_process",
+            "tbd-subtitles[4242] INFO loading the Parakeet model",
+        ),
+        (
+            Level::DEBUG,
+            "job",
+            "[Muhn Pace] Dressrosa 12: asr_parakeet: 5 of 10",
+        ),
+        (
+            Level::DEBUG,
+            "child_process",
+            "tbd-subtitles[4242] exited 0 after 88.52 s",
+        ),
+        (
+            Level::INFO,
+            "job",
+            "[Muhn Pace] Dressrosa 12: asr_parakeet: finished in 88.5 s, 1830 MiB RAM, 2410 MiB VRAM",
+        ),
+        (
+            Level::INFO,
+            "claude_cli",
+            "claude sonnet: 212 input lines answered in 41.3 s, 18234 tokens in, 2210 out, $0.0874",
+        ),
+        (
+            Level::WARN,
+            "child_process",
+            "ffprobe[4301] exited 1 after 0.05 s",
+        ),
+        (
+            Level::ERROR,
+            "tbd_subtitles::core::portal",
+            "the desktop could not open it",
+        ),
+    ];
+    for (level, target, message) in lines {
+        log.push(level, target, message.to_string());
+    }
 }
 
 /// The setup of a window with `videos` all finished in an earlier window, their rows summed up

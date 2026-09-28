@@ -1,8 +1,9 @@
 //! The toolbar across the top of the window: Add Videos… and Add Folder…, the queue's one
-//! button with the reason it is off, and the gear that opens Settings.
+//! button with the reason it is off, the log button that opens the log window, and the gear that
+//! opens Settings.
 //!
 //! **Role:** draw the toolbar from the borrowed queue and turn each click into a
-//! `JobQueueEvent`, or report the gear.
+//! `JobQueueEvent`, or report the log button or the gear.
 //!
 //! **Position:** called by the application's frame for the top panel; the button comes from
 //! `queue_editing::queue_control`.
@@ -21,14 +22,23 @@ use crate::job_queue::events::JobQueueEvent;
 use crate::job_queue::models::view::JobQueueView;
 use crate::job_queue::services::queue_editing::{QueueControl, queue_control};
 
-/// Draw the toolbar and push what the owner asked for onto `events`; whether the gear was
+/// Which of the toolbar's window buttons was pressed.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ToolbarPress {
+    /// The gear: open Settings.
+    pub(crate) settings: bool,
+    /// The log button: open the log window.
+    pub(crate) log: bool,
+}
+
+/// Draw the toolbar and push what the owner asked for onto `events`; which window button was
 /// pressed.
 pub(crate) fn toolbar_ui(
     ui: &mut Ui,
     view: &JobQueueView<'_>,
     events: &mut Vec<JobQueueEvent>,
-) -> bool {
-    let mut settings = false;
+) -> ToolbarPress {
+    let mut pressed = ToolbarPress::default();
     ui.horizontal_centered(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         if Button::new("Add Videos…")
@@ -52,7 +62,13 @@ pub(crate) fn toolbar_ui(
                 .on_hover_text("Settings (Ctrl+,)")
                 .clicked()
             {
-                settings = true;
+                pressed.settings = true;
+            }
+            if icon_button(ui, icons::TERMINAL, "Log")
+                .on_hover_text("Log (Ctrl+L)")
+                .clicked()
+            {
+                pressed.log = true;
             }
             let (label, glyph, primary, enabled, reason, event) =
                 match queue_control(view.queue, view.models_missing) {
@@ -109,5 +125,5 @@ pub(crate) fn toolbar_ui(
             }
         });
     });
-    settings
+    pressed
 }

@@ -34,3 +34,6 @@ sha2 = { version = "0.11", default-features = false }
 libc = { version = "0.2", default-features = false }
 # Peak VRAM per worker, read from the driver's NVML library loaded at run time.
 nvml-wrapper = { version = "0.13", default-features = false }
+# What a run decides (reruns, worker placement, the CUDA runtime, the GPU lock) as `tracing`
+# events, for the app's log window.
+tracing = { version = "0.1", default-features = false, features = ["std"] }

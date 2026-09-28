@@ -14,6 +14,8 @@ use crate::job_queue::models::queue::{Failure, JobState};
 use crate::job_queue::services::job_runner::RunJob;
 use crate::settings::events::SettingsEvent;
 
+#[path = "rendering_console.rs"]
+mod rendering_console;
 #[path = "rendering_detail.rs"]
 mod rendering_detail;
 #[path = "rendering_fix_it.rs"]

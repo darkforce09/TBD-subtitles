@@ -7,9 +7,10 @@
 //! changes state through their `services`. No feature imports this module.
 //!
 //! **Signals and state:** holds the queue, the toasts, the row removed last, the Settings window's
-//! tab while it is open, the settings page, the desktop's colour scheme, the finished rows'
-//! summaries, the open line review with its clip and still frame, the edits of closed reviews,
-//! and the threads it waits on; reads files dropped onto the window.
+//! tab while it is open, whether the log window is open with its lines and filter, the settings
+//! page, the desktop's colour scheme, the finished rows' summaries, the open line review with its
+//! clip and still frame, the edits of closed reviews, and the threads it waits on; reads files
+//! dropped onto the window; logs each action it applies, but the log window's own.
 //!
 //! **Invariants:** nothing changes state while a frame is drawn: every change is an [`Action`]
 //! applied after the frame, or a thread's answer folded in before it.
@@ -20,6 +21,7 @@ mod detail_view;
 mod environment;
 mod events;
 mod feature_views;
+mod log_window;
 mod settings_window;
 mod shortcuts;
 mod window;
@@ -49,6 +51,7 @@ use crate::job_report::models::summary::RowSummary;
 use crate::line_review::events::ReviewEvent;
 use crate::line_review::models::session::{Parked, ReviewSession};
 use crate::line_review::services::clip_player::{ClipPlayer, Still};
+use crate::log_console::models::console::Console;
 use crate::settings::models::page::{SettingsPage, SettingsTab};
 use crate::settings::services::job_settings;
 
@@ -75,6 +78,10 @@ pub(crate) struct TbdSubtitlesApp {
     settings: SettingsPage,
     /// The Settings window's tab while it is open; `None` while it is closed.
     settings_window: Option<SettingsTab>,
+    /// Whether the log window is open.
+    log_window: bool,
+    /// The log window.s lines and filter.
+    console: Console,
     /// The short messages at the bottom of the window; a button's action is applied as is.
     toasts: Toasts<Action>,
     /// The row removed last, which Undo puts back; a newer removal replaces it.
@@ -124,6 +131,8 @@ impl TbdSubtitlesApp {
             rates,
             settings,
             settings_window: None,
+            log_window: false,
+            console: Console::default(),
             toasts: Toasts::default(),
             removed: None,
             scheme: Scheme::default(),
@@ -145,6 +154,9 @@ impl TbdSubtitlesApp {
     /// Apply the actions collected during a frame, in order.
     fn apply(&mut self, actions: Vec<Action>) {
         for action in actions {
+            if !matches!(action, Action::LogConsole(_)) {
+                tracing::debug!("action {}", action.describe());
+            }
             match action {
                 Action::QueueVideos(videos) => {
                     let added = queue_editing::add_videos(&mut self.queue, videos);
@@ -159,6 +171,7 @@ impl TbdSubtitlesApp {
                     self.settings_window.get_or_insert(SettingsTab::General);
                 }
                 Action::ShowSettings(false) => self.settings_window = None,
+                Action::ShowLog(open) => self.show_log(open),
                 Action::ToastButton(id) => {
                     if let Some((_, action)) = self.toasts.take(id).and_then(|toast| toast.action) {
                         self.apply(vec![action]);
@@ -167,6 +180,7 @@ impl TbdSubtitlesApp {
                 Action::Settings(event) => self.apply_settings(event),
                 Action::Report(event) => self.apply_report(event),
                 Action::Review(event) => self.apply_review(event),
+                Action::LogConsole(event) => self.apply_log_console(event),
             }
         }
     }
@@ -190,7 +204,7 @@ impl TbdSubtitlesApp {
 /// Open the window with `videos` in the queue, and return when it closes.
 ///
 /// The window runs under X11 (XWayland on a Wayland desktop): only there can files be dropped
-/// onto it and Settings be placed over it.
+/// onto it and Settings and the log be placed over it.
 pub(crate) fn launch(videos: Vec<PathBuf>) -> anyhow::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

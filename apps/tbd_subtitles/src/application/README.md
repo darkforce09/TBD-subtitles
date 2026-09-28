@@ -11,14 +11,15 @@ apps/tbd_subtitles/src/application/
 ├── actions/            applying each feature's actions and folding its threads' answers in
 ├── background.rs       `Pending`: the threads the window waits on; files opened on the desktop
 ├── detail_view.rs      the selected job's header: title, line, Overview | Check Lines or Cancel
-├── environment.rs      `Environment`: the files, the job and Fix It runners, the wake; scratch in tests
+├── environment.rs      `Environment`: files, job and Fix It runners, wake, log; scratch in tests
 ├── events.rs           `Action`, built from the features' events, and the tab to show
 ├── feature_views.rs    lends each feature its borrowed view and turns its events into actions
+├── log_window.rs       the log window, a second native window near the main one's lower right
 ├── mod.rs              `TbdSubtitlesApp`, `apply`, and `launch`, which opens the window
 ├── settings_window.rs  the Settings window, a second native window centred over the main one
-├── shortcuts.rs        Ctrl+O, Ctrl+Shift+O, Ctrl+, , Delete, the arrows; Check Lines' keys
+├── shortcuts.rs        Ctrl+O, Ctrl+Shift+O, Ctrl+, , Ctrl+L, Delete, the arrows; Check Lines' keys
 ├── tests/              headless tests of the frame and of applying actions; the snapshot scenes
-└── window.rs           one frame: toolbar, banner, sidebar, the selected job, overlay, toasts, Settings
+└── window.rs           one frame: toolbar, banner, sidebar, job, overlay, toasts, Settings, log
 ```
 
 ## How it works
@@ -27,21 +28,23 @@ apps/tbd_subtitles/src/application/
 and at least 1100 by 700 (the sidebar, the line list and the line editor side by side), with drag
 and drop on and the glow renderer, and returns when it closes. It runs under X11 (XWayland on the
 owner's KDE Wayland desktop, forced through winit's `with_x11`), because only there can files be
-dropped onto the window and Settings be placed over it. Before the first frame it installs the
-theme from `core::ui::theme` (Adwaita Sans, the icon font, the mockup's palettes) and starts
-following the desktop's colour scheme through `core::color_scheme`, waiting up to 250 ms for its
-first answer so the first frame already has the desktop's colours. Its `Environment` names the
-owner's settings file, the kept queue, the GPU lock and the runtime folder, holds the job runner
-(the pipeline's `run_job`) and Fix It's (`fix_video`), and wakes the window from any thread
-(`request_repaint`); the tests build one over a scratch folder with a stand-in runner and a Fix
-It that refuses to run unless a test gives it one, and start no portal thread.
+dropped onto the window and Settings and the log be placed beside it. Before the first frame it
+installs the theme from `core::ui::theme` (Adwaita Sans, the icon font, the mockup's palettes)
+and starts following the desktop's colour scheme through `core::color_scheme`, waiting up to
+250 ms for its first answer so the first frame already has the desktop's colours. Its
+`Environment` names the owner's settings file, the kept queue, the GPU lock and the runtime
+folder, holds the job runner (the pipeline's `run_job`) and Fix It's (`fix_video`), the process's
+log buffer and log file, and wakes the window from any thread (`request_repaint`); the tests build one over a scratch
+folder with a stand-in runner, a log buffer of its own and no log file, and a Fix It that refuses
+to run unless a test gives it one, and start no portal thread.
 `TbdSubtitlesApp` holds the queue loaded from `queue.json`, two job runners with the cancel token
 of the job each runs (one for full runs, one for the review runs that re-time the owner's
 corrections), the step rates for the time left, the settings page, the Settings window's tab while
-it is open, the toasts, the row removed last (for Undo), the desktop's colour scheme, the selected
-finished job's report, every finished row's summary (its verdict and lines to check, read from its
-work folder when the window opens, after each run of its video and after each correction), its line
-review while open, the clip playing in it, the line its editor shows with that line's still frame,
+it is open, whether the log window is open with its lines and filter (`log_console`), the toasts,
+the row removed last (for Undo), the desktop's colour scheme, the selected finished job's report,
+every finished row's summary (its verdict and lines to check, read from its work folder when the
+window opens, after each run of its video and after each correction), its line review while open,
+the clip playing in it, the line its editor shows with that line's still frame,
 the unsaved edits and run states of each job whose review closed (`parked`, until it opens again;
 they are lost when the window closes), and `Pending`, the receiving end of every other thread it
 started (the choosers, the files the desktop was asked to open, the downloads and checks, and the
@@ -54,27 +57,32 @@ Each frame runs in three steps:
 
 ```text
 poll(&mut self)        the threads' answers: chooser paths, files opened, downloads, checks, sizes,
-                       job events, the colour scheme; toasts whose time is up go
+                       job events, the colour scheme, new log lines while the log window is open;
+                       toasts whose time is up go
 theme::follow          light or dark, as the desktop reported
 frame_ui(&self)
   ├── dropped files ──▶ Action::QueueVideos
-  ├── shortcuts ──▶ Queue(AddVideos / AddFolder / Remove / Select), ShowSettings, Review
-  ├── toolbar (52 px) ──▶ JobQueueEvent ──▶ Action::Queue; the gear ──▶ Action::ShowSettings
+  ├── shortcuts ──▶ Queue(AddVideos / AddFolder / Remove / Select), ShowSettings, ShowLog, Review
+  ├── toolbar (52 px) ──▶ JobQueueEvent ──▶ Action::Queue; the gear ──▶ Action::ShowSettings;
+  │   the log button ──▶ Action::ShowLog
   ├── models banner (while a model is missing, downloads, or 4 s after) ──▶ Settings(Open(Models)
   │   / Download / StopDownload)
   ├── sidebar (272 px) ──▶ JobQueueEvent ──▶ Action::Queue
   ├── the selected job: jobs_ui (the empty card, the hint, or the header over the job's cards,
   │   its Overview or its lines to check) ──▶ Queue / ShowTab / Report / Review
   ├── the drop overlay while files hover; the toasts ──▶ Action::ToastButton
-  └── settings_window (while open, on its tab) ──▶ Settings (Edit, Open(tab), …) /
-      ShowSettings(false)
+  ├── settings_window (while open, on its tab) ──▶ Settings (Edit, Open(tab), …) /
+  │   ShowSettings(false)
+  └── log_window (while open) ──▶ LogConsole (Level, Search, Clear, OpenLogFile) / ShowLog(false)
 apply(&mut self, actions)
   ├── ShowTab: Overview closes the line review, Check Lines opens it
   └── actions::queue (edits, Undo, Try Again, Run Again, Start, Pause, Cancel, toasts),
       actions::runner (the next job of each lane, its options, how it ended, a review run's start
       and end for the status chip), actions::review (open on a group, edit, save or keep and
       queue a review run, play, the still frame), actions::report or actions::settings (an edit
-      written at once, the tab, the download)
+      written at once, the tab, the download), actions::log_console (open, read, filter, clear,
+      open the log file); each action but the log window's own is logged at debug, cut to 160
+      characters
 ```
 
 `frame_ui` borrows the state immutably and only collects actions; `apply` and `poll` are the only
@@ -108,7 +116,7 @@ finished job's Overview (`job_report::ui::overview_ui`, told how many correction
 of its video is putting in while one waits or runs), or why it has no report.
 
 The shortcuts are read before anything is drawn: Ctrl+Shift+O (matched first) adds a folder,
-Ctrl+O videos, Ctrl+, opens Settings; Delete removes the selected row and ↑ and ↓ move through the
+Ctrl+O videos, Ctrl+, opens Settings, Ctrl+L the log window; Delete removes the selected row and ↑ and ↓ move through the
 rows of the open sections, except while a text box has focus or a menu is open. While the
 selected job's Check Lines is open, Ctrl+S saves an edited line and Ctrl+Enter keeps an unedited
 one (Looks Right), neither while a full run of its video runs; ↑ and ↓ move through its lines
@@ -119,17 +127,20 @@ has focus. Settings opens in a second native window through `show_viewport_immed
 600, centred over the main window when it opens (which X11 allows), on General (the gear, Ctrl+,)
 or on Models (the banner's Details…), and closes when the owner closes it, sending what is still
 typed in a field in its last frame; asking for it while it is open brings it to the front and
-keeps its tab. Where the backend has one window only, as in
-the headless tests, egui draws it as a window inside the main one. The banner under the toolbar
+keeps its tab. The log window opens the same way, 980 by 560, 24 px in from the main window's
+lower right corner, from the toolbar's log button or Ctrl+L; while open it asks for a frame every
+250 ms and reads the lines logged since the last, and asking for it again brings it to the front.
+Where the backend has one window only, as in the headless tests, egui draws each as a window
+inside the main one. The banner under the toolbar
 spans the window while a model is missing or downloads, and for 4 s after a download that brought
 everything onto disk (the frame asks for a redraw when it goes).
 
 ## Boundaries
 
-- Depends on: `crate::job_queue`, `crate::job_report`, `crate::line_review` and
-  `crate::settings` (events, models, services and ui); `media_io::preview` for the clip;
-  `crate::core` (`background`, `color_scheme`, `portal`, `steps`, `toast`, `ui`); `inference::model_store` for the
-  runtime folder; `eframe`, `winit` (the X11 event loop), `anyhow` and `tracing`; in the snapshot
+- Depends on: `crate::job_queue`, `crate::job_report`, `crate::line_review`, `crate::log_console`
+  and `crate::settings` (events, models, services and ui); `media_io::preview` for the clip;
+  `crate::core` (`background`, `color_scheme`, `log_buffer`, `logging`, `portal`, `steps`,
+  `toast`, `ui`); `inference::model_store` for the runtime folder; `eframe`, `winit` (the X11 event loop), `anyhow` and `tracing`; in the snapshot
   test only, `egui_kittest` and `image`.
 - Used by: `crate::cli`, which calls `launch` for the `gui` subcommand and for no subcommand.
 - Rules:
@@ -199,7 +210,8 @@ everything onto disk (the frame asks for a redraw when it goes).
     ignored snapshot test `window_snapshots` (`tests/window_snapshots.rs`), which copies the JSON
     files of the Dressrosa 11 and 15–17 work folders into a scratch folder and writes PNGs of the
     finished queue, the Dressrosa 15 Overview, then scrolled to its open Details and Step times
-    (`overview_d15`), its lines to check, the Settings window, its four tabs over Dressrosa 15 with
+    (`overview_d15`), its lines to check, the Settings window, the log window with a job's lines
+    (`log`), the Settings window's four tabs over Dressrosa 15 with
     the machine checks set by hand (`settings_general`, `settings_engines`, `settings_models`,
     `settings_machine`), the first run, the models banner on the first run and during a download
     set by hand (`banner_missing`, `banner_downloading`; nothing downloads), a running queue
@@ -213,6 +225,14 @@ everything onto disk (the frame asks for a redraw when it goes).
     corrections go to the scratch copy), light and dark, at 1280 by 800, to `$TBD_SNAPSHOTS`:
     `TBD_SNAPSHOTS=<folder> cargo test -p tbd_subtitles -- --ignored window_snapshots`, on the
     host, since it renders with wgpu;
+  - the log window opens from Ctrl+L and the toolbar, shows every line with its level and source,
+    reads new lines while open and the ones logged while it was closed when it opens again, and
+    its levels and search narrow the lines while Clear empties them and the buffer
+    (`the_log_window_opens_from_ctrl_l_and_the_toolbar`,
+    `the_open_log_window_shows_every_line_with_its_level_and_source`,
+    `lines_logged_while_the_window_is_closed_show_when_it_opens_again`,
+    `levels_and_the_search_narrow_the_lines_and_clear_empties_them` in
+    `tests/rendering_console.rs`);
   - no feature imports this module
     (`dependency_boundaries_and_external_test_placement_are_enforced` in
     `apps/tbd_subtitles/src/tests/architecture_rules.rs`).

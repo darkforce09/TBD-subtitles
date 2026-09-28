@@ -17,6 +17,9 @@ mistralrs = ["dep:mistralrs", "dep:tokio"]
 [dependencies]
 # Runs FFmpeg, ffprobe and the other external programs with deadlines.
 child_process = { path = "../child_process" }
+# A summary of each language-model call (model, sizes, time, tokens) as a `tracing` event, for the
+# app's log window; never the prompt or the answer.
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 # Stage names and the contract types.
 job_model = { path = "../job_model" }
 # The language models' JSON answers and schemas.

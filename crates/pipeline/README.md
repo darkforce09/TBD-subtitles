@@ -90,7 +90,8 @@ passes in `JobOptions`, recorded in the job's `job.json` (`crates/job_model/src/
 ## Boundaries
 
 - Depends on: `stages`, `inference`, `media_io`, `subtitle_formats`, `child_process` and
-  `job_model`; `serde`, `serde_json`, `sha2`, `libc` (`getrusage`) and `nvml-wrapper`; at run time
+  `job_model`; `serde`, `serde_json`, `sha2`, `libc` (`getrusage`), `nvml-wrapper` and `tracing`
+  (debug lines on reruns, placement, the CUDA runtime, the GPU lock and the report); at run time
   the app's two binaries as workers, and through them FFmpeg and the `claude` CLI.
 - Used by: `apps/tbd_subtitles/` (the `process` and `worker` subcommands),
   `apps/tbd_subtitles_ggml/` (its `worker` subcommand) and `tools/stack_spike/` (the measures).

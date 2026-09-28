@@ -14,6 +14,7 @@ const MODULES: &[&str] = &[
     "job_queue",
     "job_report",
     "line_review",
+    "log_console",
     "settings",
 ];
 

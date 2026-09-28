@@ -10,7 +10,8 @@
 //! **Signals and state:** runs in an empty working folder with only project settings, so the
 //! owner's user-level hooks, plugins and MCP servers never reach the prompt. Resolves `claude` on
 //! `PATH`, or `$HOME/.local/bin/claude`, since a desktop-launched app often lacks the shell's
-//! `PATH`.
+//! `PATH`. Logs one summary line per call (model, input lines, time, tokens, cost), never the
+//! prompt or the answer.
 //!
 //! **Invariants:** no tool is enabled (`--tools ""`), no session is saved, and an answer without
 //! `structured_output` is an error, never an empty success; once the cancel flag is set, the
@@ -20,7 +21,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use child_process::{Run, RunError};
 
@@ -81,6 +82,20 @@ impl LanguageModel for ClaudeCli {
         user: &str,
         schema: &serde_json::Value,
     ) -> Result<Completion, LlmError> {
+        let started = Instant::now();
+        let answer = self.call(system, user, schema);
+        log_call(&self.model, user, started.elapsed(), &answer);
+        answer
+    }
+}
+
+impl ClaudeCli {
+    fn call(
+        &self,
+        system: &str,
+        user: &str,
+        schema: &serde_json::Value,
+    ) -> Result<Completion, LlmError> {
         std::fs::create_dir_all(&self.cwd).map_err(|e| LlmError(e.to_string()))?;
         let run = Run::new(&self.program)
             .args(["-p", "--output-format", "json", "--json-schema"])
@@ -116,6 +131,26 @@ impl LanguageModel for ClaudeCli {
             )));
         }
         parse(&stdout)
+    }
+}
+
+/// One line per call: which model, how much went in, how long it took and what it cost; never
+/// the prompt or the answer themselves.
+fn log_call(model: &str, user: &str, took: Duration, answer: &Result<Completion, LlmError>) {
+    let secs = took.as_secs_f64();
+    let lines = user.lines().count();
+    match answer {
+        Ok(done) => tracing::info!(
+            "claude {model}: {lines} input lines answered in {secs:.1} s, {} tokens in, {} out{}",
+            done.input_tokens,
+            done.output_tokens,
+            done.cost_usd
+                .map(|usd| format!(", ${usd:.4}"))
+                .unwrap_or_default()
+        ),
+        Err(error) => {
+            tracing::warn!("claude {model}: {lines} input lines failed after {secs:.1} s: {error}")
+        }
     }
 }
 

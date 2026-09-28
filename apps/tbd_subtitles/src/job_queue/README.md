@@ -29,7 +29,8 @@ either runner's thread ──run_job──▶ RunnerEvent::Progress / Ended ─�
 queue ──▶ sidebar_rows (one row per video) ──▶ status_text ──▶ sidebar
 ```
 
-The toolbar holds Add Videos… and Add Folder…, one queue button and the gear that opens Settings.
+The toolbar holds Add Videos… and Add Folder…, one queue button, the log button that opens the log
+window, and the gear that opens Settings.
 The button is Start Queue while the queue is off (disabled, with the reason beside it, when no full
 run waits or a model is missing), Pause After This Video while it runs, and Resume Queue once
 paused while a full run still runs; it counts full runs only, since correction runs start by

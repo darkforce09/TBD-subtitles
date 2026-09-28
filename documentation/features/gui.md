@@ -12,11 +12,13 @@ batch of Dressrosa 12–48 run from this window.
 ## Where it lives
 
 - Code: `apps/tbd_subtitles/`, built with eframe (egui) on the glow renderer. The shell (state,
-  frame, actions, shortcuts, the Settings window) is `apps/tbd_subtitles/src/application/`; the
-  shared look and widgets are `apps/tbd_subtitles/src/core/ui/`; one feature folder each holds the
+  frame, actions, shortcuts, the Settings and log windows) is
+  `apps/tbd_subtitles/src/application/`; the shared look and widgets are
+  `apps/tbd_subtitles/src/core/ui/`, the log buffer `apps/tbd_subtitles/src/core/log_buffer.rs`;
+  one feature folder each holds the
   queue (`apps/tbd_subtitles/src/job_queue/`), the report (`apps/tbd_subtitles/src/job_report/`),
-  the line review (`apps/tbd_subtitles/src/line_review/`) and the settings
-  (`apps/tbd_subtitles/src/settings/`).
+  the line review (`apps/tbd_subtitles/src/line_review/`), the log window
+  (`apps/tbd_subtitles/src/log_console/`) and the settings (`apps/tbd_subtitles/src/settings/`).
 - Entry: `tbd-subtitles gui [VIDEO]...`, or the binary with no subcommand. It runs on the host,
   opened from the container with `distrobox-host-exec target/debug/tbd-subtitles gui`
   ([development environment](/documentation/runbooks/development_environment.md#steps)). The
@@ -35,7 +37,7 @@ list and the line editor side by side.
 
 ```text
 ┌───────────────────────────────────────────────────────────────────────────────────────────┐
-│ [Add Videos…] [Add Folder…]            [Start Queue]  Download the models first    [gear] │
+│ [Add Videos…] [Add Folder…]      [Start Queue]  Download the models first    [log] [gear] │
 ├───────────────────────────────────────────────────────────────────────────────────────────┤
 │ ! 5 models and 2 runtime libraries are missing (10.7 GiB)          [Details…] [Download]  │
 ├───────────────────────────┬───────────────────────────────────────────────────────────────┤
@@ -59,7 +61,8 @@ list and the line editor side by side.
   for its videos without subtitles); asked again while one is open, a toast says "A file chooser
   is already open." The queue's one button is Start Queue, Pause After This
   Video or Resume Queue; a disabled Start Queue says why beside it ("Download the models first",
-  "Nothing is waiting"). It counts full runs only. The gear opens Settings.
+  "Nothing is waiting"). It counts full runs only. The log button (a terminal window) opens the
+  [log window](#the-log-window); the gear opens Settings.
 - **Banner:** under the toolbar while models are missing. It says what is missing ("5 models and
   2 runtime libraries are missing (10.7 GiB)"), with Details… (the Models tab) and Download; while
   they download it shows the bytes on disk, the item now and a bar, with Stop (a stopped file
@@ -104,7 +107,8 @@ list and the line editor side by side.
   has a D-Bus connection of its own, so one the desktop never answers holds up no other. The
   window's log is also written to
   `~/.local/state/tbd-subtitles/tbd-subtitles.log` (under `XDG_STATE_HOME` when set), emptied at
-  each start, since a launcher such as Gear Lever drops stderr. The lines card says "38 lines worth
+  each start, since a launcher such as Gear Lever drops stderr; the [log window](#the-log-window)
+  shows the same lines. The lines card says "38 lines worth
   a listen" with a green bar of those checked, Check Lines, and one row per finding group with its
   explanation and count. Then Details (subtitles, easy to read, unsure lines, words no engine
   heard, timing offset, speech and voice with no subtitle, words timed by the aligner, corrections
@@ -167,6 +171,44 @@ list and the line editor side by side.
   not be read is kept as `settings.toml.broken` before the first change is saved. Folders show the
   home as `~`. Watch folders come with the automation feature.
 
+### The log window
+
+The log button in the toolbar, or Ctrl+L, opens the log in a second native window, 980 by 560,
+near the main window's lower right corner; asked for again while open, it comes to the front. It
+shows every line logged since the window started, newest last, and follows the newest until the
+owner scrolls up, then again once they scroll back to the end.
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────────┐
+│ [ Errors 1 | Warnings 2 | Info | Debug ]  [ Filter lines ]  [Copy] [Clear] [Open Log File] │
+├────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 04:12.300  INFO   job             Dressrosa 12: asr_parakeet: started                      │
+│ 04:12.310  DEBUG  child_process   tbd-subtitles[4242] started: … worker asr_parakeet …     │
+│ 04:13.020  DEBUG  child_process   tbd-subtitles[4242] … a line the worker wrote to stderr  │
+│ 05:40.870  INFO   job             Dressrosa 12: asr_parakeet: finished in 88.5 s, …        │
+│ 06:02.114  INFO   claude_cli      claude sonnet: 212 input lines answered in 41.3 s, …     │
+│ 06:02.500  WARN   child_process   ffprobe[4301] exited 1 after 0.05 s                      │
+├────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 6 lines                   Times since the window opened · keeps the newest 20000 lines     │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+
+- **What it shows:** the window's own actions and errors; each job's start, steps (started, kept,
+  finished with time, RAM and VRAM, failed) and end, a step's progress every tenth; Fix It's passes
+  and end; where each step runs, the CUDA runtime and the GPU lock; one line per `claude` call
+  (model, lines sent, seconds, tokens, cost; never the prompt or the answer); and every program
+  the app starts (workers, FFmpeg, ffprobe, `claude`): its command line, each line it writes to
+  stderr as it writes it, and how it ended. A row is the time since the window opened, the level
+  in its colour (red errors, orange warnings, blue info, grey debug), the source and the message.
+- **Controls:** the levels show that level and the more severe (Debug shows everything; Errors
+  and Warnings count theirs); the search keeps the lines whose source or message holds it,
+  ignoring case; Copy puts the shown lines on the clipboard; Clear empties the window (the log
+  file keeps every line); Open Log File opens the log file in the desktop's text editor. The
+  footer counts the lines shown of those kept.
+- The window keeps the newest 20,000 lines; lines logged while it is closed show when it opens.
+  The log file holds the same lines, emptied at each start. `RUST_LOG` narrows both when set.
+
 ### Main flow
 
 ```text
@@ -197,31 +239,20 @@ list and the line editor side by side.
 ### Overview to Check Lines
 
 ```text
- Overview
-  ├─ file card: one row per whole-video problem
-  │    ├─ Speech with no subtitle ── [Show Nearby Lines] ──▶ Check Lines, All, at the nearest line
-  │    ├─ Only 91.2 % easy to read ─ [Show Lines] ─────────▶ Check Lines, To Check, Too fast to read
-  │    └─ 1 language-model call failed ─ [Try Again] ──────▶ a full run from adjudication on
-  ├─ file card: Fix It with Claude Opus ─ [Fix It] ───────▶ three passes, then a correction run
-  │                                                           (see Fix It)
-  └─ lines card: "38 lines worth a listen"
-       ├─ [Check Lines] ───────────────────────────────────▶ Check Lines, To Check, every group
-       └─ a finding group's row ───────────────────────────▶ Check Lines, To Check, that group
-
- Check Lines, the open line
-  listen: Play (Space) or Voices Only ──▶ decide
-       ├─ right as it is ────────▶ Looks Right (Ctrl+Enter)  ─┐
-       ├─ an engine heard it ────▶ Use on that reading ─┐     │
-       └─ nobody heard it right ─▶ type it ─────────────┴─▶ Save Correction (Ctrl+S)
-                                                              │
-                                                              ▼
-  review.json written ─▶ the next line opens ─▶ a correction run starts at once:
-     the review step re-times the saved lines alone on the CPU ─▶ cues ─▶ quality check ─▶ output
-  status chip:  Saved ─▶ Updating subtitles… ─▶ Subtitles updated   (or Subtitles not updated)
-  sidebar row:  "Updating subtitles · 1 correction" until it ends
-  Take Back on a checked line returns it to the app's reading, with a correction run of its own;
-  the line stays open (the list shows All once Checked no longer holds it) and its chip follows
+┌────────────────────────────────────────────────────────────────────────────────────────────┐
+│ [ Errors 1 | Warnings 2 | Info | Debug ]  [ Filter lines ]  [Copy] [Clear] [Open Log File] │
+├────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 04:12.300  INFO   job             Dressrosa 12: asr_parakeet: started                      │
+│ 04:12.310  DEBUG  child_process   tbd-subtitles[4242] started: … worker asr_parakeet …     │
+│ 04:13.020  DEBUG  child_process   tbd-subtitles[4242] … a line the worker wrote to stderr  │
+│ 05:40.870  INFO   job             Dressrosa 12: asr_parakeet: finished in 88.5 s, …        │
+│ 06:02.114  INFO   claude_cli      claude sonnet: 212 input lines answered in 41.3 s, …     │
+│ 06:02.500  WARN   child_process   ffprobe[4301] exited 1 after 0.05 s                      │
+├────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 6 lines                   Times since the window opened · keeps the newest 20000 lines     │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
 
 An edit not saved, and the status chip of a saved line, stay while the window is open, also when
 Check Lines closes; a finding stays worth a listen until the correction run that settles it ends.
@@ -304,6 +335,7 @@ about the lines worth a listen ([Fix It](/documentation/features/fix_it.md)).
 | Ctrl+O | anywhere | Add Videos… |
 | Ctrl+Shift+O | anywhere | Add Folder… |
 | Ctrl+, | anywhere | open Settings, or bring them to the front |
+| Ctrl+L | anywhere | open the log window, or bring it to the front |
 | ↑ and ↓ | the sidebar | select the row above or below |
 | Delete | the sidebar | remove the selected row (Undo in the toast puts it back) |
 | ↑ and ↓ | Check Lines | open the line above or below |
@@ -333,6 +365,8 @@ nothing.
   Fix It takes too; Fix It also writes `fix.json` and, while it runs, `fix/calls/`. Each finished
   row's verdict and lines to check are read from `qc.json` and `review.json` when the window opens
   and after each run and correction of its video.
+- The log: `~/.local/state/tbd-subtitles/tbd-subtitles.log` (under `XDG_STATE_HOME` when set),
+  written as the window runs and emptied at each start; the log window's lines in memory.
 - Kept only while the window is open: unsaved line edits, correction-run status chips, the row
   removed last (for Undo), toasts, and which sidebar sections are folded.
 
@@ -404,3 +438,5 @@ nothing.
   ([settings apply as they change](/documentation/decisions/desktop_gui.md#2026-09-28--settings-apply-as-they-change)).
 - Fix It fixes the flagged lines in three passes, each change kept by the owner or undone
   ([Fix It](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-a-stronger-model-fixes-the-flagged-lines-in-three-passes)).
+- A log window shows everything the app does, from one `tracing` buffer
+  ([log window](/documentation/decisions/desktop_gui.md#2026-09-28--a-log-window-shows-everything-the-app-does)).

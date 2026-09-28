@@ -4,7 +4,7 @@
 //! the `claude` CLI, the app's own GPU workers, and `git` or `cargo` in the tools.
 //!
 //! **Position:** the bottom layer, beside `job_model`; `media_io`, `inference`, `pipeline` and
-//! `tools/verification_core` call it. It calls only `std` and `libc`.
+//! `tools/verification_core` call it. It calls only `std`, `libc` and the `tracing` facade.
 //!
 //! **Signals and state:** reads the `PATH` environment variable in [`which`]; spawns processes;
 //! holds no state between runs.
@@ -25,13 +25,15 @@
 //!
 //! Exit codes pass through raw: [`Run::status`] hands back the real code, because a caller may
 //! need an exact non-zero code. `runner.rs` spawns, isolates and reaps; `running.rs` hands a
-//! streamed stdout to the caller under a watchdog deadline; `stream.rs` drains the
-//! pipes; `lookup.rs` resolves programs on `PATH` and waits on conditions.
+//! streamed stdout to the caller under a watchdog deadline; `stream.rs` drains the pipes;
+//! `trace.rs` logs each child's start, stderr lines and end as `tracing` events; `lookup.rs`
+//! resolves programs on `PATH` and waits on conditions.
 
 mod lookup;
 mod runner;
 mod running;
 mod stream;
+mod trace;
 
 pub use lookup::{retry, wait_for, which};
 pub use running::{Finished, Running};

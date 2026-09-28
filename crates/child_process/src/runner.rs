@@ -4,8 +4,8 @@
 //! timeout kill a whole tree, the `killpg` that does it, and the signal check that keeps a killed
 //! child out of the exit-code path.
 //!
-//! **Position:** called through [`Run`]; uses `stream.rs` for the pipes and `libc` for the process
-//! group calls.
+//! **Position:** called through [`Run`]; uses `stream.rs` for the pipes, `trace.rs` for the log,
+//! and `libc` for the process group calls.
 //!
 //! **Signals and state:** spawns one child per call, writes its stdin once, and holds nothing
 //! after it is reaped.
@@ -20,6 +20,7 @@ use std::time::{Duration, Instant};
 use crate::RunError;
 
 use crate::stream::{SeparateDrains, start_merged_drain};
+use crate::trace::Tag;
 use crate::{Merged, Output, Run};
 
 /// How often a pending child is polled while waiting on a deadline. Short enough that a timeout
@@ -36,10 +37,11 @@ impl Run {
         let mut child = spawn(&mut cmd, &self.program, &label)?;
         // `setsid` made the child a group leader, so its pgid equals its pid.
         let pgid = child.id() as i32;
+        let tag = Tag::started(&self, child.id());
         feed_stdin(&mut child, self.stdin.as_deref());
 
         // Drain both pipes for the child's whole life. See the crate documentation, invariant 3.
-        let drains = SeparateDrains::start(&mut child);
+        let drains = SeparateDrains::start(&mut child, &tag);
 
         let status = match wait_within(&mut child, pgid, self.timeout, &label) {
             Ok(status) => status,
@@ -49,6 +51,7 @@ impl Run {
                 if matches!(cause, RunError::Timeout { .. }) {
                     drains.join();
                 }
+                tag.failed(&cause);
                 return Err(cause);
             }
         };
@@ -56,18 +59,22 @@ impl Run {
 
         // A signal is NOT an exit code. See the crate documentation, invariant 1.
         if let Some(signal) = status.signal() {
-            return Err(RunError::Signalled {
+            let cause = RunError::Signalled {
                 program: label,
                 signal,
-            });
+            };
+            tag.failed(&cause);
+            return Err(cause);
         }
 
-        Ok(Output {
+        let output = Output {
             code: status.code().unwrap_or(-1),
             stdout,
             stderr,
             duration: started.elapsed(),
-        })
+        };
+        tag.exited(output.code, output.duration);
+        Ok(output)
     }
 
     /// Run with **stdout and stderr on ONE pipe** — genuinely `2>&1`.
@@ -98,6 +105,7 @@ impl Run {
         let mut cmd = self.command(Stdio::from(writer), Stdio::from(writer2));
         let mut child = spawn(&mut cmd, &self.program, &label)?;
         let pgid = child.id() as i32;
+        let tag = Tag::started(&self, child.id());
         feed_stdin(&mut child, self.stdin.as_deref());
 
         // Drop OUR copies of the write end. Without this the read below never sees EOF, because
@@ -105,7 +113,7 @@ impl Run {
         drop(cmd);
 
         // One reader thread, so a timeout can still fire while the pipe fills.
-        let reader_thread = start_merged_drain(reader);
+        let reader_thread = start_merged_drain(reader, &tag);
 
         let status = match wait_within(&mut child, pgid, self.timeout, &label) {
             Ok(status) => status,
@@ -113,6 +121,7 @@ impl Run {
                 if matches!(cause, RunError::Timeout { .. }) {
                     let _ = reader_thread.join();
                 }
+                tag.failed(&cause);
                 return Err(cause);
             }
         };
@@ -120,16 +129,20 @@ impl Run {
 
         // A signal is NOT an exit code. See the crate documentation, invariant 1.
         if let Some(signal) = status.signal() {
-            return Err(RunError::Signalled {
+            let cause = RunError::Signalled {
                 program: label,
                 signal,
-            });
+            };
+            tag.failed(&cause);
+            return Err(cause);
         }
-        Ok(Merged {
+        let merged = Merged {
             code: status.code().unwrap_or(-1),
             text,
             duration: started.elapsed(),
-        })
+        };
+        tag.exited(merged.code, merged.duration);
+        Ok(merged)
     }
 
     /// Run and return only the raw exit code.
@@ -195,7 +208,7 @@ impl Run {
 
 /// Start the child, telling "the program is not installed" apart from every other spawn failure.
 pub(crate) fn spawn(cmd: &mut Command, program: &str, label: &str) -> Result<Child, RunError> {
-    match cmd.spawn() {
+    let started = match cmd.spawn() {
         Ok(child) => Ok(child),
         // The honest form of exit 127. Distinguished from every other spawn failure because
         // "you have not installed it" and "it is there and broke" are different problems.
@@ -206,7 +219,11 @@ pub(crate) fn spawn(cmd: &mut Command, program: &str, label: &str) -> Result<Chi
             program: label.to_string(),
             message: format!("spawn failed: {e}"),
         }),
+    };
+    if let Err(error) = &started {
+        tracing::debug!(target: "child_process", "{label} did not start: {error}");
     }
+    started
 }
 
 /// Write `body` to the child's stdin and close it.

@@ -7,13 +7,14 @@ answers in before the next frame.
 
 ```text
 apps/tbd_subtitles/src/application/actions/
-├── fix_it.rs    Fix It: its view, start and Stop, the lanes it holds, and what happens when it ends
-├── mod.rs       the module list and the re-exports `application` uses
-├── queue.rs     the queue's actions: add, select, remove and undo, move, cancel, try and run again
-├── report.rs    the selected job's report, the finished rows' summaries, and the Overview's requests
-├── review.rs    the line review: open (on a group), edit, save or keep and queue a run, clips, stills
-├── runner.rs    starting the next job of each lane with its options, and the runners' events
-└── settings.rs  the settings page as the window opens, edits written at once, tabs, downloads
+├── fix_it.rs       Fix It: its view, start and Stop, the lanes it holds, and what happens when it ends
+├── log_console.rs  the log window: open or close, read new lines while open, filter, clear, log file
+├── mod.rs          the module list and the re-exports `application` uses
+├── queue.rs        the queue's actions: add, select, remove and undo, move, cancel, try and run again
+├── report.rs       the selected job's report, the finished rows' summaries, and the Overview's requests
+├── review.rs       the line review: open (on a group), edit, save or keep and queue a run, clips, stills
+├── runner.rs       starting the next job of each lane with its options, and the runners' events
+└── settings.rs     the settings page as the window opens, edits written at once, tabs, downloads
 ```
 
 ## How it works
@@ -101,11 +102,18 @@ a step, a save or a filter, the clip stops and the frame at the line's start is 
 video has a picture. After a run of the video ends, its lines are read again with what the owner did
 carried over.
 
+`log_console.rs` opens and closes the log window; opening reads every line the process's log
+buffer still holds that the console has not, and `poll_log` reads the new ones before each frame
+while the window is open, never while it is closed, so nothing logged meanwhile is lost. A level or
+a search refilters the console; Clear empties the console and the log buffer (the log file keeps
+every line); Open Log File opens the log file in the desktop's text editor through
+`open_with_desktop`.
+
 ## Boundaries
 
 - Depends on: `crate::settings` (events, models, services); `crate::job_queue` (events, models,
   services); `crate::job_report` (events, `models::finding_group`, services); `crate::line_review`
-  (events, models, services); `pipeline` (`JobOptions`, `CancelToken`, `workers::Binaries`); `media_io::preview`
+  (events, models, services); `crate::log_console` (events, models); `pipeline` (`JobOptions`, `CancelToken`, `workers::Binaries`); `media_io::preview`
   (`Clip`); `crate::core::{portal, steps, toast}`; `crate::application` (`TbdSubtitlesApp`,
   `Action`, `Environment`, `background::{Chooser, Opening}`).
 - Used by: `crate::application`, in `apply` and `poll`.

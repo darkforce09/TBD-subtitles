@@ -9,7 +9,7 @@ from a signal, a timeout and a missing program.
 
 ```text
 crates/child_process/
-├── Cargo.toml  the `child_process` library package; its one dependency is `libc`
+├── Cargo.toml  the `child_process` library package; its dependencies are `libc` and `tracing`
 └── src/        the `Run` builder, the process-group runner, the pipe drains and the lookup helpers
 ```
 
@@ -34,6 +34,11 @@ it). A `Running` child has a watchdog thread that kills its group at the deadlin
 flag even while the caller is blocked reading its stdout, and a handle dropped without `wait` kills its group too, so an
 abandoned FFmpeg stream never keeps running.
 
+Every child is also logged as `tracing` events under the `child_process` target: its start with
+its command line (long or multi-line arguments stand as their size), each stderr line as it
+arrives, and its end, a failure as a warning. Stdout is never logged. The app's window shows these
+in its log window; a process with no subscriber, such as the repository tools, pays nothing.
+
 `libc` supplies the process calls. Between fork and exec, `setsid`, with `setpgid(0, 0)` as the
 fallback, puts the child in a process group of its own, and `prctl(PR_SET_PDEATHSIG, SIGKILL)` asks
 the kernel to kill the child when the thread that started it ends; a child whose parent is already
@@ -49,7 +54,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p child_process   # the library alone
-cargo test -p child_process    # 27 unit tests; they run sh, cat, sleep and seq, about 3 s
+cargo test -p child_process    # 31 unit tests; they run sh, cat, sleep and seq, about 3 s
 ```
 
 The tests need a Unix shell on the `PATH`. The group-kill test sleeps 2.5 s after its timeout to
@@ -70,7 +75,8 @@ pairs and minus the `env_remove` names of its `Run`. Nothing else is read.
 
 ## Boundaries
 
-- Depends on: `std` and `libc` 0.2 without default features; no workspace crate. Linux only,
+- Depends on: `std`, `libc` 0.2 without default features, and the `tracing` facade (each
+  child's start, stderr lines and end, for the app's log window); no workspace crate. Linux only,
   through `std::os::unix` process extensions and `prctl`.
 - Used by:
   - `tools/verification_core/`, whose `tools/verification_core/src/proc.rs` re-exports `Run`,

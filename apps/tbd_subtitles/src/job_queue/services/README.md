@@ -10,6 +10,7 @@ their progress, a job's six stages, the time left, and the queue kept across win
 apps/tbd_subtitles/src/job_queue/services/
 ├── job_runner.rs         the long-lived thread that runs one job at a time and reports its events
 ├── mod.rs                the module list
+├── progress_log.rs       a job's events and end as log lines, a step's advance once per tenth
 ├── progress_tracking.rs  a runner event folded into the running job's progress
 ├── queue_editing.rs      add, remove and restore, move, try and run again, the next job, the button
 ├── queue_store.rs        `queue.json`: the queue written after each change and read at start
@@ -83,6 +84,9 @@ keeps exactly the steps the failure counts.
 `RunJob` (the pipeline's `run_job`, or a stand-in in the tests) and sends every progress event and
 the outcome back, waking the window; the thread lives as long as the window, so the workers it
 starts are not killed early. `progress_tracking::apply` moves each step row as the events arrive.
+The thread also logs each event and the end under the `job` target, the video's name first:
+`progress_log::ProgressLog` writes a step's start, message, finish (its time, RAM, VRAM and notes)
+or skip as info, its advance at debug once per tenth, and a failure as an error.
 `time_left::from_history` reads every job's `job.json` and `probe.json` in the work folder for
 each step's mean seconds per second of video, over the pilot's rates; `estimate` sums the steps
 still to run, leaving out the shot scan that runs beside them. `queue_store` keeps each job's
@@ -98,7 +102,7 @@ of them it kept, done in a time not known, and then keeps as many as it lists.
 
 - Depends on: `crate::job_queue::models`; `crate::core::{background::Wake, format, steps}`;
   `crate::job_report::models::summary::RowSummary` in `status_text.rs`; `pipeline`; `job_model`;
-  `serde` and `serde_json`.
+  `serde`, `serde_json` and `tracing` (`progress_log`, `job_runner`).
 - Used by: `crate::application` (`actions::{queue, review, runner}`, `mod.rs`, `detail_view`);
   `crate::job_queue::ui` (`time_left::estimate`, `queue_editing::{queue_control, subtitle_file}`,
   `sidebar_rows`, `status_text`, `stage_progress`).

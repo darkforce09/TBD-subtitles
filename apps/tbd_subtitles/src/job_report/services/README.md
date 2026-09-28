@@ -35,7 +35,9 @@ failed language-model calls, reading speed.
 thread of its own that lives until the run ends, so the `claude` processes it starts end with it.
 The thread sends each `FixProgress` and then the outcome, waking the window each time;
 `Fixing::poll` keeps the latest progress and hands over the outcome once, and `Fixing::stop`
-sets the run's `CancelToken`, which kills the running calls.
+sets the run's `CancelToken`, which kills the running calls. The thread logs the start, each
+new pass and stage at info with its count of calls, each call at debug, and the end, under the
+`fix_it` target.
 
 ## Boundaries
 

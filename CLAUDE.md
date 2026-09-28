@@ -18,7 +18,8 @@ M2, the desktop GUI. The window (`tbd-subtitles gui`) is redesigned to the owner
 macOS-like mockup and runs jobs itself: a toolbar and models banner, a sidebar of videos in Now,
 Up Next and Done, the selected job's progress, its Overview report and Check Lines (clip playback,
 corrections re-timed by correction runs), and Settings in a window of their own, saved as they
-change, with model downloads ([GUI](/documentation/features/gui.md)). Fix It has a stronger
+change, with model downloads, and a log window (Ctrl+L) that shows everything the app, its jobs
+and the programs they start log ([GUI](/documentation/features/gui.md)). Fix It has a stronger
 `claude` model (Opus by default, beside the run's Sonnet) fix a finished job's flagged lines in
 three passes, each change kept or undone by the owner ([Fix It](/documentation/features/fix_it.md)).
 The owner runs it as a self-contained AppImage from Gear Lever, built by `cargo appimage`

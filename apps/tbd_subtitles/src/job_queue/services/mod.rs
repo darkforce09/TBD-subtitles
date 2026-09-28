@@ -3,6 +3,7 @@
 //! across windows.
 
 pub(crate) mod job_runner;
+pub(crate) mod progress_log;
 pub(crate) mod progress_tracking;
 pub(crate) mod queue_editing;
 pub(crate) mod queue_store;

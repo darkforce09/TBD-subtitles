@@ -1116,6 +1116,8 @@ name = "child_process"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3625,6 +3627,7 @@ dependencies = [
  "tar",
  "tokenizers 0.23.2",
  "tokio",
+ "tracing",
  "ureq 3.4.2",
 ]
 
@@ -5534,6 +5537,7 @@ dependencies = [
  "sha2 0.11.0",
  "stages",
  "subtitle_formats",
+ "tracing",
 ]
 
 [[package]]

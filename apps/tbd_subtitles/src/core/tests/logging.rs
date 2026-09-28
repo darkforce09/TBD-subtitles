@@ -31,3 +31,16 @@ fn opening_the_log_makes_its_folder_and_empties_it() {
     assert_eq!(fs::read_to_string(&path).unwrap(), "");
     fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn the_detail_filter_parses_and_keeps_workspace_debug_lines() {
+    let filter = EnvFilter::new(DETAIL);
+    let text = filter.to_string();
+    assert!(text.contains("pipeline=debug"), "{text}");
+    assert!(text.contains("child_process=debug"), "{text}");
+}
+
+#[test]
+fn the_console_is_one_buffer_for_the_whole_process() {
+    assert!(Arc::ptr_eq(&console(), &console()));
+}

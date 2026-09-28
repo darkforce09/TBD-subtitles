@@ -3,9 +3,9 @@
 //! **Role:** build each feature's narrow view from the application state, call the feature's
 //! `ui`, and wrap the events it returns as `Action`s.
 //!
-//! **Position:** called by `window` (toolbar, models banner, sidebar, the selected job) and by
-//! `settings_window`; the only place the application calls the features' `ui` modules; the
-//! selected job's header is `detail_view`'s.
+//! **Position:** called by `window` (toolbar, models banner, sidebar, the selected job), by
+//! `settings_window` and by `log_window`; the only place the application calls the features' `ui`
+//! modules; the selected job's header is `detail_view`'s.
 //!
 //! **Signals and state:** none; reads the state and pushes actions.
 //!
@@ -27,6 +27,7 @@ use crate::job_queue::services::sidebar_rows;
 use crate::job_queue::ui as job_queue_ui;
 use crate::job_report::ui::{OverviewView, overview_ui};
 use crate::line_review::ui::{Playing, ReviewView, review_view_ui};
+use crate::log_console::ui as log_console_ui;
 use crate::settings::models::page::SettingsTab;
 use crate::settings::services::model_list::{self, Banner};
 use crate::settings::ui as settings_ui;
@@ -45,14 +46,25 @@ fn queue_view(app: &TbdSubtitlesApp) -> JobQueueView<'_> {
     }
 }
 
-/// Draw the toolbar and collect its events as actions; the gear opens Settings.
+/// Draw the toolbar and collect its events as actions; the gear opens Settings, the log button
+/// the log window.
 pub(super) fn toolbar_ui(ui: &mut Ui, app: &TbdSubtitlesApp, actions: &mut Vec<Action>) {
     let mut events = Vec::new();
-    let settings = job_queue_ui::toolbar_ui(ui, &queue_view(app), &mut events);
+    let pressed = job_queue_ui::toolbar_ui(ui, &queue_view(app), &mut events);
     actions.extend(events.into_iter().map(Action::from));
-    if settings {
+    if pressed.settings {
         actions.push(Action::ShowSettings(true));
     }
+    if pressed.log {
+        actions.push(Action::ShowLog(true));
+    }
+}
+
+/// Draw the log window's content and collect its events as actions.
+pub(super) fn log_console_ui(ui: &mut Ui, app: &TbdSubtitlesApp, actions: &mut Vec<Action>) {
+    let mut events = Vec::new();
+    log_console_ui::console_window_ui(ui, &app.console, app.env.log_file.is_some(), &mut events);
+    actions.extend(events.into_iter().map(Action::from));
 }
 
 /// Draw the sidebar and collect its events as actions.

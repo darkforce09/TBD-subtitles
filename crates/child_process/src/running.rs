@@ -26,7 +26,8 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use crate::runner::{feed_stdin, spawn};
-use crate::stream::read_to_string_lossy;
+use crate::stream::start_stderr_drain;
+use crate::trace::Tag;
 use crate::{Run, RunError};
 
 /// How often the watchdog looks at the clock.
@@ -45,6 +46,7 @@ pub struct Running {
     child: Child,
     pgid: i32,
     label: String,
+    tag: Tag,
     started: Instant,
     limit: Option<Duration>,
     stderr: Option<JoinHandle<String>>,
@@ -61,11 +63,12 @@ impl Run {
         let mut cmd = self.command(Stdio::piped(), Stdio::piped());
         let mut child = spawn(&mut cmd, &self.program, &label)?;
         let pgid = child.id() as i32;
+        let tag = Tag::started(&self, child.id());
         feed_stdin(&mut child, self.stdin.as_deref());
         let stderr = child
             .stderr
             .take()
-            .map(|mut pipe| std::thread::spawn(move || read_to_string_lossy(&mut pipe)));
+            .map(|pipe| start_stderr_drain(pipe, &tag));
         let finished = Arc::new(AtomicBool::new(false));
         let timed_out = Arc::new(AtomicBool::new(false));
         let cancelled = Arc::new(AtomicBool::new(false));
@@ -85,6 +88,7 @@ impl Run {
             child,
             pgid,
             label,
+            tag,
             started: Instant::now(),
             limit: self.timeout,
             stderr,
@@ -122,6 +126,15 @@ impl Running {
     /// Stdout is closed first if the caller still holds it unread, so a child blocked writing to a
     /// full pipe cannot keep the wait from returning.
     pub fn wait(mut self) -> Result<Finished, RunError> {
+        let finished = self.reap();
+        match &finished {
+            Ok(done) => self.tag.exited(done.code, done.duration),
+            Err(error) => self.tag.failed(error),
+        }
+        finished
+    }
+
+    fn reap(&mut self) -> Result<Finished, RunError> {
         drop(self.child.stdout.take());
         let status = self.child.wait().map_err(|e| RunError::Failed {
             program: self.label.clone(),
@@ -166,6 +179,7 @@ impl Drop for Running {
             kill_group(self.pgid);
             let _ = self.child.wait();
             self.finished.store(true, Ordering::SeqCst);
+            self.tag.abandoned();
         }
     }
 }
