@@ -9,7 +9,7 @@ Netflix's English rules. It runs locally on the owner's PC. A later milestone tr
 text that appears on screen. The first job is the Muhn Pace Dressrosa English dub in
 `/run/media/system/Main_storage/Media/one_pace/` (41 episodes; no dub subtitles exist anywhere).
 
-**Current state:** milestones M0, M0.5, M1 and M2 are done. `tbd-subtitles process <video>` runs 18
+**Current state:** milestones M0, M0.5, M1, M2 and M3 are done. `tbd-subtitles process <video>` runs 18
 resumable steps, with GPU steps in workers of `tbd-subtitles` and `tbd-subtitles-ggml`, and
 writes the SRT, `report.md` and each step's time and memory. The owner accepted the Dressrosa 11
 pilot ([pilot run](/documentation/research/pilot_dressrosa_11.md)), and a 128.9-minute video ran
@@ -27,11 +27,11 @@ undone by the owner, and the Overview shows its result when done; it runs on man
 ([Fix It](/documentation/features/fix_it.md)).
 The owner runs it as a self-contained AppImage from Gear Lever, built by `cargo appimage`
 (section 4). The owner ran the batch of Dressrosa 12–48 from the window and accepted it
-(2026-09-29). M3, automation, is built and waits for the owner's test on the host: watch folders
-that queue finished downloads while the app is open, Dolphin's "Generate subtitles" entry, one
-window per session that later launches hand their videos to, a notification when a job ends, and
-the window's icon ([automation](/documentation/features/automation.md),
-[roadmap](/documentation/roadmap.md)).
+(2026-09-29). M3, automation, is done: watch folders that queue finished downloads while the app
+is open, Dolphin's "Generate subtitles" entry, one window per session that later launches hand
+their videos to, a notification when a job ends, and the window's icon; the owner tested it on the
+host and accepted it (2026-09-29) ([automation](/documentation/features/automation.md)). Next is
+M4, Japanese on-screen text ([roadmap](/documentation/roadmap.md)).
 
 ## 1. Project laws
 

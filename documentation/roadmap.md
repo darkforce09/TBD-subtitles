@@ -105,8 +105,8 @@ while the app is open, queuing each finished video without subtitles once and st
 queue; the Dolphin entry, written by the app when it starts from its AppImage; one window per
 session, which later launches hand their videos to over a local socket; the desktop entry with
 `%F` for "Open With"; a notification when a job ends while the window is away; the window's
-icon; and a queue that keeps running while the window is minimized. The acceptance test runs on
-the host with the AppImage; M3 is done when the owner accepts it.
+icon; and a queue that keeps running while the window is minimized. The owner tested every item
+on the host with the AppImage and accepted M3 on 2026-09-29.
 
 Details: [automation](/documentation/features/automation.md).
 

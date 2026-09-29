@@ -169,8 +169,8 @@ failed job stops the run. The exit code says how it went:
 
 ## Open work
 
-- None in [M3 — Automation](/documentation/roadmap.md#m3--automation): every item is built; the
-  milestone ends with the owner's acceptance test on the host.
+- None: [M3 — Automation](/documentation/roadmap.md#m3--automation) is done, accepted by the
+  owner on the host on 2026-09-29.
 
 ## Decisions
 

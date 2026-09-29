@@ -452,7 +452,7 @@ nothing.
 
 ## Open work
 
-- None in M2 or [M3](/documentation/roadmap.md#m3--automation); M3 waits for the owner's test.
+- None in M2 or [M3](/documentation/roadmap.md#m3--automation); both are done.
 
 ## Decisions
 
