@@ -121,7 +121,7 @@ fn a_backend_with_a_cancel_flag_keeps_it() {
 #[test]
 fn image_request_keeps_text_and_png_in_one_user_message() {
     let user = "Read 運命\n\"type\":\"control_request\"";
-    let encoded = image_input(user, "aW1hZ2U=");
+    let encoded = image_input(user, &["aW1hZ2U=".to_owned()]);
     assert!(encoded.ends_with('\n'));
     assert_eq!(encoded.lines().count(), 1);
     let value: serde_json::Value = serde_json::from_str(&encoded).unwrap();
@@ -140,6 +140,51 @@ fn image_request_keeps_text_and_png_in_one_user_message() {
             },
             "parent_tool_use_id": null
         })
+    );
+}
+
+#[test]
+fn several_images_follow_the_text_in_one_user_message() {
+    let user = "Translate the sign across these keyframes";
+    let pngs = ["Zmlyc3Q=".to_owned(), "c2Vjb25k".to_owned()];
+    let (encoded, stream) = request_input(user, &pngs);
+    assert!(stream);
+    assert!(encoded.ends_with('\n'));
+    assert_eq!(encoded.lines().count(), 1);
+    let value: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+    let image = |data: &str| {
+        serde_json::json!({"type": "image", "source": {
+            "type": "base64", "media_type": "image/png", "data": data
+        }})
+    };
+    assert_eq!(
+        value,
+        serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user},
+                    image("Zmlyc3Q="),
+                    image("c2Vjb25k")
+                ]
+            },
+            "parent_tool_use_id": null
+        })
+    );
+}
+
+#[test]
+fn an_empty_image_list_makes_the_plain_text_call() {
+    let user = "Translate the sign";
+    let (input, stream) = request_input(user, &[]);
+    assert_eq!((input.as_str(), stream), (user, false));
+    let args = call_args("opus", "System", &serde_json::json!({}), stream);
+    assert!(
+        !args
+            .iter()
+            .any(|arg| arg == "--input-format" || arg == "stream-json"),
+        "{args:?}"
     );
 }
 

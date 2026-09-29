@@ -1,74 +1,113 @@
-//! Bounded concurrent image fallback for prepared visible-text translations.
+//! Bounded concurrent Claude requests for whole keyframe stills.
 //!
-//! **Role:** resolve uncertain crops after callers release their local GPU model.
-//! **Position:** private helper of the visual translation stage.
-//! **Signals and state:** four workers, per-key cache locks and owned request metadata.
-//! **Invariants:** each worker loads one crop at a time; duplicate requests share their cache;
+//! **Role:** send each keyframe request with its whole-frame still and region crops, and return
+//! one checked outcome per request.
+//! **Position:** private helper of the visual translation stage; runs before any local model
+//! opens.
+//! **Signals and state:** up to `parallel_calls` workers, per-key cache locks, a stop flag and
+//! the image bytes of the one request each worker holds.
+//! **Invariants:** duplicate requests share their cache; only checked answers are cached;
 //! cancellation stops admission and fails the phase even for cached answers. Claude's shared
 //! process cap, tool isolation and logging remain in its backend.
 
-use super::{Answer, PreparedTranslations, SYSTEM, TextResult, read_cache, valid, write_cache};
+use super::keyframe_requests::{self, INVALID_RESPONSE, KeyframeAnswer, Outcome, Request};
+use super::{TRANSLATION_CACHE_REVISION, TextResult};
 use base64::{Engine, engine::general_purpose::STANDARD};
-use inference::llm::{LanguageModel, claude_cli::ClaudeCli};
-use job_model::onscreen::TextDocument;
+use inference::llm::{Completion, LanguageModel, LlmError, claude_cli::ClaudeCli};
 use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-const MAX_PARALLEL_CALLS: usize = 4;
-const IMAGE_INSTRUCTIONS: &str = "Inspect the actual image independently before using the supplied OCR reading. OCR may be wrong or describe non-text artwork. Correct the Japanese reading only from visible image evidence. If the image contains no readable writing, return an empty Japanese string, null English, and a reason; never complete missing or obscured characters from context.";
+/// Sends one request: the backend, system prompt, user prompt, schema and base64 PNGs in order.
+pub(super) type Ask<'a> =
+    dyn Fn(&mut ClaudeCli, &str, &str, &serde_json::Value, &[String]) -> Answered + Sync + 'a;
 
-pub(super) struct Request {
-    pub index: usize,
-    pub id: String,
-    pub crop: Option<PathBuf>,
-    pub prompt: String,
-    pub hash: DefaultHasher,
+/// What Claude answered, or why it could not.
+type Answered = Result<Completion, LlmError>;
+
+type CacheLocks = Mutex<HashMap<u64, Arc<Mutex<()>>>>;
+
+/// A request's images: the keyframe still, then each region's crop in region order.
+pub(super) struct Images {
+    keyframe: Vec<u8>,
+    crops: Vec<Vec<u8>>,
 }
 
-enum Outcome {
-    Answer(Answer),
-    Warning(String),
-}
-
-pub(super) fn resolve(
-    document: &mut TextDocument,
-    prepared: &mut PreparedTranslations,
-    backend: Option<&ClaudeCli>,
-    progress: &(dyn Fn(usize, usize) + Sync),
-) -> TextResult<()> {
-    if let Some(backend) = backend {
-        check_cancel(backend)?;
+impl Images {
+    pub(super) fn load(request: &Request) -> TextResult<Self> {
+        Ok(Self {
+            keyframe: read_image(&request.keyframe)?,
+            crops: request
+                .regions
+                .iter()
+                .map(|region| read_image(&region.crop))
+                .collect::<TextResult<_>>()?,
+        })
     }
-    let pending = std::mem::take(&mut prepared.pending);
-    let count = pending.len();
-    let completed = Mutex::new(document.occurrences.len());
-    let total = document.occurrences.len() + count;
-    let Some(backend) = backend else {
-        for request in pending {
-            document.occurrences[request.index]
-                .warnings
-                .push("Claude fallback is unavailable. Check Claude sign-in in Settings.".into());
-        }
-        return Ok(());
-    };
-    let queue = Mutex::new(pending.into_iter());
-    let locks = Mutex::new(HashMap::<u64, Arc<Mutex<()>>>::new());
+
+    fn encoded(self) -> Vec<String> {
+        std::iter::once(self.keyframe)
+            .chain(self.crops)
+            .map(|bytes| STANDARD.encode(bytes))
+            .collect()
+    }
+}
+
+/// The cache identity of a request: prompts, backend, schema, retry generation and every image
+/// byte in order.
+pub(super) fn cache_key(
+    request: &Request,
+    backend: &str,
+    system: &str,
+    schema: &serde_json::Value,
+    images: &Images,
+) -> u64 {
+    let mut hash = DefaultHasher::new();
+    (
+        TRANSLATION_CACHE_REVISION,
+        system,
+        &request.prompt,
+        backend,
+        schema.to_string(),
+        request.retry_generation,
+    )
+        .hash(&mut hash);
+    images.keyframe.hash(&mut hash);
+    images.crops.hash(&mut hash);
+    hash.finish()
+}
+
+/// One outcome per request, in request order. `progress` receives the number of finished
+/// requests.
+pub(super) fn resolve(
+    requests: &[Request],
+    backend: &ClaudeCli,
+    ask: &Ask<'_>,
+    parallel_calls: usize,
+    cache: &Path,
+    progress: &(dyn Fn(usize) + Sync),
+) -> TextResult<Vec<Outcome>> {
+    check_cancel(backend)?;
+    let system = keyframe_requests::system();
+    let schema = keyframe_requests::schema();
+    let queue = Mutex::new(requests.iter().enumerate());
+    let locks = CacheLocks::default();
     let stopped = AtomicBool::new(false);
+    let finished = Mutex::new(0_usize);
     let span = tracing::Span::current();
     let dispatch = tracing::dispatcher::get_default(Clone::clone);
     let results = std::thread::scope(|scope| {
         let mut handles = Vec::new();
-        for _ in 0..count.min(MAX_PARALLEL_CALLS) {
+        for _ in 0..parallel_calls.max(1).min(requests.len()) {
             let mut worker = copy_backend(backend);
             let queue = &queue;
             let locks = &locks;
             let stopped = &stopped;
-            let completed = &completed;
-            let cache = &prepared.cache;
-            let schema = &prepared.schema;
+            let finished = &finished;
+            let system = system.as_str();
+            let schema = &schema;
             let span = span.clone();
             let dispatch = dispatch.clone();
             handles.push(scope.spawn(move || {
@@ -84,18 +123,19 @@ pub(super) fn resolve(
                             .lock()
                             .map_err(|_| "visual request queue lock failed")?
                             .next();
-                        let Some(request) = next else { break };
-                        let index = request.index;
-                        let result = resolve_one(request, &mut worker, cache, schema, locks);
+                        let Some((position, request)) = next else {
+                            break;
+                        };
+                        let result =
+                            resolve_one(request, &mut worker, ask, system, schema, cache, locks);
                         if result.is_err() {
                             stopped.store(true, Ordering::Release);
                         }
-                        results.push((index, result));
-                        let mut done = completed
-                            .lock()
-                            .map_err(|_| "visual progress lock failed")?;
+                        results.push((position, result));
+                        let mut done =
+                            finished.lock().map_err(|_| "visual progress lock failed")?;
                         *done += 1;
-                        progress(*done, total);
+                        progress(*done);
                     }
                     Ok::<_, inference::ocr::OcrError>(results)
                 })
@@ -111,18 +151,16 @@ pub(super) fn resolve(
             .collect::<TextResult<Vec<_>>>()
     })?;
     check_cancel(backend)?;
-    for (index, outcome) in results.into_iter().flatten() {
-        let item = &mut document.occurrences[index];
-        match outcome? {
-            Outcome::Answer(answer) => {
-                item.confidence = answer.confidence;
-                item.provenance.backend = backend.name();
-                prepared.answers[index] = answer;
-            }
-            Outcome::Warning(warning) => item.warnings.push(warning),
-        }
+    let mut outcomes = requests.iter().map(|_| None).collect::<Vec<_>>();
+    for (position, result) in results.into_iter().flatten() {
+        outcomes[position] = Some(result?);
     }
-    check_cancel(backend)
+    outcomes
+        .into_iter()
+        .map(|outcome| {
+            outcome.ok_or_else(|| "a keyframe request finished without an outcome".into())
+        })
+        .collect()
 }
 
 fn check_cancel(backend: &ClaudeCli) -> TextResult<()> {
@@ -131,7 +169,7 @@ fn check_cancel(backend: &ClaudeCli) -> TextResult<()> {
         .as_ref()
         .is_some_and(|cancel| cancel.load(Ordering::Acquire))
     {
-        Err(inference::llm::LlmError("cancelled".into()).into())
+        Err(LlmError("cancelled".into()).into())
     } else {
         Ok(())
     }
@@ -148,19 +186,17 @@ fn copy_backend(backend: &ClaudeCli) -> ClaudeCli {
 }
 
 fn resolve_one(
-    request: Request,
+    request: &Request,
     backend: &mut ClaudeCli,
-    cache: &Path,
+    ask: &Ask<'_>,
+    system: &str,
     schema: &serde_json::Value,
-    locks: &Mutex<HashMap<u64, Arc<Mutex<()>>>>,
+    cache: &Path,
+    locks: &CacheLocks,
 ) -> TextResult<Outcome> {
     check_cancel(backend)?;
-    let crop = request.crop.ok_or("uncertain occurrence has no crop")?;
-    let encoded = STANDARD.encode(std::fs::read(crop)?);
-    let system = format!("{SYSTEM} {IMAGE_INSTRUCTIONS}");
-    let mut hash = request.hash;
-    (backend.name(), &encoded, &system).hash(&mut hash);
-    let key = hash.finish();
+    let images = Images::load(request)?;
+    let key = cache_key(request, &backend.name(), system, schema, &images);
     let path = cache.join(format!("claude-{key:016x}.json"));
     let lock = locks
         .lock()
@@ -170,31 +206,48 @@ fn resolve_one(
         .clone();
     let _cache_guard = lock.lock().map_err(|_| "visual cache key lock failed")?;
     check_cancel(backend)?;
-    if let Some(answer) = read_cache(&path, None) {
+    if let Some(answer) = keyframe_requests::read_cache(&path, request) {
         check_cancel(backend)?;
         return Ok(Outcome::Answer(answer));
     }
-    let _purpose = inference::llm::purpose(format!("uncertain on-screen crop {}", request.id));
-    let result = backend.complete_image_json(&system, &request.prompt, schema, &encoded);
+    let still = request
+        .keyframe
+        .file_name()
+        .unwrap_or(request.keyframe.as_os_str())
+        .to_string_lossy();
+    let _purpose = inference::llm::purpose(format!(
+        "keyframe {still} ({} regions)",
+        request.regions.len()
+    ));
+    let result = ask(backend, system, &request.prompt, schema, &images.encoded());
     check_cancel(backend)?;
     match result {
-        Ok(completion) => match serde_json::from_value::<Answer>(completion.json) {
-            Ok(answer) if valid(&answer) => {
-                write_cache(&path, &answer)?;
+        Ok(completion) => match serde_json::from_value::<KeyframeAnswer>(completion.json)
+            .ok()
+            .and_then(|answer| keyframe_requests::checked(request, answer))
+        {
+            Some(answer) => {
+                keyframe_requests::write_cache(&path, &answer)?;
                 Ok(Outcome::Answer(answer))
             }
-            _ => Ok(Outcome::Warning(
-                "Claude returned an invalid visual response.".into(),
-            )),
+            None => {
+                tracing::warn!(keyframe = %still, "Claude returned an invalid keyframe answer");
+                Ok(Outcome::Warning(INVALID_RESPONSE.into()))
+            }
         },
         Err(error) if error.0 == "cancelled" => Err(error.into()),
         Err(error) => {
-            tracing::warn!(occurrence=%request.id,error=%error,"Visual Claude fallback unavailable");
+            tracing::warn!(keyframe = %still, error = %error, "Visual Claude request unavailable");
             Ok(Outcome::Warning(format!(
                 "Claude fallback unavailable: {error}"
             )))
         }
     }
+}
+
+fn read_image(path: &Path) -> TextResult<Vec<u8>> {
+    std::fs::read(path)
+        .map_err(|error| format!("read visual image {}: {error}", path.display()).into())
 }
 
 #[cfg(test)]

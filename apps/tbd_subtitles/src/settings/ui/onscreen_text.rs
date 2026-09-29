@@ -62,8 +62,9 @@ pub(super) fn onscreen_text_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Ve
         }
         form::help(
             ui,
-            "Ask your signed-in Claude CLI about uncertain readings and translations. \
-             Uses the shared Claude call limit; no API key is required.",
+            "Have your signed-in Claude CLI read and translate every detected text event once \
+             from its keyframe; the local models answer whatever it leaves. Uses the shared \
+             Claude call limit; no API key is required.",
         );
         if settings.enabled && settings.claude_fallback {
             claude_status(ui, page, events);

@@ -134,7 +134,7 @@ pub fn exchange(
         model: sent.model.to_string(),
         purpose: purpose.to_string(),
         system: sent.system.to_string(),
-        message: sent.message.to_string(),
+        message: without_image_data(sent.message),
         schema: pretty(sent.schema),
         answer: answer_text,
         error,
@@ -143,6 +143,43 @@ pub fn exchange(
         cost_usd,
         seconds: took.as_secs_f64(),
     }
+}
+
+/// The message with every base64 image payload of a stream-json user line replaced by its size,
+/// so the log window never holds megabytes of pixels; other text passes through unchanged.
+pub fn without_image_data(message: &str) -> String {
+    let elide = |line: &str| -> Option<String> {
+        let mut value: serde_json::Value = serde_json::from_str(line).ok()?;
+        let content = value
+            .get_mut("message")?
+            .get_mut("content")?
+            .as_array_mut()?;
+        let mut elided = false;
+        for block in content.iter_mut() {
+            if block.get("type").and_then(|kind| kind.as_str()) != Some("image") {
+                continue;
+            }
+            let Some(data) = block
+                .get_mut("source")
+                .and_then(|source| source.get_mut("data"))
+            else {
+                continue;
+            };
+            if let Some(text) = data.as_str() {
+                *data = serde_json::Value::String(format!("[{} base64 bytes]", text.len()));
+                elided = true;
+            }
+        }
+        elided.then(|| value.to_string())
+    };
+    if !message.contains("\"image\"") {
+        return message.to_string();
+    }
+    message
+        .lines()
+        .map(|line| elide(line).unwrap_or_else(|| line.to_string()))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]

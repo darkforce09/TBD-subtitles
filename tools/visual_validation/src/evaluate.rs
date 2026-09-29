@@ -263,21 +263,21 @@ fn check(
     }
     let fallback = is_flagged && item.presentation.treatment == TextTreatment::Nearby;
     for sample in &expected.frames {
+        // Sparse observations hold their geometry until the next one; a sample inside that
+        // interval, or within one source frame of its start, is covered by it.
         let frame = item
             .frames
             .iter()
-            .min_by(|a, b| {
-                (a.time_s - sample.time_s)
-                    .abs()
-                    .total_cmp(&(b.time_s - sample.time_s).abs())
+            .find(|frame| {
+                (frame.time_s - sample.time_s).abs() <= tolerance
+                    || (frame.time_s <= sample.time_s && sample.time_s < frame.end_s)
             })
-            .ok_or("track has no frame geometry")?;
-        if (frame.time_s - sample.time_s).abs() > tolerance {
-            return Err(format!(
-                "track has no observation within one source frame of {:.3}s",
-                sample.time_s
-            ));
-        }
+            .ok_or_else(|| {
+                format!(
+                    "track has no observation covering {:.3}s within one source frame",
+                    sample.time_s
+                )
+            })?;
         if unreadable || fallback {
             if !overlaps(frame.quad, sample.quad) {
                 return Err(format!(

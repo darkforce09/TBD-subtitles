@@ -7,7 +7,7 @@ Already exported PP-OCRv5 and manga-ocr models, loaded in isolated ONNX workers.
 ```text
 crates/inference/src/ocr/
 ├── manga.rs  bounded encoder/decoder beam search
-└── mod.rs    detector, recognizer and strict CUDA setup
+└── mod.rs    `TextDetection` detector, recognizer and strict CUDA setup
 ```
 
 ## How it works
@@ -15,7 +15,10 @@ crates/inference/src/ocr/
 PP-OCRv5 detects quadrilaterals and reads their crops. Vertical and uncertain crops receive a second manga-ocr reading. Disagreement remains uncertain. All files come from the pinned model store. The decoder has bounded beam width and sequence length.
 
 CUDA uses heuristic convolution selection with a 2 GB arena limit and bounded convolution
-workspace. Detector input dimensions and confidence thresholds remain fixed across frames.
+workspace. One predictor screens proxy frames in batches at the 0.3 box score and inspects single
+full-resolution frames at 0.5. A screening batch holds images of one size, runs as one predictor
+call and returns one region list per image in input order; region coordinates are in the input
+image's own pixels.
 
 ## Boundaries
 

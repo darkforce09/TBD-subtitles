@@ -127,6 +127,8 @@ impl Fixture {
         name.rendered = Some(false);
         let document = TextDocument {
             review_warnings: Vec::new(),
+            proxy_width: 0,
+            sample_step: 0,
             width: 1920,
             height: 1080,
             decoded_frames: 720,
@@ -253,6 +255,7 @@ fn occurrence(id: &str, japanese: &str, english: Option<&str>) -> TextOccurrence
         warnings: Vec::new(),
         reviewed: false,
         rendered: Some(true),
+        keyframe: None,
     }
 }
 

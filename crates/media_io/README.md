@@ -9,15 +9,16 @@ through FFmpeg and ffprobe run as child processes, with no libav linked.
 ```text
 crates/media_io/
 ├── Cargo.toml  the `media_io` library package: `child_process`, `job_model`, and serde for ffprobe JSON
-└── src/        the ffprobe probe, the PCM audio stream and the shot-change scan
+└── src/        the ffprobe probe, the PCM audio stream, the shot-change scan and the RGB frames
 ```
 
 ## How it works
 
 The crate is split by what it reads from the video: `probe` is for ffprobe's JSON and the choice
 of the English audio track, `pcm_stream` for FFmpeg decoding the audio through a pipe in
-fixed-size chunks, and `shot_changes` for FFmpeg's `scdet` scan of a small scaled copy of the
-video. The crate header places every FFmpeg and ffprobe run behind `child_process`, whose drain
+fixed-size chunks, `shot_changes` for FFmpeg's `scdet` scan of a small scaled copy of the
+video, and `video_frames` for RGB frames paired with presentation times read from the packet
+table before decoding. The crate header places every FFmpeg and ffprobe run behind `child_process`, whose drain
 threads keep FFmpeg's stderr from blocking the audio pipe, and returns `job_model` types. `src/README.md` describes each module.
 
 ## Getting started
@@ -26,7 +27,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p media_io   # the library
-cargo test -p media_io    # 16 unit tests; some run FFmpeg on generated audio and video
+cargo test -p media_io    # 45 unit tests, 2 ignored; many run FFmpeg on generated audio and video
 ```
 
 The app runs FFmpeg 8.1 on the host; inside the development container, run anything that calls
@@ -39,7 +40,7 @@ None: the crate reads no setting.
 ## Public surface
 
 - The library `media_io`: `Programs`, `MediaError`, and the public modules `pcm_stream`,
-  `preview`, `probe` and `shot_changes`.
+  `preview`, `probe`, `shot_changes` and `video_frames`.
 - No binary.
 
 ## Boundaries

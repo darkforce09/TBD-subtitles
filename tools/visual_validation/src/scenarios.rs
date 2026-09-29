@@ -121,7 +121,7 @@ pub(super) fn generate(output: &Path) -> Result<()> {
             "audio":"Silent stereo AAC tagged eng, permitting the normal production input path without fabricated spoken dialogue.",
             "font":{"file":font.file,"sha256":font.sha256},
             "geometry":"Approximate manually specified glyph regions. These annotations support flagged nearby overlap coverage only, not accepted two-pixel tracking accuracy.",
-            "timing":"Intervals are first visible source frame through the first absent frame, end exclusive. The lyric is fully transparent at frame48 and first visible at49. ASS end6.12 removes the three-frame sign before frame147 at6.125.",
+            "timing":"Intervals are first visible source frame through the first absent frame, end exclusive. The lyric is fully transparent at frame48 and first visible at49. ASS end6.12 removes the three-frame sign before frame147 at6.125. The scan screens every twelfth frame at 24 fps plus shot boundaries and bisects between samples, so the three-frame sign is found because frame 144 lies on that grid; a flash shorter than the step that no sample or cut lands on is an accepted miss.",
             "cases":[
                 {"category":"scrolling credits","japanese":["制作","音楽"],"frames":[0,48]},
                 {"category":"visible lyric with fade in and out","japanese":"君と一緒に","frames":[49,96]},

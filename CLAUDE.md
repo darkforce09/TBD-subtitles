@@ -38,15 +38,18 @@ their videos to, a notification when a job ends, and the window's icon; the owne
 host and accepted it (2026-09-29) ([automation](/documentation/features/automation.md)).
 
 M4 adds Detect → Read → Track → Translate → Review → Typeset between cue construction and final
-QC/output. It uses PP-OCRv5 and manga-ocr, checked optical flow, local Qwen3.5-4B translation,
-validated reference wording and optional tool-disabled Claude image fallback. Settings, queue
-progress, Overview, Check Text, actual ASS comparison previews, corrections and logs are integrated
-into the existing window and job. Visual corrections reuse valid audio stages. Annotated pilot
-coverage, a single 20–30-minute episode benchmark, complete GUI/VLC checks and owner acceptance
-remain outstanding; do not call M4 complete. The AppImage builds and passes the host startup smoke
-check. The owner accepts missed faint text and false detections, and replaces the proposed two-hour
-visual benchmark with a single episode. Faster selective scanning and whole-frame Claude analysis
-are discussion proposals only; dense scan performance remains open. See
+QC/output. Detection screens a 640-wide proxy of every frame at two samples per second plus shot
+boundaries with PP-OCRv5, bisects the frames between samples to the exact entry and exit frame,
+and keeps one full-resolution keyframe per occurrence; tracking checks the sampled geometry
+without decoding; translation asks tool-disabled Claude (the run's Sonnet) once per keyframe with
+the whole-frame still and its crops, and loads local Qwen3.5-4B only for what Claude leaves;
+manga-ocr and validated reference wording remain. Settings, queue progress, Overview, Check Text,
+actual ASS comparison previews, corrections and logs are integrated into the existing window and
+job. Visual corrections reuse valid audio stages. Annotated pilot coverage, the single
+20–30-minute episode benchmark (target: detection under six minutes for 50,000 frames), complete
+GUI/VLC checks and owner acceptance remain outstanding; do not call M4 complete. The AppImage
+builds and passes the host startup smoke check. The owner accepts missed faint text, false
+detections and writing shorter than the half-second sample step that no sample or cut lands on. See
 [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md) and the
 [roadmap](/documentation/roadmap.md).
 

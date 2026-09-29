@@ -2,13 +2,15 @@
 //!
 //! **Role:** load models only in their dedicated workers and install typed visual artifacts.
 //! **Position:** pipeline task dispatch above the on-screen stages.
-//! **Signals and state:** visual JSON, representative crops, translations and ASS events.
-//! **Invariants:** disabled visual jobs need no visual model; each output is written atomically.
+//! **Signals and state:** visual JSON, representative crops, keyframe stills, translations and
+//! ASS events.
+//! **Invariants:** disabled visual jobs need no visual model; each output is written atomically;
+//! the local translation model loads only when Claude leaves an occurrence unanswered.
 
 use super::{Job, StepProgress, TaskReport, since};
 use crate::error::{Context, PipelineError, Result};
 use crate::work_dir;
-use inference::ocr::{OcrDetector, OcrReader};
+use inference::ocr::{OcrDetector, OcrReader, TextDetection};
 use job_model::StepName;
 use job_model::onscreen::{TextCorrections, TextDocument};
 use job_model::outputs::ShotChanges;
@@ -63,13 +65,15 @@ pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<T
                     },
                 )
             };
+            let mut source =
+                onscreen_text::detect::FfmpegSource::open(&programs, &job.video(), stream)
+                    .context("open the proxy frame stream")?;
             document = onscreen_text::detect::scan(
-                &programs,
-                &job.video(),
+                &mut source,
                 stream,
                 &shots,
                 job.work.root(),
-                &mut detector,
+                &mut detector as &mut dyn TextDetection,
                 &advance,
             )
             .context("scan visible writing")?;
@@ -87,10 +91,8 @@ pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<T
             )
             .context("read visible writing")?;
         }
-        StepName::TextTrack => {
-            onscreen_text::track::track(&mut document, &programs, &job.video(), stream, progress)
-                .context("track visible writing")?
-        }
+        StepName::TextTrack => onscreen_text::track::track(&mut document, stream, progress)
+            .context("check visible writing geometry")?,
         StepName::TextTranslate => translate(job, &mut document, progress, &mut report)?,
         StepName::TextReview => {
             onscreen_text::review::apply(&mut document, &corrections(job)?, probe.probe.duration_s)
@@ -129,13 +131,20 @@ fn translate(
     progress: StepProgress,
     report: &mut TaskReport,
 ) -> Result<()> {
-    use inference::llm::{claude_cli::ClaudeCli, mistral_rs::MistralRs};
-    use onscreen_text::translate::{TranslationInput, finish, prepare};
-    let started = Instant::now();
-    let mut local = MistralRs::open(&job.models()?.join("qwen3.5-4b"), "Qwen3.5-4B-Q4_K_M.gguf")
-        .context("load local translation model")?;
-    local.max_tokens = 512;
-    report.load_s = since(started);
+    use inference::llm::{LanguageModel, claude_cli::ClaudeCli, mistral_rs::MistralRs};
+    use onscreen_text::translate::{TranslationInput, translate};
+    use std::cell::Cell;
+    let models = job.models()?;
+    let load_s = Cell::new(0.0);
+    // The local model loads only for occurrences Claude leaves, so its load time is measured
+    // where it happens.
+    let mut open_local = || -> onscreen_text::TextResult<Box<dyn LanguageModel>> {
+        let started = Instant::now();
+        let mut local = MistralRs::open(&models.join("qwen3.5-4b"), "Qwen3.5-4B-Q4_K_M.gguf")?;
+        local.max_tokens = 512;
+        load_s.set(since(started));
+        Ok(Box::new(local))
+    };
     let mut claude = ClaudeCli::new(&job.settings().llm_model, job.work.claude_cwd());
     let dialogue = work_dir::read_json(&job.work.cues())?;
     let corrections = corrections(job)?;
@@ -147,12 +156,18 @@ fn translate(
         settings: &job.settings().onscreen_text,
         corrections: &corrections,
         excluded_reference: Some(&own_output),
+        parallel_calls: job.settings().llm_processes,
     };
-    let prepared = prepare(document, &input, &mut local, progress)
-        .context("translate visible Japanese locally")?;
-    drop(local);
-    finish(document, &input, prepared, Some(&mut claude), progress)
-        .context("verify uncertain visible Japanese")
+    translate(
+        document,
+        &input,
+        &mut open_local,
+        Some(&mut claude),
+        progress,
+    )
+    .context("translate visible Japanese")?;
+    report.load_s = load_s.get();
+    Ok(())
 }
 
 #[cfg(not(feature = "mistralrs"))]

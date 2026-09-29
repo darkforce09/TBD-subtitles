@@ -383,3 +383,42 @@ one speaker when one of them is a short interjection, and a cue may start before
 [subtitle style rules](/documentation/architecture/subtitle_style_rules.md#speakers) say so.
 
 **Supersedes:** none.
+
+### 2026-09-29 — On-screen text is found by sampled screening with bisected boundaries and read once per event by Claude vision
+
+**Context:** The first visual scan decoded every 1080p frame over a pipe, hashed 6.2 MB per frame
+and ran the server PP-OCRv5 detector on each new frame at 50–70 ms, so a 44,489-frame episode
+(Dressrosa 11: H.264 8-bit, 24 fps) took about 50 minutes; `FrameStream` also ran
+`ffprobe -show_frames` beside the decoder, a second single-threaded decode, and tracking decoded
+the video a third time for per-frame optical flow. Translation ran Qwen on every occurrence
+before any Claude call. The owner set a budget of six minutes for 50,000 frames (139 frames per
+second) with frame-exact timing, and asked that Claude Sonnet read, translate and place each
+distinct text event once rather than once per frame, seeing the whole frame so no writing is left
+out. Packets equal frames on the owner's files, and the CPU decodes a scaled copy at about 1,470
+frames per second (see the shot-change entry above), so NVDEC is not needed.
+
+**Decision:** Detection streams a 640-wide proxy of every frame with `-skip_loop_filter all`,
+timed by a packet table from `ffprobe -show_packets` sorted into presentation order; a frame
+count that differs from the packet count fails the step. The detector screens coarse samples
+only, every `round(fps / 2)` frames plus the first and last frame of every shot, eight samples
+per predictor call, reusing detections for near-duplicate samples. When a region appears or
+vanishes between two samples, a bisection over the ring buffer of frames between them finds the
+exact frame in at most `ceil(log2(step))` probes, with pending transitions probed together. Each
+occurrence keeps one observed frame per sample or boundary, tiled so its end is the next
+observation's time, and records a keyframe: the observed frame nearest its midpoint, fetched at
+full resolution by a seek, detected again for its exact quad and crop, and saved as a 1280-wide
+whole-frame still. Tracking checks that the sampled quads stay within tolerance of the keyframe
+quad and no longer decodes video. Translation asks Claude first, one call per keyframe frame with
+the whole-frame still and the full-resolution crops of its regions, returning every region's
+Japanese, English, confidence and box plus any other writing on the frame; the local Qwen model
+loads only for what Claude leaves unanswered.
+
+**Consequences:** Writing visible for fewer frames than the sample step that falls between two
+samples and touches no shot boundary is missed; a sign shorter than half a second is found only
+when a sample or cut lands on it. Moving signs use nearby placement instead of a tracked
+replacement mask. Other writing that Claude reports on a keyframe takes the surrounding event's
+timing and is flagged for review. A file whose packets do not map one to one onto frames fails the
+detection step instead of guessing timestamps. Detection, tracking and translation are at
+revisions 3, 2 and 7.
+
+**Supersedes:** none.

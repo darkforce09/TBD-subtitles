@@ -83,6 +83,7 @@ impl Fixture {
             warnings: vec![],
             reviewed: false,
             rendered: Some(true),
+            keyframe: None,
         };
         Session {
             work: self.root.join(format!("work-{index}")),
@@ -91,6 +92,8 @@ impl Fixture {
             draft: Some(TextEdit::from_occurrence(&occurrence)),
             document: TextDocument {
                 review_warnings: Vec::new(),
+                proxy_width: 0,
+                sample_step: 0,
                 width: 1920,
                 height: 1080,
                 decoded_frames: 240,

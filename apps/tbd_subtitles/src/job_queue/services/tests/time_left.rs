@@ -28,7 +28,7 @@ fn a_new_job_has_the_pilot_audio_time_and_initial_visual_time_left() {
     p.duration_s = Some(PILOT_VIDEO_S);
     let (left, share) = estimate(&p, &pilot_rates(), now).expect("estimate");
     let pilot: f64 = PILOT.iter().map(|(_, s)| s).sum();
-    let initial_visual = PILOT_VIDEO_S * 2.62;
+    let initial_visual = PILOT_VIDEO_S * 0.82;
     assert!(
         (left - pilot - initial_visual).abs() < 0.01,
         "{left} vs audio {pilot} and visual {initial_visual}"
@@ -40,7 +40,7 @@ fn a_new_job_has_the_pilot_audio_time_and_initial_visual_time_left() {
 fn every_visual_step_has_a_positive_estimate_without_measured_history() {
     let now = Instant::now();
     for (step, seconds_for_thousand_seconds) in [
-        (StepName::TextDetect, 2000.0),
+        (StepName::TextDetect, 200.0),
         (StepName::TextRead, 150.0),
         (StepName::TextTrack, 250.0),
         (StepName::TextTranslate, 200.0),

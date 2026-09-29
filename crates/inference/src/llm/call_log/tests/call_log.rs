@@ -81,3 +81,37 @@ fn a_failed_call_keeps_what_was_printed_and_why() {
     assert_eq!(call.error.as_deref(), Some("claude exited 1: overloaded"));
     assert_eq!(call.cost_usd, None);
 }
+
+#[test]
+fn image_payloads_are_replaced_by_their_size_in_the_exchange() {
+    let line = serde_json::json!({
+        "type": "user",
+        "message": {"role": "user", "content": [
+            {"type": "text", "text": "read this"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "QUJDRA=="}}
+        ]},
+        "parent_tool_use_id": null
+    })
+    .to_string();
+    let elided = without_image_data(&line);
+    assert!(!elided.contains("QUJDRA=="));
+    assert!(elided.contains("[8 base64 bytes]"));
+    assert!(elided.contains("read this"));
+    assert_eq!(without_image_data("U0012 hello"), "U0012 hello");
+    let schema = serde_json::json!({"type": "object"});
+    let sent = Sent {
+        model: "sonnet",
+        system: "s",
+        message: &line,
+        schema: &schema,
+    };
+    let call = exchange(
+        "1-1",
+        "",
+        &sent,
+        Duration::from_secs(1),
+        &Err(LlmError("x".into())),
+        "",
+    );
+    assert!(call.message.contains("[8 base64 bytes]"));
+}

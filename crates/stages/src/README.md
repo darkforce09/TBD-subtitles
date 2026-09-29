@@ -8,7 +8,7 @@ reads its inputs from the work directory, calls it, and writes what it returns.
 
 ```text
 crates/stages/src/
-├── onscreen_text/  local OCR, motion tracking, translation and ASS presentation
+├── onscreen_text/  sampled text detection, local OCR, keyframe geometry checks, translation and ASS presentation
 ├── adjudication/  the language model settles the sheet, re-asks the unsure, chooses sound cues
 ├── alignment/     forced alignment of the final text against the vocal stem, with fallbacks
 ├── asr/           each speech engine over the chunk plan: words with times and confidences

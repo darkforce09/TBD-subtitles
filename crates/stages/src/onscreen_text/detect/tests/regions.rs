@@ -1,5 +1,6 @@
 use super::*;
 use image::Rgb;
+use job_model::onscreen::Point;
 use job_model::outputs::ShotCut;
 
 fn rectangle(left: f64, top: f64, width: f64, height: f64) -> Quad {
@@ -200,6 +201,21 @@ fn brief_occurrences_preserve_exact_frame_intervals_and_cuts_break_continuity() 
 }
 
 #[test]
+fn a_later_observation_ends_the_previous_frame_where_it_starts() {
+    let image = lettering(256, 40);
+    let observed = observation(&image, rectangle(0.0, 0.0, 256.0, 40.0));
+    let mut document = TextDocument::default();
+    let index = start_occurrence(&mut document, 2.0, observed.confidence);
+    let item = &mut document.occurrences[index];
+    append_observation(item, &observed, 2.0, 2.0417);
+    append_observation(item, &observed, 2.5, 2.5417);
+    let times: Vec<_> = item.frames.iter().map(|f| (f.time_s, f.end_s)).collect();
+    assert_eq!(times, [(2.0, 2.5), (2.5, 2.5417)]);
+    assert_eq!((item.start_s, item.end_s), (2.0, 2.5417));
+    assert_eq!(item.crops, [PathBuf::from("visual/crops/text-000001.png")]);
+}
+
+#[test]
 fn the_occurrence_cap_allows_continuations_but_never_new_occurrences() {
     assert!(check_limits(OBSERVATION_LIMIT, OCCURRENCE_LIMIT, false).is_ok());
     assert!(check_limits(OBSERVATION_LIMIT, OCCURRENCE_LIMIT, true).is_err());
@@ -208,11 +224,7 @@ fn the_occurrence_cap_allows_continuations_but_never_new_occurrences() {
 }
 
 #[test]
-fn texture_on_the_border_rejects_the_surface_and_signatures_stay_bounded() {
-    let mut image = RgbImage::from_pixel(100, 40, Rgb([240; 3]));
-    assert_eq!(simple_surface(&image), Some([240; 3]));
-    image.put_pixel(0, 20, Rgb([20; 3]));
-    assert_eq!(simple_surface(&image), None);
+fn signatures_stay_bounded() {
     for (width, height) in [(2048, 48), (48, 2048), (1000, 1000), (20, 10)] {
         let signature = signature(&RgbImage::new(width, height));
         assert!(signature.width().max(signature.height()) <= 768);
@@ -222,53 +234,9 @@ fn texture_on_the_border_rejects_the_surface_and_signatures_stay_bounded() {
 }
 
 #[test]
-fn perspective_rectification_recovers_the_lettering_plane() {
-    let original = lettering(192, 48);
-    let plane = rectangle(0.0, 0.0, 191.0, 47.0);
-    let sign = Quad([
-        Point { x: 40.0, y: 20.0 },
-        Point { x: 235.0, y: 65.0 },
-        Point { x: 216.0, y: 124.0 },
-        Point { x: 30.0, y: 82.0 },
-    ]);
-    let transform = geometry::quad_to_quad(plane, sign).unwrap();
-    let projection =
-        Projection::from_matrix(std::array::from_fn(|i| transform[(i / 3, i % 3)] as f32)).unwrap();
-    let mut scene = RgbImage::from_pixel(280, 150, Rgb([240; 3]));
-    warp_into(
-        &original,
-        &projection,
-        Interpolation::Bilinear,
-        Rgb([240; 3]),
-        &mut scene,
-    );
-    // This pixel lies outside the sign, but on its raw axis-aligned crop border.
-    scene.put_pixel(30, 20, Rgb([0; 3]));
-    let restored = imageops::resize(&crop(&scene, sign), 192, 48, imageops::FilterType::Triangle);
-    let error = original
-        .as_raw()
-        .iter()
-        .zip(restored.as_raw())
-        .map(|(a, b)| u64::from(a.abs_diff(*b)))
-        .sum::<u64>() as f64
-        / original.as_raw().len() as f64;
-    assert!(error < 15.0, "rectified average error {error}");
-    let raw = imageops::resize(
-        &axis_crop(&scene, sign),
-        192,
-        48,
-        imageops::FilterType::Triangle,
-    );
-    let raw_error = original
-        .as_raw()
-        .iter()
-        .zip(raw.as_raw())
-        .map(|(a, b)| u64::from(a.abs_diff(*b)))
-        .sum::<u64>() as f64
-        / original.as_raw().len() as f64;
-    assert!(
-        raw_error > error * 2.0,
-        "raw {raw_error}, rectified {error}"
-    );
-    assert_eq!(simple_surface(&axis_crop(&scene, sign)), None);
+fn overlap_is_intersection_over_union_of_the_bounds() {
+    let a = rectangle(0.0, 0.0, 100.0, 20.0);
+    assert!((overlap(a, a) - 1.0).abs() < 1e-9);
+    assert!((overlap(a, rectangle(50.0, 0.0, 100.0, 20.0)) - 1.0 / 3.0).abs() < 1e-9);
+    assert_eq!(overlap(a, rectangle(200.0, 0.0, 100.0, 20.0)), 0.0);
 }

@@ -58,10 +58,10 @@ and peak memory in the job report.
 | alignment | 7 | worker, `tbd-subtitles` (ONNX Runtime) | `aligned.json` |
 | review | 7 | worker, `tbd-subtitles` (ONNX Runtime on the CPU) | `reviewed.json` |
 | cues | 9 | job runner | `cues.json` |
-| text_detect | on-screen text | worker, `tbd-subtitles` (ONNX Runtime) | `visual/text_detect.json`, representative crops |
+| text_detect | on-screen text | worker, `tbd-subtitles` (ONNX Runtime; FFmpeg proxy stream and stills) | `visual/text_detect.json`, representative crops, keyframe stills |
 | text_read | on-screen text | worker, `tbd-subtitles` (ONNX Runtime) | `visual/text_read.json`, reading cache |
-| text_track | on-screen text | worker, `tbd-subtitles` (CPU) | `visual/text_track.json` |
-| text_translate | on-screen text | worker, `tbd-subtitles-llm` (mistral.rs; optional `claude`) | `visual/text_translate.json`, translation cache |
+| text_track | on-screen text | worker, `tbd-subtitles` (CPU, no decoding) | `visual/text_track.json` |
+| text_translate | on-screen text | worker, `tbd-subtitles-llm` (`claude` children first; mistral.rs for the rest) | `visual/text_translate.json`, translation cache |
 | text_review | on-screen text | job runner | `visual/text_review.json` |
 | text_typeset | on-screen text | worker, `tbd-subtitles` (CPU) | `visual/text_typeset.json`, `visual/events.ass` |
 | qc | 10 | job runner | `qc.json` |
@@ -145,8 +145,9 @@ and peak memory in the job report.
 
 ## 6. Adjudication
 
-- Backend: headless `claude -p` (Sonnet) with a JSON schema, eight processes at once; a local
-  model through mistral.rs serves the visual translation worker. Audio adjudication uses Claude.
+- Backend: headless `claude -p` (Sonnet) with a JSON schema, eight processes at once; the visual
+  translation worker asks the same backend about each keyframe first and loads a local model
+  through mistral.rs only for what it leaves. Audio adjudication uses Claude.
   Input: the diff sheet and the series glossary (names, attacks, places, and alias traps
   such as Lucy vs Luffy; the One Piece glossary is built in and used by default). The model never
   sees or changes timings.

@@ -33,8 +33,7 @@ serde_json = "1"
 # Pixel buffers, crop files and perspective rectification for visible writing.
 image = { version = "0.25", default-features = false, features = ["png"] }
 imageproc = { version = "0.26", default-features = false }
-# Pure-Rust motion tracking and robust geometric fitting.
-optical-flow-lk = "=0.3.1"
+# Pure-Rust robust geometric fitting.
 nalgebra = "0.34"
 fontdb = "0.23"
 ttf-parser = "0.25"

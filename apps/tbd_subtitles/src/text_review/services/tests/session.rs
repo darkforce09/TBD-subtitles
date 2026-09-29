@@ -81,6 +81,8 @@ impl Fixture {
             &work.text(StepName::TextTypeset),
             &TextDocument {
                 review_warnings: Vec::new(),
+                proxy_width: 0,
+                sample_step: 0,
                 width: 1920,
                 height: 1080,
                 decoded_frames: 720,
@@ -130,6 +132,7 @@ fn occurrence(id: &str) -> TextOccurrence {
         warnings: vec!["Check text".into()],
         reviewed: false,
         rendered: Some(true),
+        keyframe: None,
     }
 }
 

@@ -2,9 +2,12 @@
 //!
 //! **Role:** expose PP-OCRv5 detection and recognition with a manga-ocr second reading.
 //! **Position:** inference backend used inside the isolated visual GPU workers.
-//! **Signals and state:** two bounded ONNX predictors and a lazily opened manga reader.
+//! **Signals and state:** two bounded ONNX predictors and a lazily opened manga reader. The one
+//! detector screens batches of equal-sized proxy frames at the 0.3 box score and inspects single
+//! full-resolution frames at 0.5.
 //! **Invariants:** CUDA registration fails explicitly; uncertain readings retain low confidence;
-//! models are already exported and downloaded through the pinned model store.
+//! a screen returns one region list per image in input order; models are already exported and
+//! downloaded through the pinned model store.
 
 mod manga;
 
@@ -14,11 +17,26 @@ use std::sync::OnceLock;
 use image::RgbImage;
 use job_model::onscreen::{Point, Quad};
 use oar_ocr::core::config::OrtSessionConfig;
+use oar_ocr::domain::tasks::Detection;
 use oar_ocr::predictors::{TextDetectionPredictor, TextRecognitionPredictor};
 
 pub use manga::MangaReader;
 
 pub type OcrError = Box<dyn std::error::Error + Send + Sync>;
+
+/// The box score a region needs to count in a screen; the predictor drops weaker boxes.
+const SCREEN_SCORE: f64 = 0.3;
+/// The box score a region needs in the exact single-frame pass.
+const DETECT_SCORE: f64 = 0.5;
+
+/// Text region detection on whole frames: a cheap presence screen and an exact pass.
+pub trait TextDetection {
+    /// Every region scoring at least 0.3 on each image, one list per image in input order, from
+    /// one predictor call.
+    fn screen_batch(&mut self, images: &[RgbImage]) -> Result<Vec<Vec<(Quad, f64)>>, OcrError>;
+    /// Regions scoring at least 0.5 on one image.
+    fn detect(&mut self, image: &RgbImage) -> Result<Vec<(Quad, f64)>, OcrError>;
+}
 
 /// A PP-OCRv5 detector loaded once for the visual detection worker.
 pub struct OcrDetector {
@@ -28,17 +46,48 @@ pub struct OcrDetector {
 impl OcrDetector {
     pub fn open(models_root: &Path) -> Result<Self, OcrError> {
         strict_cuda_environment()?;
+        // One predictor keeps every box a screen needs; the exact pass applies its own floor.
         let predictor = TextDetectionPredictor::builder()
             .score_threshold(0.3)
-            .box_threshold(0.5)
+            .box_threshold(SCREEN_SCORE as f32)
             .unclip_ratio(1.5)
             .max_candidates(1000)
             .with_ort_config(OrtSessionConfig::new().with_intra_threads(4))
             .build(models_root.join("pp-ocrv5/det.onnx"))?;
         Ok(Self { predictor })
     }
+}
 
-    pub fn detect(&mut self, image: &RgbImage) -> Result<Vec<(Quad, f64)>, OcrError> {
+impl TextDetection for OcrDetector {
+    fn screen_batch(&mut self, images: &[RgbImage]) -> Result<Vec<Vec<(Quad, f64)>>, OcrError> {
+        let Some(first) = images.first() else {
+            return Ok(Vec::new());
+        };
+        for image in images {
+            check_image(image)?;
+            if image.dimensions() != first.dimensions() {
+                return Err("screening batches need equal image sizes".into());
+            }
+        }
+        let output = self.predictor.predict(images.to_vec())?;
+        if output.detections.len() != images.len() {
+            return Err("OCR returned a different number of images".into());
+        }
+        let screened = output
+            .detections
+            .into_iter()
+            .map(|detections| regions(detections, SCREEN_SCORE))
+            .collect::<Result<Vec<_>, _>>()?;
+        tracing::debug!(
+            model = "PP-OCRv5 detector",
+            images = screened.len(),
+            regions = screened.iter().map(Vec::len).sum::<usize>(),
+            "OCR screening"
+        );
+        Ok(screened)
+    }
+
+    fn detect(&mut self, image: &RgbImage) -> Result<Vec<(Quad, f64)>, OcrError> {
         check_image(image)?;
         let output = self.predictor.predict(vec![image.clone()])?;
         let detections = output
@@ -46,26 +95,33 @@ impl OcrDetector {
             .into_iter()
             .next()
             .ok_or("OCR returned no image")?;
-        let mut regions = Vec::with_capacity(detections.len());
-        for detection in detections {
-            if detection.bbox.points.len() != 4 {
-                return Err("OCR detector returned a non-quadrilateral text region".into());
-            }
-            let quad = Quad(std::array::from_fn(|i| Point {
-                x: f64::from(detection.bbox.points[i].x),
-                y: f64::from(detection.bbox.points[i].y),
-            }));
-            if quad.valid() && detection.score.is_finite() {
-                regions.push((quad, f64::from(detection.score).clamp(0.0, 1.0)));
-            }
-        }
+        let found = regions(detections, DETECT_SCORE)?;
         tracing::debug!(
             model = "PP-OCRv5 detector",
-            regions = regions.len(),
+            regions = found.len(),
             "OCR detection"
         );
-        Ok(regions)
+        Ok(found)
     }
+}
+
+/// The valid quadrilaterals scoring at least `min_score`, their scores clamped to 0..=1.
+fn regions(detections: Vec<Detection>, min_score: f64) -> Result<Vec<(Quad, f64)>, OcrError> {
+    let mut kept = Vec::with_capacity(detections.len());
+    for detection in detections {
+        if detection.bbox.points.len() != 4 {
+            return Err("OCR detector returned a non-quadrilateral text region".into());
+        }
+        let quad = Quad(std::array::from_fn(|i| Point {
+            x: f64::from(detection.bbox.points[i].x),
+            y: f64::from(detection.bbox.points[i].y),
+        }));
+        let score = f64::from(detection.score);
+        if quad.valid() && score.is_finite() && score >= min_score {
+            kept.push((quad, score.clamp(0.0, 1.0)));
+        }
+    }
+    Ok(kept)
 }
 
 /// A primary recognizer with an independent local reading for difficult crops.

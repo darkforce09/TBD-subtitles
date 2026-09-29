@@ -159,9 +159,13 @@ const REVISIONS: &[(StepName, u32)] = &[
     (StepName::Qc, 5),
     // ASS output combines dialogue and tracked English text.
     (StepName::Output, 2),
-    (StepName::TextDetect, 2),
+    // Sampled screening with bisected boundaries and one keyframe per occurrence.
+    (StepName::TextDetect, 3),
     (StepName::TextRead, 3),
-    (StepName::TextTranslate, 6),
+    // Sampled geometry replaces per-frame optical flow.
+    (StepName::TextTrack, 2),
+    // Claude reads every keyframe first; the local model answers what it leaves.
+    (StepName::TextTranslate, 7),
     (StepName::TextReview, 2),
     (StepName::TextTypeset, 2),
 ];
@@ -243,7 +247,8 @@ pub fn outputs(step: StepName, work: &WorkDir, video: &Path, format: OutputForma
     }
 }
 
-/// Check declared outputs and the representative crops required to resume text reading.
+/// Check declared outputs, the representative crops and the keyframe stills required to resume
+/// text reading and translation.
 pub fn artifacts_valid(step: StepName, work: &WorkDir, video: &Path, format: OutputFormat) -> bool {
     if !outputs(step, work, video, format)
         .iter()
@@ -262,6 +267,12 @@ pub fn artifacts_valid(step: StepName, work: &WorkDir, video: &Path, format: Out
     #[derive(serde::Deserialize)]
     struct CropArtifacts {
         crops: Vec<PathBuf>,
+        #[serde(default)]
+        keyframe: Option<KeyframeArtifact>,
+    }
+    #[derive(serde::Deserialize)]
+    struct KeyframeArtifact {
+        image: PathBuf,
     }
     let Ok(file) = std::fs::File::open(work.text(step)) else {
         return false;
@@ -271,17 +282,22 @@ pub fn artifacts_valid(step: StepName, work: &WorkDir, video: &Path, format: Out
     else {
         return false;
     };
+    let present = |path: &PathBuf| {
+        path.components().all(|part| {
+            matches!(
+                part,
+                std::path::Component::Normal(_) | std::path::Component::CurDir
+            )
+        }) && std::fs::metadata(work.root().join(path))
+            .is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
+    };
     artifacts.occurrences.iter().all(|item| {
         !item.crops.is_empty()
-            && item.crops.iter().all(|crop| {
-                crop.components().all(|part| {
-                    matches!(
-                        part,
-                        std::path::Component::Normal(_) | std::path::Component::CurDir
-                    )
-                }) && std::fs::metadata(work.root().join(crop))
-                    .is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
-            })
+            && item.crops.iter().all(present)
+            && item
+                .keyframe
+                .as_ref()
+                .is_none_or(|keyframe| present(&keyframe.image))
     })
 }
 

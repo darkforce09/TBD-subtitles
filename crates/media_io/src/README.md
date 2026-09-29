@@ -8,20 +8,22 @@ and `MediaError`.
 
 ```text
 crates/media_io/src/
-├── video_frames/  bounded RGB frame streaming paired with source presentation timestamps
 ├── lib.rs         the crate root: the programs to run, the error type and the module list
 ├── pcm_stream/    FFmpeg decoding audio to 32-bit float PCM, read in fixed-size chunks
 ├── preview/       FFmpeg command lines for a clip: its sound with a silence pad, and its frames
 ├── probe/         ffprobe's JSON for a video, and the choice of the English audio track
 ├── shot_changes/  FFmpeg's `scdet` scan: the times of the shot changes that cue timing snaps to
-└── tests/         `lib.rs`'s own tests: `Programs::beside` picking the bundled pair or falling back
+├── tests/         `lib.rs`'s own tests: `Programs::beside` picking the bundled pair or falling back
+└── video_frames/  bounded RGB frame streaming paired with source presentation timestamps
 ```
 
 ## How it works
 
 The three modules serve the probe and decode stage: `probe` is for the streams, the frame rate
 and the English track; `pcm_stream` for the audio at 16 kHz mono and 44.1 kHz stereo; and
-`shot_changes` for a second FFmpeg process that scans the cuts. `Programs` names the `ffmpeg` and
+`shot_changes` for a second FFmpeg process that scans the cuts. The visible-text stages read
+`video_frames`: RGB frames paired with a presentation timeline taken from the packet table before
+decoding, and single stills at a timeline time. `Programs` names the `ffmpeg` and
 `ffprobe` to run: the bare names on the `PATH` by default, or the pair bundled at
 `<exe_dir>/ffmpeg/` when `Programs::beside`/`beside_current_exe` finds both there (`bundled` says
 which). Every failure is a `MediaError`: the program could not run, exited non-zero, printed
@@ -33,6 +35,9 @@ something unreadable, or the video has no usable audio track.
   write_f32_file, F32FileReader, F32FileWriter}`, `shot_changes::{scan, parse}`,
   `Programs` (with `beside` and `beside_current_exe`) and `MediaError`: for `crates/stages/`,
   `crates/pipeline/`, `apps/tbd_subtitles/`, `tools/stack_spike/` and the `probe_decode` stage.
+- `video_frames::{FrameStream, VideoFrame, Decode}` (`FrameStream::open`, `timeline`,
+  `next_frame`, `finish`) and `video_frames::still::still`: for the visible-text stages in
+  `crates/stages/`.
 
 ## Boundaries
 

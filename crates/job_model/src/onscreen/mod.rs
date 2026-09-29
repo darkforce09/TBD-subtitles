@@ -108,6 +108,17 @@ pub struct TextOccurrence {
     /// Identity of the unedited observation, preserved after review trims or extends its frames.
     #[serde(default)]
     pub source_fingerprint: Option<String>,
+    /// The observed frame that represents the occurrence and the whole-frame still taken there.
+    #[serde(default)]
+    pub keyframe: Option<TextKeyframe>,
+}
+
+/// One observed frame of an occurrence with its downscaled whole-frame still, relative to the
+/// job directory, for image requests that need the surrounding picture.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextKeyframe {
+    pub time_s: f64,
+    pub image: PathBuf,
 }
 
 impl TextOccurrence {
@@ -149,6 +160,12 @@ pub struct TextDocument {
     /// Review diagnostics without a current occurrence, including orphaned corrections.
     #[serde(default)]
     pub review_warnings: Vec<String>,
+    /// Width of the screening copy the scan ran on; zero in documents from other sources.
+    #[serde(default)]
+    pub proxy_width: u32,
+    /// Frames between coarse samples; zero in documents from other sources.
+    #[serde(default)]
+    pub sample_step: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

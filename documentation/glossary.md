@@ -108,6 +108,12 @@ In code: `HandOff` in `apps/tbd_subtitles/src/core/single_instance.rs`.
 
 See: [automation](/documentation/features/automation.md#one-window)
 
+### Keyframe
+
+The one observed frame that stands for a text occurrence: the sampled frame nearest its midpoint,
+fetched at full resolution for its exact quad and crop, and saved as a 1280-wide whole-frame
+still that Claude sees with the crops. See: [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md).
+
 ### Hypothesis
 
 One speech engine's transcript of a stretch of audio.
@@ -129,6 +135,17 @@ Opening and ending theme songs.
 
 Speech that the backbone engine missed but at least two other engines heard; recovered as a new
 utterance.
+
+### Proxy frame
+
+A 640-wide copy of a source frame, decoded with deblocking skipped, that the visual scan screens
+for writing and bisects over; exact geometry comes from the full-resolution keyframe.
+
+### Sample step
+
+The number of frames between two screened proxy frames, `round(fps / 2)`; the first and last
+frame of every shot are screened as well, and writing shorter than the step that no sample or cut
+lands on is missed.
 
 ### SDH
 

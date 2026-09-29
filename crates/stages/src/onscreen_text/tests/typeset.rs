@@ -44,12 +44,15 @@ fn occurrence() -> TextOccurrence {
         warnings: Vec::new(),
         reviewed: false,
         rendered: None,
+        keyframe: None,
     }
 }
 
 fn document(text: TextOccurrence) -> TextDocument {
     TextDocument {
         review_warnings: Vec::new(),
+        proxy_width: 0,
+        sample_step: 0,
         width: 1920,
         height: 1080,
         decoded_frames: 48,

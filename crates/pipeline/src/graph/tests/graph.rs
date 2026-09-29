@@ -55,9 +55,10 @@ fn changed_steps_carry_their_revision_and_the_rest_are_at_one() {
     assert_eq!(revision(Cues), 3);
     assert_eq!(revision(Qc), 5);
     assert_eq!(revision(Output), 2);
-    assert_eq!(revision(TextDetect), 2);
+    assert_eq!(revision(TextDetect), 3);
     assert_eq!(revision(TextRead), 3);
-    assert_eq!(revision(TextTranslate), 6);
+    assert_eq!(revision(TextTrack), 2);
+    assert_eq!(revision(TextTranslate), 7);
     assert_eq!(revision(TextReview), 2);
     assert_eq!(revision(TextTypeset), 2);
     for step in StepName::ALL {
@@ -70,6 +71,7 @@ fn changed_steps_carry_their_revision_and_the_rest_are_at_one() {
                 | Output
                 | TextDetect
                 | TextRead
+                | TextTrack
                 | TextTranslate
                 | TextReview
                 | TextTypeset
@@ -256,4 +258,24 @@ fn empty_detection_and_unrelated_audio_outputs_need_no_crop_files() {
         Path::new("/source/video.mkv"),
         OutputFormat::Srt,
     ));
+}
+
+#[test]
+fn a_missing_keyframe_still_invalidates_detection_while_older_records_need_none() {
+    let fixture = ArtifactsFixture::new("keyframe");
+    let crop = fixture.0.root().join("visual/crops/first.png");
+    std::fs::write(&crop, b"representative crop").unwrap();
+    fixture.document(json!({"occurrences": [{"crops": ["visual/crops/first.png"]}]}));
+    assert!(fixture.valid(), "records without a keyframe stay valid");
+    fixture.document(json!({"occurrences": [{
+        "crops": ["visual/crops/first.png"],
+        "keyframe": {"time_s": 1.5, "image": "visual/keyframes/frame-00000036.png"}
+    }]}));
+    assert!(!fixture.valid(), "a referenced keyframe still must exist");
+    std::fs::create_dir_all(fixture.0.root().join("visual/keyframes")).unwrap();
+    let still = fixture.0.root().join("visual/keyframes/frame-00000036.png");
+    std::fs::write(&still, []).unwrap();
+    assert!(!fixture.valid(), "an empty still is not a keyframe");
+    std::fs::write(&still, b"whole-frame still").unwrap();
+    assert!(fixture.valid());
 }

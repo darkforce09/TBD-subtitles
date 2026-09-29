@@ -87,7 +87,7 @@ fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
 /// Seconds `step` is expected to take on `duration_s` of video.
 fn expected(rates: &Rates, step: StepName, duration_s: f64) -> f64 {
     let initial = match step {
-        StepName::TextDetect => 2.0,
+        StepName::TextDetect => 0.2,
         StepName::TextRead => 0.15,
         StepName::TextTrack => 0.25,
         StepName::TextTranslate => 0.2,

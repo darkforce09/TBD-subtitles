@@ -107,6 +107,7 @@ fn actual(expected: &Expected) -> TextOccurrence {
         warnings: vec![],
         reviewed: false,
         rendered: Some(true),
+        keyframe: None,
     }
 }
 
@@ -115,6 +116,8 @@ fn sample() -> (TextDocument, Annotations) {
     (
         TextDocument {
             review_warnings: Vec::new(),
+            proxy_width: 0,
+            sample_step: 0,
             width: 1920,
             height: 1080,
             decoded_frames: 48,
@@ -273,11 +276,7 @@ fn tracking_tolerance_scales_two_pixels_at_1080p_to_source_resolution() {
 fn stale_sample_geometry_cannot_pass_even_when_the_occurrence_times_match() {
     let (mut document, annotations) = sample();
     document.occurrences[0].frames.pop();
-    failure(
-        &document,
-        &annotations,
-        "no observation within one source frame",
-    );
+    failure(&document, &annotations, "no observation covering");
 }
 
 #[test]

@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use inference::{
     model_store,
-    ocr::{OcrDetector, OcrReader},
+    ocr::{OcrDetector, OcrReader, TextDetection},
 };
 use job_model::onscreen::*;
 use std::ops::ControlFlow;
@@ -179,6 +179,8 @@ fn recognize(path: &std::path::Path, output: &std::path::Path) -> Result<()> {
     let image = image::open(path)?.to_rgb8();
     let mut document = TextDocument {
         review_warnings: Vec::new(),
+        proxy_width: 0,
+        sample_step: 0,
         width: image.width(),
         height: image.height(),
         decoded_frames: 1,
@@ -197,6 +199,7 @@ fn recognize(path: &std::path::Path, output: &std::path::Path) -> Result<()> {
         crop.save(output.join(&file))?;
         document.occurrences.push(TextOccurrence {
             source_fingerprint: None,
+            keyframe: None,
             id: format!("text-{index:04}"),
             start_s: 0.0,
             end_s: 1.0,

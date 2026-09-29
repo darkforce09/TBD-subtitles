@@ -52,6 +52,7 @@ fn occurrence() -> TextOccurrence {
         reviewed: false,
         rendered: None,
         source_fingerprint: None,
+        keyframe: None,
     }
 }
 

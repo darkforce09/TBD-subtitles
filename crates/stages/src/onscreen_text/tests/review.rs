@@ -34,6 +34,7 @@ fn occurrence() -> TextOccurrence {
         reviewed: false,
         rendered: None,
         source_fingerprint: None,
+        keyframe: None,
     }
 }
 
@@ -44,6 +45,8 @@ fn document(text: TextOccurrence) -> TextDocument {
         decoded_frames: 48,
         occurrences: vec![text],
         review_warnings: Vec::new(),
+        proxy_width: 0,
+        sample_step: 0,
     }
 }
 

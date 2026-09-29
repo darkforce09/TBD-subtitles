@@ -7,7 +7,7 @@ prompt, the message, the schema and the answer) for the app's log window.
 
 ```text
 crates/inference/src/llm/call_log/
-├── mod.rs  `purpose` and its guard, `log_call`, `exchange`, `Sent` and `EXCHANGE_TARGET`
+├── mod.rs  `purpose` and its guard, `log_call`, `exchange`, `without_image_data`, `Sent` and `EXCHANGE_TARGET`
 └── tests/  unit tests of the purpose stack, and of an answered and a failed call's exchange
 ```
 
@@ -27,6 +27,8 @@ After every call a backend calls `log_call`, which numbers the call `<pid>-<n>` 
 The app routes the exchange to its log window only: its stderr and log-file outputs drop the
 `model_exchange` target, and a worker process writes the exchange to its stdout, where the job
 runner picks it up.
+An image request keeps its text; every base64 image block in the logged message is replaced by its
+size, so a keyframe request never puts megabytes of pixels into the log window.
 
 ## Boundaries
 

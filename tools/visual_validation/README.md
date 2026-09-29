@@ -13,7 +13,7 @@ tools/visual_validation/
 
 ## How it works
 
-The tool downloads checksum-pinned models, recognizes owner-provided stills, extracts bounded pilot clips and compares production visual documents against independent annotations. Coverage, timing and tracking errors are measured separately from model confidence.
+The tool downloads checksum-pinned models, recognizes owner-provided stills, extracts bounded pilot clips and compares production visual documents against independent annotations. Coverage, timing and tracking errors are measured separately from model confidence. An annotated frame sample counts as observed when a document frame starts within one source frame of it or holds its geometry across it, since the scan keeps one observation per sample or boundary rather than one per frame.
 
 ## Getting started
 

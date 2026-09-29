@@ -133,8 +133,9 @@ Details: [Japanese on-screen text](/documentation/features/japanese_onscreen_tex
 within one source frame and accepted tracks stay within two pixels at 1080p. The owner accepts
 translated Dressrosa signs in VLC and the complete desktop review workflow. The owner selects a
 single full episode for the memory/time benchmark; a two-hour visual benchmark is not required.
-Missed faint text and false detections are accepted limitations. Dense scan performance remains
-open; selective scanning and whole-frame Claude inspection are discussion proposals only.
+Missed faint text and false detections are accepted limitations, as is writing shorter than the
+half-second sample step that no sample or cut lands on. The sampled scan with bisected boundaries
+and one Claude call per keyframe is built; its single-episode measurement is the open benchmark.
 
 ## Later
 

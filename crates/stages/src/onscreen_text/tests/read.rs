@@ -17,6 +17,7 @@ fn rectangle(left: f64, top: f64, right: f64, bottom: f64) -> Quad {
 fn occurrence(id: &str, text: &str, quad: Quad) -> TextOccurrence {
     TextOccurrence {
         source_fingerprint: None,
+        keyframe: None,
         id: id.into(),
         start_s: 1.0,
         end_s: 2.0,
@@ -60,6 +61,8 @@ fn ruby() -> TextOccurrence {
 fn document(occurrences: Vec<TextOccurrence>) -> TextDocument {
     TextDocument {
         review_warnings: Vec::new(),
+        proxy_width: 0,
+        sample_step: 0,
         width: 1301,
         height: 717,
         decoded_frames: 24,

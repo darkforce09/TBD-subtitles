@@ -5631,16 +5631,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
-name = "optical-flow-lk"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e96207e3a97af5e42dfe42a3579151efcc10a676bc6f9e841b4e80cb8be1baed"
-dependencies = [
- "image",
- "nalgebra 0.34.2",
-]
-
-[[package]]
 name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7687,7 +7677,6 @@ dependencies = [
  "job_model",
  "media_io",
  "nalgebra 0.34.2",
- "optical-flow-lk",
  "serde",
  "serde_json",
  "soundevents-dataset",

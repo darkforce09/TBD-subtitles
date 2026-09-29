@@ -2,10 +2,12 @@
 //! tools enabled.
 //!
 //! **Role:** run `claude -p` with the system prompt, the JSON Schema and the user message on
-//! stdin, and read `structured_output`, token counts and cost from its JSON result.
+//! stdin (plain text, or one stream-json message holding the text and then each PNG image), and
+//! read `structured_output`, token counts and cost from its JSON result.
 //!
-//! **Position:** a [`LanguageModel`] for the adjudication stage and Fix It; runs the program
-//! through `child_process` with a deadline, and with a cancel flag when one is given.
+//! **Position:** a [`LanguageModel`] for the adjudication stage and Fix It, and the image backend
+//! of the visual translation stage (crops and keyframes); runs the program through
+//! `child_process` with a deadline, and with a cancel flag when one is given.
 //!
 //! **Signals and state:** runs in an empty working folder with only project settings, so the
 //! owner's user-level hooks, plugins and MCP servers never reach the prompt. Resolves `claude` on
@@ -60,7 +62,21 @@ impl ClaudeCli {
         self
     }
 
-    /// Ask about one PNG crop, supplied as base64, with the same isolation and schema as text.
+    /// Ask about several PNG images (base64) in one user message, text first, images in order,
+    /// with the same isolation and schema as text. Without images it is the plain text call of
+    /// `complete_json`.
+    pub fn complete_images_json(
+        &mut self,
+        system: &str,
+        user: &str,
+        schema: &serde_json::Value,
+        pngs: &[String],
+    ) -> Result<Completion, LlmError> {
+        let (input, stream) = request_input(user, pngs);
+        self.complete_request(system, &input, schema, stream)
+    }
+
+    /// One image: the same as `complete_images_json` with a single element.
     pub fn complete_image_json(
         &mut self,
         system: &str,
@@ -68,7 +84,7 @@ impl ClaudeCli {
         schema: &serde_json::Value,
         png_base64: &str,
     ) -> Result<Completion, LlmError> {
-        self.complete_request(system, &image_input(user, png_base64), schema, true)
+        self.complete_images_json(system, user, schema, &[png_base64.to_owned()])
     }
 }
 
@@ -165,19 +181,29 @@ impl ClaudeCli {
     }
 }
 
-/// Build one newline-delimited SDK user message without giving the CLI file access.
-fn image_input(user: &str, png_base64: &str) -> String {
+/// What goes on stdin, and whether it is an SDK message stream: the plain user text when there
+/// is no image, else one user message holding the text and every image.
+fn request_input(user: &str, pngs: &[String]) -> (String, bool) {
+    if pngs.is_empty() {
+        (user.to_owned(), false)
+    } else {
+        (image_input(user, pngs), true)
+    }
+}
+
+/// Build one newline-delimited SDK user message, the text block followed by one image block per
+/// PNG in order, without giving the CLI file access.
+fn image_input(user: &str, pngs: &[String]) -> String {
+    let text = serde_json::json!({"type": "text", "text": user});
+    let images = pngs.iter().map(|png| {
+        serde_json::json!({"type": "image", "source": {
+            "type": "base64", "media_type": "image/png", "data": png
+        }})
+    });
+    let content: Vec<serde_json::Value> = std::iter::once(text).chain(images).collect();
     let request = serde_json::json!({
         "type": "user",
-        "message": {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": user},
-                {"type": "image", "source": {
-                    "type": "base64", "media_type": "image/png", "data": png_base64
-                }}
-            ]
-        },
+        "message": {"role": "user", "content": content},
         "parent_tool_use_id": null
     });
     format!("{request}\n")

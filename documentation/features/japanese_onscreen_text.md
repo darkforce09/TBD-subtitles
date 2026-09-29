@@ -8,9 +8,10 @@ visible Japanese writing. The source video stays unchanged. Pilot coverage, full
 resource limits, packaged playback and owner acceptance are not yet established by this document.
 
 The owner accepts missed faint text and false detections as current limitations. The AppImage
-is built and passes its host startup smoke check. Dense scanning remains slow; selective scanning
-and whole-frame Claude inspection are discussion proposals, not implemented behaviour. The
-single-episode benchmark, full GUI correction acceptance and VLC playback remain open.
+is built and passes its host startup smoke check. Detection screens sampled proxy frames and
+bisects the exact boundaries, and Claude reads each text event once from its keyframe; the
+single-episode benchmark that measures this, full GUI correction acceptance and VLC playback
+remain open.
 
 ## Where it lives
 
@@ -41,11 +42,11 @@ Settings → On-screen Text provides:
 
 - **Translate on-screen text**, enabled for new jobs. When enabled, the effective output format is
   ASS even if General selects SRT or WebVTT. The ASS also contains the job's ordinary subtitles.
-- **Local models first**, the translation policy. Local OCR and Qwen supply the initial result;
-  compatible reference wording and the optional Claude fallback can improve it.
-- **Claude fallback**, enabled by default. It uses the installed, signed-in Claude CLI, the
-  existing shared call limit, structured replies and image input for uncertain crops. There is no
-  paid API backend or automatic billing fallback.
+- **Claude fallback**, enabled by default. The installed, signed-in Claude CLI reads and
+  translates every detected text event once from its keyframe, under the existing shared call
+  limit with structured replies; local OCR and Qwen answer whatever it leaves. Off, or with the
+  CLI unavailable, the local models supply the result and compatible reference wording can
+  improve it. There is no paid API backend or automatic billing fallback.
 - **Reference subtitles**, an editable folder path. The reference loader reads ASS files directly
   in that folder; it does not recursively scan the media library. No path means no references.
 - **Model availability**, with Open Models and Download Missing. Missing models prevent a job
@@ -67,31 +68,35 @@ Dialogue cues -> Detect -> Read -> Track -> Translate -> Review -> Typeset -> QC
 
 | Step | Work and retained result |
 |---|---|
-| Detect | Streams source frames through FFmpeg with presentation timestamps. Identical consecutive frames reuse detections. Keeps representative, perspective-corrected crops and per-frame geometry; cuts or changed writing start new occurrences. |
+| Detect | Streams a 640-wide proxy of every frame through FFmpeg with packet presentation timestamps. Screens every `round(fps / 2)`-th frame plus the first and last frame of each shot with PP-OCRv5, and bisects the frames between two samples to the exact frame where writing appears or vanishes. Keeps one observed frame per sample or boundary, a keyframe still nearest the midpoint of each occurrence, and a full-resolution, perspective-corrected crop from that keyframe; cuts or changed writing start new occurrences. |
 | Read | Reads Japanese with PP-OCRv5 through oar-ocr, using manga-ocr for difficult crops. Consolidates compatible adjacent readings and groups conservative furigana evidence; uncertain readings remain flagged. |
-| Track | Checks motion with optical-flow-lk in both directions, robustly fits perspective and re-anchors against detections. Unreliable geometry gains review warnings. |
-| Translate | Translates distinct requests with Qwen3.5-4B, short dialogue context and the glossary. Uncertain crops can use Claude image verification after the local phase; compatible corrected occurrences consolidate before review. |
+| Track | Checks that every sampled quad stays within tolerance of the keyframe quad without decoding video. A moving or unverified surface gains a review warning and nearby placement. |
+| Translate | Asks Claude first, one call per keyframe frame with the whole-frame still and the crops of its regions, for each region's Japanese, English, confidence and box plus any other writing on the frame. Qwen3.5-4B, with short dialogue context and the glossary, loads only for occurrences Claude leaves unanswered; compatible corrected occurrences consolidate before review. |
 | Review | Checks a saved correction's source identity before applying the owner's English, timing and presentation independently of dialogue corrections. |
 | Typeset | Produces ASS text or vector glyph events, with stable typography and frame-specific geometry. Unsafe replacement uses nearby English with a review warning. |
 
-Qwen runs through mistral.rs in `tbd-subtitles-llm`, separate from the ONNX Runtime processes.
-Readings without Japanese script, or with OCR confidence below 0.5, bypass Qwen and remain
-unresolved pending optional image verification. This avoids translating unreliable OCR noise;
-the occurrence and its crop remain available for review.
-The shared GPU lock prevents simultaneous GPU stages. Local translation completes before up to
-four Claude image workers process uncertain crops, each loading one crop at a time. Duplicate
-requests share a cache lock; the existing Claude process cap, cancellation and call logging also
-apply. The local model handle is dropped before image verification, but that does not establish
-that the runtime releases its VRAM immediately. The model store downloads pinned exported models;
-there is no local model conversion.
+Claude image requests run as many at once as the job's `claude` process count, before any local
+model loads; requests for the same keyframe share a cache lock, and the existing Claude process
+cap, cancellation and call logging apply. Every hinted region must come back exactly once, or its
+occurrences fall to the local phase; a region whose box lands away from its hint is kept with a
+review warning; other writing Claude reports on the frame becomes a new occurrence with the
+surrounding event's timing, nearby placement and a review warning. Qwen runs through mistral.rs in
+`tbd-subtitles-llm`, separate from the ONNX Runtime processes, and only for occurrences without
+a valid Claude answer. Readings without Japanese script, or with OCR confidence below 0.5, bypass
+Qwen and remain unresolved. The shared GPU lock prevents simultaneous GPU stages. The model store
+downloads pinned exported models; there is no local model conversion.
 
-Detection compares each candidate with the occurrence's fixed first crop, rather than allowing
-small changes to accumulate against successive frames. Matching requires a unique association in
-both directions. The crop signature allows small alignment jitter but checks individual pixel
-differences, 8 by 8 cells and the whole crop, including its edges; a changed glyph in a long line
-or newly visible scrolling text can therefore split the occurrence. Perspective correction makes
-slanted crops upright for recognition. Surface-colour safety is measured on the original picture,
-so that correction cannot turn an unsafe background into permission to cover it.
+Detection samples the proxy stream at two frames per second and at every shot boundary, so
+writing visible for fewer frames than the sample step that falls between two samples and touches
+no cut is missed. Near-duplicate samples reuse the previous detections; the rest are screened
+eight at a time. Detection compares each candidate with the occurrence's fixed first signature,
+rather than allowing small changes to accumulate against successive samples. Matching requires a
+unique association in both directions. The signature allows small alignment jitter but checks
+individual pixel differences, 8 by 8 cells and the whole crop, including its edges; a changed
+glyph in a long line or newly visible scrolling text can therefore split the occurrence, and the
+bisection finds the exact frame of that change. Perspective correction makes slanted crops
+upright for recognition. Surface-colour safety is measured on the full-resolution keyframe, so
+that correction cannot turn an unsafe background into permission to cover it.
 
 Adjacent occurrences consolidate only when Japanese readings, geometry and timing agree, with at
 most one observed source-frame gap and no known cut or ambiguous match. Once translated, English
@@ -106,8 +111,10 @@ independent image verification: its local confidence is capped at 0.84. This con
 helps catch shortened compound names and qualifiers. Without available Claude verification it
 stays flagged and unrendered until reviewed; the check does not establish translation completeness.
 
-Frame buffers, thumbnails and preview streams are bounded. The scan fails explicitly beyond one
-million geometry observations or one hundred thousand occurrences. Each ASS event buffer has a
+Frame buffers, thumbnails and preview streams are bounded: the scan holds the frames between at
+most eight pending samples, four full-resolution stills and the packet table. The scan fails
+explicitly beyond one million geometry observations or one hundred thousand occurrences, and when
+the decoded frame count differs from the packet count. Each ASS event buffer has a
 128 MiB budget: oversized vector lettering for one occurrence uses a flagged nearby label, while
 an oversized combined buffer fails explicitly. These bounds do not guarantee a particular process
 memory peak or disk usage; retained crops, observations and caches occupy the job's work directory.
@@ -122,8 +129,8 @@ video. An absent folder falls back to local translation; a mismatched scene supp
 ASS can draw shapes, text and vector glyphs; it cannot recover artwork hidden behind the Japanese
 letters. Replacement is limited to surfaces whose measured colour and track pass the safety
 checks. Perspective lettering uses transformed glyph outlines rather than separately generated
-images. Each frame keeps its own geometry, so moving signs do not depend on copying one edited
-frame through the scene.
+images. A static surface keeps the keyframe's exact geometry through its whole interval; a sign
+that moves between samples uses nearby placement.
 
 Detailed backgrounds, transparency, uncertain occlusion or geometry that fails those checks keep
 the original picture and use nearby English with a warning. The replacement preference in Check
@@ -191,9 +198,10 @@ as the audio stages:
 |---|---|
 | `job.json` | Job settings, model location and stage fingerprints/measurements, including visual processing. |
 | `visual/text_detect.json` through `visual/text_typeset.json` | Typed `TextDocument` outputs: readings, tracks, provenance, warnings, source identity, presentation and rendered status, plus review warnings without a current occurrence. |
-| `visual/crops/` | Representative crops used by OCR, uncertain-image requests and review thumbnails. |
+| `visual/crops/` | Representative full-resolution crops from each keyframe, used by OCR, Claude image requests and review thumbnails. |
+| `visual/keyframes/` | One 1280-wide whole-frame still per keyframe frame, sent to Claude with the crops it holds. |
 | `visual/readings/` | Cached readings keyed by crop, OCR model pins and retry generation. |
-| `visual/translations/` | Cached structured replies keyed by request, model identity/pins and retry generation; image verification also includes crop content. |
+| `visual/translations/` | Cached structured replies keyed by request, model identity/pins and retry generation; a keyframe request also includes the still, its crops and the highest retry generation among its regions. |
 | `visual/corrections.json` | Per-occurrence `TextEdit` values with original-source fingerprints and retry requests; written atomically under `visual/corrections.json.lock`. |
 | `visual/events.ass` | Typeset visual events merged into the final ASS. |
 | `output.json` | The exported subtitle path and any backup or retired output. |
@@ -231,12 +239,12 @@ is outside ASS-only output; generative frame editing is not part of this impleme
 
 ## Decisions
 
-- Local models come first. The chosen OCR exports are documented by
-  [oar-ocr](https://github.com/GreatV/oar-ocr/blob/main/docs/models.md), and difficult Japanese
-  crops use [manga-ocr](https://github.com/kha-white/manga-ocr). Exports are pinned in the
-  repository's model manifest and downloaded without conversion.
-- The Rust [optical-flow-lk tracker](https://github.com/den59k/lucas-shi-rust) supports motion
-  estimation; the application adds consistency checks, fitting and detection anchors.
+- Local detection finds and times the writing; Claude reads it. The chosen OCR exports are
+  documented by [oar-ocr](https://github.com/GreatV/oar-ocr/blob/main/docs/models.md), and
+  difficult Japanese crops use [manga-ocr](https://github.com/kha-white/manga-ocr). Exports are
+  pinned in the repository's model manifest and downloaded without conversion.
+- Sampled screening with bisected boundaries and one Claude call per keyframe: the
+  [decision entry](/documentation/decisions/stack_and_pipeline.md#2026-09-29--on-screen-text-is-found-by-sampled-screening-with-bisected-boundaries-and-read-once-per-event-by-claude-vision).
 - [ASS positioning, transforms and vector drawing](https://aegisub.org/docs/latest/ass_tags/)
   keep the source video intact and allow one file to carry dialogue, sound cues and signs.
 - References contribute verified wording, never unchecked timing or placement from a different
