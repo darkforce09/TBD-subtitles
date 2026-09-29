@@ -9,6 +9,7 @@ tools use `child_process` alone.
 
 ```text
 crates/
+├── app_icon/          the application icon, painted in code as RGBA pixels at any square size
 ├── child_process/     running external programs with deadlines, process-group kills and drained pipes
 ├── inference/         the model backends behind traits, and the model store
 ├── job_model/         the serde contracts between stages: jobs, stage names, stage outputs, reports
@@ -26,6 +27,7 @@ The crates form layers, and a crate depends only on crates of a strictly lower l
 |---|---|---|
 | 0 | `job_model` | none (`serde` only) |
 | 0 | `child_process` | none (`libc` only) |
+| 0 | `app_icon` | none (the standard library only) |
 | 1 | `media_io` | `child_process`, `job_model` |
 | 1 | `inference` | `child_process`, `job_model` |
 | 1 | `subtitle_formats` | `job_model` |

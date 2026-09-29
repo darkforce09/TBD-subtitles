@@ -32,7 +32,8 @@ None: every module is private to the binary.
 
 ## Boundaries
 
-- Depends on: `child_process`, `inference`, `anyhow`, `clap`, `object`, `backhand`, `png`.
+- Depends on: `app_icon`, `child_process`, `inference`, `anyhow`, `clap`, `object`, `backhand`,
+  `png`.
 - Used by: nothing outside the binary.
 - Rules:
   - each step fails closed and names itself in the error (`step` in `main.rs`);

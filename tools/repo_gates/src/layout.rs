@@ -18,6 +18,7 @@ pub(crate) const PROJECT_INSTRUCTIONS: &str = "CLAUDE.md";
 pub(crate) const PRODUCT_LAYERS: &[(&str, u8)] = &[
     ("job_model", 0),
     ("child_process", 0),
+    ("app_icon", 0),
     ("media_io", 1),
     ("subtitle_formats", 1),
     ("inference", 1),
@@ -30,7 +31,10 @@ pub(crate) const PRODUCT_LAYERS: &[(&str, u8)] = &[
 /// The repository tools and the product crates each may depend on.
 pub(crate) const TOOL_DEPENDENCIES: &[(&str, &[&str])] = &[
     ("verification_core", &["child_process"]),
-    ("appimage_builder", &["child_process", "inference"]),
+    (
+        "appimage_builder",
+        &["app_icon", "child_process", "inference"],
+    ),
     ("repo_gates", &["verification_core"]),
     (
         "stack_spike",

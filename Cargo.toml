@@ -5,6 +5,7 @@ resolver = "3"
 members = [
     "apps/tbd_subtitles",
     "apps/tbd_subtitles_ggml",
+    "crates/app_icon",
     "crates/child_process",
     "crates/inference",
     "crates/job_model",

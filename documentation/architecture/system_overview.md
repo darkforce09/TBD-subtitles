@@ -57,6 +57,7 @@ apps/
 │                         the ONNX Runtime, FFmpeg and claude workers
 └── tbd_subtitles_ggml/   the ggml worker binary: the Whisper steps through CrispASR
 crates/
+├── app_icon/             the application icon, painted in code as RGBA pixels
 ├── child_process/        external programs with deadlines, process-group kills, drained pipes, and
 │                         death with their parent
 ├── inference/            backends behind traits: onnx (ort), ggml, candle, llm (claude CLI, mistral.rs),
@@ -75,7 +76,7 @@ tools/
 └── verification_core/    the fail-closed verdicts, patterns and reports the gates are written with
 ```
 
-Layering, lowest first: `job_model` and `child_process`; `media_io`, `subtitle_formats` and
+Layering, lowest first: `job_model`, `child_process` and `app_icon`; `media_io`, `subtitle_formats` and
 `inference`; `stages`; `pipeline`; the apps `tbd_subtitles` and `tbd_subtitles_ggml`. A crate
 depends only on crates of a lower layer, never a sibling (`cargo gates crate-layering`); a tool
 depends only on the crates listed for it in `tools/repo_gates/src/layout.rs`. Inside the app,

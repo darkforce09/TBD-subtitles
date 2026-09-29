@@ -1,0 +1,9 @@
+# The application icon, painted in code as RGBA pixels, so every binary that shows the icon draws
+# the same picture: the AppImage builder encodes it as a PNG. No dependencies.
+[package]
+name = "app_icon"
+description = "The TBD-subtitles icon, painted in code as RGBA pixels"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false

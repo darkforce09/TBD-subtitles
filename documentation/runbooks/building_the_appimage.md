@@ -49,6 +49,32 @@ runtime and FFmpeg archives.
 
    **Expected:** `tbd-subtitles <version>`.
 
+4. Re-import `dist/TBD-subtitles-x86_64.AppImage` into Gear Lever, then launch the app once from
+   the application menu.
+
+   The AppImage's desktop entry starts the app as `tbd-subtitles %F`, so videos opened with it
+   reach the app as arguments, and its `MimeType` line (`video/mp4`, `video/x-matroska`,
+   `video/webm`, `video/quicktime`, `video/x-msvideo`, `video/mp2t`, `video/x-m4v`) offers it
+   under "Open With" in the file manager. Each start as an AppImage also writes the Dolphin
+   service menu `~/.local/share/kio/servicemenus/tbd-subtitles.desktop` (under `$XDG_DATA_HOME`
+   when that is set), executable, as KDE requires: one action, "Generate subtitles", on every
+   video's right-click menu, which runs the AppImage named by `$APPIMAGE` as
+   `process --enqueue` with the chosen videos. The AppImage's icon is copied to
+   `~/.local/share/tbd-subtitles/tbd-subtitles.png` for the menu to show. Both are rewritten only
+   when their contents differ. Gear Lever keeps its own copy of the AppImage, under a path of its
+   own, so the first launch after a re-import points the menu at that copy.
+
+   **Expected:** right-clicking a video in Dolphin shows "Generate subtitles" with the app's
+   icon; `grep Exec= ~/.local/share/kio/servicemenus/tbd-subtitles.desktop` names the AppImage
+   Gear Lever holds.
+
+   To remove the service menu, delete that file (and the icon copy, if wanted); the next start
+   of the AppImage writes it again.
+
+   ```bash
+   rm ~/.local/share/kio/servicemenus/tbd-subtitles.desktop
+   ```
+
 ## Verify
 
 ```bash
@@ -76,6 +102,11 @@ pilot](/documentation/research/pilot_dressrosa_11.md) subtitle file shows the sa
 - **Settings → system check does not say "bundled" for FFmpeg or the runtime:** the AppImage was
   launched with its own binary run directly instead of through `AppRun`, or an old extracted
   `AppDir` is on `PATH` ahead of it; launch the `.AppImage` file itself.
+
+- **"Generate subtitles" is missing from Dolphin, or starts an AppImage that is gone:** the app
+  has not started as an AppImage since the last re-import, so the menu is missing or names the
+  earlier file. Launch the app once from the application menu; the menu then names the current
+  AppImage. Starting the binary from `target/` writes no menu.
 
 - **Where is the app's log when launched from Gear Lever?** Gear Lever drops stderr; the
   window writes its log to `~/.local/state/tbd-subtitles/tbd-subtitles.log` too, emptied at each

@@ -4,8 +4,9 @@ use super::*;
 fn the_desktop_entry_names_the_app_icon_and_window_class() {
     for line in [
         "[Desktop Entry]",
-        "Exec=tbd-subtitles",
+        "Exec=tbd-subtitles %F",
         "Icon=tbd-subtitles",
+        "MimeType=video/mp4;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;video/mp2t;video/x-m4v;",
         "StartupWMClass=tbd-subtitles",
         "Categories=AudioVideo;Video;",
         "Terminal=false",
@@ -56,4 +57,24 @@ fn finish_lays_out_the_root_of_the_app_dir() {
     AppDir::create(&root).unwrap();
     assert!(!root.join("AppRun").exists());
     fs::remove_dir_all(root).unwrap();
+}
+
+/// FNV-1a over the bytes: a fingerprint that stays the same across Rust releases.
+fn fnv1a(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x0100_0000_01b3)
+    })
+}
+
+#[test]
+fn the_icon_png_bytes_match_the_shipped_icon() {
+    for (size, length, fingerprint) in [
+        (16, 243, 0xcadf_8e2c_d2f8_3cf2_u64),
+        (64, 704, 0x50eb_f7bb_12f4_afcf),
+        (ICON_SIZE, 2822, 0x0edb_9aa3_116e_163d),
+    ] {
+        let png = icon_png(size).unwrap();
+        assert_eq!(png.len(), length, "size {size}");
+        assert_eq!(fnv1a(&png), fingerprint, "size {size}");
+    }
 }

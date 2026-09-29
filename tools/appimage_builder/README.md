@@ -73,14 +73,14 @@ Downloads are cached in `target/appimage/cache/`; the AppDir is laid out in
 
 ## Boundaries
 
-- Depends on: `crates/child_process` (running `cargo`, `git`, the built app and the bundled
-  FFmpeg); `crates/inference` (the runtime folder names, the required library lists, the pinned
-  archives and their hash-checked download and unpack); `anyhow`, `clap`, `object`, `backhand`
-  and `png`; the programs `cargo` and `git`.
+- Depends on: `crates/app_icon` (the icon's pixels); `crates/child_process` (running `cargo`,
+  `git`, the built app and the bundled FFmpeg); `crates/inference` (the runtime folder names, the
+  required library lists, the pinned archives and their hash-checked download and unpack);
+  `anyhow`, `clap`, `object`, `backhand` and `png`; the programs `cargo` and `git`.
 - Used by: a developer packaging the app, through the `appimage` alias; no crate depends on it.
 - Rules:
-  - it depends on no workspace crate but `child_process` and `inference` (the tool table in
-    `tools/repo_gates/src/layout.rs`, `cargo gates crate-layering`);
+  - it depends on no workspace crate but `app_icon`, `child_process` and `inference` (the tool
+    table in `tools/repo_gates/src/layout.rs`, `cargo gates crate-layering`);
   - every download is pinned by URL and SHA-256 and checked before use (`fetch_verified`,
     `install_archive`);
   - the NVIDIA driver's libraries and glibc are never bundled (`host_libraries_are_recognised_by_stem`).

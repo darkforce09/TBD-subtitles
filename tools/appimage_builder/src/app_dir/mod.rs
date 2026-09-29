@@ -5,8 +5,8 @@
 //! icon (also under `usr/share/icons`), the `.DirIcon` symlink and the `AppRun` symlink to the
 //! app binary, which opens the window when started with no arguments.
 //!
-//! **Position:** called by `main`, which fills `usr/` between `create` and `finish`; `icon` draws
-//! the picture.
+//! **Position:** called by `main`, which fills `usr/` between `create` and `finish`; `icon` encodes
+//! the picture `app_icon` paints.
 //!
 //! **Signals and state:** writes under the AppDir path it is given; holds that path.
 //!
@@ -27,14 +27,16 @@ use anyhow::{Context, Result};
 pub(crate) const APP_NAME: &str = "tbd-subtitles";
 
 /// The desktop entry: the window groups under the icon through `StartupWMClass`, which matches
-/// the app's window class.
+/// the app's window class; `%F` hands the app the videos opened with it, and `MimeType` offers
+/// it in the file manager's "Open With" for the common video containers.
 pub(crate) const DESKTOP_ENTRY: &str = "[Desktop Entry]
 Type=Application
 Name=TBD-subtitles
 GenericName=Subtitle generator
 Comment=Generate English subtitles for local videos
-Exec=tbd-subtitles
+Exec=tbd-subtitles %F
 Icon=tbd-subtitles
+MimeType=video/mp4;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;video/mp2t;video/x-m4v;
 Categories=AudioVideo;Video;
 StartupWMClass=tbd-subtitles
 Terminal=false
