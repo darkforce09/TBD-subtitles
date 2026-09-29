@@ -1,13 +1,15 @@
 # Settings window and models banner
 
 The Settings window's content and the banner under the toolbar, drawn from the borrowed
-`SettingsPage`: the tab bar General | Engines | Models | This Computer, the open tab, the footer,
-and the banner while a model is missing or downloads. They return events and change nothing.
+`SettingsPage`: the tab bar General | Automation | Engines | Models | This Computer, the open tab,
+the footer, and the banner while a model is missing or downloads. They return events and change
+nothing.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/settings/ui/
+├── automation_tab.rs   the watch folders with Remove and Add Folder…, and Dolphin's right-click entry
 ├── engines_tab.rs      the engines, the language model, Fix It's model, calls and switch, cut score
 ├── form.rs             the forms' rows, help and error lines, divider, path well, list, field, stepper
 ├── general_tab.rs      the models and work folders with their sizes, subtitle format, glossary
@@ -16,7 +18,7 @@ apps/tbd_subtitles/src/settings/ui/
 ├── models_banner.rs    the banner under the toolbar: missing, downloading, or all on disk
 ├── models_tab.rs       the models and runtime table, and Download Missing, Stop or all on disk
 ├── settings_window.rs  `settings_window_ui`: the tab bar, the open tab, the footer
-└── tests/              unit tests of the typed numbers, the home written as `~`, and Fix It's rows
+└── tests/              unit tests of the typed numbers, `~`, Fix It's rows and the Automation tab
 ```
 
 ## How it works
@@ -35,7 +37,12 @@ dropped. General shows the models folder with its size on disk, the work folder
 with its size and Open, Choose… and, for a folder set by hand, Default (the models folder's
 buttons are off while a download runs: "Stop the download first"); each folder on one line, the
 home as `~` and cut in the middle when too long, the whole path on hover; SRT | WebVTT | ASS; and
-the glossary with its count of names. Engines shows the separator, the Whisper model, the
+the glossary with its count of names. Automation lists the watch folders, each on one line like
+the General tab's with Remove (an edit of the saved settings without that folder) and "Not
+found. Nothing in it is queued until it is back." under a folder that is not there, or "No watch
+folders."; Add Folder… asks for the folder chooser; the help says what watching does; and
+"Right-click in Dolphin" says where the "Generate subtitles" entry is written, that it appears
+once the app is started from its AppImage, or in red why it could not be written. Engines shows the separator, the Whisper model, the
 `claude` model a run asks and the one Fix It asks (Sonnet, Opus, Fable or Haiku, or a name kept
 in `settings.toml`; each list marks its own default, Sonnet and Opus) in lists as wide as their
 column, with help that follows the choice, processes at once (1–16), Fix It's Claude calls at
@@ -72,7 +79,13 @@ wide, with Details… (the Models tab) and Download, or Stop.
   say what they do, a click turns the switch over, and a refused number of calls shows its error
   (`fix_it_s_calls_at_once_and_its_switch_say_what_they_do`,
   `the_switch_turns_fix_it_after_each_job_over`,
-  `a_refused_number_of_calls_shows_its_error_under_it` in `tests/engines_tab.rs`); a folder reads
-  from home on one line
+  `a_refused_number_of_calls_shows_its_error_under_it` in `tests/engines_tab.rs`); no watch
+  folders say so and Add Folder… asks for the chooser, a folder not found is marked and Remove
+  edits it out, and the right-click entry says where it is or why it failed
+  (`no_folders_say_so_and_add_folder_asks_for_the_chooser`,
+  `a_folder_not_found_is_marked_and_remove_edits_it_out`,
+  `the_right_click_entry_says_where_it_is_or_why_it_failed` in `tests/automation_tab.rs`;
+  `the_automation_tab_lists_the_watch_folders_and_edits_them` in `rendering_settings.rs`); a
+  folder reads from home on one line
   (`folders_read_from_home_on_one_line_and_a_runtime_in_the_models_folder_says_so` in
   `rendering_settings.rs`).

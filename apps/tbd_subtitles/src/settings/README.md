@@ -1,10 +1,11 @@
 # Settings
 
 The feature for the app's settings: the models folder and its downloads, the work folder, the
-glossary, the engines per stage, the language-model backend, the cut score and the output format,
-kept in `~/.config/tbd-subtitles/settings.toml`, and the check of this machine. The window's
-Settings window edits them in four tabs, each change written as it is made, and a banner under
-the toolbar says when a model is missing; the `process` subcommand reads the same file.
+glossary, the engines per stage, the language-model backend, the cut score, the output format and
+the watch folders, kept in `~/.config/tbd-subtitles/settings.toml`, and the check of this
+machine. The window's Settings window edits them in five tabs, each change written as it is made,
+and a banner under the toolbar says when a model is missing; the `process` subcommand reads the
+same file.
 
 ## Contents
 
@@ -23,14 +24,16 @@ The folder follows the layout every feature shares: `models/` and `services/` ho
 free of egui, and `ui/` draws from a view the application lends it and returns events for the
 application to apply after the frame. `models/app_settings.rs` holds every setting with its
 default and `models/page.rs` the window's state: the file's settings, the error of an edit that
-was refused, the glossary's names, the models list, a running download by item id, the checks
-and the sizes of the models and work folders; it names the tabs (`SettingsTab`) and the fields an
-error sits under (`Field`, `FieldError`). `services/` reads and writes the file, turns the
+was refused, the glossary's names, the models list, a running download by item id, the checks,
+the sizes of the models and work folders, and whether Dolphin's right-click entry is written
+(`RightClickEntry`, which the application sets); it names the tabs (`SettingsTab`) and the fields
+an error sits under (`Field`, `FieldError`). `services/` reads and writes the file, turns the
 settings into a job's `JobSettings`, applies an edit (written at once when it can make a job,
 refused with an error under its field otherwise, and saying what it made stale), lists and
 downloads the models and runtime archives, turns them into the Models tab's rows, what is missing
 and the banner, runs the machine checks and measures a folder, the slow parts each on a thread of
-its own. Watch folders belong to the automation feature.
+its own. The watch folders are a setting here (a chosen folder is added once, as its canonical
+path; a folder that is not there is kept); watching them belongs to the automation feature.
 
 ## Public surface
 

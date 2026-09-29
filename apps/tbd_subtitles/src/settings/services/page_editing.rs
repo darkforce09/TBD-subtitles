@@ -2,9 +2,10 @@
 //! under its field.
 //!
 //! **Role:** apply one edit of the Settings window to the page and the file (a new glossary is
-//! read first, a number must be in its range, the models folder stays while a download runs), say
-//! what the edit makes stale (the models list, a folder's size), keep a settings file that could
-//! not be read before the first write replaces it, and read the saved glossary's names.
+//! read first, a number must be in its range, the models folder stays while a download runs, a
+//! watch folder is kept once), say what the edit makes stale (the models list, a folder's size),
+//! keep a settings file that could not be read before the first write replaces it, add a chosen
+//! watch folder, and read the saved glossary's names.
 //!
 //! **Position:** called by the application's settings actions for each edit and each chosen path,
 //! and when the window opens; uses `job_settings` and `settings_file`.
@@ -15,7 +16,8 @@
 //! **Invariants:** an edit that is refused or cannot be written leaves the file and `saved` as
 //! they were; nothing out of range, and no glossary that cannot be read, is ever written; the
 //! glossary is read only when it changes, so an unreadable one blocks no other edit and its error
-//! stays under the glossary; the machine checks never go stale by an edit.
+//! stays under the glossary; the machine checks never go stale by an edit; no watch folder is
+//! written twice, and a watch folder that does not exist is written all the same.
 
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
@@ -52,7 +54,8 @@ pub(crate) struct Applied {
 /// Apply `edited`, the saved settings with one field changed: written at once, or refused with an
 /// error under that field when it is out of range, names a glossary that cannot be read, or moves
 /// the models folder while a download runs.
-pub(crate) fn apply(page: &mut SettingsPage, edited: AppSettings) -> Applied {
+pub(crate) fn apply(page: &mut SettingsPage, mut edited: AppSettings) -> Applied {
+    edited.watch_folders = without_repeats(edited.watch_folders);
     let Some(field) = changed_field(&page.saved, &edited) else {
         return Applied::default();
     };
@@ -172,6 +175,28 @@ pub(crate) fn read_glossary(page: &mut SettingsPage) {
     }
 }
 
+/// `settings` with `folder` added to the end of the watch folders, as its canonical path when it
+/// has one (else as given); unchanged when the folder is watched already.
+pub(crate) fn with_watch_folder(settings: &AppSettings, folder: &Path) -> AppSettings {
+    let folder = std::fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
+    let mut edited = settings.clone();
+    if !edited.watch_folders.contains(&folder) {
+        edited.watch_folders.push(folder);
+    }
+    edited
+}
+
+/// `folders` in their order, each only the first time it appears.
+fn without_repeats(folders: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut kept: Vec<PathBuf> = Vec::with_capacity(folders.len());
+    for folder in folders {
+        if !kept.contains(&folder) {
+            kept.push(folder);
+        }
+    }
+    kept
+}
+
 /// The first field that differs between `before` and `after`.
 pub(crate) fn changed_field(before: &AppSettings, after: &AppSettings) -> Option<Field> {
     let (b, a) = (before, after);
@@ -180,6 +205,7 @@ pub(crate) fn changed_field(before: &AppSettings, after: &AppSettings) -> Option
         (b.work_root != a.work_root, Field::WorkFolder),
         (b.output_format != a.output_format, Field::OutputFormat),
         (b.glossary != a.glossary, Field::Glossary),
+        (b.watch_folders != a.watch_folders, Field::WatchFolders),
         (b.engines.separator != a.engines.separator, Field::Separator),
         (b.engines.whisper != a.engines.whisper, Field::Whisper),
         (

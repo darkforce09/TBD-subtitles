@@ -123,6 +123,32 @@ fn saved_settings_load_back_unchanged() {
 }
 
 #[test]
+fn watch_folders_load_back_and_an_empty_list_is_not_written() {
+    let dir = scratch("watch-folders");
+    let path = dir.join("settings.toml");
+    let settings = AppSettings::default();
+    save(&path, &settings).expect("save");
+    let written = fs::read_to_string(&path).expect("written");
+    assert!(!written.contains("watch_folders"), "{written}");
+    assert_eq!(load(&path).expect("load"), settings);
+    let settings = AppSettings {
+        watch_folders: vec![PathBuf::from("/media/videos"), PathBuf::from("/gone/drive")],
+        ..AppSettings::default()
+    };
+    save(&path, &settings).expect("save");
+    assert_eq!(load(&path).expect("load"), settings);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_file_without_watch_folders_watches_none() {
+    let settings = parse("cut_score = 25.0\n").expect("parse");
+    assert!(settings.watch_folders.is_empty());
+    let settings = parse("watch_folders = [\"/media/videos\"]\n").expect("parse");
+    assert_eq!(settings.watch_folders, [PathBuf::from("/media/videos")]);
+}
+
+#[test]
 fn a_missing_file_is_the_defaults_and_a_broken_one_an_error() {
     let dir = scratch("missing");
     let path = dir.join("settings.toml");

@@ -9,6 +9,8 @@ pub(crate) enum PathField {
     ModelsFolder,
     WorkFolder,
     GlossaryFile,
+    /// A folder added to the watch folders.
+    WatchFolder,
 }
 
 /// One request from the Settings window or the models banner.

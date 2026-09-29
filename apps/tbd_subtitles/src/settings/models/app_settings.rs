@@ -1,5 +1,6 @@
 //! The owner's settings, as kept in `settings.toml`: where models and work files live, which
-//! engines run, which language model settles the text, and which subtitle format is written.
+//! engines run, which language model settles the text, which subtitle format is written, and
+//! which folders are watched for videos.
 //!
 //! **Role:** hold every setting with its default, so a missing file or a missing key means the
 //! measured defaults.
@@ -39,6 +40,10 @@ pub(crate) struct AppSettings {
     pub(crate) cut_score: f64,
     /// The subtitle file written beside the video.
     pub(crate) output_format: OutputFormat,
+    /// The folders watched, with their subfolders, while the app is open: a video in one that has
+    /// no subtitles yet is queued once it has finished downloading. An empty list is not written.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) watch_folders: Vec<PathBuf>,
     pub(crate) engines: Engines,
     pub(crate) language_model: LanguageModel,
 }
@@ -88,6 +93,7 @@ impl Default for AppSettings {
             glossary: ONE_PIECE.to_string(),
             cut_score: 20.0,
             output_format: OutputFormat::Srt,
+            watch_folders: Vec::new(),
             engines: Engines::default(),
             language_model: LanguageModel::default(),
         }

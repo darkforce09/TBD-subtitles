@@ -1,11 +1,11 @@
-//! The Settings window's content: the tab bar General | Engines | Models | This Computer, the
-//! open tab, and the footer that says how changes apply.
+//! The Settings window's content: the tab bar General | Automation | Engines | Models | This
+//! Computer, the open tab, and the footer that says how changes apply.
 //!
 //! **Role:** draw the tab bar across the top on the toolbar grey, the open tab in a scrolling body,
 //! and the footer across the bottom, and turn a tab's click into `SettingsEvent::Open`.
 //!
 //! **Position:** called by the application inside the Settings window's viewport; draws
-//! `general_tab`, `engines_tab`, `models_tab` and `machine_tab`.
+//! `general_tab`, `automation_tab`, `engines_tab`, `models_tab` and `machine_tab`.
 //!
 //! **Signals and state:** none; reads the borrowed page and returns events.
 //!
@@ -18,7 +18,7 @@ use eframe::egui::{
 };
 
 use super::form::ROW_GAP;
-use super::{engines_tab, general_tab, machine_tab, models_tab};
+use super::{automation_tab, engines_tab, general_tab, machine_tab, models_tab};
 use crate::core::ui::icons;
 use crate::core::ui::palette::palette;
 use crate::settings::events::SettingsEvent;
@@ -70,6 +70,9 @@ pub(crate) fn settings_window_ui(
                             ui.spacing_mut().item_spacing.y = ROW_GAP;
                             match tab {
                                 SettingsTab::General => general_tab::general_ui(ui, page, events),
+                                SettingsTab::Automation => {
+                                    automation_tab::automation_ui(ui, page, events);
+                                }
                                 SettingsTab::Engines => {
                                     engines_tab::engines_ui(ui, page, closing, events);
                                 }
@@ -83,7 +86,7 @@ pub(crate) fn settings_window_ui(
         });
 }
 
-/// The four tabs, centred, the open one in the accent tint.
+/// The tabs, centred, the open one in the accent tint.
 fn tab_bar_ui(ui: &mut Ui, open: SettingsTab, events: &mut Vec<SettingsEvent>) {
     let p = palette(ui);
     let label_font = FontId::proportional(11.5);
@@ -138,6 +141,7 @@ fn tab_bar_ui(ui: &mut Ui, open: SettingsTab, events: &mut Vec<SettingsEvent>) {
 fn glyph(tab: SettingsTab) -> &'static str {
     match tab {
         SettingsTab::General => icons::GEAR,
+        SettingsTab::Automation => icons::LIGHTNING,
         SettingsTab::Engines => icons::SLIDERS,
         SettingsTab::Models => icons::PACKAGE,
         SettingsTab::ThisComputer => icons::MONITOR,

@@ -13,7 +13,7 @@ apps/tbd_subtitles/src/settings/services/
 ├── model_downloads.rs  the models and runtime archives a job needs, their download, events by id
 ├── model_list.rs       the Models tab's rows, what is missing with its words, and the banner
 ├── mod.rs              the module list
-├── page_editing.rs     applying an edit at once or refusing it under its field; what it stales
+├── page_editing.rs     applying an edit at once or refusing it; what it stales; adding a watch folder
 ├── settings_file.rs    the file's path, `load`, `parse`, `render` and `save`, and `SettingsError`
 ├── system_check.rs     the GPU, CUDA runtime, FFmpeg, ffprobe, `claude` and Whisper worker checks
 ├── tests/              unit tests for each file here
@@ -39,7 +39,10 @@ folder while a download runs ("Stop the download first."), or a new glossary tha
 ("Can't use names.json: … The glossary was not changed."). The glossary is read only when it changes, so an unreadable
 one blocks no other edit, and its error stays under it until it changes. Before the first write
 over a settings file that could not be read, the file is kept beside itself as
-`settings.toml.broken` (`Applied::kept`). `read_glossary` counts the saved glossary's names, or
+`settings.toml.broken` (`Applied::kept`). Every edit keeps each watch folder once, in its order,
+and a folder that is not there is written all the same (a drive may be unmounted);
+`with_watch_folder` adds a chosen folder to the end as its canonical path (as given when it has
+none), unless it is watched already. `read_glossary` counts the saved glossary's names, or
 puts why it cannot be read under the glossary.
 
 `model_downloads::plan` lists the model folders `pipeline::models::required` names and the runtime
@@ -82,6 +85,13 @@ found in as its `path`), asks FFmpeg, ffprobe and `claude` for their versions, l
   - an unknown key or a bad value is an error naming it, and a missing file is the defaults
     (`an_unknown_key_is_an_error_naming_it`, `a_bad_value_is_an_error_naming_it`,
     `a_missing_file_is_the_defaults_and_a_broken_one_an_error`);
+  - watch folders load back, an empty list is not written, and a file without them watches none
+    (`watch_folders_load_back_and_an_empty_list_is_not_written`,
+    `a_file_without_watch_folders_watches_none`); watch folders are a field of their own, a
+    chosen one is added once as its canonical path, and one that is missing is written once
+    (`watch_folders_are_a_field_of_their_own_that_makes_nothing_stale`,
+    `a_chosen_watch_folder_is_added_once_as_its_canonical_path`,
+    `a_watch_folder_is_written_once_even_when_it_is_missing` in `tests/page_editing.rs`);
   - saved settings load back unchanged (`saved_settings_load_back_unchanged`); a valid edit is
     written at once, a bad glossary is not written and names its field, an unreadable saved
     glossary blocks no other edit and keeps its error, numbers out of range or not finite are

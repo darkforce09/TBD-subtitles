@@ -556,9 +556,21 @@ fn settings_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
                 "~/Projects/TBD-subtitles/target/release/tbd-subtitles-ggml".into(),
             ),
         ]);
+        // A watch folder that is there, one on a drive not mounted, and the Dolphin entry
+        // written; set on the page only, the scratch settings file keeps none.
+        let page = &mut app.settings;
+        page.saved.watch_folders = vec![
+            page.work_folder.clone(),
+            PathBuf::from("/run/media/system/Backup_drive/Media/one_pace"),
+        ];
+        page.right_click = crate::settings::models::page::RightClickEntry::Installed(
+            PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+                .join(".local/share/kio/servicemenus/tbd-subtitles.desktop"),
+        );
     });
     for (tab, scene) in [
         (SettingsTab::General, "settings_general"),
+        (SettingsTab::Automation, "settings_automation"),
         (SettingsTab::Engines, "settings_engines"),
         (SettingsTab::Models, "settings_models"),
         (SettingsTab::ThisComputer, "settings_machine"),

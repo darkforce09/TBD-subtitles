@@ -23,6 +23,7 @@ fn page(name: &str) -> SettingsPage {
         models_size: None,
         work_folder: PathBuf::from("/work"),
         work_size: None,
+        right_click: Default::default(),
     }
 }
 
@@ -161,6 +162,57 @@ fn fix_it_s_calls_and_its_switch_are_fields_of_their_own_that_make_nothing_stale
     after_run.language_model.fix_after_run = true;
     assert_eq!(changed_field(&before, &after_run), Some(Field::FixAfterRun));
     assert_eq!(stale(&before, &after_run), Stale::default());
+}
+
+#[test]
+fn watch_folders_are_a_field_of_their_own_that_makes_nothing_stale() {
+    let before = AppSettings::default();
+    let mut after = before.clone();
+    after.watch_folders.push(PathBuf::from("/media/videos"));
+    assert_eq!(changed_field(&before, &after), Some(Field::WatchFolders));
+    assert_eq!(stale(&before, &after), Stale::default());
+}
+
+#[test]
+fn a_chosen_watch_folder_is_added_once_as_its_canonical_path() {
+    let dir = std::env::temp_dir().join(format!("tbd-watch-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("videos")).expect("dir");
+    let settings = AppSettings::default();
+    let added = with_watch_folder(&settings, &dir.join("videos").join("..").join("videos"));
+    let canonical = std::fs::canonicalize(dir.join("videos")).expect("canonical");
+    assert_eq!(added.watch_folders, std::slice::from_ref(&canonical));
+    assert_eq!(
+        with_watch_folder(&added, &canonical),
+        added,
+        "a second time adds nothing"
+    );
+    let gone = PathBuf::from("/no/such/drive/videos");
+    let both = with_watch_folder(&added, &gone);
+    assert_eq!(
+        both.watch_folders,
+        [canonical, gone],
+        "a missing one is kept as given"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_watch_folder_is_written_once_even_when_it_is_missing() {
+    let mut page = page("watch");
+    let gone = PathBuf::from("/no/such/drive/videos");
+    let mut edited = page.saved.clone();
+    edited.watch_folders = vec![gone.clone(), PathBuf::from("/media"), gone.clone()];
+    assert_eq!(apply(&mut page, edited), Applied::default());
+    assert!(page.error.is_none());
+    let expected = [gone, PathBuf::from("/media")];
+    assert_eq!(page.saved.watch_folders, expected);
+    assert_eq!(
+        settings_file::load(&page.path)
+            .expect("written")
+            .watch_folders,
+        expected
+    );
+    remove(&page);
 }
 
 #[test]

@@ -30,7 +30,7 @@ use crate::core::portal::{self, Choose};
 use crate::core::toast::ToastKind;
 use crate::settings::events::{PathField, SettingsEvent};
 use crate::settings::models::app_settings::AppSettings;
-use crate::settings::models::page::SettingsPage;
+use crate::settings::models::page::{RightClickEntry, SettingsPage};
 use crate::settings::services::model_downloads::{self, DownloadEnd, Folders};
 use crate::settings::services::{
     job_settings, model_list, page_editing, settings_file, system_check, work_folder,
@@ -62,6 +62,7 @@ pub(crate) fn new_settings_page(env: &Environment) -> SettingsPage {
         models_size: None,
         work_folder: PathBuf::new(),
         work_size: None,
+        right_click: RightClickEntry::NotInstalled,
     };
     page_editing::read_glossary(&mut page);
     refresh_models(&mut page, env);
@@ -137,6 +138,7 @@ impl TbdSubtitlesApp {
                     PathField::ModelsFolder => (Choose::Folder, "Models folder"),
                     PathField::WorkFolder => (Choose::Folder, "Work folder"),
                     PathField::GlossaryFile => (Choose::Json, "Glossary: a JSON array of names"),
+                    PathField::WatchFolder => (Choose::Folder, "Add a watch folder"),
                 };
                 self.pending.chooser = Some((
                     Chooser::Setting(field),
@@ -202,13 +204,16 @@ impl TbdSubtitlesApp {
         self.measure(stale.work_size, stale.models_size);
     }
 
-    /// Put a chosen path into the settings, as an edit.
+    /// Put a chosen path into the settings, as an edit; a chosen watch folder is added to the end
+    /// of the list unless it is there already.
     pub(crate) fn chosen_setting(&mut self, field: PathField, path: PathBuf) {
-        let mut edited = self.settings.saved.clone();
+        let saved = &self.settings.saved;
+        let mut edited = saved.clone();
         match field {
             PathField::ModelsFolder => edited.models_dir = Some(path),
             PathField::WorkFolder => edited.work_root = Some(path),
             PathField::GlossaryFile => edited.glossary = path.to_string_lossy().into_owned(),
+            PathField::WatchFolder => edited = page_editing::with_watch_folder(saved, &path),
         }
         self.edit_settings(edited);
     }

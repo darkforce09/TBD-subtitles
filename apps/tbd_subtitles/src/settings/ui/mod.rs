@@ -1,6 +1,7 @@
-//! The Settings window's content (its tab bar, four tabs and footer) and the models banner under
+//! The Settings window's content (its tab bar, five tabs and footer) and the models banner under
 //! the toolbar.
 
+mod automation_tab;
 mod engines_tab;
 mod form;
 mod general_tab;

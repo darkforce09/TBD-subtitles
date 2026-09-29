@@ -12,14 +12,14 @@ apps/tbd_subtitles/src/settings/models/
 ├── claude_models.rs  the `claude` models offered: name, label, tag and help line; `display_name`
 ├── machine.rs        `DownloadItem` and `ItemKind`, `Check` (with the folder it found), `CheckState`
 ├── mod.rs            the module list
-└── page.rs           `SettingsPage`, `SettingsTab`, `Field`, `FieldError` and `DownloadProgress`
+└── page.rs           `SettingsPage`, `SettingsTab`, `Field` and its error, downloads, right-click
 ```
 
 ## How it works
 
 `AppSettings` holds the models folder and the work folder (`None` for the defaults under the app
 data folder), the glossary (`one_piece`, `none` or a file), the shot-cut score, the output format,
-the engines (separator and Whisper model) and the language model (backend, the model a run asks,
+the watch folders (none by default, and an empty list is not written), the engines (separator and Whisper model) and the language model (backend, the model a run asks,
 the model Fix It asks, and how many run at once; Sonnet and Opus by default; how many `claude`
 calls Fix It makes at once across every video, 32 by default; and whether Fix It starts on each
 video when its full run finishes, off by default). Every struct takes its defaults for missing
@@ -27,9 +27,11 @@ keys, so a file written before a setting existed still loads, and refuses unknow
 edit is written at once, so there is no draft), the `FieldError` of the last edit that was
 refused (its `Field` and why), why the file could not be read, the saved glossary's count of
 names, the model folders and runtime archives with a running download and when a download last
-brought everything onto disk, the checks, and the models and work folders with their sizes.
-`SettingsTab` names the Settings window's four tabs (General, Engines, Models, This Computer) and
-their titles. `DownloadProgress` names the item downloading now by its id, with its bytes held,
+brought everything onto disk, the checks, the models and work folders with their sizes, and the
+`RightClickEntry`: whether Dolphin's "Generate subtitles" entry is written (not installed until
+the application writes it, installed at its path, or failed with the reason).
+`SettingsTab` names the Settings window's five tabs (General, Automation, Engines, Models, This
+Computer) and their titles. `DownloadProgress` names the item downloading now by its id, with its bytes held,
 and the bytes of the whole download. `CLAUDE_MODELS` lists the `claude` models both lists offer
 (Sonnet, Opus, Fable, Haiku) with the help line of each; `display_name` gives a model's name as
 the window writes it, such as "Claude Opus", for the Fix It button and its messages.

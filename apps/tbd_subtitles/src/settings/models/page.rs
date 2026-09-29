@@ -1,8 +1,8 @@
 //! The settings' state as the Settings window draws it: the file's settings, the error of an edit
-//! that was refused, the models a job needs with any download in progress, the machine checks and
-//! the sizes of the folders.
+//! that was refused, the models a job needs with any download in progress, the machine checks,
+//! the sizes of the folders and whether Dolphin's right-click entry is written.
 //!
-//! **Role:** hold what the four tabs and the models banner show, and name the tabs and the fields
+//! **Role:** hold what the five tabs and the models banner show, and name the tabs and the fields
 //! an error can sit under.
 //!
 //! **Position:** built by the application when the window opens; changed by
@@ -24,14 +24,16 @@ use crate::settings::models::machine::{Check, DownloadItem};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SettingsTab {
     General,
+    Automation,
     Engines,
     Models,
     ThisComputer,
 }
 
 impl SettingsTab {
-    pub(crate) const ALL: [SettingsTab; 4] = [
+    pub(crate) const ALL: [SettingsTab; 5] = [
         SettingsTab::General,
+        SettingsTab::Automation,
         SettingsTab::Engines,
         SettingsTab::Models,
         SettingsTab::ThisComputer,
@@ -41,6 +43,7 @@ impl SettingsTab {
     pub(crate) fn title(self) -> &'static str {
         match self {
             SettingsTab::General => "General",
+            SettingsTab::Automation => "Automation",
             SettingsTab::Engines => "Engines",
             SettingsTab::Models => "Models",
             SettingsTab::ThisComputer => "This Computer",
@@ -55,6 +58,7 @@ pub(crate) enum Field {
     WorkFolder,
     OutputFormat,
     Glossary,
+    WatchFolders,
     Separator,
     Whisper,
     Model,
@@ -92,6 +96,24 @@ impl DownloadProgress {
     }
 }
 
+/// Whether "Generate subtitles" is in Dolphin's menu for videos: the service menu the app writes
+/// when it is started from its AppImage.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[allow(
+    dead_code,
+    reason = "Installed and Failed come from writing the service menu, which the application \
+              wires in"
+)]
+pub(crate) enum RightClickEntry {
+    /// No service menu is written: the app was not started from its AppImage.
+    #[default]
+    NotInstalled,
+    /// The service menu at this path.
+    Installed(PathBuf),
+    /// Why the service menu could not be written.
+    Failed(String),
+}
+
 /// Everything the Settings window and the models banner draw.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SettingsPage {
@@ -120,4 +142,6 @@ pub(crate) struct SettingsPage {
     /// The work folder and its size in bytes, once measured.
     pub(crate) work_folder: PathBuf,
     pub(crate) work_size: Option<u64>,
+    /// Whether Dolphin offers "Generate subtitles" for videos.
+    pub(crate) right_click: RightClickEntry,
 }

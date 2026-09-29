@@ -1,4 +1,4 @@
-//! The Settings window's four tabs, edits written as they are made, and the models banner,
+//! The Settings window's five tabs, edits written as they are made, and the models banner,
 //! rendered headless.
 
 use super::*;
@@ -33,6 +33,7 @@ fn each_settings_tab_shows_its_settings_under_the_tab_bar_and_over_the_footer() 
         &text,
         &[
             "General",
+            "Automation",
             "Engines",
             "Models",
             "This Computer",
@@ -252,4 +253,112 @@ fn the_models_folder_stays_while_a_download_runs() {
         app.settings.error.as_ref().map(|e| e.field),
         Some(Field::ModelsFolder)
     );
+}
+
+/// The whole window with the Settings window on Automation, driven through its accessibility
+/// tree; its state is the app and the actions each frame asked for. The first frame only installs
+/// the window's fonts.
+fn automation_harness(
+    app: TbdSubtitlesApp,
+) -> egui_kittest::Harness<'static, (TbdSubtitlesApp, Vec<Action>)> {
+    let mut installed = false;
+    let mut harness = egui_kittest::Harness::builder()
+        .with_size(egui::vec2(1400.0, 1800.0))
+        .build_ui_state(
+            move |ui, (app, actions): &mut (TbdSubtitlesApp, Vec<Action>)| {
+                if !installed {
+                    theme::install(ui.ctx());
+                    theme::follow(ui.ctx(), app.scheme);
+                    installed = true;
+                    return;
+                }
+                actions.extend(app.frame_ui(ui));
+            },
+            (app, Vec::new()),
+        );
+    harness.run();
+    harness
+}
+
+#[test]
+fn the_automation_tab_lists_the_watch_folders_and_edits_them() {
+    use egui_kittest::kittest::Queryable as _;
+    let mut app = app("automation", Vec::new());
+    let here = std::env::temp_dir();
+    let gone = PathBuf::from("/no/such/drive/videos");
+    let mut edited = app.settings.saved.clone();
+    edited.watch_folders = vec![here.clone(), gone.clone()];
+    app.apply(vec![Action::from(SettingsEvent::Edit(edited))]);
+    let text = render_tab(&mut app, SettingsTab::Automation);
+    assert_shows(
+        &text,
+        &[
+            "Watch folders",
+            &here.display().to_string(),
+            &gone.display().to_string(),
+            "Not found. Nothing in it is queued until it is back.",
+            "Remove",
+            "Add Folder…",
+            "While the app is open, every video in these folders and their subfolders",
+            "Right-click in Dolphin",
+            "Appears after the app is started from its AppImage.",
+        ],
+    );
+    let saved = app.settings.saved.clone();
+    let mut harness = automation_harness(app);
+    harness
+        .get_all_by_label("Remove")
+        .nth(1)
+        .expect("a Remove for the second folder")
+        .click();
+    harness.run();
+    let mut without = saved.clone();
+    without.watch_folders = vec![here];
+    assert_eq!(
+        harness.state().1,
+        [Action::Settings(SettingsEvent::Edit(without))],
+        "Remove edits out its own folder"
+    );
+    harness.state_mut().1.clear();
+    // The toolbar and the empty queue offer Add Folder… too; the Automation tab's is the first
+    // one under its last Remove.
+    let last_remove = harness
+        .get_all_by_label("Remove")
+        .map(|node| node.rect().bottom())
+        .fold(f32::MIN, f32::max);
+    harness
+        .get_all_by_label("Add Folder…")
+        .filter(|node| node.rect().top() >= last_remove)
+        .min_by(|a, b| a.rect().top().total_cmp(&b.rect().top()))
+        .expect("the Automation tab offers Add Folder…")
+        .click();
+    harness.run();
+    assert_eq!(
+        harness.state().1,
+        [Action::Settings(SettingsEvent::Choose(
+            crate::settings::events::PathField::WatchFolder
+        ))]
+    );
+}
+
+#[test]
+fn a_chosen_watch_folder_is_added_once() {
+    use crate::settings::events::PathField;
+    let mut app = app("watch-chosen", Vec::new());
+    let folder = app
+        .env
+        .settings_path
+        .parent()
+        .expect("config")
+        .to_path_buf();
+    let canonical = std::fs::canonicalize(&folder).expect("canonical");
+    app.chosen_setting(PathField::WatchFolder, folder.clone());
+    app.chosen_setting(PathField::WatchFolder, folder);
+    let gone = PathBuf::from("/no/such/drive/videos");
+    app.chosen_setting(PathField::WatchFolder, gone.clone());
+    assert_eq!(app.settings.saved.watch_folders, [canonical, gone]);
+    assert!(app.settings.error.is_none());
+    let written = crate::settings::services::settings_file::load(&app.env.settings_path)
+        .expect("the settings file");
+    assert_eq!(written.watch_folders, app.settings.saved.watch_folders);
 }

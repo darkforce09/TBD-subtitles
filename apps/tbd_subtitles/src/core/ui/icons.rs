@@ -41,6 +41,7 @@ pub(crate) const FOLDER: &str = egui_phosphor::regular::FOLDER;
 pub(crate) const FOLDER_PLUS: &str = egui_phosphor::regular::FOLDER_PLUS;
 pub(crate) const GEAR: &str = egui_phosphor::regular::GEAR;
 pub(crate) const INFO: &str = egui_phosphor::regular::INFO;
+pub(crate) const LIGHTNING: &str = egui_phosphor::regular::LIGHTNING;
 pub(crate) const LIST: &str = egui_phosphor::regular::LIST;
 pub(crate) const MAGIC_WAND: &str = egui_phosphor::regular::MAGIC_WAND;
 pub(crate) const MAGNIFYING_GLASS: &str = egui_phosphor::regular::MAGNIFYING_GLASS;
