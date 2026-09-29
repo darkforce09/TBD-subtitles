@@ -20,7 +20,7 @@ After every call a backend calls `log_call`, which numbers the call `<pid>-<n>` 
 - the whole `job_model::model_call::ModelExchange` as a `trace` event with target
   `model_exchange` and one field, `exchange`, holding its JSON; it is built only when a
   subscriber wants it (`tracing::enabled!`), so a command-line run pays nothing;
-- one summary line: `info` when answered ("claude sonnet · words of the batch from U0012: 212
+- one summary line naming the selected local or Claude model: `info` when answered ("model sonnet · words of the batch from U0012: 212
   lines answered in 41.3 s, 18234 tokens in, 2210 out, $0.0874"), `warn` when not, with the
   call's number in its `call` field. It never holds the prompt or the answer.
 

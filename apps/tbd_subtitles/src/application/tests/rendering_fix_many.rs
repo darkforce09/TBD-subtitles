@@ -137,7 +137,7 @@ fn leaving_lines_to_fix() -> RunJob {
 fn fix_after_each_job(app: &mut TbdSubtitlesApp, on: bool) {
     let mut edited = app.settings.saved.clone();
     edited.language_model.fix_after_run = on;
-    app.apply(vec![Action::from(SettingsEvent::Edit(edited))]);
+    app.apply(vec![Action::from(SettingsEvent::Edit(Box::new(edited)))]);
     assert_eq!(app.settings.saved.language_model.fix_after_run, on);
 }
 
@@ -325,7 +325,7 @@ fn claude_calls_at_once_applies_at_once() {
     assert_eq!(app.claude_gate.limit(), 32, "the saved cap");
     let mut edited = app.settings.saved.clone();
     edited.language_model.fix_calls = 5;
-    app.apply(vec![Action::from(SettingsEvent::Edit(edited))]);
+    app.apply(vec![Action::from(SettingsEvent::Edit(Box::new(edited)))]);
     assert_eq!(app.claude_gate.limit(), 5);
     let _ = std::fs::remove_dir_all(&root);
 }

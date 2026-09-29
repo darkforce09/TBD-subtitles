@@ -17,6 +17,7 @@ fn options(cancel: CancelToken) -> JobOptions {
         binaries: Binaries {
             main: PathBuf::from("/bin/a"),
             ggml: PathBuf::from("/bin/b"),
+            local_llm: PathBuf::from("/bin/c"),
         },
         cancel,
         gpu_lock: PathBuf::from("/tmp/gpu.lock"),

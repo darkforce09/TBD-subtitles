@@ -110,6 +110,7 @@ pub(crate) struct TbdSubtitlesApp {
     summaries: HashMap<JobId, RowSummary>,
     /// The selected job's line review, while it is open.
     review: Option<(JobId, ReviewSession)>,
+    text: actions::text::State,
     /// The clip playing in the review.
     clip: Option<ClipPlayer>,
     /// The line the review's editor shows, with its still frame when its video has a picture.
@@ -175,6 +176,11 @@ impl TbdSubtitlesApp {
         let runner = job_runner::start("job-runner", env.run_job.clone(), env.wake.clone());
         let review_lanes = ReviewLanes::start(env.run_job.clone(), env.wake.clone());
         let claude_gate = CallGate::new(settings.saved.language_model.fix_calls);
+        if let Err(error) =
+            inference::llm::claude_cli::set_shared_limit(settings.saved.language_model.fix_calls)
+        {
+            tracing::warn!(%error, "Cannot configure the shared Claude call cap");
+        }
         let history = actions::seeded_history(&env.history_path, &queue);
         let watcher = folder_watcher::start(
             settings.saved.watch_folders.clone(),
@@ -199,6 +205,7 @@ impl TbdSubtitlesApp {
             report: None,
             summaries: HashMap::new(),
             review: None,
+            text: actions::text::State::default(),
             clip: None,
             still: None,
             parked: HashMap::new(),
@@ -249,6 +256,7 @@ impl TbdSubtitlesApp {
                 Action::Settings(event) => self.apply_settings(event),
                 Action::Report(event) => self.apply_report(event),
                 Action::Review(event) => self.apply_review(event),
+                Action::Text(event) => self.apply_text(event),
                 Action::LogConsole(event) => self.apply_log_console(event),
             }
         }
@@ -260,12 +268,16 @@ impl TbdSubtitlesApp {
         let Some(id) = self.queue.selected else {
             return;
         };
+        if tab != DetailTab::CheckText {
+            self.close_text();
+        }
         match tab {
             DetailTab::Overview => self.apply_review(ReviewEvent::Close),
-            DetailTab::CheckLines if self.detail_tab(id) == DetailTab::Overview => {
+            DetailTab::CheckLines if self.detail_tab(id) != DetailTab::CheckLines => {
                 self.open_review(None);
             }
             DetailTab::CheckLines => {}
+            DetailTab::CheckText => self.open_text(id),
         }
     }
 }

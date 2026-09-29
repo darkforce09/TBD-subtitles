@@ -1,0 +1,41 @@
+{
+  "method": "Independent visual examination of original pilot clips using host FFmpeg frame extraction; no OCR or pipeline artifacts used as truth.",
+  "frame_interval_convention": "Zero-based frames; start included and end excluded. All clips are 1920x1080 at 24 fps. Times in main annotation files are local clip times.",
+  "geometry_warning": "Representative quadrilaterals are approximate manual annotations. They support explicit flagged nearby fallback coverage checks; they do not establish accepted two-pixel tracking accuracy.",
+  "source_offsets_s": {"11":761.0,"16":996.0,"39":146.0},
+  "ep11": {
+    "complete_card_frames": [0,126],
+    "furigana": "せん ぞく けん とう し is readable pronunciation evidence belonging to コリーダコロシアム専属剣闘士; covered by that base-line annotation, not an additional English event.",
+    "other_japanese": "No other readable Japanese observed in this clip."
+  },
+  "ep16": {
+    "complete_front_board_frames": [72,159],
+    "perspective_return_frames": [253,288],
+    "partial_title_track": {
+      "frame_interval": [0,72],
+      "start_s": 0.0,
+      "end_s": 3.0,
+      "status": "Partial and uncertain; do not infer the unseen full wording from the later wide shot.",
+      "observations": [
+        {"frame_interval":[0,50],"reading":null,"note":"The left glyph lacks its upper portion and accent; a lower box-shaped portion and a horizontal stroke show around the hat. These are insufficient for a reliable complete Japanese reading.","representative_frame":48,"visible_region_quad":[{"x":360,"y":0},{"x":1920,"y":0},{"x":1920,"y":340},{"x":360,"y":340}]},
+        {"frame_interval":[50,52],"reading":"レ","note":"Readable character within an incomplete word; adjacent strokes are occluded or clipped.","representative_frame":50,"visible_region_quad":[{"x":685,"y":0},{"x":980,"y":0},{"x":980,"y":330},{"x":685,"y":330}]},
+        {"frame_interval":[52,56],"reading":"レス","note":"Readable fragment with upper clipping; the next box-shaped glyph emerges but is initially occluded.","representative_frame":53,"visible_region_quad":[{"x":685,"y":0},{"x":1275,"y":0},{"x":1275,"y":330},{"x":685,"y":330}]},
+        {"frame_interval":[56,58],"reading":"レスロ","note":"Readable fragment; no reliable initial ド or final ザ is visible.","representative_frame":56,"visible_region_quad":[{"x":685,"y":0},{"x":1630,"y":0},{"x":1630,"y":330},{"x":685,"y":330}]},
+        {"frame_interval":[58,72],"reading":"レスロー","note":"Readable clipped fragment; the initial accented glyph and final ザ remain outside the reliable visible reading.","representative_frame":60,"visible_region_quad":[{"x":685,"y":0},{"x":1920,"y":0},{"x":1920,"y":330},{"x":685,"y":330}]}
+      ],
+      "semantic_treatment": "One changing partial sign region to flag for review; these fragments are observations, not four independent complete English signs."
+    },
+    "partial_operation_track": {
+      "frame_interval":[0,72],
+      "status":"Red Latin SOP becomes visible as the hat moves; only clipped strokes of the next Japanese glyph appear at the right edge before frame72. Do not invent 作戦 before both glyphs are readable."
+    },
+    "other_japanese": "Peripheral papers contain tiny indistinct marks and Arabic numbers, with no independently readable additional Japanese. SOL is already Latin."
+  },
+  "ep39": {
+    "residual_title_frames":[99,100],
+    "winner_title_frames":[100,163],
+    "fade_note":"Winner title is already faintly visible at frame100 and grows opaque afterward. Frame99 instead contains a faint but readable remnant of 「SMILE工場」の and 戦い.",
+    "furigana":"スマイル and こうじょう belong to the remnant upper line, たたか belongs to 戦い, and しょう しゃ belongs to 勝者; each is covered by its base-line annotation.",
+    "other_japanese":"No other readable Japanese observed. BF-37 and other visible Latin lettering are not Japanese text."
+  }
+}

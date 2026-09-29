@@ -115,14 +115,26 @@ the app is open.
 
 ## M4 — Japanese on-screen text
 
-- [ ] Confirm with the owner what "Japanese text" covers (on-screen writing, and whether Japanese
-      speech or songs count too).
-- [ ] Source A: re-time the One Pace sign translations to the dub edit.
-- [ ] Source B: detect, read and translate on-screen Japanese text; positioned ASS output.
+- [x] Implement translation for visible Japanese, including credits, decorative writing and visible lyrics.
+- [x] Six resumable visual steps in the normal job: detect, read, track, translate, review and typeset.
+- [x] Local PP-OCRv5 and manga-ocr; isolated Qwen worker; optional tool-disabled Claude image fallback.
+- [x] Conservative scene-validated reference wording; source geometry and timing are recalculated.
+- [x] Combined ASS with separate visual layout, flagged nearby fallbacks and source videos preserved.
+- [x] Settings, combined queue/progress, Overview counts and Check Text with actual ASS comparison,
+      playback, frame stepping and keep/undo/reprocess corrections.
+- [ ] Annotated board, title and name-card pilots and Dressrosa 11, 16 and 39 scene acceptance.
+- [ ] One full episode (roughly 20–30 minutes): measured visual time and 8 GB RAM / 5.5 GB VRAM limits.
+- [ ] Final repository checks, AppImage rebuild and host smoke test.
+- [ ] Owner acceptance of the complete GUI correction flow and VLC playback.
 
 Details: [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md).
 
-**Acceptance:** Dressrosa signs and title cards show translated, positioned subtitles in VLC.
+**Acceptance:** every readable annotated occurrence is translated or explicitly flagged; timing is
+within one source frame and accepted tracks stay within two pixels at 1080p. The owner accepts
+translated Dressrosa signs in VLC and the complete desktop review workflow. The owner selects a
+single full episode for the memory/time benchmark; a two-hour visual benchmark is not required.
+Missed faint text and false detections are accepted limitations. Dense scan performance remains
+open; selective scanning and whole-frame Claude inspection are discussion proposals only.
 
 ## Later
 
@@ -134,12 +146,12 @@ Items the owner moved out of the pipeline milestone to keep it small (see the
 - [ ] Reference subtitles (the One Pace `.ass` files) as meaning and spelling hints for the
       language model.
 - [ ] Speaker labels (`[Law]`) for voices the language model judges off-screen.
-- [ ] The local language model (mistral.rs) as an app worker binary, the offline fallback to
-      `claude -p`.
+- [ ] The local language model as an offline fallback for audio adjudication. The isolated
+      mistral.rs worker supplies visual translation.
 
 ## Open questions
 
 | Question | Settle by |
 |---|---|
-| Output format when sign subtitles exist: always `.ass`, or `.srt` until signs appear? | M4 |
-| Which Japanese text counts: on-screen only, or also Japanese speech and songs? | Owner, at M4 start |
+| Visual output | ASS whenever on-screen translation is enabled |
+| Visible Japanese scope | All readable writing, including credits, decoration and visible lyrics |

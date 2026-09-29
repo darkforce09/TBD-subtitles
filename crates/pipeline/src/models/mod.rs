@@ -45,13 +45,17 @@ pub fn whisper_model(model: WhisperModel) -> (&'static str, &'static str) {
 
 /// The model folders a job with `settings` loads, in the order its steps load them.
 pub fn required(settings: &JobSettings) -> Vec<&'static str> {
-    vec![
+    let mut models = vec![
         separator_model(settings.separator).0,
         parakeet_tdt::MODEL,
         whisper_model(settings.whisper).0,
         ced::MODEL,
         parakeet_ctc::MODEL,
-    ]
+    ];
+    if settings.onscreen_text.enabled {
+        models.extend(["pp-ocrv5", "manga-ocr", "qwen3.5-4b"]);
+    }
+    models
 }
 
 /// The required model folders not complete in `models`.

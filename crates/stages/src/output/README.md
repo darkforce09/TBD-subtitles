@@ -15,12 +15,12 @@ crates/stages/src/output/
 ## How it works
 
 `subtitle_path` is the video's path with the format's extension (`.srt`, `.vtt` or `.ass`).
-`install` first looks at the file the job wrote last time (`output.json`): when it is the video's
-file of another format, it is moved into the job's backup folder, so one subtitle file stays
-beside the video for VLC. Then it compares what is already at the new path with the new text: an
+`install` compares what is already at the new path with the new text: an
 identical file is left alone and reported `unchanged`; a different one is first copied into the
 backup folder as `<file name>.<stamp>`; then the text goes to `<file>.part` and is renamed over the
-file, so a player never reads half a file. A video whose own name is its subtitle file name is
+file, so a player never reads half a file. After installation succeeds, the video's file of the
+earlier format is moved into the backup folder. A failed ASS write therefore leaves the existing
+SRT available to VLC. A video whose own name is its subtitle file name is
 refused, so the video is never overwritten.
 
 ## Boundaries

@@ -8,6 +8,26 @@ fn painted(text: &str, line: &str) -> bool {
     text.lines().any(|painted| painted == line)
 }
 
+/// A live clock can cross a second while fonts and two headless frames are rendered.
+fn painted_elapsed(
+    text: &str,
+    prefix: &str,
+    suffix: &str,
+    started: Instant,
+    before: Instant,
+    after: Instant,
+) {
+    let first = before.duration_since(started).as_secs_f64().round() as u64;
+    let last = after.duration_since(started).as_secs_f64().round() as u64;
+    assert!(
+        (first..=last).any(|seconds| {
+            let duration = crate::core::format::duration(seconds as f64);
+            painted(text, &format!("{prefix}{duration}{suffix}"))
+        }),
+        "no {prefix}<duration>{suffix} between {first} and {last} seconds in {text}"
+    );
+}
+
 #[test]
 fn a_running_job_shows_its_stage_its_step_and_its_stages() {
     let mut app = app("detail-running", vec![PathBuf::from("/v/Dressrosa 16.mp4")]);
@@ -19,26 +39,41 @@ fn a_running_job_shows_its_stage_its_step_and_its_stages() {
     // The full lane holds the running job, with no thread behind it.
     app.cancel = Some((id, CancelToken::new()));
     app.queue.selected = Some(id);
+    let before = Instant::now();
     let (text, actions) = render(&app);
+    let after = Instant::now();
     for expected in [
         "Dressrosa 16",
-        "25:59 video · running for 10 min 00 s",
         "Cancel",
         "Settling the words",
-        "Now: Language model settles the words · step 9 of 18",
-        "10 min 00 s so far",
-        "Show all 18 steps",
-        "6 stages",
+        "Now: Language model settles the words · step 9 of 24",
+        "Show all 24 steps",
+        "8 stages",
         "Separate the voices",
         "1 min 00 s",
         "Settle the words",
-        "40 s so far",
         "Language model settles the words",
         "Second look at unsure lines",
         "to run",
+        "Lay out the subtitles",
+        "Translate on-screen text",
         "Write the subtitles",
     ] {
         assert!(text.contains(expected), "{expected} not in {text}");
+    }
+    for (prefix, suffix, elapsed) in [
+        ("25:59 video · running for ", "", 600),
+        ("", " so far", 600),
+        ("", " so far", 40),
+    ] {
+        painted_elapsed(
+            &text,
+            prefix,
+            suffix,
+            now - Duration::from_secs(elapsed),
+            before,
+            after,
+        );
     }
     assert!(
         text.lines()
@@ -67,7 +102,8 @@ fn a_running_job_shows_its_stage_its_step_and_its_stages() {
 fn a_running_job_works_out_its_time_left_until_its_length_is_known() {
     let mut app = app("detail-probe", vec![PathBuf::from("/v/a.mp4")]);
     let id = app.queue.items[0].id;
-    let mut progress = JobProgress::new(Instant::now() - Duration::from_secs(5));
+    let started = Instant::now() - Duration::from_secs(5);
+    let mut progress = JobProgress::new(started);
     if let Some(row) = progress.row_mut(StepName::ProbeDecode) {
         row.state = StepState::Running {
             started: Instant::now(),
@@ -79,15 +115,17 @@ fn a_running_job_works_out_its_time_left_until_its_length_is_known() {
     app.queue.items[0].state = JobState::Running(Box::new(progress));
     app.cancel = Some((id, CancelToken::new()));
     app.queue.selected = Some(id);
+    let before = Instant::now();
     let (text, _) = render(&app);
+    let after = Instant::now();
     for expected in [
-        "Running for 5 s",
         "Reading the video",
-        "Now: Read the video's details · step 1 of 18",
+        "Now: Read the video's details · step 1 of 24",
         "Working out the time left…",
     ] {
         assert!(text.contains(expected), "{expected} not in {text}");
     }
+    painted_elapsed(&text, "Running for ", "", started, before, after);
 }
 
 #[test]
@@ -145,7 +183,7 @@ fn a_job_that_failed_before_its_first_step_shows_no_stages() {
     ] {
         assert!(text.contains(expected), "{expected} not in {text}");
     }
-    assert!(!text.contains("Show all 18 steps"), "{text}");
+    assert!(!text.contains("Show all 24 steps"), "{text}");
 }
 
 #[test]

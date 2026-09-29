@@ -1,7 +1,7 @@
-//! The pipeline's steps as the window names them: six stages the owner recognises, and a plain
+//! The pipeline's steps as the window names them: eight stages the owner recognises, and a plain
 //! title for every step.
 //!
-//! **Role:** group the eighteen steps into the six stages the window shows, each with its title
+//! **Role:** group the twenty-four steps into the eight stages the window shows, each with its title
 //! ("Settle the words") and what it does while it runs ("Settling the words"), and give every
 //! step a plain title in place of its file name.
 //!
@@ -25,8 +25,8 @@ pub(crate) struct Stage {
     pub(crate) steps: &'static [StepName],
 }
 
-/// The six stages, in run order.
-pub(crate) const STAGES: [Stage; 6] = [
+/// The eight stages, in run order.
+pub(crate) const STAGES: [Stage; 8] = [
     Stage {
         title: "Read the video",
         doing: "Reading the video",
@@ -64,9 +64,26 @@ pub(crate) const STAGES: [Stage; 6] = [
         steps: &[StepName::Alignment, StepName::Review],
     },
     Stage {
+        title: "Lay out the subtitles",
+        doing: "Laying out the subtitles",
+        steps: &[StepName::Cues],
+    },
+    Stage {
+        title: "Translate on-screen text",
+        doing: "Translating on-screen text",
+        steps: &[
+            StepName::TextDetect,
+            StepName::TextRead,
+            StepName::TextTrack,
+            StepName::TextTranslate,
+            StepName::TextReview,
+            StepName::TextTypeset,
+        ],
+    },
+    Stage {
         title: "Write the subtitles",
         doing: "Writing the subtitles",
-        steps: &[StepName::Cues, StepName::Qc, StepName::Output],
+        steps: &[StepName::Qc, StepName::Output],
     },
 ];
 
@@ -97,6 +114,12 @@ pub(crate) fn step_title(step: StepName) -> &'static str {
         StepName::Alignment => "Time each word",
         StepName::Review => "Apply your corrections",
         StepName::Cues => "Lay out the subtitles",
+        StepName::TextDetect => "Find on-screen writing",
+        StepName::TextRead => "Read the Japanese text",
+        StepName::TextTrack => "Track writing through the scene",
+        StepName::TextTranslate => "Translate writing into English",
+        StepName::TextReview => "Apply your text corrections",
+        StepName::TextTypeset => "Place and style the English text",
         StepName::Qc => "Quality check",
         StepName::Output => "Save the subtitle file",
     }

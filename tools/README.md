@@ -10,6 +10,7 @@ app; the AppImage builder only packs it.
 
 ```text
 tools/
+├── visual_validation/  visual pilot recognition and annotated acceptance checks
 ├── appimage_builder/   the `cargo appimage` builder: the app, its GPU libraries and FFmpeg in one AppImage
 ├── repo_gates/         the `cargo gates` runner: one gate per checkable repository law
 ├── stack_spike/        the measuring harness: each ML stack piece on one video, and the model downloads

@@ -18,7 +18,7 @@ pub(crate) enum PathField {
 pub(crate) enum SettingsEvent {
     /// The owner changed one setting; these are the saved settings with that change, to be
     /// written at once.
-    Edit(AppSettings),
+    Edit(Box<AppSettings>),
     /// Open the Settings window on this tab, or show the tab when it is open.
     Open(SettingsTab),
     /// Open the chooser for a path setting.

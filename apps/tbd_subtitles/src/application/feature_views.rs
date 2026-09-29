@@ -101,6 +101,39 @@ pub(super) fn jobs_ui(ui: &mut Ui, app: &TbdSubtitlesApp, actions: &mut Vec<Acti
         }))
         .show(ui, |ui| detail_view::header_ui(ui, app, item, actions));
     let finished = matches!(item.state, JobState::Finished(_) | JobState::FinishedBefore);
+    if app.text.job == Some(item.id) && finished {
+        if let Some(session) = &app.text.session {
+            let comparison = app
+                .text
+                .player
+                .as_ref()
+                .and_then(|player| player.comparison());
+            let playing = app
+                .text
+                .player
+                .as_ref()
+                .is_some_and(|player| player.is_playing());
+            let mut events = Vec::new();
+            crate::text_review::ui::review::show(
+                ui,
+                session,
+                comparison.as_ref(),
+                playing,
+                app.text.saving.is_some() || app.video_busy(item.id),
+                &mut events,
+            );
+            actions.extend(events.into_iter().map(Action::Text));
+            if let Some(error) = app.text.player.as_ref().and_then(|player| player.error()) {
+                ui.colored_label(p.bad, error);
+            }
+        } else if let Some(error) = &app.text.error {
+            ui.label(error);
+        } else {
+            ui.spinner();
+            ui.label("Loading on-screen text…");
+        }
+        return;
+    }
     if let Some((_, session)) = app
         .review
         .as_ref()

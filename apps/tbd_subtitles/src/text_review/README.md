@@ -1,0 +1,32 @@
+# Check Text
+
+Review and correct Japanese writing translated during the same video job as dialogue.
+
+## Contents
+
+```text
+apps/tbd_subtitles/src/text_review/
+├── mod.rs     feature exports
+├── models/    text sessions, pictures and events
+├── services/  background loading, corrections and playback
+└── ui/        occurrence list, editor and comparison preview
+```
+
+## How it works
+
+The application loads a finished job's visual artifacts on a background thread. Changes to wording, times and presentation are saved under a lock, then the existing correction queue regenerates the affected visual steps and combined ASS. Preview renders that ASS through FFmpeg.
+
+## Public surface
+
+- `models::Session` and `Event` carry the borrowed view and actions.
+- `services` load, save and play; `ui` renders without changing application state.
+
+## Boundaries
+
+- Depends on: the core UI, pipeline artifacts and media preview commands.
+- Used by: the application composition layer.
+- Rules: source video and dialogue corrections remain untouched; work never blocks rendering.
+
+## Related documentation
+
+- [Desktop GUI](/documentation/features/gui.md) — feature composition.

@@ -7,6 +7,8 @@ answers in before the next frame.
 
 ```text
 apps/tbd_subtitles/src/application/actions/
+├── text.rs        asynchronous text review and correction runs
+├── tests/         correction completion across navigation
 ├── automation.rs   videos from any source into the queue and the history; hand-offs, watch folders, auto-start, job-end notices, the service menu
 ├── fix_it/         Fix It: its view and steps, start (one, Fix All, after a job) and Stop, end, finish
 ├── log_console.rs  the log window: open, read lines and calls, views, filters, clear, log file

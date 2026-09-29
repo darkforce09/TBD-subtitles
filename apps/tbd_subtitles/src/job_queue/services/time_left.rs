@@ -86,7 +86,15 @@ fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
 
 /// Seconds `step` is expected to take on `duration_s` of video.
 fn expected(rates: &Rates, step: StepName, duration_s: f64) -> f64 {
-    rates.per_step.get(&step).copied().unwrap_or(0.0) * duration_s
+    let initial = match step {
+        StepName::TextDetect => 2.0,
+        StepName::TextRead => 0.15,
+        StepName::TextTrack => 0.25,
+        StepName::TextTranslate => 0.2,
+        StepName::TextReview | StepName::TextTypeset => 0.01,
+        _ => 0.0,
+    };
+    rates.per_step.get(&step).copied().unwrap_or(initial) * duration_s
 }
 
 /// The seconds left, and the share of the job's expected time done; `None` until the video's

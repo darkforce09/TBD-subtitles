@@ -8,6 +8,7 @@ mod report;
 mod review;
 mod runner;
 mod settings;
+pub(super) mod text;
 
 #[cfg(test)]
 pub(super) use automation::right_click_entry;

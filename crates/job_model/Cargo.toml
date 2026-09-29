@@ -9,8 +9,8 @@ rust-version = "1.95"
 publish = false
 
 [dependencies]
+sha2 = "0.10"
 # Every contract type is written to and read from the job's work directory as JSON.
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 # A model call crosses from a worker to the app as one JSON line.
 serde_json = "1"
-

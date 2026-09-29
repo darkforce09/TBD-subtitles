@@ -22,14 +22,72 @@ fn nothing_is_estimated_before_the_video_length_is_known() {
 }
 
 #[test]
-fn a_new_job_of_the_pilot_length_has_the_pilot_time_left() {
+fn a_new_job_has_the_pilot_audio_time_and_initial_visual_time_left() {
     let now = Instant::now();
     let mut p = JobProgress::new(now);
     p.duration_s = Some(PILOT_VIDEO_S);
     let (left, share) = estimate(&p, &pilot_rates(), now).expect("estimate");
     let pilot: f64 = PILOT.iter().map(|(_, s)| s).sum();
-    assert!((left - pilot).abs() < 0.01, "{left} vs {pilot}");
+    let initial_visual = PILOT_VIDEO_S * 2.62;
+    assert!(
+        (left - pilot - initial_visual).abs() < 0.01,
+        "{left} vs audio {pilot} and visual {initial_visual}"
+    );
     assert_eq!(share, 0.0);
+}
+
+#[test]
+fn every_visual_step_has_a_positive_estimate_without_measured_history() {
+    let now = Instant::now();
+    for (step, seconds_for_thousand_seconds) in [
+        (StepName::TextDetect, 2000.0),
+        (StepName::TextRead, 150.0),
+        (StepName::TextTrack, 250.0),
+        (StepName::TextTranslate, 200.0),
+        (StepName::TextReview, 10.0),
+        (StepName::TextTypeset, 10.0),
+    ] {
+        let mut progress = JobProgress::new(now);
+        progress.duration_s = Some(1000.0);
+        for row in &mut progress.steps {
+            row.stale = row.step == step;
+        }
+        let rates = Rates::default();
+        let (left, share) = estimate(&progress, &rates, now).expect("known duration");
+        assert!(left.is_finite() && left > 0.0, "{step}: {left}");
+        assert!((left - seconds_for_thousand_seconds).abs() < 0.01);
+        assert_eq!(share, 0.0);
+        progress.duration_s = Some(2000.0);
+        let (twice, _) = estimate(&progress, &rates, now).expect("known duration");
+        assert!((twice - left * 2.0).abs() < 0.01, "{step}");
+    }
+}
+
+#[test]
+fn disabled_visual_steps_add_no_time_even_with_measured_history() {
+    let now = Instant::now();
+    let mut progress = JobProgress::new(now);
+    progress.duration_s = Some(PILOT_VIDEO_S);
+    let mut rates = pilot_rates();
+    for step in [
+        StepName::TextDetect,
+        StepName::TextRead,
+        StepName::TextTrack,
+        StepName::TextTranslate,
+        StepName::TextReview,
+        StepName::TextTypeset,
+    ] {
+        progress.row_mut(step).expect("visual step").stale = false;
+        rates.per_step.insert(step, 100.0);
+    }
+    let (left, share) = estimate(&progress, &rates, now).expect("known duration");
+    let audio: f64 = PILOT.iter().map(|(_, seconds)| seconds).sum();
+    assert!((left - audio).abs() < 0.01, "{left} vs {audio}");
+    assert_eq!(share, 0.0);
+    for row in &mut progress.steps {
+        row.stale = false;
+    }
+    assert_eq!(estimate(&progress, &rates, now), Some((0.0, 0.0)));
 }
 
 #[test]

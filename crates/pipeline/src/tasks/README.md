@@ -8,6 +8,7 @@ process of either app binary for the rest.
 
 ```text
 crates/pipeline/src/tasks/
+├── onscreen.rs   six resumable visual steps and their isolated model workers
 ├── alignment.rs  forced alignment: Parakeet-CTC and CTC Viterbi over the vocal stem, block by block
 ├── layout.rs     cue building at the frame rate, the quality check, the subtitle file beside the video
 ├── llm.rs        adjudication and re-adjudication through `claude -p`, several processes at once

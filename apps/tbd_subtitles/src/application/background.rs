@@ -96,6 +96,7 @@ impl TbdSubtitlesApp {
     /// Apply everything the threads sent since the last frame.
     pub(crate) fn poll(&mut self) {
         poll_settings(self);
+        self.poll_text();
         poll_runner(self);
         poll_fix(self);
         self.poll_automation();

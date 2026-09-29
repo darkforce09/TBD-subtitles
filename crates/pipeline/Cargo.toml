@@ -11,6 +11,7 @@ publish = false
 [features]
 # The Whisper steps, through CrispASR (ggml with CUDA); only the ggml worker binary enables it.
 crispasr = ["stages/crispasr", "inference/crispasr"]
+mistralrs = ["inference/mistralrs"]
 
 [dependencies]
 # The stage logic every step calls.

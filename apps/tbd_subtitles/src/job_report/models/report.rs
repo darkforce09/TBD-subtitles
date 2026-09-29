@@ -16,6 +16,7 @@ use crate::job_report::models::summary::{LineCounts, RowSummary};
 /// Everything the Overview shows about one job.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct JobReport {
+    pub(crate) visual: Option<job_model::onscreen::TextSummary>,
     pub(crate) video: PathBuf,
     pub(crate) work_dir: PathBuf,
     /// The subtitle file beside the video.

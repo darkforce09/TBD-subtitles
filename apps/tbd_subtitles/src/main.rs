@@ -22,6 +22,7 @@ mod job_report;
 mod line_review;
 mod log_console;
 mod settings;
+mod text_review;
 
 use std::process::ExitCode;
 

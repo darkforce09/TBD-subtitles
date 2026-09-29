@@ -130,7 +130,14 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
             .map_err(|e| PipelineError::new(format!("step {step}"), e))
     };
     let run_step = |step: StepName, record: &JobRecord| -> Result<StepMeasure> {
-        match graph::placement(step) {
+        let placement = if !record.settings.onscreen_text.enabled
+            && step.stage() == job_model::StageName::OnscreenText
+        {
+            Placement::InProcess
+        } else {
+            graph::placement(step)
+        };
+        match placement {
             Placement::InProcess => {
                 tracing::debug!("step {step} runs in this process");
                 let job = Job {
@@ -172,10 +179,17 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                 let step_span = tracing::info_span!("step", step = %step);
                 let _in_step = step_span.enter();
                 if graph::inputs(step).contains(&StepName::ShotScan)
-                    && let Some(handle) = shots.take()
+                    && let Some((handle, fingerprint)) = shots.take()
                 {
                     let measure = join(handle)?;
-                    finish(&mut record, &work, StepName::ShotScan, measure, progress)?;
+                    finish(
+                        &mut record,
+                        &work,
+                        StepName::ShotScan,
+                        fingerprint,
+                        measure,
+                        progress,
+                    )?;
                 }
                 if resume::is_valid(step, &record, &work) {
                     skipped.push(step);
@@ -186,14 +200,18 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                 record.steps.remove(&step);
                 ran.push(step);
                 progress(Progress::StepStarted(step));
+                let fingerprint = resume::fingerprint_in_work(step, &record, &work);
                 if step == StepName::ShotScan {
                     let snapshot = record.clone();
                     let run_step = &run_step;
                     let span = step_span.clone();
-                    shots = Some(scope.spawn(move || {
-                        let _in_step = span.enter();
-                        run_step(StepName::ShotScan, &snapshot)
-                    }));
+                    shots = Some((
+                        scope.spawn(move || {
+                            let _in_step = span.enter();
+                            run_step(StepName::ShotScan, &snapshot)
+                        }),
+                        fingerprint,
+                    ));
                     continue;
                 }
                 let measure = run_step(step, &record).inspect_err(|error| {
@@ -202,12 +220,19 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                         message: error.to_string(),
                     })
                 })?;
-                finish(&mut record, &work, step, measure, progress)?;
+                finish(&mut record, &work, step, fingerprint, measure, progress)?;
                 announce_duration(step, &work, progress);
             }
-            if let Some(handle) = shots.take() {
+            if let Some((handle, fingerprint)) = shots.take() {
                 let measure = join(handle)?;
-                finish(&mut record, &work, StepName::ShotScan, measure, progress)?;
+                finish(
+                    &mut record,
+                    &work,
+                    StepName::ShotScan,
+                    fingerprint,
+                    measure,
+                    progress,
+                )?;
             }
             Ok(())
         })();
@@ -222,7 +247,7 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
     tracing::info!("the report is written to {}", work.report().display());
     Ok(JobOutcome {
         work_dir: work.root().to_path_buf(),
-        subtitles: stages::output::subtitle_path(&video, record.settings.output_format),
+        subtitles: stages::output::subtitle_path(&video, record.settings.effective_output_format()),
         report: work.report(),
         qc,
         ran,
@@ -255,15 +280,15 @@ fn join(handle: std::thread::ScopedJoinHandle<'_, Result<StepMeasure>>) -> Resul
         .map_err(|_| PipelineError::new("step shot_scan", "the scan thread panicked"))?
 }
 
-/// Record `step` as finished now and save the record.
+/// Record `step` with the fingerprint captured before it runs, so concurrent edits remain stale.
 fn finish(
     record: &mut JobRecord,
     work: &WorkDir,
     step: StepName,
+    fingerprint: String,
     measure: StepMeasure,
     progress: ProgressSink,
 ) -> Result<()> {
-    let fingerprint = resume::fingerprint(step, record);
     let finished_ns = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos());

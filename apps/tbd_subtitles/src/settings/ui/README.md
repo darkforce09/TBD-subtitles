@@ -9,6 +9,7 @@ nothing.
 
 ```text
 apps/tbd_subtitles/src/settings/ui/
+├── onscreen_text.rs  visual translation settings and model readiness
 ├── automation_tab.rs   the watch folders with Remove and Add Folder…, and Dolphin's right-click entry
 ├── engines_tab.rs      the engines, the language model, Fix It's model, calls and switch, cut score
 ├── form.rs             the forms' rows, help and error lines, divider, path well, list, field, stepper

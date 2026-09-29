@@ -2,7 +2,7 @@
 //! that was refused, the models a job needs with any download in progress, the machine checks,
 //! the sizes of the folders and whether Dolphin's right-click entry is written.
 //!
-//! **Role:** hold what the five tabs and the models banner show, and name the tabs and the fields
+//! **Role:** hold what the six tabs and the models banner show, and name the tabs and the fields
 //! an error can sit under.
 //!
 //! **Position:** built by the application when the window opens; changed by
@@ -26,15 +26,17 @@ pub(crate) enum SettingsTab {
     General,
     Automation,
     Engines,
+    OnscreenText,
     Models,
     ThisComputer,
 }
 
 impl SettingsTab {
-    pub(crate) const ALL: [SettingsTab; 5] = [
+    pub(crate) const ALL: [SettingsTab; 6] = [
         SettingsTab::General,
         SettingsTab::Automation,
         SettingsTab::Engines,
+        SettingsTab::OnscreenText,
         SettingsTab::Models,
         SettingsTab::ThisComputer,
     ];
@@ -45,6 +47,7 @@ impl SettingsTab {
             SettingsTab::General => "General",
             SettingsTab::Automation => "Automation",
             SettingsTab::Engines => "Engines",
+            SettingsTab::OnscreenText => "On-screen Text",
             SettingsTab::Models => "Models",
             SettingsTab::ThisComputer => "This Computer",
         }
@@ -57,6 +60,7 @@ pub(crate) enum Field {
     ModelsFolder,
     WorkFolder,
     OutputFormat,
+    OnscreenText,
     Glossary,
     WatchFolders,
     Separator,

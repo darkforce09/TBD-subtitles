@@ -87,9 +87,12 @@ impl TbdSubtitlesApp {
         self.close_review_unless_finished();
     }
 
-    /// Whether a model or runtime archive a job needs is missing.
+    /// Whether the next full job is missing a model, or the current defaults when none waits.
     pub(crate) fn models_missing(&self) -> bool {
-        self.settings.items.iter().any(|item| !item.present)
+        queue_editing::next_waiting(&self.queue, JobKind::Full).map_or_else(
+            || self.settings.items.iter().any(|item| !item.present),
+            |id| self.models_missing_for(id),
+        )
     }
 
     pub(crate) fn save_queue(&self) {
@@ -110,6 +113,9 @@ impl TbdSubtitlesApp {
             self.just_fixed = None;
         }
         self.queue.selected = id;
+        if self.text.job.is_some_and(|job| Some(job) != id) {
+            self.close_text();
+        }
         if self
             .review
             .as_ref()
@@ -259,7 +265,7 @@ impl TbdSubtitlesApp {
             return;
         };
         let (name, kind) = (item.short_name(), item.kind);
-        if self.models_missing() {
+        if self.models_missing_for(id) {
             self.toast(ToastKind::Info, format!("{name} waits for the models."));
             return;
         }

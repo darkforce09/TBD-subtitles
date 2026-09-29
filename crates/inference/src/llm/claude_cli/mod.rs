@@ -17,6 +17,10 @@
 //! `structured_output` is an error, never an empty success; once the cancel flag is set, the
 //! running `claude` is killed with its process group and the call is an error.
 
+mod shared_slots;
+
+pub use shared_slots::set_shared_limit;
+
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -55,6 +59,17 @@ impl ClaudeCli {
         self.cancel = Some(flag);
         self
     }
+
+    /// Ask about one PNG crop, supplied as base64, with the same isolation and schema as text.
+    pub fn complete_image_json(
+        &mut self,
+        system: &str,
+        user: &str,
+        schema: &serde_json::Value,
+        png_base64: &str,
+    ) -> Result<Completion, LlmError> {
+        self.complete_request(system, &image_input(user, png_base64), schema, true)
+    }
 }
 
 /// The `claude` CLI: on `PATH` if found there, else `$HOME/.local/bin/claude` if that file
@@ -83,48 +98,49 @@ impl LanguageModel for ClaudeCli {
         user: &str,
         schema: &serde_json::Value,
     ) -> Result<Completion, LlmError> {
+        self.complete_request(system, user, schema, false)
+    }
+}
+
+impl ClaudeCli {
+    fn complete_request(
+        &self,
+        system: &str,
+        input: &str,
+        schema: &serde_json::Value,
+        stream: bool,
+    ) -> Result<Completion, LlmError> {
         let started = Instant::now();
-        let (answer, printed) = self.call(system, user, schema);
+        let (answer, printed) = self.call(system, input, schema, stream);
         let sent = Sent {
             model: &self.model,
             system,
-            message: user,
+            message: input,
             schema,
         };
         call_log::log_call(&sent, started.elapsed(), &answer, &printed);
         answer
     }
-}
 
-impl ClaudeCli {
     /// The answer, and what `claude` printed on stdout.
     fn call(
         &self,
         system: &str,
-        user: &str,
+        input: &str,
         schema: &serde_json::Value,
+        stream: bool,
     ) -> (Result<Completion, LlmError>, String) {
+        let _permit = match shared_slots::acquire(self.cancel.as_deref()) {
+            Ok(permit) => permit,
+            Err(error) => return (Err(error), String::new()),
+        };
         if let Err(error) = std::fs::create_dir_all(&self.cwd) {
             return (Err(LlmError(error.to_string())), String::new());
         }
         let run = Run::new(&self.program)
-            .args(["-p", "--output-format", "json", "--json-schema"])
-            .arg(schema.to_string())
-            .args([
-                "--tools",
-                "",
-                "--no-session-persistence",
-                "--strict-mcp-config",
-                "--disable-slash-commands",
-                "--setting-sources",
-                "project",
-                "--system-prompt",
-            ])
-            .arg(system)
-            .arg("--model")
-            .arg(&self.model)
+            .args(call_args(&self.model, system, schema, stream))
             .cwd(&self.cwd)
-            .stdin(user)
+            .stdin(input)
             .timeout(self.timeout);
         let ran = match &self.cancel {
             Some(flag) => run_cancellable(run.cancel_on(flag.clone())),
@@ -149,6 +165,58 @@ impl ClaudeCli {
     }
 }
 
+/// Build one newline-delimited SDK user message without giving the CLI file access.
+fn image_input(user: &str, png_base64: &str) -> String {
+    let request = serde_json::json!({
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": user},
+                {"type": "image", "source": {
+                    "type": "base64", "media_type": "image/png", "data": png_base64
+                }}
+            ]
+        },
+        "parent_tool_use_id": null
+    });
+    format!("{request}\n")
+}
+
+fn call_args(model: &str, system: &str, schema: &serde_json::Value, stream: bool) -> Vec<String> {
+    let mut args: Vec<String> = [
+        "-p",
+        "--output-format",
+        if stream { "stream-json" } else { "json" },
+        "--json-schema",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+    args.push(schema.to_string());
+    args.extend(
+        [
+            "--tools",
+            "",
+            "--no-session-persistence",
+            "--strict-mcp-config",
+            "--disable-slash-commands",
+            "--setting-sources",
+            "project",
+            "--system-prompt",
+            system,
+            "--model",
+            model,
+        ]
+        .into_iter()
+        .map(String::from),
+    );
+    if stream {
+        args.extend(["--input-format", "stream-json", "--verbose"].map(String::from));
+    }
+    args
+}
+
 /// Run `run` under its watchdog, which kills it once the cancel flag is set: the exit code, the
 /// whole stdout and the stderr.
 fn run_cancellable(run: Run) -> Result<(i32, String, String), LlmError> {
@@ -165,10 +233,9 @@ fn run_cancellable(run: Run) -> Result<(i32, String, String), LlmError> {
     }
 }
 
-/// Read the CLI's JSON result.
+/// Read a single JSON result or the final result event of a newline-delimited stream.
 pub fn parse(stdout: &str) -> Result<Completion, LlmError> {
-    let value: serde_json::Value =
-        serde_json::from_str(stdout).map_err(|e| LlmError(format!("unreadable result: {e}")))?;
+    let value = result_value(stdout)?;
     if value.get("is_error").and_then(|v| v.as_bool()) == Some(true) {
         return Err(LlmError(format!(
             "claude reported an error: {}",
@@ -195,6 +262,27 @@ pub fn parse(stdout: &str) -> Result<Completion, LlmError> {
         output_tokens: count("output_tokens"),
         cost_usd: value.get("total_cost_usd").and_then(|v| v.as_f64()),
     })
+}
+
+fn result_value(stdout: &str) -> Result<serde_json::Value, LlmError> {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(stdout) {
+        if value.get("type").is_some_and(|kind| kind != "result") {
+            return Err(LlmError("the output stream holds no final result".into()));
+        }
+        return Ok(value);
+    }
+    let mut result = None;
+    for line in stdout.lines().filter(|line| !line.trim().is_empty()) {
+        let value: serde_json::Value =
+            serde_json::from_str(line).map_err(|e| LlmError(format!("unreadable result: {e}")))?;
+        if result.is_some() {
+            return Err(LlmError("unexpected event after the final result".into()));
+        }
+        if value.get("type").and_then(|v| v.as_str()) == Some("result") {
+            result = Some(value);
+        }
+    }
+    result.ok_or_else(|| LlmError("the output stream holds no final result".into()))
 }
 
 #[cfg(test)]

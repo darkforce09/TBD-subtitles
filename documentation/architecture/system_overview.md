@@ -2,51 +2,67 @@
 
 # System overview
 
-The shape of TBD-subtitles: an app binary with a job runner, a second binary for the ggml worker,
-worker processes for the GPU and language-model steps, FFmpeg for media, and a work directory per
-job. The pipeline runs end to end from the command line (`tbd-subtitles process`) or from the
-window, which queues videos, runs their jobs one at a time with progress and the time left, shows
-each job's report and lets the owner review and correct its flagged lines
-([GUI](/documentation/features/gui.md)).
+The shape of TBD-subtitles: an app binary with a job runner, separate ggml and local-language-model
+worker binaries, FFmpeg for media, and a work directory per job. The 24-step pipeline runs from
+the command line (`tbd-subtitles process`) or the window. A video occupies one queue entry for
+dialogue, sound cues and on-screen Japanese translation. Enabled visual translation produces one
+ASS file beside the unchanged source video.
+
+The window includes visual settings, progress and timings, Overview counts and warnings, and
+Check Text beside Check Lines. Check Text edits wording, timing and presentation, regenerates
+the combined ASS, and compares source frames with FFmpeg rendering of that file. These M4
+components are integrated; annotated coverage, the episode benchmark, full GUI/VLC validation,
+packaged host checks and owner acceptance remain in progress
+([GUI](/documentation/features/gui.md),
+[on-screen text](/documentation/features/japanese_onscreen_text.md)).
 
 ## Processes
 
 ```text
-            ┌──────────────────── tbd-subtitles ──────────────────────────┐
- user ────▶ │ gui      eframe window: queue, progress, reports, review    │
- Dolphin ─▶ │ process  CLI: run each video end to end                     │
- watcher ─▶ │          job runner: steps in order, resume, measure, report│
-            └───────────────┬─────────────────────────────┬───────────────┘
-                            │ spawns, one at a time       │ spawns alongside
-                            ▼                             ▼
+ user / Dolphin / watcher
+            |
+            v
+ tbd-subtitles: GUI or CLI -> one job runner -> 24 resumable steps
+            |                                      |
+            | spawns assigned workers               | alongside initial decode
+            v                                      v
       tbd-subtitles worker <step>                 tbd-subtitles worker shot_scan
       probe_decode · separation · asr_parakeet    (FFmpeg scdet, CPU)
       sound_events · alignment · redecode_parakeet
       review (CPU) · adjudicate · readjudicate · sound_cues (claude)
+      text_detect · text_read (ONNX) · text_track (CPU)
       tbd-subtitles-ggml worker <step>
       asr_whisper · redecode_whisper
-                            │ reads and writes
-                            ▼
-                 work/<job id>/  step outputs (JSON + audio), job.json, report.md
-                            │ output step
-                            ▼
-                 <video folder>/<video base name>.srt
+      tbd-subtitles-llm worker text_translate (mistral.rs; optional claude)
+                            | reads and writes
+                            v
+                 work/<job id>/  audio, visual artifacts, job.json, report.md
+                            | text_review / text_typeset / QC / output in runner
+                            v
+                 <video folder>/<video base name>.ass
 ```
 
 - **gui** — the eframe desktop app ([GUI feature](/documentation/features/gui.md)). It runs one
   full job at a time and, beside it, up to four correction runs of different videos at once, each
-  on a runner thread of its own; a correction run's one model step, `review`, runs on the CPU.
+  on a runner thread of its own. Dialogue corrections run `review` on the CPU; visual corrections
+  rerun the affected visual steps. Selected-occurrence retries can request OCR or translation
+  workers. Background loading, model calls and preview rendering keep the window responsive.
 - **process** — headless run for one or more files; used by the Dolphin entry and watch folders
   ([automation](/documentation/features/automation.md)).
 - **worker `<step>`** — one step in its own process: it loads its model once, processes the whole
   job, writes its output and its own measure (`steps/<step>.worker.json`), and exits. This frees
-  VRAM and keeps native libraries apart. ONNX Runtime, ggml and candle never share a binary, so
-  the Whisper steps run in `tbd-subtitles-ggml`, which sits beside `tbd-subtitles`. A worker dies
-  with the process that started it (`PR_SET_PDEATHSIG`).
+  VRAM and keeps native libraries apart. ONNX models run in `tbd-subtitles`, Whisper in
+  `tbd-subtitles-ggml`, and mistral.rs in `tbd-subtitles-llm`; the three binaries sit together.
+  A worker dies with the process that started it (`PR_SET_PDEATHSIG`).
 - **FFmpeg/ffprobe** — the media programs. Audio is decoded to a pipe (`-f f32le pipe:1`) and read
-  in fixed-size chunks; stderr is drained on its own thread. The `claude` CLI is the other
-  external program, for the language-model steps.
-- **Steps** — each stage is one or more steps with their own output, fingerprint and timing row
+  in fixed-size chunks; video frames and presentation timestamps stream through bounded buffers.
+  The scan retains representative crops and tracking data rather than every source image. Stderr
+  is drained on its own thread. The optional `claude` CLI receives text or uncertain crops with
+  tools disabled and shares one admission limit across worker processes and Fix It. There is
+  no paid API backend or billing fallback.
+- **Steps** — each stage is one or more steps with their own output, fingerprint and timing row.
+  Detect → Read → Track → Translate → Review → Typeset follows dialogue cue construction and
+  precedes final QC/output. A disabled visual branch writes empty artifacts without loading models
   ([pipeline](/documentation/architecture/pipeline.md#steps-and-processes)).
 
 ## Crates
@@ -55,7 +71,8 @@ each job's report and lets the owner review and correct its flagged lines
 apps/
 ├── tbd_subtitles/        the main binary: clap subcommands, eframe GUI, the job runner's front end,
 │                         the ONNX Runtime, FFmpeg and claude workers
-└── tbd_subtitles_ggml/   the ggml worker binary: the Whisper steps through CrispASR
+├── tbd_subtitles_ggml/   the ggml worker binary: the Whisper steps through CrispASR
+└── tbd_subtitles_llm/    the mistral.rs worker binary: local visual translation
 crates/
 ├── app_icon/             the application icon, painted in code as RGBA pixels
 ├── child_process/        external programs with deadlines, process-group kills, drained pipes, and
@@ -64,26 +81,28 @@ crates/
 │                         model store, CUDA runtime locator
 ├── job_model/            serde types for the job record, stage and step names, stage outputs, the QC
 │                         report — the contracts
-├── media_io/             ffprobe JSON, FFmpeg PCM streaming, shot-change scan
+├── media_io/             ffprobe JSON, FFmpeg PCM and timestamped RGB streaming, shot-change scan
 ├── pipeline/             step graph, resume, work directory, worker processes, measurements, tasks,
 │                         runner, progress events, report
 ├── stages/               one module folder per stage (probe_decode, separation, vad, asr, diff_sheet,
-│                         sound_events, adjudication, alignment, cues, qc, output)
-└── subtitle_formats/     cue model (frames), SRT writer; VTT/ASS writers and import to come
+│                         sound_events, adjudication, alignment, cues, onscreen_text, qc, output)
+└── subtitle_formats/     cue model (frames), SRT/VTT/ASS writers and subtitle import
 tools/
+├── appimage_builder/     the three binaries and runtime libraries in one AppImage
 ├── repo_gates/           `cargo gates`: the repository laws a program can check
 ├── stack_spike*/         the stack spike's measuring harness and its ggml and llm workers
-└── verification_core/    the fail-closed verdicts, patterns and reports the gates are written with
+├── verification_core/    the fail-closed verdicts, patterns and reports the gates are written with
+└── visual_validation/    annotated visual pilots and episode timing/memory measurements
 ```
 
 Layering, lowest first: `job_model`, `child_process` and `app_icon`; `media_io`, `subtitle_formats` and
-`inference`; `stages`; `pipeline`; the apps `tbd_subtitles` and `tbd_subtitles_ggml`. A crate
+`inference`; `stages`; `pipeline`; the three app binaries. A crate
 depends only on crates of a lower layer, never a sibling (`cargo gates crate-layering`); a tool
 depends only on the crates listed for it in `tools/repo_gates/src/layout.rs`. Inside the app,
 feature folders keep rendering out of their models and services (the tests in
 `apps/tbd_subtitles/src/tests/architecture_rules.rs`). All boundaries are Rust to Rust, so the
 stage contracts are the serde types in `job_model`; the external contracts, the language model's
-JSON answers, are JSON Schemas kept beside their prompts in `crates/stages/src/adjudication/`.
+JSON answers, use structured schemas in the stage that makes the call.
 
 ## Job work directory
 
@@ -108,6 +127,8 @@ work/<job id>/            <video file stem as a slug>-<8 hex of its path>
 ├── fix.json, fix/        Fix It's last run; its answered calls until a run finishes
 ├── reviewed.json         the aligned words with the corrected lines timed again
 ├── cues.json             finished cues, in frames (and cues_dropped_sounds.json)
+├── visual/               six text_<step>.json artifacts, corrections.json, events.ass,
+│                         representative crops and cached translations
 ├── qc.json               the quality check
 ├── output.json           where the subtitle file went and what it replaced
 ├── report.md             QC results, flagged lines with timestamps, step timings and memory
@@ -118,8 +139,17 @@ work/<job id>/            <video file stem as a slug>-<8 hex of its path>
 
 A step is skipped when `job.json` holds its current fingerprint and its outputs exist. The
 fingerprint covers the settings the step reads and what its inputs were, so a changed setting
-reruns only the steps that read it and the steps after them. Deleting a step's output, or
-`--rerun <step>`, reruns it and everything after it.
+reruns only its dependent steps. Visual fingerprints also cover pinned model identities and
+installed-file metadata, reference ASS contents, and the relevant corrections. English wording
+or placement edits invalidate visual review/typesetting and final output; selected retries also
+invalidate reading/translation. Valid audio artifacts remain reusable. A step records the
+fingerprint captured before execution, so an edit during a run still makes its result stale.
+Deleting a step's output, or `--rerun <step>`, reruns that step and its dependants.
+
+Records without visual settings keep that branch disabled until an explicit rerun enables it.
+New jobs enable it by default and select ASS. Replacing a job's SRT with ASS uses the subtitle
+backup mechanism. Uncertain text completes with review flags; infrastructure failures remain
+explicit and resumable.
 
 ## Models
 
@@ -127,14 +157,23 @@ Downloaded on first use into a models folder (default `~/.local/share/tbd-subtit
 configurable), each with a pinned source URL and checksum in a manifest compiled into the binary.
 No model conversion ever happens locally.
 
+On-screen detection and recognition use PP-OCRv5 through `oar-ocr`, with manga-ocr for difficult
+crops. Qwen3.5-4B supplies local translations with dialogue context and the glossary. Reference
+ASS wording is reused only after a scene and content match; its timing and geometry are not
+copied. Claude image input can resolve uncertain crops when enabled. Typesetting uses ordinary
+ASS text or vector glyphs for perspective. Uncertain surfaces receive nearby translations and
+flags; ASS cannot reconstruct hidden artwork.
+
 ## Configuration
 
 The settings file `~/.config/tbd-subtitles/settings.toml` (TOML; `XDG_CONFIG_HOME` moves it)
 holds the owner's choices: the models folder, the work folder, the glossary (the built-in One
 Piece glossary by default), the separator and Whisper model, the language-model backend, the
-model a run asks and the one Fix It asks, the process count, how many `claude` calls Fix It makes
-at once across every video, whether Fix It starts on each video when its job finishes, the cut
-score and the output format. A missing file means the defaults; an
+model a run asks and the one Fix It asks, the process count, the shared `claude` call cap,
+whether Fix It starts on each video when its job finishes, the cut score and the output format.
+The On-screen Text section controls visual processing, Claude fallback, the reference ASS folder
+and model availability/downloads; local translation runs first. Enabled visual processing takes
+precedence over the selected format and writes ASS. A missing file means the defaults; an
 unknown key or a bad value stops the run with its name. The window edits the file and the command
 line reads it; `tbd-subtitles process --help` lists the options that win over it for one run,
 plus the audio track and the steps to run again. The job record keeps the job's settings in
@@ -146,12 +185,19 @@ plus the audio track and the steps to run again. The job record keeps the job's 
   through `distrobox-host-exec` during development.
 - ONNX Runtime (Microsoft's CUDA 13 build), the CUDA 13 runtime and cuDNN live in the runtime
   folder `~/.local/share/tbd-subtitles/runtime/` (or `<binary folder>/cuda/`), not installed
-  system-wide; each GPU worker starts with `LD_LIBRARY_PATH` and `ORT_DYLIB_PATH` pointing there.
-- ONNX Runtime, ggml and candle never share a binary: each GPU runtime has a worker binary of its
-  own.
-- Budget per GPU stage: 5.5 GB of VRAM with the desktop running.
+  system-wide. GPU workers receive the CUDA library path; only ONNX workers receive
+  `ORT_DYLIB_PATH`. The mistral.rs worker does not load ONNX Runtime.
+- ONNX Runtime, ggml and mistral.rs stay in separate worker binaries.
+- Resource limits: 8 GB RAM and 5.5 GB VRAM per GPU worker with the desktop running. Visual
+  processing adds measured time to the audio pipeline.
 - One GPU worker at a time on the machine: every GPU worker holds `gpu.lock` in the app data
   folder while it runs, whichever process of the app started it.
+
+The completed M1 audio benchmark is 128.9 minutes of video in 19.2 minutes against a
+30-minute target for two hours ([measurement](/documentation/research/long_video_120min.md)).
+It contains no visual workload. M4 acceptance uses one 20–30-minute episode, as requested by the
+owner in place of the two-hour visual benchmark, and reports the added visual processing time
+and peak memory. That validation and owner acceptance are outstanding.
 
 ## Related documentation
 

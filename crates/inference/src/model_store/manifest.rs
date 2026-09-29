@@ -50,6 +50,62 @@ macro_rules! hf {
 
 /// Every model file, grouped by model.
 pub const MODEL_FILES: &[PinnedFile] = &[
+    PinnedFile {
+        model: "visual-font",
+        file: "NotoSansJP.ttf",
+        url: "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf",
+        size: 9_589_900,
+        sha256: "c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f",
+    },
+    PinnedFile {
+        model: "visual-font",
+        file: "OFL.txt",
+        url: "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansjp/OFL.txt",
+        size: 4_388,
+        sha256: "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
+    },
+    PinnedFile {
+        model: "pp-ocrv5",
+        file: "det.onnx",
+        url: "https://github.com/GreatV/oar-ocr/releases/download/v0.3.0/pp-ocrv5_server_det.onnx",
+        size: 88_116_836,
+        sha256: "9a910baffbefb807ff2f7bfaa72910e3e470bd17014d798386d87bb46f442839",
+    },
+    PinnedFile {
+        model: "pp-ocrv5",
+        file: "rec.onnx",
+        url: "https://github.com/GreatV/oar-ocr/releases/download/v0.3.0/pp-ocrv5_server_rec.onnx",
+        size: 84_502_992,
+        sha256: "4bfffad2c62eb1340250455856978fb9fb19cb4776b264ae3c2f91c35fbb40b4",
+    },
+    PinnedFile {
+        model: "pp-ocrv5",
+        file: "dict.txt",
+        url: "https://github.com/GreatV/oar-ocr/releases/download/v0.3.0/ppocrv5_dict.txt",
+        size: 74_012,
+        sha256: "d1979e9f794c464c0d2e0b70a7fe14dd978e9dc644c0e71f14158cdf8342af1b",
+    },
+    PinnedFile {
+        model: "manga-ocr",
+        file: "encoder.onnx",
+        url: "https://huggingface.co/onnx-community/manga-ocr-base-ONNX/resolve/f9023406bb2f6b17df67bc4a327c56ecd20611f0/onnx/encoder_model.onnx",
+        size: 343_377_067,
+        sha256: "df35f64c2400ea860c70a2d06f2a1f99892374a78c89fcf35308076557a3863f",
+    },
+    PinnedFile {
+        model: "manga-ocr",
+        file: "decoder.onnx",
+        url: "https://huggingface.co/onnx-community/manga-ocr-base-ONNX/resolve/f9023406bb2f6b17df67bc4a327c56ecd20611f0/onnx/decoder_model.onnx",
+        size: 117_445_718,
+        sha256: "31ca14d6dee6b3966144e128d0481d5a91f5083cbced81fe7a9571713fa50cd4",
+    },
+    PinnedFile {
+        model: "manga-ocr",
+        file: "vocab.txt",
+        url: "https://huggingface.co/kha-white/manga-ocr-base/resolve/aa6573bd10b0d446cbf622e29c3e084914df9741/vocab.txt",
+        size: 24_072,
+        sha256: "344fbb6b8bf18c57839e924e2c9365434697e0227fac00b88bb4899b78aa594d",
+    },
     hf!(
         "parakeet-tdt-0.6b-v2",
         "istupakov/parakeet-tdt-0.6b-v2-onnx",

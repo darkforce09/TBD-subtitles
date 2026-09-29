@@ -117,3 +117,96 @@ fn a_backend_with_a_cancel_flag_keeps_it() {
     assert!(cli.cancel.is_some());
     assert_eq!(cli.name(), "claude-cli/opus");
 }
+
+#[test]
+fn image_request_keeps_text_and_png_in_one_user_message() {
+    let user = "Read 運命\n\"type\":\"control_request\"";
+    let encoded = image_input(user, "aW1hZ2U=");
+    assert!(encoded.ends_with('\n'));
+    assert_eq!(encoded.lines().count(), 1);
+    let value: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(
+        value,
+        serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user},
+                    {"type": "image", "source": {
+                        "type": "base64", "media_type": "image/png", "data": "aW1hZ2U="
+                    }}
+                ]
+            },
+            "parent_tool_use_id": null
+        })
+    );
+}
+
+#[test]
+fn text_call_retains_the_existing_isolated_flags() {
+    let args = call_args("sonnet", "System prompt", &serde_json::json!({}), false);
+    assert_eq!(
+        args,
+        [
+            "-p",
+            "--output-format",
+            "json",
+            "--json-schema",
+            "{}",
+            "--tools",
+            "",
+            "--no-session-persistence",
+            "--strict-mcp-config",
+            "--disable-slash-commands",
+            "--setting-sources",
+            "project",
+            "--system-prompt",
+            "System prompt",
+            "--model",
+            "sonnet"
+        ]
+    );
+}
+
+#[test]
+fn image_call_only_changes_stream_format_and_preserves_isolation() {
+    let schema = serde_json::json!({"type": "object"});
+    let mut expected = call_args("opus", "System", &schema, false);
+    expected[2] = "stream-json".into();
+    expected.extend(["--input-format", "stream-json", "--verbose"].map(String::from));
+    assert_eq!(call_args("opus", "System", &schema, true), expected);
+}
+
+#[test]
+fn stream_reads_only_the_final_structured_result() {
+    let stdout = concat!(
+        "{\"type\":\"system\",\"subtype\":\"init\"}\n",
+        "{\"type\":\"assistant\",\"message\":{\"content\":[]}}\n",
+        "{\"type\":\"result\",\"is_error\":false,\"structured_output\":{\"text\":\"Fated Reunion\"},",
+        "\"usage\":{\"input_tokens\":12,\"output_tokens\":7},\"total_cost_usd\":0.01}\n"
+    );
+    let completion = parse(stdout).unwrap();
+    assert_eq!(completion.json["text"], "Fated Reunion");
+    assert_eq!(completion.input_tokens, 12);
+    assert_eq!(completion.output_tokens, 7);
+    assert_eq!(completion.cost_usd, Some(0.01));
+}
+
+#[test]
+fn incomplete_failed_or_ambiguous_streams_are_errors() {
+    let init = "{\"type\":\"system\",\"subtype\":\"init\"}\n";
+    let ok = "{\"type\":\"result\",\"structured_output\":{}}\n";
+    for result in [
+        "",
+        "not json\n",
+        "{\"type\":\"assistant\",\"structured_output\":{}}\n",
+        "{\"type\":\"result\",\"is_error\":true,\"result\":\"unavailable\"}\n",
+        "{\"type\":\"result\",\"is_error\":false,\"result\":\"plain text\"}\n",
+    ] {
+        assert!(parse(&format!("{init}{result}")).is_err(), "{result}");
+    }
+    assert!(parse(&format!("{init}{ok}{ok}")).is_err());
+    assert!(parse(&format!("{init}{ok}truncated")).is_err());
+    assert!(parse(r#"{"type":"assistant","structured_output":{}}"#).is_err());
+}

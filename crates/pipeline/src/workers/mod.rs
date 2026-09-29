@@ -2,7 +2,7 @@
 //! CUDA runtime's environment, its progress lines and model calls forwarded, its stderr kept, and its time, peak
 //! RAM and peak VRAM read back.
 //!
-//! **Role:** find the two app binaries, start a step's worker, and turn what it reports into the
+//! **Role:** find the app binaries, start a step's worker, and turn what it reports into the
 //! step's measure.
 //!
 //! **Position:** called by `runner` for every step placed in a worker; uses `child_process` to
@@ -36,20 +36,22 @@ pub mod gpu_lock;
 /// Lines of a failed worker's stderr quoted in the error.
 const STDERR_TAIL: usize = 12;
 
-/// The two app binaries a worker runs in.
+/// The app binaries that isolate each model runtime.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Binaries {
     pub main: PathBuf,
     pub ggml: PathBuf,
+    pub local_llm: PathBuf,
 }
 
 impl Binaries {
-    /// `tbd-subtitles` and `tbd-subtitles-ggml` in the folder of the running binary.
+    /// The main, ggml and local-language-model binaries beside the running executable.
     pub fn beside_current_exe() -> Result<Binaries> {
         let exe = std::env::current_exe().context("cannot find the running binary")?;
         Ok(Binaries {
             main: exe.with_file_name("tbd-subtitles"),
             ggml: exe.with_file_name("tbd-subtitles-ggml"),
+            local_llm: exe.with_file_name("tbd-subtitles-llm"),
         })
     }
 
@@ -57,6 +59,7 @@ impl Binaries {
         match binary {
             Binary::Main => &self.main,
             Binary::Ggml => &self.ggml,
+            Binary::LocalLlm => &self.local_llm,
         }
     }
 }
@@ -89,6 +92,11 @@ pub fn run_worker(
         .cancel_on(cancel.flag());
     for (key, value) in env {
         run = run.env(key, value);
+    }
+    if graph::placement(step) == graph::Placement::Worker(Binary::LocalLlm) {
+        run = run
+            .env_remove("ORT_DYLIB_PATH")
+            .env("LD_LIBRARY_PATH", local_llm_library_path(binary)?);
     }
     let gpu = graph::uses_gpu(step);
     let _held = if gpu {
@@ -175,6 +183,48 @@ pub fn run_worker(
             .map(|mib| mib as f64),
         notes,
     })
+}
+
+/// Locate only the CUDA libraries the isolated local model needs, without requiring ORT.
+fn local_llm_library_path(binary: &Path) -> Result<String> {
+    use inference::cuda_runtime::REQUIRED_CUDA_LIBS;
+    use inference::model_store::manifest::{CUDA_FOLDER, CUDNN_FOLDER};
+
+    let runtime = inference::model_store::runtime_dir().context("local model CUDA runtime")?;
+    let candidates = binary
+        .parent()
+        .map(|dir| dir.join("cuda"))
+        .into_iter()
+        .chain(std::iter::once(runtime));
+    let mut missing = Vec::new();
+    for base in candidates {
+        let cuda_lib = base.join(CUDA_FOLDER).join("lib");
+        if let Some(library) = REQUIRED_CUDA_LIBS
+            .iter()
+            .find(|library| !cuda_lib.join(library).is_file())
+        {
+            missing.push(format!("{} lacks {library}", cuda_lib.display()));
+            continue;
+        }
+        let mut dirs = vec![cuda_lib];
+        let cudnn_lib = base.join(CUDNN_FOLDER).join("lib");
+        if cudnn_lib.is_dir() {
+            dirs.push(cudnn_lib);
+        }
+        if let Some(inherited) = std::env::var_os("LD_LIBRARY_PATH") {
+            dirs.extend(
+                std::env::split_paths(&inherited).filter(|path| !path.as_os_str().is_empty()),
+            );
+        }
+        return std::env::join_paths(dirs)
+            .context("local model CUDA library path")?
+            .into_string()
+            .map_err(|_| PipelineError::new("local model CUDA runtime", "non-UTF-8 library path"));
+    }
+    Err(PipelineError::new(
+        "local model CUDA runtime",
+        format!("no complete CUDA runtime found: {}", missing.join("; ")),
+    ))
 }
 
 /// A worker's stdout line as a progress event: `progress <done> <total>` an advance, `model-call

@@ -26,6 +26,7 @@ pub(crate) const PRODUCT_LAYERS: &[(&str, u8)] = &[
     ("pipeline", 3),
     ("tbd_subtitles", 4),
     ("tbd_subtitles_ggml", 4),
+    ("tbd_subtitles_llm", 4),
 ];
 
 /// The repository tools and the product crates each may depend on.
@@ -52,4 +53,16 @@ pub(crate) const TOOL_DEPENDENCIES: &[(&str, &[&str])] = &[
         &["job_model", "media_io", "inference", "stages"],
     ),
     ("stack_spike_llm", &["job_model", "inference", "stages"]),
+    (
+        "visual_validation",
+        &[
+            "child_process",
+            "job_model",
+            "media_io",
+            "inference",
+            "stages",
+            "pipeline",
+            "subtitle_formats",
+        ],
+    ),
 ];

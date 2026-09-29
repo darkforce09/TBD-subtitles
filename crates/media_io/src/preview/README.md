@@ -7,6 +7,7 @@ output device, and its picture as raw RGBA frames of a given size and rate on st
 
 ```text
 crates/media_io/src/preview/
+├── visual.rs  original or actual-ASS RGB preview command lines
 ├── mod.rs  `Clip`, `track_sound`, `stem_sound`, `frame_size` and `frames`
 └── tests/  unit tests for the padding, the sound and frame arguments, and the frame size
 ```

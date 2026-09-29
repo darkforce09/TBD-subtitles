@@ -1,11 +1,11 @@
-//! The Settings window's content: the tab bar General | Automation | Engines | Models | This
-//! Computer, the open tab, and the footer that says how changes apply.
+//! The Settings window's content: its six tabs, the open tab, and the footer that says how
+//! changes apply.
 //!
 //! **Role:** draw the tab bar across the top on the toolbar grey, the open tab in a scrolling body,
 //! and the footer across the bottom, and turn a tab's click into `SettingsEvent::Open`.
 //!
 //! **Position:** called by the application inside the Settings window's viewport; draws
-//! `general_tab`, `automation_tab`, `engines_tab`, `models_tab` and `machine_tab`.
+//! `general_tab`, `automation_tab`, `engines_tab`, `onscreen_text`, `models_tab` and `machine_tab`.
 //!
 //! **Signals and state:** none; reads the borrowed page and returns events.
 //!
@@ -23,6 +23,9 @@ use crate::core::ui::icons;
 use crate::core::ui::palette::palette;
 use crate::settings::events::SettingsEvent;
 use crate::settings::models::page::{SettingsPage, SettingsTab};
+
+#[path = "onscreen_text.rs"]
+mod onscreen_text;
 
 /// The footer's words.
 const FOOTER: &str = "Changes save as you make them. They apply to videos that haven't started.";
@@ -75,6 +78,9 @@ pub(crate) fn settings_window_ui(
                                 }
                                 SettingsTab::Engines => {
                                     engines_tab::engines_ui(ui, page, closing, events);
+                                }
+                                SettingsTab::OnscreenText => {
+                                    onscreen_text::onscreen_text_ui(ui, page, events);
                                 }
                                 SettingsTab::Models => models_tab::models_ui(ui, page, events),
                                 SettingsTab::ThisComputer => {
@@ -143,6 +149,7 @@ fn glyph(tab: SettingsTab) -> &'static str {
         SettingsTab::General => icons::GEAR,
         SettingsTab::Automation => icons::LIGHTNING,
         SettingsTab::Engines => icons::SLIDERS,
+        SettingsTab::OnscreenText => icons::FILE_TEXT,
         SettingsTab::Models => icons::PACKAGE,
         SettingsTab::ThisComputer => icons::MONITOR,
     }

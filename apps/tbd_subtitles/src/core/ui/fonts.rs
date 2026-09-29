@@ -86,7 +86,27 @@ pub(crate) fn definitions(sans: Option<Vec<u8>>, mono: Option<Vec<u8>>) -> FontD
 
 /// Install the fonts in `ctx`, with Adwaita Sans and Adwaita Mono when the system has them.
 pub(crate) fn install(ctx: &Context) {
-    ctx.set_fonts(definitions(read(SANS_FONT), read(MONO_FONT)));
+    let mut fonts = definitions(read(SANS_FONT), read(MONO_FONT));
+    let bundled = std::env::var_os("APPDIR")
+        .map(|root| std::path::PathBuf::from(root).join("usr/share/fonts/NotoSansJP.ttf"));
+    let cached = inference::model_store::models_dir()
+        .ok()
+        .map(|root| root.join("visual-font/NotoSansJP.ttf"));
+    if let Some(bytes) = bundled
+        .into_iter()
+        .chain(cached)
+        .find_map(|path| std::fs::read(path).ok())
+    {
+        fonts
+            .font_data
+            .insert("japanese".into(), Arc::new(FontData::from_owned(bytes)));
+        for (family, members) in &mut fonts.families {
+            if family != &FontFamily::Name(ICONS.into()) {
+                members.push("japanese".into());
+            }
+        }
+    }
+    ctx.set_fonts(fonts);
 }
 
 /// The bytes of the font file at `path`, or `None` (logged) when it is missing.

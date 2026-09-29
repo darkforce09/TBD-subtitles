@@ -11,7 +11,8 @@
 //! **Invariants:** the video itself is never opened for writing; the subtitle file is written to
 //! a part file and renamed, so VLC never reads half a file; a file that differs from the new one
 //! is backed up before it is replaced, and an identical one is left as it is; only a sibling of
-//! the video with its base name and a subtitle extension is ever moved aside.
+//! the video with its base name and a subtitle extension is ever moved aside, and only after
+//! the replacement is installed successfully.
 
 use std::fs;
 use std::io;
@@ -38,7 +39,8 @@ pub fn subtitle_path(video: &Path, format: OutputFormat) -> PathBuf {
 
 /// Write `text` as the video's subtitle file in `format`; a different existing file is first
 /// copied to `backup_dir` as `<file name>.<stamp>`. `earlier` is the subtitle file the job wrote
-/// last time: when it is the video's file of another format, it is moved to `backup_dir`.
+/// last time: when it is the video's file of another format, it is moved to `backup_dir` after
+/// the new subtitle file is installed or confirmed identical.
 pub fn install(
     video: &Path,
     format: OutputFormat,
@@ -54,10 +56,7 @@ pub fn install(
             format!("the video itself is named .{}", format.extension()),
         ));
     }
-    let retired = match earlier.filter(|e| is_other_format(video, &path, e) && e.exists()) {
-        Some(old) => Some(retire(old, backup_dir, stamp)?),
-        None => None,
-    };
+    let earlier = earlier.filter(|e| is_other_format(video, &path, e) && e.exists());
     let mut backup = None;
     match fs::read(&path) {
         Ok(existing) if existing == text.as_bytes() => {
@@ -65,7 +64,9 @@ pub fn install(
                 path,
                 backup: None,
                 unchanged: true,
-                retired,
+                retired: earlier
+                    .map(|old| retire(old, backup_dir, stamp))
+                    .transpose()?,
             });
         }
         Ok(_) => {
@@ -86,7 +87,9 @@ pub fn install(
         path,
         backup,
         unchanged: false,
-        retired,
+        retired: earlier
+            .map(|old| retire(old, backup_dir, stamp))
+            .transpose()?,
     })
 }
 

@@ -63,6 +63,7 @@ pub(crate) fn ensure_unpacked() -> Result<PathBuf> {
     let runtime_dir = model_store::runtime_dir().map_err(|e| anyhow!("{e}"))?;
     let archives = CUDA_ARCHIVES
         .iter()
+        .chain(inference::model_store::manifest::CUDA_BUILD_ARCHIVES.iter())
         .chain(std::iter::once(&ONNX_RUNTIME_ARCHIVE));
     for archive in archives {
         if model_store::is_archive_installed(archive, &runtime_dir) {

@@ -35,7 +35,7 @@ pub(crate) const CUT_SCORES: RangeInclusive<f64> = 1.0..=100.0;
 /// What a written edit makes stale.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct Stale {
-    /// The models and runtime archives the settings need: the models folder or an engine changed.
+    /// The models and runtime archives the settings need: their folder, an engine or text changed.
     pub(crate) models: bool,
     /// The models folder's size.
     pub(crate) models_size: bool,
@@ -204,6 +204,7 @@ pub(crate) fn changed_field(before: &AppSettings, after: &AppSettings) -> Option
         (b.models_dir != a.models_dir, Field::ModelsFolder),
         (b.work_root != a.work_root, Field::WorkFolder),
         (b.output_format != a.output_format, Field::OutputFormat),
+        (b.onscreen_text != a.onscreen_text, Field::OnscreenText),
         (b.glossary != a.glossary, Field::Glossary),
         (b.watch_folders != a.watch_folders, Field::WatchFolders),
         (b.engines.separator != a.engines.separator, Field::Separator),
@@ -238,7 +239,9 @@ pub(crate) fn changed_field(before: &AppSettings, after: &AppSettings) -> Option
 pub(crate) fn stale(before: &AppSettings, after: &AppSettings) -> Stale {
     let models_folder = before.models_dir != after.models_dir;
     Stale {
-        models: models_folder || before.engines != after.engines,
+        models: models_folder
+            || before.engines != after.engines
+            || before.onscreen_text.enabled != after.onscreen_text.enabled,
         models_size: models_folder,
         work_size: before.work_root != after.work_root,
     }

@@ -30,7 +30,7 @@ video ─▶ 1 probe+decode ─▶ 2 separate ─▶ 3 vad+chunks ─▶ 4 asr �
                                                    6 adjudicate ◀─ 8 sound events
                                                         │ UNSURE → re-decode → 6
                                                         ▼
-                             11 output ◀─ 10 qc ◀─ 9 cues ◀─ 7 align
+                        output ◀─ qc ◀─ visual text ◀─ cues ◀─ align
 ```
 
 ## Steps and processes
@@ -58,6 +58,12 @@ and peak memory in the job report.
 | alignment | 7 | worker, `tbd-subtitles` (ONNX Runtime) | `aligned.json` |
 | review | 7 | worker, `tbd-subtitles` (ONNX Runtime on the CPU) | `reviewed.json` |
 | cues | 9 | job runner | `cues.json` |
+| text_detect | on-screen text | worker, `tbd-subtitles` (ONNX Runtime) | `visual/text_detect.json`, representative crops |
+| text_read | on-screen text | worker, `tbd-subtitles` (ONNX Runtime) | `visual/text_read.json`, reading cache |
+| text_track | on-screen text | worker, `tbd-subtitles` (CPU) | `visual/text_track.json` |
+| text_translate | on-screen text | worker, `tbd-subtitles-llm` (mistral.rs; optional `claude`) | `visual/text_translate.json`, translation cache |
+| text_review | on-screen text | job runner | `visual/text_review.json` |
+| text_typeset | on-screen text | worker, `tbd-subtitles` (CPU) | `visual/text_typeset.json`, `visual/events.ass` |
 | qc | 10 | job runner | `qc.json` |
 | output | 11 | job runner | `<video base name>.srt` (or `.vtt`, `.ass`), `output.json` |
 
@@ -74,7 +80,8 @@ and peak memory in the job report.
   frees the lock when its holder dies.
 - **Binaries:** ONNX Runtime, ggml and candle never share a process. `tbd-subtitles` hosts the
   ONNX Runtime, FFmpeg and `claude` workers; `tbd-subtitles-ggml`, built beside it with the
-  `crispasr` feature, hosts Whisper.
+  `crispasr` feature, hosts Whisper. `tbd-subtitles-llm`, built with `mistralrs`, hosts the local
+  Qwen visual translator. All GPU workers use the same machine-wide lock.
 - **Measurements:** a worker reports its load and processing time, its `VmHWM` and its largest
   child's peak memory. The runner samples its VRAM through NVML. A step in the runner resets and
   reads the runner's own peak memory.
@@ -139,8 +146,8 @@ and peak memory in the job report.
 ## 6. Adjudication
 
 - Backend: headless `claude -p` (Sonnet) with a JSON schema, eight processes at once; a local
-  model through mistral.rs is the offline fallback, available in `inference` but not yet run by
-  the app. Input: the diff sheet and the series glossary (names, attacks, places, and alias traps
+  model through mistral.rs serves the visual translation worker. Audio adjudication uses Claude.
+  Input: the diff sheet and the series glossary (names, attacks, places, and alias traps
   such as Lucy vs Luffy; the One Piece glossary is built in and used by default). The model never
   sees or changes timings.
 - Output, one JSON object per utterance: `{"id":"U0412","t":"Law, the Birdcage is closing in!","f":[]}`.

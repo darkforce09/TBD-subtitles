@@ -58,10 +58,10 @@ eframe = { version = "0.36", default-features = false, features = ["glow", "wayl
 # Log lines to stderr, filtered by RUST_LOG.
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "ansi", "env-filter"] }
+# Representative crop thumbnails and visual validation snapshots.
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [dev-dependencies]
 # Drives the real window offscreen for the snapshot scenes (`window_snapshots`, an ignored test):
 # `eframe` runs `App::ui` itself, `wgpu` renders each frame to an image.
 egui_kittest = { version = "0.36", features = ["wgpu", "eframe"] }
-# Writes the snapshot scenes as PNG files.
-image = { version = "0.25", default-features = false, features = ["png"] }

@@ -8,6 +8,7 @@ owning one part of the window.
 
 ```text
 apps/tbd_subtitles/src/
+├── text_review/  Check Text: occurrences, visual corrections and ASS comparison playback
 ├── application/  the eframe window: the queue state, the frame, and the actions applied after it
 ├── cli/          videos alone and the `gui`, `process`, `fix` and `worker` subcommands and their dispatch
 ├── core/         logging and the log buffer, threads' wake, the desktop portal, the shared look

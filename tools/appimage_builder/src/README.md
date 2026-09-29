@@ -18,10 +18,11 @@ tools/appimage_builder/src/
 
 ## How it works
 
-`main.rs` makes sure the runtime archives are unpacked (`gpu_runtime`), builds both binaries
+`main.rs` makes sure the runtime archives are unpacked (`gpu_runtime`), builds all three binaries
 (`build`), fetches FFmpeg (`ffmpeg`) and the AppImage runtime (`runtime`), then lays out the
 AppDir (`app_dir`): the binaries, the GPU libraries with their NEEDED closure, the ggml worker's
-libraries with their RUNPATH pointed at the AppDir (`elf`), and FFmpeg. A smoke check runs the
+libraries with their RUNPATH pointed at the AppDir (`elf`), the isolated local translation worker,
+FFmpeg, and a checksum-pinned Noto Sans JP font with its redistribution license. A smoke check runs the
 copied app's `--version` and the copied FFmpeg's `-version`, `-filters` and `-devices`. Last,
 `main.rs` writes the runtime's bytes to the output file and `squashfs` writes the image behind
 them, at that offset, so the file is runtime and image in one.

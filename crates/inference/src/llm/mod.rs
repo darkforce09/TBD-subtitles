@@ -24,6 +24,18 @@ pub struct Completion {
 #[derive(Debug)]
 pub struct LlmError(pub String);
 
+impl LlmError {
+    /// A model answered, but its content cannot satisfy the caller's structured contract.
+    pub fn invalid_response(message: impl fmt::Display) -> Self {
+        Self(format!("invalid model response: {message}"))
+    }
+
+    /// Distinguish per-occurrence uncertainty from runtime, transport or cancellation failure.
+    pub fn is_invalid_response(&self) -> bool {
+        self.0.starts_with("invalid model response: ")
+    }
+}
+
 impl fmt::Display for LlmError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)

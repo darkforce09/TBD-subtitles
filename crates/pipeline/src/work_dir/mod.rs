@@ -121,6 +121,18 @@ impl WorkDir {
     pub fn dropped_sounds(&self) -> PathBuf {
         self.at("cues_dropped_sounds.json")
     }
+    /// One on-screen text step's observations, tracks, translations or presentation.
+    pub fn text(&self, step: StepName) -> PathBuf {
+        self.at(&format!("visual/{step}.json"))
+    }
+    /// The owner's on-screen text corrections.
+    pub fn text_corrections(&self) -> PathBuf {
+        self.at("visual/corrections.json")
+    }
+    /// The typeset on-screen text events included in the combined ASS output.
+    pub fn text_ass(&self) -> PathBuf {
+        self.at("visual/events.ass")
+    }
     pub fn qc(&self) -> PathBuf {
         self.at("qc.json")
     }

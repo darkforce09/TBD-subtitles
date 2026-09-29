@@ -18,6 +18,7 @@ mod alignment;
 mod layout;
 mod llm;
 mod media;
+mod onscreen;
 mod review;
 mod sounds;
 mod speech;
@@ -125,6 +126,12 @@ pub fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<TaskRepo
         StepName::Alignment => alignment::alignment(job, progress),
         StepName::Review => review::review(job),
         StepName::Cues => layout::cues(job),
+        StepName::TextDetect
+        | StepName::TextRead
+        | StepName::TextTrack
+        | StepName::TextTranslate
+        | StepName::TextReview
+        | StepName::TextTypeset => onscreen::run(step, job, progress),
         StepName::Qc => layout::qc(job),
         StepName::Output => layout::output(job),
     };
@@ -158,6 +165,7 @@ pub fn worker_main(step: StepName, job_dir: &Path, binary: Binary) -> Result<()>
         let name = match wanted {
             Binary::Main => "tbd-subtitles",
             Binary::Ggml => "tbd-subtitles-ggml",
+            Binary::LocalLlm => "tbd-subtitles-llm",
         };
         return Err(PipelineError::new(
             format!("worker {step}"),

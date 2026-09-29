@@ -1,15 +1,17 @@
 # Applications
 
-The executables people run and the job runner starts. There are two binaries: `tbd-subtitles`,
+The executables people run and the job runner starts. There are three binaries: `tbd-subtitles`,
 which holds the desktop window, the headless command line and the
 [worker processes](/documentation/glossary.md#worker-process) for every step on ONNX Runtime,
-FFmpeg or the `claude` CLI; and `tbd-subtitles-ggml`, the worker for the Whisper steps. They are
-two binaries because ggml and ONNX Runtime corrupt each other's heap in one process.
+FFmpeg or the `claude` CLI; `tbd-subtitles-ggml`, the worker for the Whisper steps; and
+`tbd-subtitles-llm`, the local visual translation worker. Separate processes isolate the native
+inference runtimes and release GPU memory between stages.
 
 ## Contents
 
 ```text
 apps/
+├── tbd_subtitles_llm/   the isolated local visual translation worker
 ├── tbd_subtitles/       the `tbd-subtitles` binary: the window, the headless commands, the workers
 └── tbd_subtitles_ggml/  the `tbd-subtitles-ggml` binary: the Whisper steps through CrispASR
 ```
@@ -22,18 +24,20 @@ pipeline logic, the media handling and the subtitle formats live in those crates
 
 `tbd-subtitles process` runs a job through `crates/pipeline/`, whose job runner starts each
 worker step as `tbd-subtitles worker <step>` or, for `asr_whisper` and `redecode_whisper`, as
-`tbd-subtitles-ggml worker <step>`. The runner finds the ggml binary in the folder of the running
-one, so both are built into the same target folder. Each crate's README describes its binary,
+`tbd-subtitles-ggml worker <step>`, or `tbd-subtitles-llm worker text_translate`. The runner finds
+both workers beside the main binary, so all three share the target folder. Each crate's README describes its binary,
 and `tbd_subtitles/src/README.md` maps the main binary's modules.
 
 ```text
 apps/tbd_subtitles ──────┐
                          ├──▶ crates/pipeline ──▶ crates/stages ──▶ inference, media_io, subtitle_formats
-apps/tbd_subtitles_ggml ─┘          │
+apps/tbd_subtitles_ggml ─┤          │
+apps/tbd_subtitles_llm ──┘          │
                                     └──▶ crates/job_model
 
 job runner (crates/pipeline) ──▶ tbd-subtitles worker <step>        every other worker step
-                            └─▶ tbd-subtitles-ggml worker <step>   asr_whisper, redecode_whisper
+                            ├─▶ tbd-subtitles-ggml worker <step>   asr_whisper, redecode_whisper
+                            └─▶ tbd-subtitles-llm worker <step>    text_translate
 ```
 
 ## Getting started

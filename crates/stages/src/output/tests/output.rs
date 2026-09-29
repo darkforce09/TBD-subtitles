@@ -75,6 +75,89 @@ fn a_new_format_moves_the_jobs_old_file_aside() {
 }
 
 #[test]
+fn a_failed_ass_install_keeps_the_video_and_old_srt_in_place_until_retry_succeeds() {
+    for obstacle in ["a.ass.part", "a.ass"] {
+        let dir = scratch(obstacle);
+        let video = dir.join("a.mp4");
+        let old = dir.join("a.srt");
+        let backups = dir.join("backup");
+        let source = b"source video is read only";
+        let subtitles = b"1\n00:00:01,000 --> 00:00:02,000\nOriginal dialogue\n";
+        fs::write(&video, source).expect("source video");
+        fs::write(&old, subtitles).expect("existing SRT");
+        fs::create_dir(dir.join(obstacle)).expect("block ASS destination");
+        let result = install(
+            &video,
+            OutputFormat::Ass,
+            "[Script Info]\n",
+            &backups,
+            "failed",
+            Some(&old),
+        );
+        assert!(result.is_err(), "{obstacle} must prevent ASS installation");
+        assert_eq!(fs::read(&video).expect("source remains"), source);
+        assert_eq!(fs::read(&old).expect("SRT remains playable"), subtitles);
+        assert!(!backups.join("a.srt.failed").exists());
+
+        fs::remove_dir(dir.join(obstacle)).expect("unblock destination");
+        let installed = install(
+            &video,
+            OutputFormat::Ass,
+            "[Script Info]\n",
+            &backups,
+            "retry",
+            Some(&old),
+        )
+        .expect("retry installation");
+        assert_eq!(
+            fs::read(&installed.path).expect("installed ASS"),
+            b"[Script Info]\n"
+        );
+        assert_eq!(installed.retired, Some(backups.join("a.srt.retry")));
+        assert_eq!(
+            fs::read(installed.retired.expect("SRT backup")).expect("backup"),
+            subtitles
+        );
+        assert!(!old.exists());
+        assert_eq!(fs::read(&video).expect("source after success"), source);
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[test]
+fn an_identical_ass_still_retires_the_previous_srt_without_replacing_the_ass() {
+    let dir = scratch("identical-format-change");
+    let video = dir.join("a.mp4");
+    let old = dir.join("a.srt");
+    let target = dir.join("a.ass");
+    let backups = dir.join("backup");
+    fs::write(&video, b"source").expect("source");
+    fs::write(&old, b"old SRT").expect("old SRT");
+    fs::write(&target, b"[Script Info]\n").expect("existing ASS");
+    fs::create_dir(dir.join("a.ass.part")).expect("prevent unnecessary rewriting");
+    let installed = install(
+        &video,
+        OutputFormat::Ass,
+        "[Script Info]\n",
+        &backups,
+        "same",
+        Some(&old),
+    )
+    .expect("confirm installed ASS");
+    assert!(installed.unchanged);
+    assert_eq!(installed.backup, None);
+    assert_eq!(installed.retired, Some(backups.join("a.srt.same")));
+    assert_eq!(fs::read(&target).expect("same ASS"), b"[Script Info]\n");
+    assert_eq!(
+        fs::read(backups.join("a.srt.same")).expect("retired SRT"),
+        b"old SRT"
+    );
+    assert!(!old.exists());
+    assert_eq!(fs::read(&video).expect("source unchanged"), b"source");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn only_the_videos_own_subtitle_files_are_moved_aside() {
     let dir = scratch("guard");
     let video = dir.join("a.mp4");

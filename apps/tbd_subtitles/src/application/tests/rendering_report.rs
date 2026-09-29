@@ -44,7 +44,10 @@ pub(super) fn write_job(
         video: video.to_string_lossy().into_owned(),
         video_size: 5,
         video_modified_s: 0,
-        settings: job_model::job::JobSettings::with_glossary(vec![]),
+        settings: job_model::job::JobSettings {
+            onscreen_text: job_model::onscreen::TextSettings::default(),
+            ..job_model::job::JobSettings::with_glossary(vec![])
+        },
         models_dir: None,
         corrections: None,
         steps: Default::default(),

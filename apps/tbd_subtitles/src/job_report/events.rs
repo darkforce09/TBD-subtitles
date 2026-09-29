@@ -7,6 +7,7 @@ use crate::job_report::models::finding_group::LineGroup;
 /// One request from the Overview.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ReportEvent {
+    CheckText,
     /// Open this video in the desktop's video player.
     OpenVideo(PathBuf),
     /// Show this file in the file manager, in its folder.

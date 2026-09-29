@@ -91,7 +91,7 @@ fn a_folder_not_found_is_marked_and_remove_edits_it_out() {
     expected.watch_folders = vec![here];
     assert_eq!(
         harness.state().as_slice(),
-        [SettingsEvent::Edit(expected)],
+        [SettingsEvent::Edit(Box::new(expected))],
         "the saved settings without the second folder"
     );
 }

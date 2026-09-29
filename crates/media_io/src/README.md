@@ -8,6 +8,7 @@ and `MediaError`.
 
 ```text
 crates/media_io/src/
+├── video_frames/  bounded RGB frame streaming paired with source presentation timestamps
 ├── lib.rs         the crate root: the programs to run, the error type and the module list
 ├── pcm_stream/    FFmpeg decoding audio to 32-bit float PCM, read in fixed-size chunks
 ├── preview/       FFmpeg command lines for a clip: its sound with a silence pad, and its frames

@@ -32,6 +32,11 @@ use crate::settings::services::job_settings;
 impl TbdSubtitlesApp {
     pub(crate) fn apply_report(&mut self, event: ReportEvent) {
         match event {
+            ReportEvent::CheckText => {
+                if let Some(id) = self.queue.selected {
+                    self.open_text(id);
+                }
+            }
             ReportEvent::OpenVideo(path) => self.open_with_desktop(Opening::Play, &path),
             ReportEvent::ShowInFolder(path) => self.open_with_desktop(Opening::Reveal, &path),
             ReportEvent::OpenReport(path) => self.open_with_desktop(Opening::Read, &path),

@@ -78,6 +78,8 @@ pub struct JobSettings {
     /// The subtitle file written beside the video.
     #[serde(default)]
     pub output_format: OutputFormat,
+    #[serde(default)]
+    pub onscreen_text: crate::onscreen::TextSettings,
 }
 
 impl JobSettings {
@@ -92,6 +94,15 @@ impl JobSettings {
             llm_processes: 8,
             cut_score: 20.0,
             output_format: OutputFormat::Srt,
+            onscreen_text: crate::onscreen::TextSettings::new_job(),
+        }
+    }
+
+    pub fn effective_output_format(&self) -> OutputFormat {
+        if self.onscreen_text.enabled {
+            OutputFormat::Ass
+        } else {
+            self.output_format
         }
     }
 }

@@ -136,7 +136,7 @@ fn an_edit_is_written_at_once() {
     let mut app = app("edit", Vec::new());
     let mut edited = app.settings.saved.clone();
     edited.cut_score = 33.0;
-    app.apply(vec![Action::from(SettingsEvent::Edit(edited))]);
+    app.apply(vec![Action::from(SettingsEvent::Edit(Box::new(edited)))]);
     assert_eq!(app.settings.saved.cut_score, 33.0);
     assert!(app.settings.error.is_none());
     let written = std::fs::read_to_string(&app.env.settings_path).expect("the settings file");
@@ -149,7 +149,7 @@ fn a_bad_glossary_is_not_written_and_names_its_field() {
     let before = std::fs::read_to_string(&app.env.settings_path).expect("scratch settings");
     let mut edited = app.settings.saved.clone();
     edited.glossary = "/no/such/names.json".into();
-    app.apply(vec![Action::from(SettingsEvent::Edit(edited))]);
+    app.apply(vec![Action::from(SettingsEvent::Edit(Box::new(edited)))]);
     assert_eq!(
         std::fs::read_to_string(&app.env.settings_path).expect("unchanged"),
         before
@@ -172,7 +172,7 @@ fn the_banner_says_what_is_missing_and_details_opens_the_models_tab() {
     assert_shows(
         &text,
         &[
-            "5 models and 2 runtime libraries are missing (",
+            "8 models and 2 runtime libraries are missing (",
             "Videos can't start until they're on disk. Each file downloads once and is checked \
              for damage.",
             "Details…",
@@ -247,7 +247,7 @@ fn the_models_folder_stays_while_a_download_runs() {
     let before = app.settings.saved.clone();
     let mut edited = before.clone();
     edited.models_dir = Some(PathBuf::from("/elsewhere"));
-    app.apply(vec![Action::from(SettingsEvent::Edit(edited))]);
+    app.apply(vec![Action::from(SettingsEvent::Edit(Box::new(edited)))]);
     assert_eq!(app.settings.saved, before);
     assert_eq!(
         app.settings.error.as_ref().map(|e| e.field),
@@ -288,7 +288,7 @@ fn the_automation_tab_lists_the_watch_folders_and_edits_them() {
     let gone = PathBuf::from("/no/such/drive/videos");
     let mut edited = app.settings.saved.clone();
     edited.watch_folders = vec![here.clone(), gone.clone()];
-    app.apply(vec![Action::from(SettingsEvent::Edit(edited))]);
+    app.apply(vec![Action::from(SettingsEvent::Edit(Box::new(edited)))]);
     let text = render_tab(&mut app, SettingsTab::Automation);
     assert_shows(
         &text,
@@ -316,7 +316,7 @@ fn the_automation_tab_lists_the_watch_folders_and_edits_them() {
     without.watch_folders = vec![here];
     assert_eq!(
         harness.state().1,
-        [Action::Settings(SettingsEvent::Edit(without))],
+        [Action::Settings(SettingsEvent::Edit(Box::new(without)))],
         "Remove edits out its own folder"
     );
     harness.state_mut().1.clear();

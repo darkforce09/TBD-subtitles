@@ -1,9 +1,15 @@
 //! A finished job's Overview: the file card with Fix It's result, the lines card, then the Details
 //! and Step times disclosures, in the column the application gives it, 16 px apart; and the head
 //! the two cards share.
+//!
+//! **Role:** present output, dialogue findings, visual findings and measured stage times.
+//! **Position:** job report UI below application composition.
+//! **Signals and state:** borrowed report, returned review actions.
+//! **Invariants:** visual uncertainty links to Check Text and remains separate from dialogue.
 
-use eframe::egui::{Align, Color32, Label, Layout, RichText, TextStyle, Ui};
+use eframe::egui::{Align, Color32, Frame, Label, Layout, Margin, RichText, TextStyle, Ui};
 
+use crate::core::ui::card::card;
 use crate::core::ui::icons;
 use crate::core::ui::palette::palette;
 use crate::job_report::events::ReportEvent;
@@ -34,6 +40,42 @@ pub(crate) struct OverviewView<'a> {
 pub(crate) fn overview_ui(ui: &mut Ui, view: &OverviewView<'_>, events: &mut Vec<ReportEvent>) {
     file_card_ui(ui, view, events);
     lines_card_ui(ui, view.report, events);
+    if let Some(text) = &view.report.visual {
+        let p = palette(ui);
+        card(ui, false, |ui| {
+            Frame::new()
+                .inner_margin(Margin::symmetric(18, 16))
+                .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.spacing_mut().item_spacing.y = 12.0;
+                    ui.heading("On-screen text");
+                    ui.label(format!(
+                        "{} detected · {} translated · {} nearby · {} unresolved",
+                        text.detected, text.translated, text.fallback, text.unresolved
+                    ));
+                    let seconds: f64 = view
+                        .report
+                        .steps
+                        .iter()
+                        .filter(|(step, _)| step.stage() == job_model::StageName::OnscreenText)
+                        .map(|(_, measure)| measure.wall_s)
+                        .sum();
+                    ui.label(format!(
+                        "Visual processing: {:.1} min · Combined ASS output",
+                        seconds / 60.0
+                    ));
+                    if text.flagged > 0 {
+                        ui.colored_label(
+                            p.warn,
+                            format!("{} visual items need review", text.flagged),
+                        );
+                    }
+                    if ui.button("Check Text").clicked() {
+                        events.push(ReportEvent::CheckText);
+                    }
+                });
+        });
+    }
     details_ui(ui, view.report);
     step_times_ui(ui, view.report, events);
 }

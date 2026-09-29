@@ -89,6 +89,7 @@ fn engines(settings: &AppSettings) -> JobSettings {
     let mut job = JobSettings::with_glossary(Vec::new());
     job.separator = settings.engines.separator;
     job.whisper = settings.engines.whisper;
+    job.onscreen_text = settings.onscreen_text.clone();
     job
 }
 
@@ -131,7 +132,7 @@ impl TbdSubtitlesApp {
 
     pub(crate) fn apply_settings(&mut self, event: SettingsEvent) {
         match event {
-            SettingsEvent::Edit(edited) => self.edit_settings(edited),
+            SettingsEvent::Edit(edited) => self.edit_settings(*edited),
             SettingsEvent::Open(tab) => self.settings_window = Some(tab),
             SettingsEvent::Choose(field) => {
                 let (kind, title) = match field {
@@ -193,6 +194,11 @@ impl TbdSubtitlesApp {
         // Every Fix It run under way takes the new cap on its next call.
         self.claude_gate
             .set_limit(self.settings.saved.language_model.fix_calls);
+        if let Err(error) = inference::llm::claude_cli::set_shared_limit(
+            self.settings.saved.language_model.fix_calls,
+        ) {
+            tracing::warn!(%error, "Cannot update the shared Claude call cap");
+        }
         let stale = applied.stale;
         if stale.models {
             refresh_models(&mut self.settings, &self.env);

@@ -17,7 +17,9 @@ apps/tbd_subtitles/src/job_report/ui/
 
 ## How it works
 
-`overview_ui` draws four cards in the application's column, 16 px apart. The file card's head is
+`overview_ui` draws the file and dialogue cards, visual results when present, then details and times,
+in the application's column, 16 px apart. The visual card gives detection, translation, fallback and
+unresolved counts, measured processing time and a direct Check Text action. The file card's head is
 a 28 px captions mark (green, or orange when there are problems), "Subtitles saved next to the
 video" with a line under it, and on the right the pill "Passes the quality check" or "Needs
 attention". Once Fix It has answered lines, and while it is not under way on the video, its
@@ -52,7 +54,7 @@ Claude row comes first, with a wand. A job with no line worth a listen shows "No
 rows, closed at first and kept per job in egui's memory: Details lists the subtitles, the share
 easy to read, the unsure lines, the words no engine heard, the timing offset, the speech and
 voice with no subtitle, the words timed by the aligner and the corrections the owner made, a 220 px key
-column beside the values; Step times shows the six stages on the well with their times, each
+column beside the values; Step times shows the stage groups on the well with their times, each
 step indented under its stage with its time, peak RAM and peak VRAM right-aligned ("—" when not
 measured), and Open Full Report.
 

@@ -1,0 +1,9 @@
+{
+  "fps": 24.0,
+  "height": 1080,
+  "occurrences": [
+    {"label":"one-frame-smile-factory-remnant-upper","japanese":"「SMILE工場」の","start_s":4.125,"end_s":4.166666666666667,"frames":[{"time_s":4.125,"quad":[{"x":394.0,"y":312.0},{"x":1565.0,"y":312.0},{"x":1565.0,"y":541.0},{"x":394.0,"y":541.0}]}]},
+    {"label":"one-frame-smile-factory-remnant-lower","japanese":"戦い","start_s":4.125,"end_s":4.166666666666667,"frames":[{"time_s":4.125,"quad":[{"x":1057.0,"y":610.0},{"x":1420.0,"y":610.0},{"x":1420.0,"y":802.0},{"x":1057.0,"y":802.0}]}]},
+    {"label":"franky-winner-title","japanese":"勝者フランキー","start_s":4.166666666666667,"end_s":6.791666666666667,"frames":[{"time_s":5.0,"quad":[{"x":368.0,"y":409.0},{"x":1558.0,"y":409.0},{"x":1558.0,"y":647.0},{"x":368.0,"y":647.0}]}]}
+  ]
+}

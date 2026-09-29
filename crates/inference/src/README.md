@@ -8,6 +8,7 @@ of the CUDA 13 runtime the GPU backends load.
 
 ```text
 crates/inference/src/
+├── ocr/            PP-OCRv5 and manga-ocr through the pinned ONNX runtime
 ├── candle/         models run through candle, the pure-Rust engine, where it is competitive
 ├── cuda_runtime/   the CUDA 13 and cuDNN libraries on disk and the environment a GPU worker needs
 ├── ggml/           Whisper and the Qwen3 aligner through CrispASR, behind the `crispasr` feature

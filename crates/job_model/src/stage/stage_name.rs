@@ -39,6 +39,8 @@ pub enum StageName {
     SoundEvents,
     /// Lay the aligned words out as subtitle cues.
     Cues,
+    /// Recognize, track, translate and typeset text visible in the video.
+    OnscreenText,
     /// Check the cues against the layout and coverage rules.
     Qc,
     /// Write the subtitle file beside the video.
@@ -47,7 +49,7 @@ pub enum StageName {
 
 impl StageName {
     /// Every stage, in the order the job runner runs them.
-    pub const ALL: [StageName; 11] = [
+    pub const ALL: [StageName; 12] = [
         StageName::ProbeDecode,
         StageName::Separation,
         StageName::Vad,
@@ -57,6 +59,7 @@ impl StageName {
         StageName::Adjudication,
         StageName::Alignment,
         StageName::Cues,
+        StageName::OnscreenText,
         StageName::Qc,
         StageName::Output,
     ];
@@ -73,6 +76,7 @@ impl StageName {
             StageName::Alignment => "alignment",
             StageName::SoundEvents => "sound_events",
             StageName::Cues => "cues",
+            StageName::OnscreenText => "onscreen_text",
             StageName::Qc => "qc",
             StageName::Output => "output",
         }
@@ -88,6 +92,7 @@ impl StageName {
                 | StageName::Adjudication
                 | StageName::Alignment
                 | StageName::SoundEvents
+                | StageName::OnscreenText
         )
     }
 }

@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 /// Every top-level module folder under `src/`.
 const MODULES: &[&str] = &[
+    "text_review",
     "application",
     "cli",
     "core",

@@ -13,7 +13,17 @@ fn is_hash(text: &str) -> bool {
 #[test]
 fn every_pin_is_https_with_a_sha256() {
     for file in MODEL_FILES {
-        assert!(file.url.starts_with(HUGGING_FACE), "{}", file.url);
+        assert!(
+            file.url.starts_with(HUGGING_FACE)
+                || file
+                    .url
+                    .starts_with("https://github.com/GreatV/oar-ocr/releases/download/")
+                || file
+                    .url
+                    .starts_with("https://raw.githubusercontent.com/google/fonts/"),
+            "{}",
+            file.url
+        );
         assert!(is_hash(file.sha256), "{}", file.file);
         assert!(file.size > 0);
     }
@@ -46,7 +56,9 @@ fn the_onnx_runtime_comes_from_microsoft_as_a_tgz() {
 #[test]
 fn model_ids_are_listed_once_in_order() {
     let ids = manifest::model_ids();
-    assert_eq!(ids.first(), Some(&"parakeet-tdt-0.6b-v2"));
+    assert_eq!(ids.first(), Some(&"visual-font"));
+    assert!(ids.contains(&"pp-ocrv5"));
+    assert!(ids.contains(&"manga-ocr"));
     let mut sorted = ids.clone();
     sorted.sort();
     sorted.dedup();

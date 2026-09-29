@@ -44,6 +44,57 @@ fn touch(paths: &[std::path::PathBuf]) {
 }
 
 #[test]
+fn missing_visual_crop_invalidates_visual_descendants_without_repeating_audio() {
+    let work = scratch("missing-visual-crop");
+    let mut r = record();
+    r.video = work
+        .root()
+        .join("episode.mp4")
+        .to_string_lossy()
+        .into_owned();
+    for (index, step) in StepName::ALL.into_iter().enumerate() {
+        touch(&graph::outputs(
+            step,
+            &work,
+            Path::new(&r.video),
+            r.settings.effective_output_format(),
+        ));
+        if step == StepName::TextDetect {
+            fs::write(
+                work.text(step),
+                br#"{"occurrences":[{"crops":["visual/crops/one.png"]}]}"#,
+            )
+            .unwrap();
+            touch(&[work.root().join("visual/crops/one.png")]);
+        }
+        r.steps.insert(
+            step,
+            StepRecord {
+                fingerprint: fingerprint_in_work(step, &r, &work),
+                finished_ns: index as u128 + 1,
+                measure: StepMeasure::default(),
+            },
+        );
+    }
+    assert!(stale_steps(&r, &work).is_empty());
+    fs::remove_file(work.root().join("visual/crops/one.png")).unwrap();
+    assert_eq!(
+        stale_steps(&r, &work),
+        vec![
+            StepName::TextDetect,
+            StepName::TextRead,
+            StepName::TextTrack,
+            StepName::TextTranslate,
+            StepName::TextReview,
+            StepName::TextTypeset,
+            StepName::Qc,
+            StepName::Output,
+        ]
+    );
+    let _ = fs::remove_dir_all(work.root());
+}
+
+#[test]
 fn a_finished_step_with_its_files_is_reused_and_a_missing_file_reruns_it() {
     let work = scratch("files");
     let mut r = record();
@@ -131,14 +182,24 @@ fn the_stale_steps_are_the_invalid_ones_and_everything_that_reads_them() {
             step,
             &work,
             Path::new(&r.video),
-            r.settings.output_format,
+            r.settings.effective_output_format(),
         ));
+        if step == StepName::TextDetect {
+            fs::write(work.text(step), br#"{"occurrences":[]}"#).unwrap();
+        }
     }
     assert!(stale_steps(&r, &work).is_empty(), "a finished job");
     r.steps.remove(&StepName::Cues);
     assert_eq!(
         stale_steps(&r, &work),
-        vec![StepName::Cues, StepName::Qc, StepName::Output]
+        vec![
+            StepName::Cues,
+            StepName::TextTranslate,
+            StepName::TextReview,
+            StepName::TextTypeset,
+            StepName::Qc,
+            StepName::Output
+        ]
     );
     let _ = fs::remove_dir_all(work.root());
 }

@@ -17,6 +17,7 @@
 use std::path::PathBuf;
 
 use job_model::job::{OutputFormat, Separator, WhisperModel};
+use job_model::onscreen::TextSettings;
 use serde::{Deserialize, Serialize};
 
 /// The glossary name that means the built-in One Piece glossary.
@@ -46,6 +47,8 @@ pub(crate) struct AppSettings {
     pub(crate) watch_folders: Vec<PathBuf>,
     pub(crate) engines: Engines,
     pub(crate) language_model: LanguageModel,
+    /// How Japanese writing is translated and included in each new video's ASS subtitles.
+    pub(crate) onscreen_text: TextSettings,
 }
 
 /// The model each engine step runs.
@@ -96,6 +99,7 @@ impl Default for AppSettings {
             watch_folders: Vec::new(),
             engines: Engines::default(),
             language_model: LanguageModel::default(),
+            onscreen_text: TextSettings::new_job(),
         }
     }
 }

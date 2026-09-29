@@ -95,14 +95,14 @@ pub fn log_call(
     match answer {
         Ok(done) => tracing::info!(
             call = %id,
-            "claude {model}{about}: {lines} lines answered in {secs:.1} s, {} tokens in, {} out{}",
+            "model {model}{about}: {lines} lines answered in {secs:.1} s, {} tokens in, {} out{}",
             done.input_tokens,
             done.output_tokens,
             done.cost_usd.map(|usd| format!(", ${usd:.4}")).unwrap_or_default()
         ),
         Err(error) => tracing::warn!(
             call = %id,
-            "claude {model}{about}: {lines} lines failed after {secs:.1} s: {error}"
+            "model {model}{about}: {lines} lines failed after {secs:.1} s: {error}"
         ),
     }
 }

@@ -19,7 +19,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use job_model::StepName;
 use job_model::job::OutputFormat;
+use job_model::onscreen::TextDocument;
 use job_model::outputs::{
     AdjudicationPass, Aligned, Corrections, EngineTranscript, Line, OutputRecord, Redecode,
     ShotChanges, SoundCues, SpeechPlan, TimeSpan, Utterance,
@@ -123,6 +125,9 @@ pub(super) fn qc(job: &Job) -> Result<TaskReport> {
         process_s: since(started),
         ..TaskReport::default()
     };
+    if job.settings().onscreen_text.enabled {
+        note_text_quality(job, &mut report)?;
+    }
     report.note("findings", result.findings.len());
     report.note(
         "layout_violations",
@@ -138,6 +143,33 @@ pub(super) fn qc(job: &Job) -> Result<TaskReport> {
     );
     work_dir::write_json(&job.work.qc(), &result)?;
     Ok(report)
+}
+
+/// Visual warnings keep their occurrence IDs and do not become dialogue findings.
+fn note_text_quality(job: &Job, report: &mut TaskReport) -> Result<()> {
+    let text: TextDocument = work_dir::read_json(&job.work.text(StepName::TextTypeset))?;
+    let summary = text.summary();
+    report.note("text_detected", summary.detected);
+    report.note("text_translated", summary.translated);
+    report.note("text_fallback", summary.fallback);
+    report.note("text_unresolved", summary.unresolved);
+    report.note("text_flagged", summary.flagged);
+    for warning in &text.review_warnings {
+        tracing::warn!("{warning}");
+    }
+    for occurrence in text.occurrences.iter().filter(|text| !text.reviewed) {
+        if occurrence.english.is_none() {
+            tracing::warn!(
+                occurrence = %occurrence.id,
+                time_s = occurrence.start_s,
+                "on-screen writing needs a verified translation"
+            );
+        }
+        for warning in &occurrence.warnings {
+            tracing::warn!(occurrence = %occurrence.id, time_s = occurrence.start_s, "{warning}");
+        }
+    }
+    Ok(())
 }
 
 /// The adjudication as the corrections left it: each corrected line's text and flags; no novel or
@@ -174,12 +206,17 @@ fn settled(
 pub(super) fn output(job: &Job) -> Result<TaskReport> {
     let track: CueTrack = work_dir::read_json(&job.work.cues())?;
     let started = Instant::now();
-    let format = job.settings().output_format;
-    let text = match format {
+    let format = job.settings().effective_output_format();
+    let mut text = match format {
         OutputFormat::Srt => srt::write(&track),
         OutputFormat::Vtt => vtt::write(&track),
         OutputFormat::Ass => ass::write(&track),
     };
+    if job.settings().onscreen_text.enabled {
+        let events = std::fs::read_to_string(job.work.text_ass())
+            .context("cannot read typeset on-screen text events")?;
+        text.push_str(&events);
+    }
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())

@@ -28,7 +28,8 @@ apps/tbd_subtitles/src/core/ui/
 ## How it works
 
 `theme::install` runs once when the window opens (and in each test harness). It installs the
-fonts first: `fonts::install` reads `/usr/share/fonts/adwaita-sans-fonts/AdwaitaSans-Regular.ttf`
+fonts first: `fonts::install` adds the pinned Noto Sans JP fallback from the AppImage or model
+store so Japanese OCR results remain readable, then reads `/usr/share/fonts/adwaita-sans-fonts/AdwaitaSans-Regular.ttf`
 and `/usr/share/fonts/adwaita-mono-fonts/AdwaitaMono-Regular.ttf`, and `fonts::definitions` puts
 them in front of egui's own fonts: Adwaita Sans once at weight 400 as the proportional font and
 twice more with the `wght` axis set to 600 and 700 as the families `semibold` and `bold`, Adwaita

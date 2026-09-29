@@ -56,6 +56,18 @@ pub enum StepName {
     Review,
     /// Lay the words and sound cues out as subtitle cues.
     Cues,
+    /// Locate visible text regions in the video frames.
+    TextDetect,
+    /// Read Japanese text from representative crops.
+    TextRead,
+    /// Follow each visible text occurrence through its scene.
+    TextTrack,
+    /// Translate recognized text with its scene context.
+    TextTranslate,
+    /// Apply the owner's corrections to on-screen text.
+    TextReview,
+    /// Lay out tracked English translations as ASS events.
+    TextTypeset,
     /// Check the cues and write the report.
     Qc,
     /// Write the subtitle file beside the video.
@@ -64,7 +76,7 @@ pub enum StepName {
 
 impl StepName {
     /// Every step, in the order the job runner runs them.
-    pub const ALL: [StepName; 18] = [
+    pub const ALL: [StepName; 24] = [
         StepName::ProbeDecode,
         StepName::ShotScan,
         StepName::Separation,
@@ -81,6 +93,12 @@ impl StepName {
         StepName::Alignment,
         StepName::Review,
         StepName::Cues,
+        StepName::TextDetect,
+        StepName::TextRead,
+        StepName::TextTrack,
+        StepName::TextTranslate,
+        StepName::TextReview,
+        StepName::TextTypeset,
         StepName::Qc,
         StepName::Output,
     ];
@@ -104,6 +122,12 @@ impl StepName {
             StepName::Alignment => "alignment",
             StepName::Review => "review",
             StepName::Cues => "cues",
+            StepName::TextDetect => "text_detect",
+            StepName::TextRead => "text_read",
+            StepName::TextTrack => "text_track",
+            StepName::TextTranslate => "text_translate",
+            StepName::TextReview => "text_review",
+            StepName::TextTypeset => "text_typeset",
             StepName::Qc => "qc",
             StepName::Output => "output",
         }
@@ -125,6 +149,12 @@ impl StepName {
             | StepName::SoundCues => StageName::Adjudication,
             StepName::Alignment | StepName::Review => StageName::Alignment,
             StepName::Cues => StageName::Cues,
+            StepName::TextDetect
+            | StepName::TextRead
+            | StepName::TextTrack
+            | StepName::TextTranslate
+            | StepName::TextReview
+            | StepName::TextTypeset => StageName::OnscreenText,
             StepName::Qc => StageName::Qc,
             StepName::Output => StageName::Output,
         }

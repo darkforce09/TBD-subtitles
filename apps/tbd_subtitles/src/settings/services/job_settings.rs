@@ -29,6 +29,7 @@ pub(crate) fn job_settings(settings: &AppSettings) -> anyhow::Result<JobSettings
     job.llm_model = settings.language_model.model.clone();
     job.llm_processes = settings.language_model.processes.max(1);
     job.output_format = settings.output_format;
+    job.onscreen_text = settings.onscreen_text.clone();
     Ok(job)
 }
 

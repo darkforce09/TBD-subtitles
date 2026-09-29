@@ -4,10 +4,10 @@
 
 The window the owner uses to make subtitles without a terminal: queue videos, run them one at a
 time, watch each job's progress and time left, read whether its subtitles pass the quality check,
-and listen to and fix the lines worth a listen. It is milestone M2 and is built as the owner's
-approved macOS-like mockup: a toolbar, a sidebar of videos, the selected job on the right with its
-Overview and Check Lines tabs, and Settings in a window of their own. The owner ran the batch of
-Dressrosa 12–48 from this window and accepted it, which completes M2.
+and fix dialogue and visible Japanese writing. It keeps the owner's approved macOS-like design:
+a toolbar, a video sidebar, Overview, Check Lines and Check Text, and a separate Settings window.
+The accepted Dressrosa 12–48 batch completes M2. The integrated
+[visual translation feature](/documentation/features/japanese_onscreen_text.md) has acceptance underway.
 
 ## Where it lives
 
@@ -17,7 +17,7 @@ Dressrosa 12–48 from this window and accepted it, which completes M2.
   `apps/tbd_subtitles/src/core/ui/`, the log buffer `apps/tbd_subtitles/src/core/log_buffer/`;
   one feature folder each holds the
   queue (`apps/tbd_subtitles/src/job_queue/`), the report (`apps/tbd_subtitles/src/job_report/`),
-  the line review (`apps/tbd_subtitles/src/line_review/`), the log window
+  the line and text reviews (`apps/tbd_subtitles/src/line_review/`, `apps/tbd_subtitles/src/text_review/`), the log window
   (`apps/tbd_subtitles/src/log_console/`) and the settings (`apps/tbd_subtitles/src/settings/`).
 - Entry: `tbd-subtitles gui [VIDEO]...`, or the binary with no subcommand, with or without videos.
   It runs on the host, opened from the container with
@@ -42,15 +42,15 @@ list and the line editor side by side.
 ├───────────────────────────────────────────────────────────────────────────────────────────┤
 │ ! 5 models and 2 runtime libraries are missing (10.7 GiB)          [Details…] [Download]  │
 ├───────────────────────────┬───────────────────────────────────────────────────────────────┤
-│ NOW                     1 │ Dressrosa 11                    [ Overview | Check Lines 38 ] │
+│ NOW                     1 │ Dressrosa 11            [Overview | Check Lines | Check Text] │
 │  > Dressrosa 12           │ 25:59 video · finished in 4 min 37 s                          │
 │    Hearing the speech     │ ┌───────────────────────────────────────────────────────────┐ │
 │ UP NEXT                 2 │ │ the selected job's cards, in a column at most 800 px wide │ │
-│  o Dressrosa 13           │ │  running:  progress card over the six stages              │ │
+│  o Dressrosa 13           │ │  running:  progress card over eight stage groups         │ │
 │    Waiting · next in line │ │  waiting:  place in line, Run Next, Remove from List      │ │
 │  o Dressrosa 14           │ │  failed or cancelled: what happened, Try Again            │ │
 │ DONE                    1 │ │  finished: Overview (file card, lines card, Details,      │ │
-│  v Dressrosa 11           │ │            Step times) or Check Lines (list | editor)     │ │
+│  v Dressrosa 11           │ │            Step times), Check Lines or Check Text        │ │
 │    Subtitles ready ·      │ └───────────────────────────────────────────────────────────┘ │
 │    38 to check            │                                                               │
 │ sidebar, 272 px           │ detail pane                                                   │
@@ -86,15 +86,15 @@ list and the line editor side by side.
   yet", and the detail pane shows a card to drop videos on or add them with its buttons.
 - **Header:** the selected job's name in the 22 px title, and under it its length and how long it
   ran ("25:59 video · running for 10 min 00 s") or its place in line. On the right: Cancel (then
-  "Stopping…") for a running job, or Overview | Check Lines for a finished one, Check Lines with
-  its count of lines to check, or a green check once none is left.
+  "Stopping…") for a running job, or Overview | Check Lines | Check Text for a finished one;
+  Check Lines keeps its count of lines to check, or a green check once none is left.
 - **Job cards:** a running job's card says what its [stage](/documentation/glossary.md#stage)
   does ("Settling the words"), the [step](/documentation/glossary.md#step) at work ("Now: Language
-  model settles the words · step 9 of 18"), a bar of the share done, the time left ("about 4 min
+  model settles the words · step 9 of 24"), a bar of the share done, the time left ("about 4 min
   left", "Working out the time left…" until the length is known) and the time so far. Under it
-  the six stages (Read the video, Separate the voices, Hear the speech, Settle the words, Time the
-  words, Write the subtitles), each done with its time, running with its time so far, failed, or
-  still to come; the running one is open to its steps, and "Show all 18 steps" opens every stage.
+  eight groups: Read the video, Separate the voices, Hear the speech, Settle the words, Time the
+  words, Lay out the subtitles, Translate on-screen text and Write the subtitles. Each shows its
+  time and state; the running group opens to its steps. "Show all 24 steps" opens every group.
   A waiting job's card gives its place, when it starts, its path, Run Next and Remove from List. A
   failed job's card names the stage and step in plain words ("Failed at Hear the speech", "Listen
   with Whisper stopped with an error."), the raw message, the finished steps kept and when Try
@@ -121,6 +121,8 @@ list and the line editor side by side.
   heard, timing offset, speech and voice with no subtitle, words timed by the aligner, and
   "Corrections you made", the owner's alone, not Claude's) and Step times (each stage and step with
   its time, peak RAM and peak VRAM, and Open Full Report), both folded away at first.
+  On-screen text adds detected, translated, nearby and unresolved counts, visual processing time,
+  combined ASS output and a Check Text action; warnings remain visible after the job finishes.
 - **Check Lines** (a finished job):
 
   ```text
@@ -163,14 +165,21 @@ list and the line editor side by side.
   the owner's corrections change only lines the owner saved; Fix It changes others. With every
   line checked the pane says "All 38 lines checked" and "The subtitles are up to date.", with Show
   Checked Lines.
-- **Settings window:** a second native window, centred over the main one when it opens, in five
+- **Check Text:** thumbnails and timestamps beside Japanese, English, confidence, provenance and
+  review status; flagged-only filtering, an English/timing/placement/size/treatment editor, and
+  Original/English comparison rendered from the actual ASS by FFmpeg. Play, scrub and frame-step;
+  Save & regenerate ASS, Undo or Retry selected text. Saves survive navigation and update their
+  owning video through the existing correction queue without replacing another open session.
+- **Settings window:** a second native window, centred over the main one when it opens, in six
   tabs. General: the models folder and the work folder with their sizes, the subtitle format, the
   glossary with its count of names. Engines: vocal separation, the second speech engine, the
   `claude` model a run asks and the one Fix It asks (Sonnet, Opus, Fable or Haiku; Sonnet and Opus
   by default), processes at once, Fix It's Claude calls at once (1–100, 32 by default: how many
   `claude` calls Fix It makes at once across every video it fixes; the rest wait their turn, videos
   started first going first) and the switch Fix It after each job (off by default: Fix It starts on
-  each video when its job finishes, if it has lines to fix), the shot cut score. Models: each model
+  each video when its job finishes, if it has lines to fix), the shot cut score. On-screen Text:
+  enable translation, local-first policy, Claude fallback, reference-folder path and model status
+  with download controls. Enabled visual translation produces ASS. Models: each model
   and runtime library with its size and state, Download Missing or Stop. This Computer: the GPU with
   its driver and free VRAM, the CUDA libraries, FFmpeg and its clip sound, ffprobe, `claude`, the
   Whisper worker; a missing CUDA runtime links to Models. Automation: the watch folders, with Add
@@ -186,7 +195,7 @@ list and the line editor side by side.
 
 ### The log window
 
-The log button in the toolbar, or Ctrl+L, opens the log in a second native window, 980 by 560,
+The log button or Ctrl+L opens a 980 by 560 native log window, including OCR/model calls and visual failures,
 near the main window's lower right corner; asked for again while open, it comes to the front. It
 has two views: **Activity**, every line logged since the window started, and **Model Calls**,
 every language-model call with what was sent and what came back.
@@ -251,20 +260,10 @@ every language-model call with what was sent and what came back.
 ### Main flow
 
 ```text
- Add Videos… (Ctrl+O)          Start Queue in the toolbar        Now: one job at a time,
- Add Folder… (Ctrl+Shift+O) ─▶ (off until the models    ─▶     its progress card: stage,
- drop onto the window          are on disk: Download)            step, time left
- tbd-subtitles gui <videos>                                              │
-        │                            ┌────────────────────────────┬──────┴───────────┐
-        ▼                            ▼                            ▼                  ▼
- Up Next: rows wait in line        Done: finished               Done: failed       Done: cancelled
- drag, Run Next, Move Up,          "Subtitles ready ·           "Failed at         (Cancel on the
- Move Down, Remove from List       38 to check" or              <stage>"           header or menu)
- (Delete; Undo puts it back)       "Needs attention ·             │                  │
-                                   1 problem"                     └─── Try Again ────┘
- Pause After This Video stops        │                          resumes after the kept steps;
- the queue once the running          ▼                          starts at once when nothing runs
- video ends                        Overview ─▶ Check Lines
+ Add / Drop / CLI -> Up Next -> Start Queue -> Now: audio and visual steps -> Done
+                           models required        |                          |
+                            Cancel / failure -> Try Again      Overview / Check Lines / Check Text
+                                                                corrections -> same video's update
 ```
 
 - One job runs at a time and its GPU stages run one after another. Beside it, up to four
@@ -409,7 +408,8 @@ nothing.
   ([system overview](/documentation/architecture/system_overview.md#job-work-directory)). The
   window reads `job.json` and the step records for progress and the time left, `qc.json`,
   `output.json`, `report.md` and `fix.json` for the Overview, and `sheet.json`, `adjudicated.json`, the
-  re-decodes, `probe.json` and `audio/vocals_16k.f32` for Check Lines. It writes only
+  re-decodes, `probe.json` and `audio/vocals_16k.f32` for Check Lines. Check Text reads the visual
+  documents/crops and exported ASS, and writes locked `visual/corrections.json`. Line review writes
   `review.json`, the corrections the review step reads, under its lock `review.json.lock`, which
   Fix It takes too; Fix It also writes `fix.json` and, while it runs, `fix/calls/`. Each finished
   row's verdict and lines to check are read from `qc.json` and `review.json` when the window opens
@@ -452,7 +452,8 @@ nothing.
 
 ## Open work
 
-- None in M2 or [M3](/documentation/roadmap.md#m3--automation); both are done.
+- M2 and [M3](/documentation/roadmap.md#m3--automation) are complete. [M4](/documentation/roadmap.md#m4--japanese-on-screen-text)
+  still requires annotated pilots, resource benchmarks, full GUI/playback checks and owner acceptance.
 
 ## Decisions
 
@@ -468,7 +469,7 @@ nothing.
   ([five rules](/documentation/decisions/desktop_gui.md#2026-09-26--a-job-passes-the-quality-check-on-five-rules)).
 - One GPU worker at a time on the machine
   ([one GPU worker](/documentation/decisions/desktop_gui.md#2026-09-26--one-gpu-worker-at-a-time-on-the-machine)).
-- The owner chooses SRT, WebVTT or ASS
+- The owner chooses SRT, WebVTT or ASS; enabled on-screen translation selects combined ASS
   ([subtitle format](/documentation/decisions/desktop_gui.md#2026-09-26--the-owner-chooses-srt-webvtt-or-ass)).
 - The desktop's colour scheme, Adwaita Sans, Phosphor icons and X11
   ([the window's look](/documentation/decisions/desktop_gui.md#2026-09-28--the-window-follows-the-desktops-colour-scheme-in-adwaita-sans-under-x11)).

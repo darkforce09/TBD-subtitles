@@ -1,0 +1,8 @@
+{
+  "fps": 24.0,
+  "height": 1080,
+  "occurrences": [
+    {"label":"rebecca-role-card","japanese":"コリーダコロシアム専属剣闘士","start_s":0.0,"end_s":5.25,"frames":[{"time_s":1.0,"quad":[{"x":477.0,"y":754.0},{"x":1443.0,"y":754.0},{"x":1443.0,"y":859.0},{"x":477.0,"y":859.0}]}]},
+    {"label":"rebecca-name-card","japanese":"レベッカ","start_s":0.0,"end_s":5.25,"frames":[{"time_s":1.0,"quad":[{"x":812.0,"y":891.0},{"x":1110.0,"y":891.0},{"x":1110.0,"y":965.0},{"x":812.0,"y":965.0}]}]}
+  ]
+}

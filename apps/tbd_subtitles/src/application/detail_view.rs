@@ -45,12 +45,15 @@ pub(crate) enum DetailTab {
     Overview,
     /// Its lines to check: the line review.
     CheckLines,
+    CheckText,
 }
 
 impl TbdSubtitlesApp {
     /// The tab job `id` shows: Check Lines exactly while its line review is loaded.
     pub(super) fn detail_tab(&self, id: JobId) -> DetailTab {
-        if self.review.as_ref().is_some_and(|(job, _)| *job == id) {
+        if self.text.job == Some(id) {
+            DetailTab::CheckText
+        } else if self.review.as_ref().is_some_and(|(job, _)| *job == id) {
             DetailTab::CheckLines
         } else {
             DetailTab::Overview
@@ -114,6 +117,7 @@ fn right_ui(ui: &mut Ui, app: &TbdSubtitlesApp, item: &QueueItem, actions: &mut 
             let tabs = [
                 (DetailTab::Overview, "Overview", None),
                 (DetailTab::CheckLines, "Check Lines", tally),
+                (DetailTab::CheckText, "Check Text", None),
             ];
             if let Some(tab) = segmented(ui, app.detail_tab(item.id), &tabs) {
                 actions.push(Action::ShowTab(tab));

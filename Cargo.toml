@@ -5,6 +5,7 @@ resolver = "3"
 members = [
     "apps/tbd_subtitles",
     "apps/tbd_subtitles_ggml",
+    "apps/tbd_subtitles_llm",
     "crates/app_icon",
     "crates/child_process",
     "crates/inference",
@@ -19,4 +20,5 @@ members = [
     "tools/stack_spike_ggml",
     "tools/stack_spike_llm",
     "tools/verification_core",
+    "tools/visual_validation",
 ]

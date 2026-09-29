@@ -1,0 +1,23 @@
+# Isolates the local translation engine from ONNX Runtime and ggml.
+[package]
+name = "tbd_subtitles_llm"
+description = "Local visual translation worker for TBD-subtitles"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[[bin]]
+name = "tbd-subtitles-llm"
+path = "src/main.rs"
+
+[features]
+mistralrs = ["pipeline/mistralrs"]
+
+[dependencies]
+pipeline = { path = "../../crates/pipeline" }
+job_model = { path = "../../crates/job_model" }
+inference = { path = "../../crates/inference" }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "env-filter"] }
+clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }

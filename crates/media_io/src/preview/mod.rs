@@ -15,6 +15,8 @@
 //! exits, so the sound keeps a small server buffer (`PULSE_BUFFER_MS`) and ends with a silence
 //! pad (`SILENCE_PAD_S`) longer than it: only silence is dropped, and the clip is heard to its end.
 
+pub mod visual;
+
 use std::path::Path;
 
 /// The clip to play: where it starts and how long it lasts, in video seconds.

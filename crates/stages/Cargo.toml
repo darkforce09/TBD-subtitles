@@ -30,5 +30,15 @@ serde = { version = "1", default-features = false, features = ["std", "derive"] 
 earshot = "1"
 # The language models' JSON answers.
 serde_json = "1"
+# Pixel buffers, crop files and perspective rectification for visible writing.
+image = { version = "0.25", default-features = false, features = ["png"] }
+imageproc = { version = "0.26", default-features = false }
+# Pure-Rust motion tracking and robust geometric fitting.
+optical-flow-lk = "=0.3.1"
+nalgebra = "0.34"
+fontdb = "0.23"
+ttf-parser = "0.25"
+# Crop content for tool-disabled Claude image requests.
+base64 = "0.22"
 # The AudioSet rated label table, to name the tagger's 527 outputs.
 soundevents-dataset = { version = "0.4", default-features = false, features = ["std", "rated"] }

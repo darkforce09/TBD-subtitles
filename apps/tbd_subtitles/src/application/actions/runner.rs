@@ -38,6 +38,7 @@ use crate::job_queue::models::progress::JobProgress;
 use crate::job_queue::models::queue::{Failure, JobId, JobKind, JobResult, JobState};
 use crate::job_queue::services::job_runner::{Command, RunnerEvent};
 use crate::job_queue::services::{job_notice, progress_tracking, queue_editing, time_left};
+use crate::settings::models::machine::ItemKind;
 use crate::settings::services::job_settings;
 
 impl TbdSubtitlesApp {
@@ -48,12 +49,12 @@ impl TbdSubtitlesApp {
         if self.cancel.is_none() {
             self.queue.pausing = false;
         }
-        if self.models_missing() {
-            return;
-        }
         if self.queue.running && self.cancel.is_none() {
             match queue_editing::next_waiting(&self.queue, JobKind::Full) {
-                Some(id) if self.video_running(id, JobKind::Review) || self.video_fixing(id) => {}
+                Some(id)
+                    if self.video_running(id, JobKind::Review)
+                        || self.video_fixing(id)
+                        || self.models_missing_for(id) => {}
                 Some(id) => self.start(id),
                 None => self.queue.running = false,
             }
@@ -64,6 +65,7 @@ impl TbdSubtitlesApp {
                 !self.video_running(id, JobKind::Full)
                     && !self.video_running(id, JobKind::Review)
                     && !self.video_fixing(id)
+                    && !self.models_missing_for(id)
             };
             let Some(id) = queue_editing::first_startable(&self.queue, JobKind::Review, startable)
             else {
@@ -76,7 +78,7 @@ impl TbdSubtitlesApp {
     /// Start job `id` now when its lane is idle and every model is on disk, without turning the
     /// queue on; whether it runs.
     pub(crate) fn start_now(&mut self, id: JobId) -> bool {
-        if self.models_missing() {
+        if self.models_missing_for(id) {
             return false;
         }
         match self.queue.get(id).map(|item| item.kind) {
@@ -172,22 +174,63 @@ impl TbdSubtitlesApp {
             .queue
             .get(id)
             .ok_or_else(|| anyhow::anyhow!("no job {id}"))?;
-        let own = (item.keep_settings || item.kind == JobKind::Review)
-            .then(|| recorded_settings(&work_root, &item.video))
-            .flatten();
-        let settings = match own {
-            Some(settings) => settings,
-            None => job_settings::job_settings(saved)?,
-        };
         Ok(JobOptions {
             work_root,
-            settings,
+            settings: self.settings_for(id)?,
             rerun: item.rerun.clone(),
             binaries: Binaries::beside_current_exe()?,
             cancel,
             gpu_lock: self.env.gpu_lock.clone(),
             models_dir: job_settings::models_dir(saved)?,
         })
+    }
+
+    /// A resume or correction uses its recorded settings, regardless of the new-job defaults.
+    fn settings_for(&self, id: JobId) -> anyhow::Result<JobSettings> {
+        let saved = &self.settings.saved;
+        let item = self
+            .queue
+            .get(id)
+            .ok_or_else(|| anyhow::anyhow!("no job {id}"))?;
+        let own = if item.keep_settings || item.kind == JobKind::Review {
+            recorded_settings(&job_settings::work_root(saved)?, &item.video)
+        } else {
+            None
+        };
+        own.map_or_else(|| job_settings::job_settings(saved), Ok)
+    }
+
+    /// The shared runtime and this job's models, rather than every new job's model choice.
+    pub(crate) fn models_missing_for(&self, id: JobId) -> bool {
+        let Ok(settings) = self.settings_for(id) else {
+            // Starting reports malformed settings as an actionable failure, not a model wait.
+            return false;
+        };
+        if self
+            .settings
+            .items
+            .iter()
+            .any(|item| item.kind == ItemKind::Runtime && !item.present)
+        {
+            return true;
+        }
+        pipeline::models::required(&settings)
+            .into_iter()
+            .any(|model| {
+                self.settings
+                    .items
+                    .iter()
+                    .find(|item| item.kind == ItemKind::Model && item.id == model)
+                    .map_or_else(
+                        || {
+                            !inference::model_store::is_complete(
+                                &self.settings.models_folder,
+                                model,
+                            )
+                        },
+                        |item| !item.present,
+                    )
+            })
     }
 }
 
@@ -296,6 +339,14 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
         }
         app.refresh_report(true);
         app.refresh_review();
+        if app
+            .text
+            .job
+            .and_then(|id| app.queue.get(id))
+            .is_some_and(|item| ended_videos.contains(&item.video))
+        {
+            app.refresh_text();
+        }
         // Fix It finishes once the subtitles hold its changes, so its words count what is left.
         for (video, ok) in &reviewed {
             app.fix_run_ended(video, *ok);

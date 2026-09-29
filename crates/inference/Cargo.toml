@@ -53,3 +53,7 @@ tar = { version = "0.4", default-features = false }
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread"], optional = true }
 # Downloads model files and runtime archives over https, with resumable ranges.
 ureq = { version = "3", default-features = false, features = ["rustls"] }
+# Local OCR through the same dynamically loaded ONNX Runtime.
+oar-ocr = { version = "=0.9.2", default-features = false, features = ["cuda", "simd"] }
+# OCR crop buffers and deterministic PNG snapshots.
+image = { version = "0.25", default-features = false, features = ["png"] }

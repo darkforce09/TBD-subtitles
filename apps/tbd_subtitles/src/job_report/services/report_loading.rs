@@ -39,7 +39,9 @@ pub(crate) fn load(video: &Path, work_root: &Path) -> Result<JobReport, String> 
     let answered = answered(fix.as_ref());
     let subtitles = read::<OutputRecord>(&work_dir.join("output.json"))
         .map(|output| output.path.into())
-        .unwrap_or_else(|_| stages::output::subtitle_path(&video, record.settings.output_format));
+        .unwrap_or_else(|_| {
+            stages::output::subtitle_path(&video, record.settings.effective_output_format())
+        });
     let steps = StepName::ALL
         .iter()
         .filter_map(|step| {
@@ -55,6 +57,16 @@ pub(crate) fn load(video: &Path, work_root: &Path) -> Result<JobReport, String> 
         .filter(|fix| answered_any(fix))
         .map(|fix| fix_result::fix_result(fix, &corrections, &problems));
     Ok(JobReport {
+        visual: if record.settings.onscreen_text.enabled {
+            Some(
+                read::<job_model::onscreen::TextDocument>(
+                    &work_dir.join("visual/text_typeset.json"),
+                )?
+                .summary(),
+            )
+        } else {
+            None
+        },
         report_file: work_dir.join("report.md"),
         lines: line_counts::line_counts(&qc, &corrections, &answered),
         fixable: line_counts::fixable(&qc, &corrections, &answered),

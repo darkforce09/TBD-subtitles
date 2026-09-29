@@ -47,7 +47,8 @@ fn only_model_stages_run_in_a_worker() {
             "asr",
             "sound_events",
             "adjudication",
-            "alignment"
+            "alignment",
+            "onscreen_text"
         ]
     );
 }

@@ -44,7 +44,7 @@ pub(super) fn automation_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<S
                 if Button::new("Remove").show(ui).clicked() {
                     let mut edited = saved.clone();
                     edited.watch_folders.remove(index);
-                    events.push(SettingsEvent::Edit(edited));
+                    events.push(SettingsEvent::Edit(Box::new(edited)));
                 }
             });
             if !folder.is_dir() {

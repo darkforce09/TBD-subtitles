@@ -45,7 +45,7 @@ pub(super) fn general_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<Sett
                 if hover(button).clicked() {
                     let mut edited = saved.clone();
                     edited.models_dir = None;
-                    events.push(SettingsEvent::Edit(edited));
+                    events.push(SettingsEvent::Edit(Box::new(edited)));
                 }
             }
             let button = Button::new("Choose…").enabled(!downloading).show(ui);
@@ -64,7 +64,7 @@ pub(super) fn general_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<Sett
             if saved.work_root.is_some() && Button::new("Default").show(ui).clicked() {
                 let mut edited = saved.clone();
                 edited.work_root = None;
-                events.push(SettingsEvent::Edit(edited));
+                events.push(SettingsEvent::Edit(Box::new(edited)));
             }
             if Button::new("Choose…").show(ui).clicked() {
                 events.push(SettingsEvent::Choose(PathField::WorkFolder));
@@ -84,7 +84,7 @@ pub(super) fn general_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<Sett
             if let Some(format) = segmented(ui, saved.output_format, &formats) {
                 let mut edited = saved.clone();
                 edited.output_format = format;
-                events.push(SettingsEvent::Edit(edited));
+                events.push(SettingsEvent::Edit(Box::new(edited)));
             }
         });
         form::help(
@@ -117,7 +117,7 @@ fn glossary_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<SettingsEvent>
         if let Some(glossary) = form::choice(ui, "glossary", &saved.glossary, &options, 200.0) {
             let mut edited = saved.clone();
             edited.glossary = glossary;
-            events.push(SettingsEvent::Edit(edited));
+            events.push(SettingsEvent::Edit(Box::new(edited)));
         }
         if Button::new("Choose File…").show(ui).clicked() {
             events.push(SettingsEvent::Choose(PathField::GlossaryFile));

@@ -34,6 +34,8 @@ mod rendering_report;
 mod rendering_review;
 #[path = "rendering_settings.rs"]
 mod rendering_settings;
+#[path = "rendering_text.rs"]
+mod rendering_text;
 #[path = "window_snapshots.rs"]
 mod window_snapshots;
 
@@ -360,7 +362,9 @@ fn a_failed_job_records_its_step_and_the_steps_it_kept() {
         "The 2 finished steps are kept. Try Again continues after them. It starts at once.",
         "Try Again",
         "Show in Folder",
-        "Show all 18 steps",
+        "Show all 24 steps",
+        "8 stages",
+        "Translate on-screen text",
         "already done",
         "failed",
     ] {

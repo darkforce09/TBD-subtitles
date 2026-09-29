@@ -18,4 +18,5 @@ pub mod cuda_runtime;
 pub mod ggml;
 pub mod llm;
 pub mod model_store;
+pub mod ocr;
 pub mod onnx;

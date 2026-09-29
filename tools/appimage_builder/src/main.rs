@@ -1,7 +1,7 @@
 //! The AppImage builder: `cargo appimage [--skip-build] [--out <dir>]`.
 //!
-//! **Role:** builds TBD-subtitles as one self-contained AppImage: the two release binaries, the
-//! CUDA, cuDNN and ONNX Runtime libraries the GPU workers load, the ggml worker's own libraries,
+//! **Role:** builds TBD-subtitles as one self-contained AppImage: the three release binaries, the
+//! CUDA, cuDNN and ONNX Runtime libraries the GPU workers load, each worker's own libraries,
 //! a static FFmpeg, the desktop entry and icon, packed as a zstd squashfs image behind the pinned
 //! AppImage runtime, in `dist/`.
 //!
@@ -14,7 +14,7 @@
 //! prints each step and its time to stderr.
 //!
 //! **Invariants:** every step fails closed: a missing library, a wrong hash, an FFmpeg without
-//! pulse or a worker without CrispASR stops the build before an AppImage is written.
+//! pulse or a worker without its GPU backend stops the build before an AppImage is written.
 
 mod app_dir;
 mod build;
@@ -53,8 +53,10 @@ struct Cli {
 
 /// The name of the ggml worker binary, which the job runner looks for beside the app.
 const GGML_WORKER: &str = "tbd-subtitles-ggml";
+/// The local language-model worker, isolated from the app's ONNX Runtime.
+const LOCAL_LLM_WORKER: &str = "tbd-subtitles-llm";
 
-/// What the copied ggml libraries and the worker look for at run time.
+/// What the copied native libraries and the workers look for at run time.
 const LIBRARY_RUNPATH: &str = "$ORIGIN";
 const WORKER_RUNPATH: &str = "$ORIGIN/../lib";
 
@@ -138,6 +140,7 @@ fn lay_out(
     let app_dir = AppDir::create(root)?;
     let app = app_dir.add_binary(&binaries.app, APP_NAME)?;
     let worker = app_dir.add_binary(&binaries.ggml_worker, GGML_WORKER)?;
+    let local_worker = app_dir.add_binary(&binaries.local_llm_worker, LOCAL_LLM_WORKER)?;
     let nothing = BTreeSet::new();
     let host_only = Search {
         dirs: Vec::new(),
@@ -146,13 +149,35 @@ fn lay_out(
     elf::closure(&[app], &host_only).context("the app binary needs a library the host lacks")?;
     let bundled = gpu_runtime::bundle(runtime_dir, &app_dir.usr_bin())?;
     bundle_worker_libraries(&binaries.ggml_worker, &worker, &app_dir.usr_lib(), &bundled)?;
+    bundle_worker_libraries(
+        &binaries.local_llm_worker,
+        &local_worker,
+        &app_dir.usr_lib(),
+        &bundled,
+    )?;
     ffmpeg::bundle(ffmpeg_bin, &app_dir.usr_bin())?;
+    bundle_font(app_dir.root())?;
     app_dir.finish()?;
     Ok(app_dir)
 }
 
-/// Copy the libraries the built ggml worker needs (CrispASR and ggml, found through its build
-/// RUNPATH) into `usr_lib`, and point every RUNPATH at the AppDir.
+/// Bundle the verified Japanese review font and its redistribution license.
+fn bundle_font(root: &Path) -> Result<()> {
+    let models = inference::model_store::models_dir()?;
+    let source = inference::model_store::fetch_model(&models, "visual-font", &mut |_, _, _| {
+        std::ops::ControlFlow::Continue(())
+    })?;
+    let fonts = root.join("usr/share/fonts");
+    let licenses = root.join("usr/share/licenses/tbd-subtitles");
+    fs::create_dir_all(&fonts)?;
+    fs::create_dir_all(&licenses)?;
+    fs::copy(source.join("NotoSansJP.ttf"), fonts.join("NotoSansJP.ttf"))?;
+    fs::copy(source.join("OFL.txt"), licenses.join("NotoSansJP-OFL.txt"))?;
+    Ok(())
+}
+
+/// Copy a worker's native libraries, found through its build RUNPATH, into `usr_lib`, and point
+/// every RUNPATH at the AppDir. Shared CUDA libraries are already in the runtime bundle.
 fn bundle_worker_libraries(
     built: &Path,
     copy: &Path,

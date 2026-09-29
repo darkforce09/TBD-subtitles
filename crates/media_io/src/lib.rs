@@ -15,6 +15,7 @@ pub mod pcm_stream;
 pub mod preview;
 pub mod probe;
 pub mod shot_changes;
+pub mod video_frames;
 
 use std::fmt;
 use std::path::Path;

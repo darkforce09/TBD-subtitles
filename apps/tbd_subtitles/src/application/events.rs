@@ -46,6 +46,7 @@ pub(crate) enum Action {
     Settings(SettingsEvent),
     Report(ReportEvent),
     Review(ReviewEvent),
+    Text(crate::text_review::models::Event),
     LogConsole(LogConsoleEvent),
 }
 

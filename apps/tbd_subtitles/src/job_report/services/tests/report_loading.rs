@@ -51,7 +51,10 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
             video: video.to_string_lossy().into_owned(),
             video_size: 5,
             video_modified_s: 0,
-            settings: JobSettings::with_glossary(vec![]),
+            settings: JobSettings {
+                onscreen_text: job_model::onscreen::TextSettings::default(),
+                ..JobSettings::with_glossary(vec![])
+            },
             models_dir: None,
             corrections: None,
             steps,
@@ -149,7 +152,10 @@ fn a_current_fix_record_checks_the_lines_it_answered_and_a_stale_one_counts_for_
             video: video.to_string_lossy().into_owned(),
             video_size: 5,
             video_modified_s: 0,
-            settings: JobSettings::with_glossary(vec![]),
+            settings: JobSettings {
+                onscreen_text: job_model::onscreen::TextSettings::default(),
+                ..JobSettings::with_glossary(vec![])
+            },
             models_dir: None,
             corrections: None,
             steps,

@@ -28,6 +28,8 @@ pub enum Binary {
     Main,
     /// `tbd-subtitles-ggml`: Whisper through CrispASR.
     Ggml,
+    /// `tbd-subtitles-llm`: the local language model through mistral.rs.
+    LocalLlm,
 }
 
 /// Where a step runs.
@@ -41,10 +43,14 @@ pub enum Placement {
 
 pub fn placement(step: StepName) -> Placement {
     match step {
-        StepName::Vad | StepName::DiffSheet | StepName::Cues | StepName::Qc | StepName::Output => {
-            Placement::InProcess
-        }
+        StepName::Vad
+        | StepName::DiffSheet
+        | StepName::Cues
+        | StepName::TextReview
+        | StepName::Qc
+        | StepName::Output => Placement::InProcess,
         StepName::AsrWhisper | StepName::RedecodeWhisper => Placement::Worker(Binary::Ggml),
+        StepName::TextTranslate => Placement::Worker(Binary::LocalLlm),
         _ => Placement::Worker(Binary::Main),
     }
 }
@@ -60,13 +66,25 @@ pub fn uses_gpu(step: StepName) -> bool {
             | StepName::RedecodeParakeet
             | StepName::RedecodeWhisper
             | StepName::Alignment
+            | StepName::TextDetect
+            | StepName::TextRead
+            | StepName::TextTranslate
     )
 }
 
-/// Whether the step's worker loads ONNX Runtime and so needs the runtime's environment: every
-/// GPU step, and the review step, which runs Parakeet-CTC on the CPU.
+/// Whether the step loads ONNX Runtime; ggml and mistral.rs workers keep their runtimes separate.
 pub fn loads_onnx_runtime(step: StepName) -> bool {
-    uses_gpu(step) || step == StepName::Review
+    matches!(
+        step,
+        StepName::Separation
+            | StepName::AsrParakeet
+            | StepName::SoundEvents
+            | StepName::RedecodeParakeet
+            | StepName::Alignment
+            | StepName::Review
+            | StepName::TextDetect
+            | StepName::TextRead
+    )
 }
 
 /// Whether the step's fingerprint covers the owner's corrections.
@@ -106,6 +124,12 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
             Alignment,
         ],
         Cues => &[ProbeDecode, ShotScan, SoundCues, Review],
+        TextDetect => &[ProbeDecode, ShotScan],
+        TextRead => &[TextDetect],
+        TextTrack => &[ProbeDecode, ShotScan, TextRead],
+        TextTranslate => &[TextTrack, Cues],
+        TextReview => &[TextTranslate],
+        TextTypeset => &[TextReview],
         Qc => &[
             ProbeDecode,
             Vad,
@@ -116,8 +140,9 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
             SoundCues,
             Review,
             Cues,
+            TextTypeset,
         ],
-        Output => &[Cues],
+        Output => &[Cues, TextTypeset],
     }
 }
 
@@ -130,9 +155,15 @@ const REVISIONS: &[(StepName, u32)] = &[
     // A short cue joins its speaker's line of a dashed neighbour, or starts earlier into free
     // time.
     (StepName::Cues, 3),
-    // Its findings name the utterance they are about, and the owner's corrections settle them;
-    // a Fix It change the owner has not checked has its words checked again.
-    (StepName::Qc, 4),
+    // Findings include tracked text alongside the spoken lines and their corrections.
+    (StepName::Qc, 5),
+    // ASS output combines dialogue and tracked English text.
+    (StepName::Output, 2),
+    (StepName::TextDetect, 2),
+    (StepName::TextRead, 3),
+    (StepName::TextTranslate, 6),
+    (StepName::TextReview, 2),
+    (StepName::TextTypeset, 2),
 ];
 
 /// The revision of a step's code; a change makes every earlier output of the step stale.
@@ -155,7 +186,15 @@ pub fn settings(step: StepName, settings: &JobSettings) -> Value {
             "llm_model": settings.llm_model,
         }),
         Cues => json!({ "cut_score": settings.cut_score }),
-        Output => json!({ "output_format": settings.output_format }),
+        TextDetect | TextRead | TextTrack | TextReview | TextTypeset => {
+            json!({ "enabled": settings.onscreen_text.enabled })
+        }
+        TextTranslate => json!({
+            "glossary": settings.glossary,
+            "llm_model": settings.llm_model,
+            "onscreen_text": settings.onscreen_text,
+        }),
+        Output => json!({ "output_format": settings.effective_output_format() }),
         _ => Value::Null,
     }
 }
@@ -165,6 +204,10 @@ pub fn timeout(step: StepName) -> Duration {
     let minutes = match step {
         StepName::Separation => 180,
         StepName::AsrWhisper | StepName::Adjudicate | StepName::SoundCues => 120,
+        StepName::TextDetect
+        | StepName::TextRead
+        | StepName::TextTrack
+        | StepName::TextTranslate => 360,
         _ => 60,
     };
     Duration::from_secs(minutes * 60)
@@ -190,12 +233,56 @@ pub fn outputs(step: StepName, work: &WorkDir, video: &Path, format: OutputForma
         Alignment => vec![work.aligned()],
         Review => vec![work.reviewed()],
         Cues => vec![work.cues(), work.dropped_sounds()],
+        TextDetect | TextRead | TextTrack | TextTranslate | TextReview => vec![work.text(step)],
+        TextTypeset => vec![work.text(step), work.text_ass()],
         Qc => vec![work.qc()],
         Output => vec![
             work.output_record(),
             stages::output::subtitle_path(video, format),
         ],
     }
+}
+
+/// Check declared outputs and the representative crops required to resume text reading.
+pub fn artifacts_valid(step: StepName, work: &WorkDir, video: &Path, format: OutputFormat) -> bool {
+    if !outputs(step, work, video, format)
+        .iter()
+        .all(|path| path.exists())
+    {
+        return false;
+    }
+    if step != StepName::TextDetect {
+        return true;
+    }
+    // Deserialize only crop paths, skipping large geometry arrays without retaining them.
+    #[derive(serde::Deserialize)]
+    struct DetectionArtifacts {
+        occurrences: Vec<CropArtifacts>,
+    }
+    #[derive(serde::Deserialize)]
+    struct CropArtifacts {
+        crops: Vec<PathBuf>,
+    }
+    let Ok(file) = std::fs::File::open(work.text(step)) else {
+        return false;
+    };
+    let Ok(artifacts) =
+        serde_json::from_reader::<_, DetectionArtifacts>(std::io::BufReader::new(file))
+    else {
+        return false;
+    };
+    artifacts.occurrences.iter().all(|item| {
+        !item.crops.is_empty()
+            && item.crops.iter().all(|crop| {
+                crop.components().all(|part| {
+                    matches!(
+                        part,
+                        std::path::Component::Normal(_) | std::path::Component::CurDir
+                    )
+                }) && std::fs::metadata(work.root().join(crop))
+                    .is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
+            })
+    })
 }
 
 #[cfg(test)]

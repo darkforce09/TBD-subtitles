@@ -8,6 +8,7 @@ quality-check report.
 
 ```text
 crates/job_model/src/
+├── onscreen/   typed visual observations, translations, corrections and presentation
 ├── job/         the job record kept in `job.json`: video, settings, finished steps and their measures
 ├── lib.rs       the crate root: the module list and the `StageName` and `StepName` re-exports
 ├── model_call/  one language-model call for the app's log window, and the worker line carrying it

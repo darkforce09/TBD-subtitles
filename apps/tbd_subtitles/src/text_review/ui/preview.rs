@@ -1,0 +1,208 @@
+//! Original and rendered pictures with transport controls for Check Text.
+//!
+//! **Role:** display decoded pictures and return playback, seek and frame-step events.
+//! **Position:** borrowed view called by the text editor and its occurrence list.
+//! **Signals and state:** egui holds two preview textures and 32 reusable thumbnail slots.
+//! **Invariants:** pixels come from the preview service; a texture uploads only for a new serial;
+//! frame stepping prefers source presentation times and never changes the source video.
+
+use eframe::egui::{
+    self, Color32, ColorImage, Id, Rect, RichText, Sense, TextureHandle, TextureOptions, Ui, Vec2,
+    pos2, vec2,
+};
+
+use crate::core::format;
+use crate::core::ui::button::Button;
+use crate::core::ui::icons;
+use crate::core::ui::palette::palette;
+use crate::text_review::models::{Comparison, Event, Picture, Session};
+
+pub(super) fn show(
+    ui: &mut Ui,
+    session: &Session,
+    comparison: Option<&Comparison>,
+    playing: bool,
+    busy: bool,
+    events: &mut Vec<Event>,
+) {
+    let p = palette(ui);
+    let owner = Id::new(&session.work);
+    ui.columns(2, |columns| {
+        for (slot, (column, title)) in columns
+            .iter_mut()
+            .zip(["Original", "English subtitles"])
+            .enumerate()
+        {
+            column.label(RichText::new(title).size(12.0).color(p.text2));
+            let picture = comparison.map(|pair| {
+                if slot == 0 {
+                    &pair.original
+                } else {
+                    &pair.rendered
+                }
+            });
+            let width = column.available_width().max(1.0);
+            let size = vec2(width, (width * 9.0 / 16.0).min(300.0));
+            picture_ui(
+                column,
+                picture,
+                size,
+                Id::new(("text-preview", slot)),
+                owner,
+            );
+        }
+    });
+    let shown_time = comparison.map_or(session.position_s, |pair| pair.time_s);
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(format::clock_tenths(shown_time))
+                .size(12.0)
+                .color(p.text2),
+        );
+        if busy {
+            ui.spinner();
+            ui.label(RichText::new("Updating…").size(12.0).color(p.text2));
+        }
+    });
+    let Some(occurrence) = session.document.occurrences.get(session.selected) else {
+        return;
+    };
+    let from = (occurrence.start_s - 0.75).max(0.0);
+    let to = (occurrence.end_s + 0.75).min(session.duration_s).max(from);
+    let mut position = session.position_s.clamp(from, to);
+    ui.add_enabled_ui(!busy, |ui| {
+        if ui
+            .add(
+                egui::Slider::new(&mut position, from..=to)
+                    .show_value(false)
+                    .text("Preview position"),
+            )
+            .changed()
+        {
+            seek(events, position, playing);
+        }
+    });
+    ui.horizontal_wrapped(|ui| {
+        if playing {
+            if Button::new("Stop").icon(icons::STOP).show(ui).clicked() {
+                events.push(Event::Stop);
+            }
+        } else if Button::new("Play")
+            .icon(icons::PLAY)
+            .enabled(!busy)
+            .show(ui)
+            .clicked()
+        {
+            events.push(Event::Play);
+        }
+        for (forward, label, icon) in [
+            (false, "Previous frame", icons::CARET_LEFT),
+            (true, "Next frame", icons::CARET_RIGHT),
+        ] {
+            if Button::new(label)
+                .icon(icon)
+                .enabled(!busy)
+                .show(ui)
+                .clicked()
+            {
+                seek(events, adjacent_frame(session, forward), playing);
+            }
+        }
+        ui.label(
+            RichText::new(format!(
+                "{} – {}",
+                format::clock_tenths(from),
+                format::clock_tenths(to)
+            ))
+            .size(11.0)
+            .color(p.text2),
+        );
+    });
+    if playing {
+        ui.ctx().request_repaint();
+    }
+}
+
+pub(super) fn thumbnail(ui: &mut Ui, session: &Session, index: usize) {
+    let picture = session.thumbnails.get(index).and_then(Option::as_ref);
+    picture_ui(
+        ui,
+        picture,
+        vec2(78.0, 48.0),
+        Id::new(("text-thumbnail", index % 32)),
+        Id::new(&session.work),
+    );
+}
+
+fn picture_ui(ui: &mut Ui, picture: Option<&Picture>, size: Vec2, key: Id, owner: Id) {
+    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    ui.painter().rect_filled(rect, 6.0, palette(ui).video);
+    let Some(frame) = picture else { return };
+    let expected = (frame.width as usize)
+        .checked_mul(frame.height as usize)
+        .and_then(|pixels| pixels.checked_mul(3));
+    if frame.width == 0 || frame.height == 0 || expected != Some(frame.rgb.len()) {
+        return;
+    }
+    let held: Option<(Id, u64, TextureHandle)> = ui.ctx().data(|data| data.get_temp(key));
+    let texture = match held {
+        Some((source, serial, texture)) if source == owner && serial == frame.serial => texture,
+        _ => {
+            let pixels =
+                ColorImage::from_rgb([frame.width as usize, frame.height as usize], &frame.rgb);
+            let texture = ui
+                .ctx()
+                .load_texture("on-screen-text", pixels, TextureOptions::LINEAR);
+            ui.ctx()
+                .data_mut(|data| data.insert_temp(key, (owner, frame.serial, texture.clone())));
+            texture
+        }
+    };
+    let ratio = frame.width as f32 / frame.height as f32;
+    let width = rect.width().min(rect.height() * ratio);
+    let fitted = Rect::from_center_size(rect.center(), vec2(width, width / ratio));
+    ui.painter().image(
+        texture.id(),
+        fitted,
+        Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+        Color32::WHITE,
+    );
+}
+
+fn adjacent_frame(session: &Session, forward: bool) -> f64 {
+    let current = session.position_s;
+    let times = session
+        .document
+        .occurrences
+        .get(session.selected)
+        .into_iter()
+        .flat_map(|text| &text.frames)
+        .map(|frame| frame.time_s)
+        .filter(|time| time.is_finite());
+    let next = if forward {
+        times
+            .filter(|time| *time > current + 0.000_001)
+            .min_by(f64::total_cmp)
+    } else {
+        times
+            .filter(|time| *time < current - 0.000_001)
+            .max_by(f64::total_cmp)
+    };
+    let fps = if session.fps.is_finite() && session.fps > 0.0 {
+        session.fps
+    } else {
+        24.0
+    };
+    next.unwrap_or(current + if forward { 1.0 / fps } else { -1.0 / fps })
+        .clamp(0.0, session.duration_s.max(0.0))
+}
+
+fn seek(events: &mut Vec<Event>, time_s: f64, playing: bool) {
+    if playing {
+        events.push(Event::Stop);
+    }
+    events.push(Event::Seek(time_s));
+}

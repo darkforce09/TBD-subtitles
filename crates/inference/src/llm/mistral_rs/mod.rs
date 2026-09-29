@@ -77,9 +77,9 @@ impl LanguageModel for MistralRs {
             .choices
             .first()
             .and_then(|c| c.message.content.clone())
-            .ok_or_else(|| LlmError("the answer is empty".into()))?;
+            .ok_or_else(|| LlmError::invalid_response("the answer is empty"))?;
         let json = serde_json::from_str(&text).map_err(|e| {
-            LlmError(format!(
+            LlmError::invalid_response(format!(
                 "the answer is not JSON ({e}): {}",
                 text.chars().take(300).collect::<String>()
             ))

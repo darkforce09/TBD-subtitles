@@ -2,7 +2,7 @@
 
 # Building the AppImage
 
-Package `tbd-subtitles` as one self-contained `.AppImage`: the app's two binaries, a bundled CUDA
+Package `tbd-subtitles` as one self-contained `.AppImage`: the app's three binaries, a bundled CUDA
 13.4 + cuDNN 9.26 + ONNX Runtime 1.28.2 runtime, and a static FFmpeg, so it runs on the host with
 only the NVIDIA driver, X11/EGL, PulseAudio, the desktop portal and FUSE. Building takes about two
 minutes with a cached `cargo build`, longer the first time it downloads the CUDA toolkit and the
@@ -14,7 +14,8 @@ runtime and FFmpeg archives.
   (`sudo apt install cmake libclang-dev`, done once) — see [development
   environment](/documentation/runbooks/development_environment.md#steps) steps 1 and 12 for the
   toolchain and the CUDA 13.4 toolkit under `~/.local/share/tbd-subtitles/runtime/cuda-13.4`,
-  which the builder downloads itself if missing.
+  which the builder downloads itself if missing. The local translation worker uses the pinned
+  CUDA 13.3 compiler with CUDA 13.4 runtime libraries; the builder supplies that compiler too.
 - Network access, to fetch the pinned CUDA toolkit, FFmpeg and AppImage runtime archives into
   `target/appimage/cache/` the first time.
 
@@ -81,10 +82,13 @@ runtime and FFmpeg archives.
 distrobox-host-exec env -u LD_LIBRARY_PATH dist/TBD-subtitles-x86_64.AppImage process "/run/media/system/Main_storage/Media/one_pace/[Muhn Pace] Dressrosa 11.mp4" --work-root /tmp/appimage-verify
 ```
 
-**Expected:** all 18 steps run (the Whisper steps on the GPU, through the bundled `ggml` worker
+**Expected:** all 24 steps run (the Whisper steps on the GPU, through the bundled `ggml` worker
 and its bundled `libcrispasr.so.1`), ending with the subtitle file written beside a copy of the
 video and `report.md` in `/tmp/appimage-verify`. Comparing it to the [Dressrosa 11
-pilot](/documentation/research/pilot_dressrosa_11.md) subtitle file shows the same lines.
+pilot](/documentation/research/pilot_dressrosa_11.md) subtitle file shows the same dialogue lines.
+Visual translation writes a combined ASS and uses the bundled local-model worker. Settings →
+On-screen Text lists the required model downloads. Check Text must render Japanese correctly
+using the bundled Noto Sans JP font and preview the exported ASS through FFmpeg.
 
 ## Troubleshooting
 

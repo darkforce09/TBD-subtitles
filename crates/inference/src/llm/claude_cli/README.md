@@ -7,6 +7,7 @@ in JSON that matches a schema, with every tool disabled.
 
 ```text
 crates/inference/src/llm/claude_cli/
+├── shared_slots.rs  cancellable file-lock permits shared by every Claude caller
 ├── mod.rs  `ClaudeCli` (program, model, deadline, working folder, cancel flag) and `parse`
 └── tests/  unit tests for the structured answer, tokens and cost, error results and cancelling
 ```

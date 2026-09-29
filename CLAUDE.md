@@ -5,15 +5,20 @@ Working context for AI sessions. Read this first, then [documentation/README.md]
 
 TBD-subtitles is a Rust desktop application that generates high-quality English subtitles for
 local video files: every spoken line plus SDH sound cues, timed to the word, laid out to
-Netflix's English rules. It runs locally on the owner's PC. A later milestone translates Japanese
-text that appears on screen. The first job is the Muhn Pace Dressrosa English dub in
+Netflix's English rules. It runs locally on the owner's PC. The on-screen text pipeline translates
+visible Japanese into tracked English ASS events alongside dialogue and sound cues. The first job
+is the Muhn Pace Dressrosa English dub in
 `/run/media/system/Main_storage/Media/one_pace/` (41 episodes; no dub subtitles exist anywhere).
 
-**Current state:** milestones M0, M0.5, M1, M2 and M3 are done. `tbd-subtitles process <video>` runs 18
-resumable steps, with GPU steps in workers of `tbd-subtitles` and `tbd-subtitles-ggml`, and
-writes the SRT, `report.md` and each step's time and memory. The owner accepted the Dressrosa 11
-pilot ([pilot run](/documentation/research/pilot_dressrosa_11.md)), and a 128.9-minute video ran
-in 19.2 minutes ([120-minute test](/documentation/research/long_video_120min.md)). M2 is the
+**Current state:** milestones M0, M0.5, M1, M2 and M3 are done; M4 is implemented and under
+validation, not accepted. `tbd-subtitles process <video>` runs 24 resumable steps, with workers in
+`tbd-subtitles`, `tbd-subtitles-ggml` and `tbd-subtitles-llm`. New jobs enable on-screen translation
+and write one ASS file containing dialogue, sound cues and tracked text, plus `report.md` and each
+step's time and memory. Jobs with visual processing disabled retain their selected subtitle
+format. The completed M1 audio baseline includes the accepted Dressrosa 11
+pilot ([pilot run](/documentation/research/pilot_dressrosa_11.md)) and the 128.9-minute video
+processed in 19.2 minutes ([120-minute test](/documentation/research/long_video_120min.md)); those
+measurements exclude visual processing. M2 is the
 desktop GUI: the window (`tbd-subtitles gui`) is redesigned to the owner's approved
 macOS-like mockup and runs jobs itself: a toolbar and models banner, a sidebar of videos in Now,
 Up Next and Done, the selected job's progress, its Overview report and Check Lines (clip playback,
@@ -30,8 +35,20 @@ The owner runs it as a self-contained AppImage from Gear Lever, built by `cargo 
 (2026-09-29). M3, automation, is done: watch folders that queue finished downloads while the app
 is open, Dolphin's "Generate subtitles" entry, one window per session that later launches hand
 their videos to, a notification when a job ends, and the window's icon; the owner tested it on the
-host and accepted it (2026-09-29) ([automation](/documentation/features/automation.md)). Next is
-M4, Japanese on-screen text ([roadmap](/documentation/roadmap.md)).
+host and accepted it (2026-09-29) ([automation](/documentation/features/automation.md)).
+
+M4 adds Detect → Read → Track → Translate → Review → Typeset between cue construction and final
+QC/output. It uses PP-OCRv5 and manga-ocr, checked optical flow, local Qwen3.5-4B translation,
+validated reference wording and optional tool-disabled Claude image fallback. Settings, queue
+progress, Overview, Check Text, actual ASS comparison previews, corrections and logs are integrated
+into the existing window and job. Visual corrections reuse valid audio stages. Annotated pilot
+coverage, a single 20–30-minute episode benchmark, complete GUI/VLC checks and owner acceptance
+remain outstanding; do not call M4 complete. The AppImage builds and passes the host startup smoke
+check. The owner accepts missed faint text and false detections, and replaces the proposed two-hour
+visual benchmark with a single episode. Faster selective scanning and whole-frame Claude analysis
+are discussion proposals only; dense scan performance remains open. See
+[Japanese on-screen text](/documentation/features/japanese_onscreen_text.md) and the
+[roadmap](/documentation/roadmap.md).
 
 ## 1. Project laws
 
@@ -49,12 +66,16 @@ M4, Japanese on-screen text ([roadmap](/documentation/roadmap.md)).
    transcribe-cpp) are used only where no pure-Rust option is competitive
    ([decisions](/documentation/decisions/)). Models are downloaded already exported (ONNX, GGUF,
    safetensors); we never convert models.
-5. **Fast and bounded.** A 120-minute video processes end to end in 30 minutes or less on the
-   RTX 3070, in bounded memory: audio is streamed and chunked, never held whole at 44.1 kHz.
+5. **Fast and bounded.** The completed M1 audio pipeline has a 30-minute target for a 120-minute
+   video on the RTX 3070. Visual processing may take additional time, measured separately on one
+   20–30-minute episode for M4 acceptance. Retain the 8 GB RAM and 5.5 GB worker VRAM limits.
+   Audio is streamed and chunked, never held whole at 44.1 kHz; visual scans stream frames and
+   retain representative crops and bounded tracking data rather than extracting the whole video.
 6. **Resumable stages.** Each pipeline stage writes its output to the job's work directory and is
    skipped when a valid output already exists.
-7. **One worker process per GPU stage.** GPU stages run as subcommands of the app binary in
-   their own process: exiting frees VRAM and keeps native libraries apart.
+7. **One worker process per GPU stage.** GPU stages run as subcommands of their assigned binary
+   in their own process under the shared GPU lock: exiting frees VRAM and keeps ONNX Runtime,
+   ggml and mistral.rs apart.
 8. **Never invent dialogue.** Every subtitle word comes from what a speech engine heard. The
    language model chooses between heard variants, fixes spelling and punctuation, and flags
    doubt; it never paraphrases.
@@ -86,12 +107,13 @@ TBD-subtitles/
 ├── rust-toolchain.toml    Rust 1.95.0 for the whole workspace
 ├── apps/
 │   ├── tbd_subtitles/     the binary: cli/, application/ (eframe shell), core/, and the feature
-│   │                      folders job_queue/, job_report/, line_review/, settings/
-│   └── tbd_subtitles_ggml/ the ggml worker binary: the Whisper steps (feature `crispasr`)
+│   │                      folders job_queue/, job_report/, line_review/, text_review/, settings/
+│   ├── tbd_subtitles_ggml/ the ggml worker binary: the Whisper steps (feature `crispasr`)
+│   └── tbd_subtitles_llm/  the mistral.rs worker binary: local on-screen translation
 ├── crates/                layers, lowest first:
 │   ├── job_model/         0  stage names and the serde contracts between stages
 │   ├── child_process/     0  external programs with deadlines, group kills, drained pipes
-│   ├── media_io/          1  ffprobe, FFmpeg PCM streaming, shot changes
+│   ├── media_io/          1  ffprobe, FFmpeg PCM and timestamped RGB streaming, shot changes
 │   ├── subtitle_formats/  1  cue model, SRT/VTT/ASS writers, import
 │   ├── inference/         1  onnx, ggml, candle, llm backends, model store, CUDA runtime
 │   ├── stages/            2  one module folder per pipeline stage
@@ -100,7 +122,8 @@ TBD-subtitles/
 │   ├── appimage_builder/  `cargo appimage`: packages the app as a self-contained AppImage
 │   ├── repo_gates/        `cargo gates`: every law a program can check
 │   ├── stack_spike*/      the stack spike: measuring harness and its ggml and llm workers
-│   └── verification_core/ fail-closed verdicts and reports for the gates
+│   ├── verification_core/ fail-closed verdicts and reports for the gates
+│   └── visual_validation/ annotated visual pilots and episode measurements
 └── documentation/         goals, decisions, roadmap, architecture, research, features, runbooks,
                            standards and templates
 ```
@@ -134,7 +157,7 @@ cargo gates                        # every law a program can check; exit 0, 1 or
 
 More: `cargo gates <gate>` runs one gate (`cargo gates link-check --report`), `--path <dir>`
 narrows it, `--with-untracked` includes new files. Open the window on the host:
-`distrobox-host-exec target/debug/tbd-subtitles gui`. Build both app binaries (the ggml
+`distrobox-host-exec target/debug/tbd-subtitles gui`. Build all three app binaries (the ggml
 worker under the CUDA 13.4 toolkit) and generate subtitles on the host as in steps 12 and 13 of
 the [development environment](/documentation/runbooks/development_environment.md#steps) runbook:
 `distrobox-host-exec target/release/tbd-subtitles process <video>`.
@@ -146,7 +169,7 @@ the [development environment](/documentation/runbooks/development_environment.md
 cargo appimage                     # in the container; about 2 minutes once the build is cached
 ```
 
-It builds both binaries, bundles CUDA, cuDNN, ONNX Runtime and a pinned static FFmpeg, and writes
+It builds all three binaries, bundles CUDA, cuDNN, ONNX Runtime and a pinned static FFmpeg, and writes
 `dist/TBD-subtitles-x86_64.AppImage` (stable name) plus a copy named with the version and commit;
 `--skip-build` repacks without building. Smoke-test on the host with
 `distrobox-host-exec dist/TBD-subtitles-x86_64.AppImage --version`, then tell the owner to

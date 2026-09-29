@@ -13,6 +13,7 @@
 
 pub mod job;
 pub mod model_call;
+pub mod onscreen;
 pub mod outputs;
 pub mod report;
 pub mod stage;

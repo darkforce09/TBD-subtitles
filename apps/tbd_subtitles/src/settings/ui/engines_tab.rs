@@ -39,7 +39,7 @@ pub(super) fn engines_ui(
     let mut edit = |change: &dyn Fn(&mut AppSettings)| {
         let mut edited = saved.clone();
         change(&mut edited);
-        events.push(SettingsEvent::Edit(edited));
+        events.push(SettingsEvent::Edit(Box::new(edited)));
     };
     form::row(ui, "Vocal separation", |ui| {
         let options = [

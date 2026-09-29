@@ -8,7 +8,7 @@ leaves. The run order is `StepName::ALL` in `crates/job_model/src/stage/step_nam
 
 ```text
 crates/pipeline/src/graph/
-├── mod.rs  `placement`, `uses_gpu`, `loads_onnx_runtime`, `inputs`, `settings`, `outputs` and more
+├── mod.rs  placement, GPU/runtime needs, inputs, settings, outputs and artifact validation
 └── tests/  unit tests for the order of inputs, the placements, the outputs, the settings and revisions
 ```
 
@@ -16,21 +16,22 @@ crates/pipeline/src/graph/
 
 `placement` puts voice activity, the diff sheet, cue building, the quality check and the output in
 the runner's own process; the Whisper steps in a worker of `tbd-subtitles-ggml`
-(`Binary::Ggml`); every other step in a worker of `tbd-subtitles` (`Binary::Main`). `uses_gpu`
+(`Binary::Ggml`); visual translation in `tbd-subtitles-llm` (`Binary::LocalLlm`); visual review in
+the runner; every other step in a worker of `tbd-subtitles` (`Binary::Main`). Typesetting uses a
+CPU worker so cancellation interrupts long glyph and layout work. `uses_gpu`
 marks the steps that load a model onto the GPU, which take the GPU lock and a VRAM monitor;
 `loads_onnx_runtime` adds the review step, which runs Parakeet-CTC on the CPU, to the steps that
 get the CUDA runtime's environment, and `reads_corrections` names it as the step whose
 fingerprint covers the owner's corrections.
 `settings` returns the part of `JobSettings` a step reads, so a changed cut score reruns cue
 building and nothing before it, and a changed output format reruns only the output. `revision`
-is 1 for every step but those listed in `REVISIONS` (alignment and review are at 2: an utterance
-only another engine heard at its start or end is aligned where that engine heard it; cue building
-is at 3: a short cue joins its speaker's line of a dashed neighbour, or starts earlier into free
-time; the quality check is at 4: its findings name their utterance, and it checks the words of
-each Fix It change the owner has not checked again, reading the re-decodes for that), which makes
-outputs written by other code stale. `timeout` is 180 minutes for separation, 120 for
-Whisper, adjudication and the sound cues, and 60 for the rest. `outputs` lists the files a
-finished step leaves, the subtitle file beside the video, in the job's output format, among them.
+is 1 except for the explicitly versioned steps in `REVISIONS`; a revision change invalidates
+outputs produced under the previous contract. `timeout` is 180 minutes for separation, 120 for
+Whisper, adjudication and the sound cues, 360 for the first four visual steps, and 60 for the rest.
+`outputs` lists the fixed artifacts, including the subtitle beside the video in its effective
+format. `artifacts_valid` also streams detection manifests to verify every representative crop
+exists as a nonempty file within the work directory. A missing crop reruns its producer and visual
+descendants while preserving valid audio stages.
 
 ## Boundaries
 
