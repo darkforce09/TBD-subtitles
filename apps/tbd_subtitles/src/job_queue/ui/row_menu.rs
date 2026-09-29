@@ -25,7 +25,7 @@ use crate::job_queue::events::JobQueueEvent;
 use crate::job_queue::models::queue::{JobKind, JobState, Move, QueueItem};
 use crate::job_queue::models::sidebar::SidebarRow;
 use crate::job_queue::models::view::JobQueueView;
-use crate::job_queue::services::queue_editing;
+use crate::job_queue::services::video_files;
 
 /// One command of the menu.
 struct Command {
@@ -140,7 +140,7 @@ fn groups(view: &JobQueueView<'_>, row: &SidebarRow, item: &QueueItem) -> Vec<Ve
     if finished {
         let subtitles = match &item.state {
             JobState::Finished(result) => Some(result.subtitles.clone()),
-            _ => queue_editing::subtitle_file(&item.video),
+            _ => video_files::subtitle_file(&item.video),
         };
         let mut copy = Command::new(
             icons::COPY,

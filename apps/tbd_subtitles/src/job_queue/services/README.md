@@ -2,31 +2,37 @@
 
 The queue logic, with no rendering code: editing the queue, the sidebar's rows and their status
 lines, the detail pane's words for the selected job, the threads that run its jobs, following
-their progress, a job's six stages, the time left, and the queue kept across windows.
+their progress, a job's six stages, the time left, the queue kept across windows, the videos in
+a folder, the watch folders' scans, every video ever queued, and the notice when a job ends.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/job_queue/services/
+├── folder_watcher.rs     the thread that scans the watch folders and sends each complete video
+├── job_notice.rs         the desktop notice's words for a full run that finished or failed
 ├── job_runner.rs         the long-lived thread that runs one job at a time and reports its events
 ├── mod.rs                the module list
 ├── progress_log.rs       a job's events and end as log lines, a step's advance once per tenth
 ├── progress_tracking.rs  a runner event folded into the running job's progress
 ├── queue_editing.rs      add, remove and restore, move, try and run again, the next job, the button
 ├── queue_store.rs        `queue.json`: the queue written after each change and read at start
+├── queued_history.rs     `queued_videos.json`: every video ever queued, so none is queued twice
 ├── review_lanes.rs       four runners for correction runs, each holding one run and its cancel token
 ├── sidebar_rows.rs       one row per video in Now, Up Next and Done, correction runs folded in
 ├── stage_progress.rs     six stage rows, each with its steps, from the step states or the failure
 ├── status_text.rs        a row's status line, the detail pane's line, when a job starts
 ├── tests/                unit tests for each file here
-└── time_left.rs          step rates from earlier jobs or the pilot, and a job's time left
+├── time_left.rs          step rates from earlier jobs or the pilot, and a job's time left
+├── video_files.rs        what is a video, its subtitle file, part files, videos in or under a folder
+└── watch_scan.rs         one scan of the watch folders: videos whose size and time stopped changing
 ```
 
 ## How it works
 
 `queue_editing::add_videos` queues each video not already waiting or running; a folder stands for
-its videos with no subtitle file beside them (`subtitle_file` finds one in any format the app
-writes). `remove` takes a row out with the correction runs folded into it, unless something on it
+its videos directly in it with no subtitle file beside them (`video_files::videos_in_folder`;
+`video_files::subtitle_file` finds one in any format the app writes). `remove` takes a row out with the correction runs folded into it, unless something on it
 runs, and hands the selection to the row now in its place or the one before; `restore` puts the
 `Removed` back at the indices it had and selects it, unless a run of the same kind of its video
 waits or runs meanwhile (`Refusal::AlreadyQueued`). `move_before` moves a waiting full run to
@@ -109,15 +115,42 @@ window opens: a failure an older file kept, which knows only how many steps it k
 steps before its failed one that its job's `job.json` records, with their seconds, else the first
 of them it kept, done in a time not known, and then keeps as many as it lists.
 
+`video_files::is_video` knows a video by its extension (`VIDEO_EXTENSIONS`, any case), and
+`has_partial_sibling` by a downloader's part file beside it ("<file name>.part", ".crdownload" or
+".!qB"). `videos_under` walks a folder and its subfolders down to `MAX_DEPTH` (16) folders below
+it, sorted, leaving out hidden entries, symlinked folders, empty files, videos still downloading
+and videos with a subtitle file; a folder it cannot read is skipped with a debug line.
+`watch_scan::step` folds one scan's videos, each with its `Sample` (size and modification time),
+into a `WatchScan`: a video whose sample equals the one the scan before saw has stopped changing
+and is reported, and never again by the same `WatchScan`, even after it vanishes and comes back;
+samples of videos no longer seen are dropped, so a video not yet reported that comes back is a
+first sighting again.
+`WatchScan::scan` samples every video under the watch folders and hands them to `step`; a missing
+folder is warned about once until it reappears. `folder_watcher::start` spawns the thread
+"folder-watcher": it scans at once and then every `interval` (`WATCH_INTERVAL`, 15 s, in the
+app), and at once when `set_folders` hands it a different list; each non-empty list of complete
+videos goes to `found` and wakes the window; an empty folder list scans nothing, and the thread
+ends when the `FolderWatcher` is dropped. `queued_history::QueuedHistory` is every video the app
+ever queued, from any source (`record`, `record_queue`), so a watch folder never queues a video
+twice, even one that failed or was removed; `load` reads `queued_videos.json` in the app data
+folder (`default_path`), a missing or broken file an empty history, and `save` writes it through a
+part file. `job_notice::ended_notice` words the desktop notice for a full run that has just ended:
+"Subtitles ready: <video>" with "The quality check passed." or "Quality check: <problems>; 12
+lines to check.", or "<video> failed" with "At <step title>: <message>", cut to 200 characters;
+a correction run, or a job waiting, running, cancelled or finished in an earlier window, gives
+none.
+
 ## Boundaries
 
 - Depends on: `crate::job_queue::models`; `crate::core::{background::Wake, format, steps}`;
   `crate::job_report::models::summary::RowSummary` and `crate::job_report::models::fixing::FIX_STEPS`
-  in `status_text.rs`; `pipeline`; `job_model`;
-  `serde`, `serde_json` and `tracing` (`progress_log`, `job_runner`).
+  in `status_text.rs`; `pipeline`; `job_model`; `inference::model_store::app_data_dir` and
+  `anyhow` in `queued_history.rs`;
+  `serde`, `serde_json` and `tracing` (`progress_log`, `job_runner`, `folder_watcher`,
+  `watch_scan`, `video_files`, `queued_history`).
 - Used by: `crate::application` (`actions::{queue, review, runner}`, `mod.rs`, `detail_view`);
-  `crate::job_queue::ui` (`time_left::estimate`, `queue_editing::{queue_control, subtitle_file}`,
-  `sidebar_rows`, `status_text`, `stage_progress`).
+  `crate::job_queue::ui` (`time_left::estimate`, `queue_editing::queue_control`,
+  `video_files::subtitle_file`, `sidebar_rows`, `status_text`, `stage_progress`).
 - Rules:
   - nothing here names egui or eframe
     (`dependency_boundaries_and_external_test_placement_are_enforced` in
@@ -171,4 +204,19 @@ of them it kept, done in a time not known, and then keeps as many as it lists.
     (`a_saved_queue_loads_back_with_the_running_job_waiting`,
     `a_file_written_before_the_new_fields_still_loads`,
     `a_failure_an_older_window_kept_reads_its_finished_steps_from_job_json` in
-    `tests/queue_store.rs`).
+    `tests/queue_store.rs`);
+  - the walk under a folder skips hidden, symlinked, empty, downloading and subtitled entries and
+    stops `MAX_DEPTH` folders down (`the_walk_leaves_out_hidden_empty_downloading_and_subtitled_videos`,
+    `the_walk_does_not_follow_a_symlinked_folder`, `the_walk_stops_max_depth_folders_down` in
+    `tests/video_files.rs`);
+  - a watched video is reported only once it stops changing, and only once
+    (`a_video_is_not_reported_on_its_first_sighting`,
+    `a_growing_video_waits_until_it_stops_changing`,
+    `a_reported_video_that_vanishes_and_comes_back_is_not_reported_again` in
+    `tests/watch_scan.rs`), and the watcher's thread ends when it is dropped
+    (`dropping_the_watcher_ends_its_thread` in `tests/folder_watcher.rs`);
+  - a missing or broken history file is an empty history
+    (`a_missing_file_is_an_empty_history`, `a_broken_file_is_an_empty_history` in
+    `tests/queued_history.rs`);
+  - only a full run that finished or failed gives a notice (`other_jobs_give_no_notice` in
+    `tests/job_notice.rs`).

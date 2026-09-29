@@ -282,16 +282,15 @@ fn a_folder_stands_for_its_videos_without_subtitles() {
         std::fs::write(dir.join(name), b"x").expect("file");
     }
     std::fs::write(dir.join("done").join("d.mp4"), b"x").expect("file");
-    assert_eq!(
-        videos_in_folder(&dir),
-        [dir.join("a.MKV"), dir.join("b.mp4")],
-        "sorted, subtitled and non-video files and subfolders left out"
-    );
-    assert_eq!(subtitle_file(&dir.join("c.mp4")), Some(dir.join("c.srt")));
     let mut q = Queue::default();
     add_videos(&mut q, [dir.join("b.mp4")]);
     assert_eq!(add_videos(&mut q, [dir.clone()]), 1);
     assert_eq!(q.items[1].video, dir.join("a.MKV"));
+    assert_eq!(
+        q.items.len(),
+        2,
+        "c.mp4 has subtitles and done/ is not entered"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

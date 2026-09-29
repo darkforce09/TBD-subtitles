@@ -8,8 +8,8 @@
 //! **Position:** called by the application's queue actions and by `queue_store` when it rebuilds
 //! a queue; the toolbar reads `queue_control`.
 //!
-//! **Signals and state:** reads a folder's listing when a folder is added, and a video's
-//! neighbours for its subtitle file; otherwise changes only the queue it is given.
+//! **Signals and state:** reads a folder's listing when a folder is added (`video_files`);
+//! otherwise changes only the queue it is given.
 //!
 //! **Invariants:** a running job is never removed, moved or tried again; a video is never queued
 //! twice while it waits or runs, by adding, restoring or trying again; only waiting full runs
@@ -19,13 +19,10 @@
 use std::path::{Path, PathBuf};
 
 use job_model::StepName;
-use job_model::job::OutputFormat;
 
 use crate::job_queue::models::queue::{JobId, JobKind, JobState, Move, Queue, QueueItem, Removed};
 use crate::job_queue::services::sidebar_rows;
-
-/// File extensions the queue takes as videos.
-const VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "m4v", "mov", "avi", "webm", "ts"];
+use crate::job_queue::services::video_files::videos_in_folder;
 
 /// Why a job could not go back into the queue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,34 +82,6 @@ pub(crate) fn push(queue: &mut Queue, video: PathBuf, kind: JobKind) -> JobId {
         corrections: 0,
     });
     id
-}
-
-/// The videos directly in `folder`, by name, that have no subtitle file beside them yet.
-pub(crate) fn videos_in_folder(folder: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(folder) else {
-        return Vec::new();
-    };
-    let mut videos: Vec<PathBuf> = entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.is_file() && is_video(path) && subtitle_file(path).is_none())
-        .collect();
-    videos.sort();
-    videos
-}
-
-fn is_video(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| VIDEO_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
-}
-
-/// The subtitle file beside `video`, in any format the app writes.
-pub(crate) fn subtitle_file(video: &Path) -> Option<PathBuf> {
-    OutputFormat::ALL
-        .iter()
-        .map(|format| video.with_extension(format.extension()))
-        .find(|path| path.is_file())
 }
 
 /// Take row `id` out of the list with the correction runs folded into it, unless something on

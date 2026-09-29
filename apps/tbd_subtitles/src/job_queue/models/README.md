@@ -1,6 +1,7 @@
 # Job queue models
 
-The data the toolbar, the sidebar and the progress view draw, with no rendering code.
+The data the toolbar, the sidebar and the progress view draw, and what the watch folders' scans
+remember, with no rendering code.
 
 ## Contents
 
@@ -11,7 +12,8 @@ apps/tbd_subtitles/src/job_queue/models/
 ├── queue.rs     `Queue`, `QueueItem`, `JobId`, `JobKind`, `JobState`, `Failure`, `JobResult`, `Move`, `Removed`
 ├── sidebar.rs   `Section`, `SidebarRow` and `ReviewFold`: the sidebar's rows
 ├── tests/       unit tests for the progress's kept, finished, current, shown and failed steps
-└── view.rs      `JobQueueView`, the queue, the rates, the finished rows' summaries, Fix It and Fix All, the clock
+├── view.rs      `JobQueueView`, the queue, the rates, the finished rows' summaries, Fix It and Fix All, the clock
+└── watch.rs     `Sample` and `WatchScan`: what the watch folders' scans remember between scans
 ```
 
 ## How it works
@@ -46,6 +48,10 @@ dragged. The `JobQueueView` lent to the panels for one frame also carries each f
 reads from the job's work folder, each video Fix It fixes with its step of four
 (`fixing_step`: its three passes, then the correction run of its changes), and how many finished
 videos Fix All would start Fix It on (`fix_all`).
+
+A `Sample` is a video's size and modification time at one scan of the watch folders. A
+`WatchScan` holds each video's sample from the last scan, the videos already reported as complete
+and the watch folders found missing; `job_queue::services::watch_scan` changes it.
 
 ## Boundaries
 
