@@ -73,6 +73,13 @@ pub const MODEL_FILES: &[PinnedFile] = &[
     },
     PinnedFile {
         model: "pp-ocrv5",
+        file: "det_mobile.onnx",
+        url: "https://github.com/GreatV/oar-ocr/releases/download/v0.3.0/pp-ocrv5_mobile_det.onnx",
+        size: 4_826_518,
+        sha256: "1eb7b4f7ab657ebd1c66d5f79bca7497f29768a2e3c15e52daecbba1a8e4a039",
+    },
+    PinnedFile {
+        model: "pp-ocrv5",
         file: "rec.onnx",
         url: "https://github.com/GreatV/oar-ocr/releases/download/v0.3.0/pp-ocrv5_server_rec.onnx",
         size: 84_502_992,

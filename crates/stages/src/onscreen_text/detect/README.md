@@ -22,13 +22,14 @@ crates/stages/src/onscreen_text/detect/
 and reads full-resolution stills by frame index through accurate seeks, four at a time. The scan
 treats every `k`-th frame as a sample, where `k` is half the frame rate rounded, together with both
 frames around every shot cut and the final frame, so the frames between two samples never cross a
-cut. Samples wait in batches of eight with the frames since the previous sample. One detector call
+cut. Samples wait in batches of four with the frames since the previous sample. One detector call
 screens a batch; a sample whose 32 by 32 blocks all stay within a mean difference of 4 of the last
 screened picture reuses that picture's regions.
 
 Regions are followed from sample to sample in frame order: a match needs more than 0.45 box
-overlap and the same signature as the region's fixed anchor, unique in both directions, and a cut
-clears every match. A new region entered somewhere after the previous sample, and an unmatched one
+overlap and an unchanged picture at the region's fixed anchor box, unique in both directions, and
+a cut clears every match. Comparing at the anchor box rather than at each frame's own detector
+box keeps static writing whole when the box jitters. A new region entered somewhere after the previous sample, and an unmatched one
 left somewhere before this one. Bisection over the frames between them finds the first present or
 first absent frame in at most ceil(log2(k)) probes; all searches of a batch advance together, one
 screening call per step, with probes cached per frame. An occurrence keeps its entry frame and one
@@ -37,16 +38,18 @@ absent frame, so the timing is exact. Document quads are in source pixels, scale
 
 After the stream, each occurrence's keyframe is its observed frame nearest the middle of its
 interval. One full-resolution detection per keyframe still replaces that frame's quad by the best
-overlapping region, or keeps the scaled quad with a warning. The still gives the occurrence's
+overlapping region; an occurrence the server detector does not confirm is dropped as screening
+noise, as is one shorter than 0.15 s or wider than half the frame. The still gives the occurrence's
 surface colour for all its frames, its rectified crop in `visual/crops/` and its keyframe image,
-at most 1280 pixels wide, in `visual/keyframes/`. At most one million observations and one hundred
+at most 1280 pixels wide, in `visual/keyframes/`. Both folders are emptied when the keyframe phase
+starts, so a rerun never leaves stale files behind. At most one million observations and one hundred
 thousand occurrences are held; beyond that the scan fails and asks for shorter jobs.
 
 ## Boundaries
 
 - Depends on: `media_io` frame streams, stills and proxy sizing, `inference::ocr::TextDetection`, `job_model` contracts, and the sibling `geometry` module.
 - Used by: `pipeline::tasks::onscreen` for the scan and `tools/visual_validation` for `crop`.
-- Rules: source videos are only read; no full-video image extraction; pending proxies stay within eight samples with their gaps and stills four at a time; limits fail explicitly; every occurrence gets exactly one crop and one keyframe image.
+- Rules: source videos are only read; no full-video image extraction; pending proxies stay within four samples with their gaps and stills four at a time; limits fail explicitly; every occurrence gets exactly one crop and one keyframe image.
 
 ## Related documentation
 

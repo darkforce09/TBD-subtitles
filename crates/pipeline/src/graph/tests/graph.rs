@@ -55,9 +55,9 @@ fn changed_steps_carry_their_revision_and_the_rest_are_at_one() {
     assert_eq!(revision(Cues), 3);
     assert_eq!(revision(Qc), 5);
     assert_eq!(revision(Output), 2);
-    assert_eq!(revision(TextDetect), 3);
+    assert_eq!(revision(TextDetect), 4);
     assert_eq!(revision(TextRead), 3);
-    assert_eq!(revision(TextTrack), 2);
+    assert_eq!(revision(TextTrack), 3);
     assert_eq!(revision(TextTranslate), 7);
     assert_eq!(revision(TextReview), 2);
     assert_eq!(revision(TextTypeset), 2);

@@ -180,7 +180,7 @@ fn the_keyframe_takes_the_best_full_resolution_region_and_one_surface_for_all_fr
     let exact = rectangle(60.0, 40.0, 140.0, 40.0);
     let found = [(rectangle(0.0, 0.0, 30.0, 20.0), 0.9), (exact, 0.8)];
     let image = Path::new("visual/keyframes/frame-00000001.png");
-    confirm(&mut item, 1, &still, &found, image, &root.0).unwrap();
+    assert!(confirm(&mut item, 1, &still, &found, image, &root.0).unwrap());
     assert_eq!(item.frames[1].quad, exact);
     assert_eq!(
         item.frames[0].quad, proxy,
@@ -201,17 +201,17 @@ fn the_keyframe_takes_the_best_full_resolution_region_and_one_surface_for_all_fr
 }
 
 #[test]
-fn an_unconfirmed_keyframe_keeps_the_screening_geometry_with_a_warning() {
+fn an_unconfirmed_keyframe_leaves_the_occurrence_untouched_and_unconfirmed() {
     let root = Temporary::new();
     let still = RgbImage::from_pixel(320, 180, Rgb([90, 110, 130]));
     let proxy = rectangle(57.0, 39.0, 144.0, 42.0);
     let mut item = occurrence(&[proxy, proxy]);
     let elsewhere = [(rectangle(250.0, 120.0, 60.0, 40.0), 0.9)];
     let image = Path::new("visual/keyframes/frame-00000000.png");
-    confirm(&mut item, 0, &still, &elsewhere, image, &root.0).unwrap();
+    assert!(!confirm(&mut item, 0, &still, &elsewhere, image, &root.0).unwrap());
     assert_eq!(item.frames[0].quad, proxy);
-    assert_eq!(item.warnings, [UNCONFIRMED]);
-    assert!(root.0.join("visual/crops/text-000001.png").is_file());
+    assert!(item.warnings.is_empty());
+    assert!(item.keyframe.is_none());
+    assert!(!root.0.join("visual/crops/text-000001.png").exists());
     assert!(confirm(&mut item, 5, &still, &elsewhere, image, &root.0).is_err());
-    assert_eq!(item.warnings.len(), 1, "the warning is recorded once");
 }

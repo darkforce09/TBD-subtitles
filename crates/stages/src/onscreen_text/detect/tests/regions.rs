@@ -38,11 +38,11 @@ fn lettering(width: u32, height: u32) -> RgbImage {
     image
 }
 
-fn observation(image: &RgbImage, quad: Quad) -> Observation {
+fn observation(quad: Quad) -> Observation {
     Observation {
         quad,
+        proxy_quad: quad,
         confidence: 0.95,
-        signature: signature(image),
         surface_rgb: None,
     }
 }
@@ -52,7 +52,16 @@ fn active(image: &RgbImage, quad: Quad, occurrence: usize) -> Active {
         occurrence,
         quad,
         anchor: signature(image),
+        anchor_box: quad,
     }
+}
+
+/// Whether each active region's anchor still matches `image`, the picture at its anchor box.
+fn unchanged(active: &[Active], image: &RgbImage) -> Vec<bool> {
+    active
+        .iter()
+        .map(|prior| same_signature(&prior.anchor, &signature(image)))
+        .collect()
 }
 
 #[test]
@@ -100,7 +109,13 @@ fn immutable_anchor_stops_gradual_fades_from_drifting_into_different_content() {
             same_signature(&signature(&previous), &signature(&current)),
             "successive small fade"
         );
-        if associate(std::slice::from_ref(&prior), &[observation(&current, quad)])[0].is_none() {
+        if associate(
+            std::slice::from_ref(&prior),
+            &[observation(quad)],
+            &unchanged(std::slice::from_ref(&prior), &current),
+        )[0]
+        .is_none()
+        {
             split = true;
         }
         previous = current;
@@ -117,7 +132,8 @@ fn normal_translation_jitter_and_duplicate_frames_keep_the_same_occurrence() {
     assert_eq!(
         associate(
             std::slice::from_ref(&prior),
-            &[observation(&original, quad)]
+            &[observation(quad)],
+            &unchanged(std::slice::from_ref(&prior), &original),
         ),
         [Some(0)]
     );
@@ -129,7 +145,11 @@ fn normal_translation_jitter_and_duplicate_frames_keep_the_same_occurrence() {
     }
     let moved = rectangle(11.0, 10.0, 256.0, 40.0);
     assert_eq!(
-        associate(&[prior], &[observation(&jittered, moved)]),
+        associate(
+            std::slice::from_ref(&prior),
+            &[observation(moved)],
+            &unchanged(std::slice::from_ref(&prior), &jittered),
+        ),
         [Some(0)]
     );
 }
@@ -151,11 +171,15 @@ fn ambiguous_overlapping_regions_are_split_in_both_directions() {
     let image = lettering(256, 40);
     let quad = rectangle(0.0, 0.0, 256.0, 40.0);
     let priors = [active(&image, quad, 1), active(&image, quad, 2)];
-    assert_eq!(associate(&priors, &[observation(&image, quad)]), [None]);
+    assert_eq!(
+        associate(&priors, &[observation(quad)], &unchanged(&priors, &image)),
+        [None]
+    );
     assert_eq!(
         associate(
             &priors[..1],
-            &[observation(&image, quad), observation(&image, quad)]
+            &[observation(quad), observation(quad)],
+            &unchanged(&priors[..1], &image),
         ),
         [None, None]
     );
@@ -164,7 +188,8 @@ fn ambiguous_overlapping_regions_are_split_in_both_directions() {
     assert_eq!(
         associate(
             &priors,
-            &[observation(&image, other), observation(&image, quad)]
+            &[observation(other), observation(quad)],
+            &unchanged(&priors, &image),
         ),
         [Some(1), Some(0)]
     );
@@ -172,8 +197,7 @@ fn ambiguous_overlapping_regions_are_split_in_both_directions() {
 
 #[test]
 fn brief_occurrences_preserve_exact_frame_intervals_and_cuts_break_continuity() {
-    let image = lettering(256, 40);
-    let observed = observation(&image, rectangle(0.0, 0.0, 256.0, 40.0));
+    let observed = observation(rectangle(0.0, 0.0, 256.0, 40.0));
     let mut document = TextDocument::default();
     let index = start_occurrence(&mut document, 1.125, observed.confidence);
     append_observation(&mut document.occurrences[index], &observed, 1.125, 1.166667);
@@ -194,7 +218,7 @@ fn brief_occurrences_preserve_exact_frame_intervals_and_cuts_break_continuity() 
     assert!(crosses_cut(&cuts, 1.125, 1.166667));
     assert!(!crosses_cut(&cuts, 1.166667, 1.208333));
     assert_eq!(
-        associate(&[], &[observed]),
+        associate(&[], &[observed], &[]),
         [None],
         "a cut clears all association candidates"
     );
@@ -202,8 +226,7 @@ fn brief_occurrences_preserve_exact_frame_intervals_and_cuts_break_continuity() 
 
 #[test]
 fn a_later_observation_ends_the_previous_frame_where_it_starts() {
-    let image = lettering(256, 40);
-    let observed = observation(&image, rectangle(0.0, 0.0, 256.0, 40.0));
+    let observed = observation(rectangle(0.0, 0.0, 256.0, 40.0));
     let mut document = TextDocument::default();
     let index = start_occurrence(&mut document, 2.0, observed.confidence);
     let item = &mut document.occurrences[index];

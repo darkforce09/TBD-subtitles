@@ -30,7 +30,7 @@ Dialogue: 0,0:00:00.00,0:00:02.00,Source,,0,0,0,,{\move(960,720,960,360,0,2000)}
 Dialogue: 0,0:00:00.00,0:00:02.00,Source,,0,0,0,,{\move(960,900,960,540,0,2000)}音楽
 Dialogue: 0,0:00:02.00,0:00:04.00,Source,,0,0,0,,{\pos(960,840)\fad(250,250)}君と一緒に
 Dialogue: 0,0:00:04.00,0:00:06.00,Source,,0,0,0,,{\pos(960,540)\fs108}海\N賊
-Dialogue: 0,0:00:06.00,0:00:06.12,Source,,0,0,0,,{\pos(960,540)\fs112}注意
+Dialogue: 0,0:00:06.00,0:00:06.15,Source,,0,0,0,,{\pos(960,540)\fs112}注意
 Dialogue: 0,0:00:06.50,0:00:08.00,Source,,0,0,0,,{\pos(960,540)\fs112}注意
 ";
 
@@ -121,12 +121,12 @@ pub(super) fn generate(output: &Path) -> Result<()> {
             "audio":"Silent stereo AAC tagged eng, permitting the normal production input path without fabricated spoken dialogue.",
             "font":{"file":font.file,"sha256":font.sha256},
             "geometry":"Approximate manually specified glyph regions. These annotations support flagged nearby overlap coverage only, not accepted two-pixel tracking accuracy.",
-            "timing":"Intervals are first visible source frame through the first absent frame, end exclusive. The lyric is fully transparent at frame48 and first visible at49. ASS end6.12 removes the three-frame sign before frame147 at6.125. The scan screens every twelfth frame at 24 fps plus shot boundaries and bisects between samples, so the three-frame sign is found because frame 144 lies on that grid; a flash shorter than the step that no sample or cut lands on is an accepted miss.",
+            "timing":"Intervals are first visible source frame through the first absent frame, end exclusive. The lyric is fully transparent at frame48 and first visible at49. ASS end6.15 removes the four-frame sign before frame148 at6.1667. The scan screens every twelfth frame at 24 fps plus shot boundaries and bisects between samples, so the sign is found because frame 144 lies on that grid; writing shorter than 0.15 s counts as screening noise, and a flash shorter than the step that no sample or cut lands on is an accepted miss.",
             "cases":[
                 {"category":"scrolling credits","japanese":["制作","音楽"],"frames":[0,48]},
                 {"category":"visible lyric with fade in and out","japanese":"君と一緒に","frames":[49,96]},
                 {"category":"vertical text","japanese":"海賊","frames":[96,144],"note":"One semantic word laid out top to bottom with an ASS line break."},
-                {"category":"brief three-frame appearance","japanese":"注意","frames":[144,147]},
+                {"category":"brief four-frame appearance","japanese":"注意","frames":[144,148]},
                 {"category":"repeated sign after a cut","japanese":"注意","frames":[156,192]}
             ],
             "use":"Run the ordinary visual_validation run command on source.mp4 into a separate work folder, then evaluate its resulting visual document against annotations.json. Never use fixture-japanese.ass as a reference translation."
@@ -163,7 +163,7 @@ fn annotations() -> Value {
             (3.0,[690.0,775.0,1230.0,905.0])]),
         occurrence("vertical-pirate","海賊",4.0,6.0,&[
             (5.0,[880.0,385.0,1040.0,695.0])]),
-        occurrence("three-frame-warning","注意",6.0,147.0/24.0,&[
+        occurrence("four-frame-warning","注意",6.0,148.0/24.0,&[
             (6.0,[825.0,460.0,1095.0,620.0])]),
         occurrence("warning-repeated-after-cut","注意",6.5,8.0,&[
             (7.0,[825.0,460.0,1095.0,620.0])])

@@ -110,9 +110,9 @@ fn text_models(step: StepName, record: &JobRecord) -> Value {
         .map(PathBuf::from)
         .or_else(|| models_dir().ok());
     let files: Vec<_> = MODEL_FILES.iter().filter(|file| match step {
-        StepName::TextDetect => file.model == "pp-ocrv5" && file.file == "det.onnx",
+        StepName::TextDetect => file.model == "pp-ocrv5" && file.file.starts_with("det"),
         StepName::TextRead => file.model == "manga-ocr"
-            || (file.model == "pp-ocrv5" && file.file != "det.onnx"),
+            || (file.model == "pp-ocrv5" && !file.file.starts_with("det")),
         StepName::TextTranslate => file.model == "qwen3.5-4b",
         _ => false,
     }).map(|file| {

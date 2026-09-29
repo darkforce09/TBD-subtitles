@@ -68,9 +68,9 @@ Dialogue cues -> Detect -> Read -> Track -> Translate -> Review -> Typeset -> QC
 
 | Step | Work and retained result |
 |---|---|
-| Detect | Streams a 640-wide proxy of every frame through FFmpeg with packet presentation timestamps. Screens every `round(fps / 2)`-th frame plus the first and last frame of each shot with PP-OCRv5, and bisects the frames between two samples to the exact frame where writing appears or vanishes. Keeps one observed frame per sample or boundary, a keyframe still nearest the midpoint of each occurrence, and a full-resolution, perspective-corrected crop from that keyframe; cuts or changed writing start new occurrences. |
+| Detect | Streams a 640-wide proxy of every frame through FFmpeg with packet presentation timestamps. Screens every `round(fps / 2)`-th frame plus the first and last frame of each shot with the mobile PP-OCRv5 detector, and bisects the frames between two samples to the exact frame where writing appears or vanishes. Keeps one observed frame per sample or boundary, a keyframe still nearest the midpoint of each occurrence, confirmed by the server PP-OCRv5 detector, and a full-resolution, perspective-corrected crop from that keyframe; cuts or changed writing start new occurrences. Screening noise is dropped: writing shorter than 0.15 s, wider than half the frame, or absent from its keyframe at full resolution. |
 | Read | Reads Japanese with PP-OCRv5 through oar-ocr, using manga-ocr for difficult crops. Consolidates compatible adjacent readings and groups conservative furigana evidence; uncertain readings remain flagged. |
-| Track | Checks that every sampled quad stays within tolerance of the keyframe quad without decoding video. A moving or unverified surface gains a review warning and nearby placement. |
+| Track | Checks that every sampled box keeps its centre (within a fifth of the keyframe box height) and half its overlap with the keyframe quad, without decoding video; a detector box that only grows or shrinks around unmoved writing passes. A moving or unverified surface gains a review warning and nearby placement. |
 | Translate | Asks Claude first, one call per keyframe frame with the whole-frame still and the crops of its regions, for each region's Japanese, English, confidence and box plus any other writing on the frame. Qwen3.5-4B, with short dialogue context and the glossary, loads only for occurrences Claude leaves unanswered; compatible corrected occurrences consolidate before review. |
 | Review | Checks a saved correction's source identity before applying the owner's English, timing and presentation independently of dialogue corrections. |
 | Typeset | Produces ASS text or vector glyph events, with stable typography and frame-specific geometry. Unsafe replacement uses nearby English with a review warning. |
@@ -89,7 +89,7 @@ downloads pinned exported models; there is no local model conversion.
 Detection samples the proxy stream at two frames per second and at every shot boundary, so
 writing visible for fewer frames than the sample step that falls between two samples and touches
 no cut is missed. Near-duplicate samples reuse the previous detections; the rest are screened
-eight at a time. Detection compares each candidate with the occurrence's fixed first signature,
+four at a time. Detection compares each candidate with the occurrence's fixed first signature,
 rather than allowing small changes to accumulate against successive samples. Matching requires a
 unique association in both directions. The signature allows small alignment jitter but checks
 individual pixel differences, 8 by 8 cells and the whole crop, including its edges; a changed
@@ -112,7 +112,7 @@ helps catch shortened compound names and qualifiers. Without available Claude ve
 stays flagged and unrendered until reviewed; the check does not establish translation completeness.
 
 Frame buffers, thumbnails and preview streams are bounded: the scan holds the frames between at
-most eight pending samples, four full-resolution stills and the packet table. The scan fails
+most four pending samples, four full-resolution stills and the packet table. The scan fails
 explicitly beyond one million geometry observations or one hundred thousand occurrences, and when
 the decoded frame count differs from the packet count. Each ASS event buffer has a
 128 MiB budget: oversized vector lettering for one occurrence uses a flagged nearby label, while

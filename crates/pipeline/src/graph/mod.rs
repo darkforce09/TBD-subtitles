@@ -160,10 +160,10 @@ const REVISIONS: &[(StepName, u32)] = &[
     // ASS output combines dialogue and tracked English text.
     (StepName::Output, 2),
     // Sampled screening with bisected boundaries and one keyframe per occurrence.
-    (StepName::TextDetect, 3),
+    (StepName::TextDetect, 4),
     (StepName::TextRead, 3),
     // Sampled geometry replaces per-frame optical flow.
-    (StepName::TextTrack, 2),
+    (StepName::TextTrack, 3),
     // Claude reads every keyframe first; the local model answers what it leaves.
     (StepName::TextTranslate, 7),
     (StepName::TextReview, 2),

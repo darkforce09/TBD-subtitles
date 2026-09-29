@@ -39,11 +39,12 @@ host and accepted it (2026-09-29) ([automation](/documentation/features/automati
 
 M4 adds Detect → Read → Track → Translate → Review → Typeset between cue construction and final
 QC/output. Detection screens a 640-wide proxy of every frame at two samples per second plus shot
-boundaries with PP-OCRv5, bisects the frames between samples to the exact entry and exit frame,
-and keeps one full-resolution keyframe per occurrence; tracking checks the sampled geometry
-without decoding; translation asks tool-disabled Claude (the run's Sonnet) once per keyframe with
-the whole-frame still and its crops, and loads local Qwen3.5-4B only for what Claude leaves;
-manga-ocr and validated reference wording remain. Settings, queue progress, Overview, Check Text,
+boundaries with the mobile PP-OCRv5 detector, bisects the frames between samples to the exact
+entry and exit frame, and keeps one full-resolution keyframe per occurrence confirmed by the
+server detector; tracking checks the sampled geometry without decoding; translation asks
+tool-disabled Claude (the run's Sonnet) once per keyframe with the whole-frame still and its
+crops, and loads local Qwen3.5-4B only for what Claude leaves; manga-ocr and validated reference
+wording remain. Settings, queue progress, Overview, Check Text,
 actual ASS comparison previews, corrections and logs are integrated into the existing window and
 job. Visual corrections reuse valid audio stages. Annotated pilot coverage, the single
 20–30-minute episode benchmark (target: detection under six minutes for 50,000 frames), complete

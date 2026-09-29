@@ -2,9 +2,9 @@
 //!
 //! **Role:** expose PP-OCRv5 detection and recognition with a manga-ocr second reading.
 //! **Position:** inference backend used inside the isolated visual GPU workers.
-//! **Signals and state:** two bounded ONNX predictors and a lazily opened manga reader. The one
-//! detector screens batches of equal-sized proxy frames at the 0.3 box score and inspects single
-//! full-resolution frames at 0.5.
+//! **Signals and state:** bounded ONNX predictors and a lazily opened manga reader. The mobile
+//! detector screens batches of equal-sized proxy frames at the 0.3 box score; the server
+//! detector inspects single full-resolution frames at 0.5.
 //! **Invariants:** CUDA registration fails explicitly; uncertain readings retain low confidence;
 //! a screen returns one region list per image in input order; models are already exported and
 //! downloaded through the pinned model store.
@@ -38,24 +38,31 @@ pub trait TextDetection {
     fn detect(&mut self, image: &RgbImage) -> Result<Vec<(Quad, f64)>, OcrError>;
 }
 
-/// A PP-OCRv5 detector loaded once for the visual detection worker.
+/// The two PP-OCRv5 detectors of the visual detection worker: the mobile export screens many
+/// small proxies cheaply, the server export confirms geometry on full-resolution stills.
 pub struct OcrDetector {
-    predictor: TextDetectionPredictor,
+    screen: TextDetectionPredictor,
+    exact: TextDetectionPredictor,
 }
 
 impl OcrDetector {
     pub fn open(models_root: &Path) -> Result<Self, OcrError> {
         strict_cuda_environment()?;
-        // One predictor keeps every box a screen needs; the exact pass applies its own floor.
-        let predictor = TextDetectionPredictor::builder()
-            .score_threshold(0.3)
-            .box_threshold(SCREEN_SCORE as f32)
-            .unclip_ratio(1.5)
-            .max_candidates(1000)
-            .with_ort_config(OrtSessionConfig::new().with_intra_threads(4))
-            .build(models_root.join("pp-ocrv5/det.onnx"))?;
-        Ok(Self { predictor })
+        let screen = detector(&models_root.join("pp-ocrv5/det_mobile.onnx"), SCREEN_SCORE)?;
+        let exact = detector(&models_root.join("pp-ocrv5/det.onnx"), DETECT_SCORE)?;
+        Ok(Self { screen, exact })
     }
+}
+
+/// A detection predictor over `model` that keeps boxes scoring at least `box_score`.
+fn detector(model: &Path, box_score: f64) -> Result<TextDetectionPredictor, OcrError> {
+    Ok(TextDetectionPredictor::builder()
+        .score_threshold(0.3)
+        .box_threshold(box_score as f32)
+        .unclip_ratio(1.5)
+        .max_candidates(1000)
+        .with_ort_config(OrtSessionConfig::new().with_intra_threads(4))
+        .build(model)?)
 }
 
 impl TextDetection for OcrDetector {
@@ -69,7 +76,7 @@ impl TextDetection for OcrDetector {
                 return Err("screening batches need equal image sizes".into());
             }
         }
-        let output = self.predictor.predict(images.to_vec())?;
+        let output = self.screen.predict(images.to_vec())?;
         if output.detections.len() != images.len() {
             return Err("OCR returned a different number of images".into());
         }
@@ -79,7 +86,7 @@ impl TextDetection for OcrDetector {
             .map(|detections| regions(detections, SCREEN_SCORE))
             .collect::<Result<Vec<_>, _>>()?;
         tracing::debug!(
-            model = "PP-OCRv5 detector",
+            model = "PP-OCRv5 mobile detector",
             images = screened.len(),
             regions = screened.iter().map(Vec::len).sum::<usize>(),
             "OCR screening"
@@ -89,7 +96,7 @@ impl TextDetection for OcrDetector {
 
     fn detect(&mut self, image: &RgbImage) -> Result<Vec<(Quad, f64)>, OcrError> {
         check_image(image)?;
-        let output = self.predictor.predict(vec![image.clone()])?;
+        let output = self.exact.predict(vec![image.clone()])?;
         let detections = output
             .detections
             .into_iter()
@@ -240,7 +247,7 @@ fn strict_cuda_environment() -> Result<(), OcrError> {
         use ort::ep::{ArenaExtendStrategy, CUDA, cuda::ConvAlgorithmSearch};
         ort::init()
             .with_execution_providers([CUDA::default()
-                .with_memory_limit(2 * 1024 * 1024 * 1024)
+                .with_memory_limit(3 * 1024 * 1024 * 1024)
                 .with_arena_extend_strategy(ArenaExtendStrategy::SameAsRequested)
                 .with_conv_algorithm_search(ConvAlgorithmSearch::Heuristic)
                 .with_conv_max_workspace(false)

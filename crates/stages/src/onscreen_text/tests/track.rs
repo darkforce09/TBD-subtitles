@@ -175,3 +175,71 @@ fn mismatched_dimensions_are_an_error_and_an_empty_document_passes() {
     empty.width = 1280;
     assert!(track(&mut empty, &stream(), &|_, _| {}).is_ok());
 }
+
+#[test]
+fn a_detector_box_that_grows_or_shrinks_around_unmoved_writing_stays_static() {
+    let exact = Quad([
+        Point { x: 471.0, y: 774.0 },
+        Point {
+            x: 1449.0,
+            y: 774.0,
+        },
+        Point {
+            x: 1449.0,
+            y: 864.0,
+        },
+        Point { x: 471.0, y: 864.0 },
+    ]);
+    let smaller = Quad([
+        Point { x: 475.0, y: 782.0 },
+        Point {
+            x: 1441.0,
+            y: 782.0,
+        },
+        Point {
+            x: 1441.0,
+            y: 861.0,
+        },
+        Point { x: 475.0, y: 861.0 },
+    ]);
+    let taller = Quad([
+        Point { x: 469.0, y: 770.0 },
+        Point {
+            x: 1451.0,
+            y: 770.0,
+        },
+        Point {
+            x: 1451.0,
+            y: 870.0,
+        },
+        Point { x: 469.0, y: 870.0 },
+    ]);
+    let mut doc = document(vec![occurrence(
+        &[smaller, exact, taller, smaller],
+        Some(0.5),
+    )]);
+    track(&mut doc, &stream(), &|_, _| {}).unwrap();
+    let text = &doc.occurrences[0];
+    assert!(text.frames.iter().all(|frame| frame.quad == exact));
+    assert_eq!(text.presentation.treatment, TextTreatment::Auto);
+    assert!(text.warnings.is_empty());
+    let drifted = Quad([
+        Point { x: 471.0, y: 804.0 },
+        Point {
+            x: 1449.0,
+            y: 804.0,
+        },
+        Point {
+            x: 1449.0,
+            y: 894.0,
+        },
+        Point { x: 471.0, y: 894.0 },
+    ]);
+    let mut doc = document(vec![occurrence(&[exact, exact, drifted], Some(0.0))]);
+    track(&mut doc, &stream(), &|_, _| {}).unwrap();
+    assert_eq!(
+        doc.occurrences[0].presentation.treatment,
+        TextTreatment::Nearby,
+        "a centre drift of a third of the height is motion"
+    );
+}

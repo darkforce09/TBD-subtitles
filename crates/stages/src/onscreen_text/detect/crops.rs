@@ -5,31 +5,31 @@
 //! **Position:** the scan's last phase, and the crop helper of the validation harness.
 //! **Signals and state:** at most four full-resolution stills at a time; crop and keyframe PNGs
 //! under the job's `visual/` folder.
-//! **Invariants:** one still and one detector pass per keyframe frame; every occurrence gets one
-//! crop and one keyframe image; an unconfirmed region keeps its screening geometry and a warning;
-//! one surface measurement covers all of an occurrence's frames.
+//! **Invariants:** one still and one detector pass per keyframe frame; every confirmed occurrence
+//! gets one crop and one keyframe image, and an unconfirmed one leaves the document; one surface
+//! measurement covers all of an occurrence's frames.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use image::{RgbImage, imageops};
+use image::{GrayImage, RgbImage, imageops};
 use imageproc::geometric_transformations::{Interpolation, Projection, warp_into};
 use inference::ocr::TextDetection;
 use job_model::onscreen::{Point, Quad, TextDocument, TextKeyframe, TextOccurrence};
 
-use super::regions::{SAME_REGION, overlap};
+use super::regions::{SAME_REGION, overlap, signature};
 use super::source::FrameSource;
 use crate::onscreen_text::{TextResult, geometry};
 
-/// The warning on an occurrence whose keyframe still shows no matching full-resolution region.
-pub(super) const UNCONFIRMED: &str = "The keyframe detector did not confirm this region; its geometry comes from the screening copy.";
 /// Stills requested from the frame source at once.
 const STILL_CHUNK: usize = 4;
 /// The widest saved keyframe still, in pixels.
 const KEYFRAME_WIDTH: u32 = 1280;
 
 /// Confirms every occurrence on the still of its keyframe, `(frame position, frame index)` per
-/// occurrence, fetching the distinct stills four at a time in the order first needed.
+/// occurrence, fetching the distinct stills four at a time in the order first needed. An
+/// occurrence without a keyframe, or whose keyframe shows no matching full-resolution region, is
+/// screening noise and leaves the document.
 pub(super) fn confirm_keyframes(
     document: &mut TextDocument,
     keyframes: &[Option<(usize, u64)>],
@@ -38,8 +38,17 @@ pub(super) fn confirm_keyframes(
     root: &Path,
     progress: &(dyn Fn(usize, usize) + Sync),
 ) -> TextResult<()> {
-    std::fs::create_dir_all(root.join("visual/crops"))?;
-    std::fs::create_dir_all(root.join("visual/keyframes"))?;
+    // A rerun's crops and stills replace the previous scan's; stale files never linger.
+    for folder in ["visual/crops", "visual/keyframes"] {
+        let folder = root.join(folder);
+        std::fs::create_dir_all(&folder)?;
+        for entry in std::fs::read_dir(&folder)? {
+            let path = entry?.path();
+            if path.is_file() {
+                std::fs::remove_file(path)?;
+            }
+        }
+    }
     let mut order = Vec::new();
     let mut users: HashMap<u64, Vec<usize>> = HashMap::new();
     for (occurrence, keyframe) in keyframes.iter().enumerate() {
@@ -54,6 +63,7 @@ pub(super) fn confirm_keyframes(
     let decoded = usize::try_from(document.decoded_frames).unwrap_or(usize::MAX);
     let total = decoded.saturating_add(order.len());
     let mut done = decoded;
+    let mut confirmed = vec![false; document.occurrences.len()];
     for chunk in order.chunks(STILL_CHUNK) {
         let stills = source.stills(chunk)?;
         if stills.len() != chunk.len() {
@@ -65,22 +75,35 @@ pub(super) fn confirm_keyframes(
             }
             let found = detector.detect(still)?;
             let image = PathBuf::from(format!("visual/keyframes/frame-{index:08}.png"));
-            save_keyframe(still, &root.join(&image))?;
+            let mut saved = false;
             for &occurrence in users.get(&index).into_iter().flatten() {
                 if let Some((position, _)) = keyframes[occurrence] {
                     let item = &mut document.occurrences[occurrence];
-                    confirm(item, position, still, &found, &image, root)?;
+                    if confirm(item, position, still, &found, &image, root)? {
+                        confirmed[occurrence] = true;
+                        if !saved {
+                            save_keyframe(still, &root.join(&image))?;
+                            saved = true;
+                        }
+                    }
                 }
             }
             done += 1;
             progress(done, total);
         }
     }
+    let mut position = 0;
+    document.occurrences.retain(|_| {
+        let keep = confirmed[position];
+        position += 1;
+        keep
+    });
     Ok(())
 }
 
 /// Replaces the keyframe frame's quad by the full-resolution region overlapping it most, then
-/// measures the surface, saves the rectified crop and records the keyframe.
+/// measures the surface, saves the rectified crop and records the keyframe. Without an
+/// overlapping region the occurrence is unconfirmed and left untouched: `false`.
 pub(super) fn confirm(
     item: &mut TextOccurrence,
     position: usize,
@@ -88,7 +111,7 @@ pub(super) fn confirm(
     found: &[(Quad, f64)],
     image: &Path,
     root: &Path,
-) -> TextResult<()> {
+) -> TextResult<bool> {
     let Some(frame) = item.frames.get_mut(position) else {
         return Err("A keyframe lies outside its occurrence's frames".into());
     };
@@ -97,14 +120,10 @@ pub(super) fn confirm(
         .map(|&(quad, _)| (overlap(frame.quad, quad), quad))
         .filter(|&(share, _)| share > SAME_REGION)
         .max_by(|a, b| a.0.total_cmp(&b.0));
-    match best {
-        Some((_, quad)) => frame.quad = quad,
-        None => {
-            if !item.warnings.iter().any(|warning| warning == UNCONFIRMED) {
-                item.warnings.push(UNCONFIRMED.to_string());
-            }
-        }
-    }
+    let Some((_, quad)) = best else {
+        return Ok(false);
+    };
+    frame.quad = quad;
     let (quad, time_s) = (frame.quad, frame.time_s);
     let surface = simple_surface(&axis_crop(still, quad));
     for frame in &mut item.frames {
@@ -117,7 +136,13 @@ pub(super) fn confirm(
         time_s,
         image: image.to_path_buf(),
     });
-    Ok(())
+    Ok(true)
+}
+
+/// The signature of `frame` at a region's anchor box, so pictures of one region are always
+/// compared over the same pixels whatever box the detector draws on a given frame.
+pub(super) fn picture_at(frame: &RgbImage, anchor_box: Quad) -> GrayImage {
+    signature(&crop(frame, anchor_box))
 }
 
 /// Saves a still at most 1280 pixels wide, keeping its aspect.

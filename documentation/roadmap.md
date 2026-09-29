@@ -123,7 +123,9 @@ the app is open.
 - [x] Settings, combined queue/progress, Overview counts and Check Text with actual ASS comparison,
       playback, frame stepping and keep/undo/reprocess corrections.
 - [ ] Annotated board, title and name-card pilots and Dressrosa 11, 16 and 39 scene acceptance.
-- [ ] One full episode (roughly 20–30 minutes): measured visual time and 8 GB RAM / 5.5 GB VRAM limits.
+- [x] One full episode (roughly 20–30 minutes): measured visual time and 8 GB RAM / 5.5 GB VRAM limits
+      ([Dressrosa 11 visual scan](/documentation/research/visual_scan_dressrosa_11.md): 3.8–4.0 minutes of
+      visual processing, detection at 206–214 frames per second, 3.8 GB RAM and 1.9 GB VRAM at most).
 - [ ] Final repository checks, AppImage rebuild and host smoke test.
 - [ ] Owner acceptance of the complete GUI correction flow and VLC playback.
 

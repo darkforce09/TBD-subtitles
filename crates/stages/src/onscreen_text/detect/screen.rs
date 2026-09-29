@@ -17,7 +17,7 @@ use super::source::ProxyFrame;
 use crate::onscreen_text::TextResult;
 
 /// Samples screened in one detector call.
-pub(super) const SCREEN_BATCH: usize = 8;
+pub(super) const SCREEN_BATCH: usize = 4;
 /// The side of a repeat-comparison block, in proxy pixels.
 const BLOCK: u32 = 32;
 /// The mean absolute difference per channel above which a block has changed.

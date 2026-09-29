@@ -3,10 +3,11 @@
 //! **Role:** decide which observation continues which active region, start and extend
 //! occurrences, and compare region pictures through bounded grayscale signatures.
 //! **Position:** used by the scan for every sample and by its bisection probes.
-//! **Signals and state:** the active regions with their fixed anchor signatures; no I/O.
-//! **Invariants:** a match is unique in both directions; an anchor never changes after its region
-//! starts; an occurrence's frames tile, each ending where the next begins; the limits fail
-//! explicitly instead of discarding text.
+//! **Signals and state:** the active regions with their fixed anchor boxes and signatures; no I/O.
+//! **Invariants:** a match is unique in both directions; an anchor box and its signature never
+//! change after the region starts, and every later picture is compared at that same box, so a
+//! detector box that jitters around static writing never splits it; an occurrence's frames tile,
+//! each ending where the next begins; the limits fail explicitly instead of discarding text.
 
 use std::path::PathBuf;
 
@@ -22,20 +23,27 @@ pub(super) const OBSERVATION_LIMIT: usize = 1_000_000;
 pub(super) const OCCURRENCE_LIMIT: usize = 100_000;
 /// The box overlap above which two quads show the same region.
 pub(super) const SAME_REGION: f64 = 0.45;
+/// Writing shown for less than this is one animation drawing of screening noise, not a sign.
+pub(super) const MIN_OCCURRENCE_S: f64 = 0.15;
+/// A region covering more of the frame than this share is a merged false detection.
+pub(super) const MAX_REGION_SHARE: f64 = 0.5;
 
-/// A region followed from sample to sample, in source pixels.
+/// A region followed from sample to sample: its latest box in source pixels, and the fixed proxy
+/// box and picture signature of its first observation.
 pub(super) struct Active {
     pub(super) occurrence: usize,
     pub(super) quad: Quad,
     /// The signature of the region's first observation; later pictures never replace it.
     pub(super) anchor: GrayImage,
+    /// Where the anchor was taken on the proxy; every later comparison crops this same box.
+    pub(super) anchor_box: Quad,
 }
 
-/// One detected region on one frame, in source pixels, with its picture's signature.
+/// One detected region on one frame: its box in source pixels and on the proxy.
 pub(super) struct Observation {
     pub(super) quad: Quad,
+    pub(super) proxy_quad: Quad,
     pub(super) confidence: f64,
-    pub(super) signature: GrayImage,
     pub(super) surface_rgb: Option<[u8; 3]>,
 }
 
@@ -48,6 +56,18 @@ pub(super) fn check_limits(
         return Err("The visual scan reached its bounded observation limit. Split this unusually dense video into shorter jobs; no text is silently discarded.".into());
     }
     Ok(())
+}
+
+/// Whether an occurrence lasts long enough and covers little enough of the frame to be writing
+/// rather than one drawing's worth of screening noise or a merged false detection.
+pub(super) fn plausible(item: &TextOccurrence, frame_area: f64) -> bool {
+    let (left, top, right, bottom) = item
+        .frames
+        .first()
+        .map(|frame| frame.quad.bounds())
+        .unwrap_or((0.0, 0.0, 0.0, 0.0));
+    let share = ((right - left) * (bottom - top)) / frame_area.max(1.0);
+    item.end_s - item.start_s >= MIN_OCCURRENCE_S - 1e-9 && share <= MAX_REGION_SHARE
 }
 
 pub(super) fn crosses_cut(cuts: &ShotChanges, previous: f64, current: f64) -> bool {
@@ -100,15 +120,21 @@ pub(super) fn append_observation(
     });
 }
 
-/// Two-way uniqueness prevents order-dependent swaps between overlapping text regions.
-pub(super) fn associate(active: &[Active], current: &[Observation]) -> Vec<Option<usize>> {
+/// Matches observations to active regions: the boxes overlap and the current picture at the
+/// region's anchor box still shows its anchor (`unchanged`, one flag per active region). Two-way
+/// uniqueness prevents order-dependent swaps between overlapping text regions.
+pub(super) fn associate(
+    active: &[Active],
+    current: &[Observation],
+    unchanged: &[bool],
+) -> Vec<Option<usize>> {
     let mut matches = Vec::with_capacity(current.len());
     let mut uses = vec![0usize; active.len()];
     for observation in current {
         let mut candidates = Vec::new();
         for (index, prior) in active.iter().enumerate() {
             if overlap(prior.quad, observation.quad) > SAME_REGION
-                && same_signature(&prior.anchor, &observation.signature)
+                && unchanged.get(index).copied().unwrap_or(false)
             {
                 candidates.push(index);
                 uses[index] += 1;

@@ -5,11 +5,14 @@
 //! samples, then confirm every occurrence on one full-resolution still.
 //! **Position:** first visual stage; reads a `FrameSource` and a `TextDetection`, and writes crops
 //! and keyframe stills under the job's `visual/` folder.
-//! **Signals and state:** a pending batch of at most eight samples with the frames between them,
-//! the active regions with fixed anchors, the last screened picture, a probe cache cleared per
-//! batch and at most four stills.
-//! **Invariants:** document quads are in source pixels; an occurrence's frames tile from its entry
-//! frame to its first absent frame; a gap never crosses a shot cut; the limits fail explicitly
+//! **Signals and state:** a pending batch of at most four samples with the frames between them,
+//! the active regions with fixed anchor boxes, the last screened picture, a probe cache cleared
+//! per batch and at most four stills.
+//! **Invariants:** document quads are in source pixels; every comparison of a region crops the
+//! current proxy at the region's anchor box, so detector jitter never splits static writing; an
+//! occurrence's frames tile from its entry frame to its first absent frame; a gap never crosses a
+//! shot cut; writing shorter than `MIN_OCCURRENCE_S`, wider than `MAX_REGION_SHARE` of the frame
+//! or unconfirmed on its keyframe is dropped as screening noise; the limits fail explicitly
 //! instead of dropping text; no full-video image extraction occurs.
 
 mod crops;
@@ -26,10 +29,10 @@ use job_model::onscreen::{Point, Quad, TextDocument, TextFrame};
 use job_model::outputs::{ShotChanges, VideoStream};
 
 use super::TextResult;
-use crops::confirm_keyframes;
+use crops::{confirm_keyframes, picture_at};
 use regions::{
     Active, Observation, SAME_REGION, append_observation, associate, check_limits, crosses_cut,
-    overlap, same_signature, signature, start_occurrence,
+    overlap, plausible, same_signature, start_occurrence,
 };
 use screen::{
     Pending, PendingSample, SCREEN_BATCH, Samples, Search, Seek, bisect, near_duplicate,
@@ -42,8 +45,8 @@ pub use source::{FfmpegSource, FrameSource, ProxyFrame};
 /// Rows of the screening copy; the width keeps the source aspect.
 pub const PROXY_LINES: u32 = 360;
 
-/// Probe regions of one frame: source-pixel quads with their proxy signatures.
-type Probes = HashMap<u64, Vec<(Quad, GrayImage)>>;
+/// Probe regions of one frame: the screened quads in source pixels.
+type Probes = HashMap<u64, Vec<Quad>>;
 
 /// Finds every text occurrence of the video with exact frame boundaries, one crop and one
 /// keyframe still each.
@@ -122,13 +125,15 @@ fn scaled(quad: Quad, scale: f64) -> Quad {
     }))
 }
 
-/// Where an occurrence enters or leaves between two samples, and what identifies it there.
+/// Where an occurrence enters or leaves between two samples, and what identifies it there: its
+/// box in source pixels for overlap, its anchor box on the proxy and the anchor's signature.
 struct Transition {
     occurrence: usize,
     /// The batch position of the sample whose gap holds the change.
     sample: usize,
     search: Search,
     quad: Quad,
+    anchor_box: Quad,
     signature: GrayImage,
 }
 
@@ -139,6 +144,7 @@ impl Transition {
             sample,
             search: Search::new(previous, index, Seek::Exit),
             quad: ended.quad,
+            anchor_box: ended.anchor_box,
             signature: ended.anchor,
         }
     }
@@ -249,14 +255,19 @@ impl Scanner<'_> {
             .iter()
             .map(|&(quad, confidence)| Observation {
                 quad: scaled(quad, self.scale),
+                proxy_quad: quad,
                 confidence,
-                signature: signature(&crop(&frame.rgb, quad)),
                 surface_rgb: None,
             })
             .collect();
         self.observations += current.len();
         check_limits(self.observations, self.document.occurrences.len(), false)?;
-        let matches = associate(&self.active, &current);
+        let unchanged: Vec<bool> = self
+            .active
+            .iter()
+            .map(|prior| same_signature(&prior.anchor, &picture_at(&frame.rgb, prior.anchor_box)))
+            .collect();
+        let matches = associate(&self.active, &current, &unchanged);
         let mut unmatched: Vec<Option<Active>> = std::mem::take(&mut self.active)
             .into_iter()
             .map(Some)
@@ -272,18 +283,21 @@ impl Scanner<'_> {
                     let occurrence =
                         start_occurrence(&mut self.document, frame.time_s, observation.confidence);
                     self.tracks.push(Track::default());
+                    let anchor = picture_at(&frame.rgb, observation.proxy_quad);
                     transitions.push(Transition {
                         occurrence,
                         sample: position,
                         search: Search::new(previous, frame.index, Seek::Entry),
                         quad: observation.quad,
-                        signature: observation.signature.clone(),
+                        anchor_box: observation.proxy_quad,
+                        signature: anchor.clone(),
                     });
                     // The anchor is immutable: a later picture cannot erase the reading evidence.
                     Active {
                         occurrence,
                         quad: observation.quad,
-                        anchor: observation.signature.clone(),
+                        anchor,
+                        anchor_box: observation.proxy_quad,
                     }
                 }
             };
@@ -319,7 +333,10 @@ impl Scanner<'_> {
             &mut probes,
             |probes, indices| probe(batch, indices, scale, &mut *detector, probes),
             |probes, change, index| {
-                present(&transitions[change], probes.get(&index).map(Vec::as_slice))
+                let change = &transitions[change];
+                batch[change.sample].frame(index).is_some_and(|frame| {
+                    present(change, frame, probes.get(&index).map(Vec::as_slice))
+                })
             },
         )?;
         let mut exits = Vec::new();
@@ -390,8 +407,8 @@ impl Scanner<'_> {
         track.indices = Vec::new();
     }
 
-    /// Ends the regions still shown on the final frame at its end and hands out the document with
-    /// each occurrence's keyframe.
+    /// Ends the regions still shown on the final frame at its end, drops screening noise and
+    /// hands out the document with each remaining occurrence's keyframe.
     fn close(mut self) -> (TextDocument, Vec<Option<(usize, u64)>>) {
         for state in std::mem::take(&mut self.active) {
             let item = &mut self.document.occurrences[state.occurrence];
@@ -400,7 +417,19 @@ impl Scanner<'_> {
             }
             self.choose_keyframe(state.occurrence);
         }
-        let keyframes = self.tracks.iter().map(|track| track.keyframe).collect();
+        let frame_area = f64::from(self.document.width) * f64::from(self.document.height);
+        let mut keyframes = Vec::new();
+        let occurrences = std::mem::take(&mut self.document.occurrences);
+        let kept = occurrences
+            .into_iter()
+            .zip(&self.tracks)
+            .filter(|(item, _)| plausible(item, frame_area))
+            .map(|(item, track)| {
+                keyframes.push(track.keyframe);
+                item
+            })
+            .collect();
+        self.document.occurrences = kept;
         (self.document, keyframes)
     }
 }
@@ -441,21 +470,24 @@ fn probe(
     for (frame, regions) in frames.into_iter().zip(screens) {
         let found = regions
             .into_iter()
-            .map(|(quad, _)| (scaled(quad, scale), signature(&crop(&frame.rgb, quad))))
+            .map(|(quad, _)| scaled(quad, scale))
             .collect();
         cache.insert(frame.index, found);
     }
     Ok(())
 }
 
-/// Whether a probed frame shows the transition's region: an overlapping region whose signature
-/// matches the region's.
-fn present(change: &Transition, probe: Option<&[(Quad, GrayImage)]>) -> bool {
-    probe.is_some_and(|regions| {
-        regions.iter().any(|(quad, picture)| {
-            overlap(*quad, change.quad) > SAME_REGION && same_signature(&change.signature, picture)
-        })
-    })
+/// Whether a probed frame shows the transition's region: a screened box overlaps it and the
+/// frame's picture at the region's anchor box still matches the anchor.
+fn present(change: &Transition, frame: &ProxyFrame, probe: Option<&[Quad]>) -> bool {
+    probe.is_some_and(|quads| {
+        quads
+            .iter()
+            .any(|quad| overlap(*quad, change.quad) > SAME_REGION)
+    }) && same_signature(
+        &change.signature,
+        &picture_at(&frame.rgb, change.anchor_box),
+    )
 }
 
 #[cfg(test)]
