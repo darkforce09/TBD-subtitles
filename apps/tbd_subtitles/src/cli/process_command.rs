@@ -1,20 +1,26 @@
-//! `tbd-subtitles process <video>...`: one job per video, run to the end without a window.
+//! `tbd-subtitles process <video or folder>...`: one job per video, run to the end without a
+//! window.
 //!
-//! **Role:** put the options over the settings file, turn them into job settings (the glossary,
-//! the models, the cut score, the output format, steps to run again), run each video's job, and
-//! print each step as it starts, advances and finishes, then where the subtitles and the report
-//! are.
+//! **Role:** find the videos in the folders given, put the options over the settings file, turn
+//! them into job settings (the glossary, the models, the cut score, the output format, steps to
+//! run again), run each video's job, and print each step as it starts, advances and finishes,
+//! then where the subtitles and the report are, and which jobs failed the quality check.
 //!
-//! **Position:** called by `cli::dispatch`; runs `pipeline::run_job`; reads the settings file and
-//! the glossary through `settings::services`.
+//! **Position:** called by `cli::dispatch`; `window_command` uses `expand` for `--enqueue`;
+//! runs `pipeline::run_job`; reads the settings file and the glossary through
+//! `settings::services`, and a folder's videos through `job_queue::services::video_files`.
 //!
-//! **Signals and state:** reads the settings file, the videos' metadata and a glossary file when
-//! one is named; prints to stderr.
+//! **Signals and state:** reads the settings file, the videos' metadata, the folders' listings
+//! and a glossary file when one is named; prints to stderr.
 //!
-//! **Invariants:** every video is checked before the first job starts; the first failed job stops
-//! the run with its reason; an option given on the command line wins over the settings file.
+//! **Invariants:** every path is checked before the first job starts; a video named is always
+//! processed, a folder gives its videos without subtitles and fails when it has none; the first
+//! failed job stops the run with its reason; the exit code is 0 when every job passed the
+//! quality check and 2 when one did not; an option given on the command line wins over the
+//! settings file.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
 use anyhow::Context;
 use clap::{Args, ValueEnum};
@@ -24,15 +30,36 @@ use pipeline::progress::Progress;
 use pipeline::workers::Binaries;
 use pipeline::{CancelToken, JobOptions, JobOutcome, run_job};
 
+use crate::job_queue::services::video_files;
 use crate::settings::models::app_settings::AppSettings;
 use crate::settings::services::{job_settings, settings_file};
+
+/// The options that shape a job, which `--enqueue` refuses: the window's jobs take its settings.
+const JOB_OPTIONS: [&str; 11] = [
+    "settings",
+    "work_root",
+    "models_dir",
+    "glossary",
+    "audio_track",
+    "separator",
+    "whisper",
+    "cut_score",
+    "llm_model",
+    "format",
+    "rerun",
+];
 
 /// The options of one `process` run.
 #[derive(Debug, Args)]
 pub(super) struct ProcessArgs {
-    /// Videos to process, one job each, in order.
+    /// Videos and folders to process, one job per video, in order; a folder gives every video
+    /// under it that has no subtitle file yet.
     #[arg(required = true)]
     pub(super) videos: Vec<PathBuf>,
+    /// Queue the videos in the window instead and start its queue: the window already open takes
+    /// them, or one opens minimized. Takes none of the options below.
+    #[arg(long, conflicts_with_all = JOB_OPTIONS)]
+    pub(super) enqueue: bool,
     /// The settings file; default: `~/.config/tbd-subtitles/settings.toml`. The options below
     /// win over it.
     #[arg(long)]
@@ -139,13 +166,81 @@ pub(super) fn settings(settings: &AppSettings, args: &ProcessArgs) -> anyhow::Re
     Ok(job)
 }
 
-/// Run every video's job, stopping at the first that fails.
-pub(super) fn run(args: &ProcessArgs) -> anyhow::Result<()> {
-    for video in &args.videos {
-        let metadata = std::fs::metadata(video)
-            .with_context(|| format!("cannot read the video {}", video.display()))?;
-        anyhow::ensure!(metadata.is_file(), "{} is not a file", video.display());
+/// The videos `paths` name, in order and each once: a file as it is, a folder as every video
+/// under it without a subtitle file; a missing path, and a folder with no such video, fail.
+pub(super) fn expand(paths: &[PathBuf]) -> anyhow::Result<Vec<PathBuf>> {
+    let mut videos: Vec<PathBuf> = Vec::new();
+    for path in paths {
+        let metadata = std::fs::metadata(path)
+            .with_context(|| format!("cannot read the video {}", path.display()))?;
+        let found = if metadata.is_dir() {
+            let found = video_files::videos_under(path);
+            anyhow::ensure!(
+                !found.is_empty(),
+                "the folder {} holds no video without subtitles",
+                path.display()
+            );
+            found
+        } else {
+            anyhow::ensure!(
+                metadata.is_file(),
+                "{} is not a file or a folder",
+                path.display()
+            );
+            vec![path.clone()]
+        };
+        for video in found {
+            if !videos.contains(&video) {
+                videos.push(video);
+            }
+        }
     }
+    Ok(videos)
+}
+
+/// One job that ran to its end, and the rules its quality check found broken.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Ran {
+    pub(super) video: PathBuf,
+    pub(super) qc_failures: Vec<String>,
+}
+
+/// The exit code of a run in which every job ran to its end, with the summary to print: 0 and
+/// none when every job passed the quality check, 2 and the videos that did not otherwise.
+pub(super) fn verdict(ran: &[Ran]) -> (u8, Option<String>) {
+    let failed: Vec<String> = ran
+        .iter()
+        .filter(|job| !job.qc_failures.is_empty())
+        .map(|job| name(&job.video))
+        .collect();
+    if failed.is_empty() {
+        return (0, None);
+    }
+    let summary = format!(
+        "{} of {} failed the quality check: {}",
+        failed.len(),
+        ran.len(),
+        failed.join(", ")
+    );
+    (2, Some(summary))
+}
+
+/// The file name of `video`, or its whole path when it has none.
+fn name(video: &Path) -> String {
+    video.file_name().map_or_else(
+        || video.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
+}
+
+/// Run every video's job, stopping at the first that fails; the exit code says whether every
+/// job passed the quality check.
+pub(super) fn run(args: &ProcessArgs) -> anyhow::Result<ExitCode> {
+    anyhow::ensure!(
+        !args.enqueue,
+        "`--enqueue` queues the videos in the window, which `process` does not open"
+    );
+    let videos = expand(&args.videos)?;
     let path = match &args.settings {
         Some(path) => path.clone(),
         None => settings_file::default_path()?,
@@ -167,12 +262,21 @@ pub(super) fn run(args: &ProcessArgs) -> anyhow::Result<()> {
         options.models_dir.display(),
         missing.join(", ")
     );
-    for video in &args.videos {
+    let mut ran = Vec::new();
+    for video in &videos {
         let outcome = run_job(video, &options, &print)
             .with_context(|| format!("no subtitles for {}", video.display()))?;
         print_outcome(&outcome);
+        ran.push(Ran {
+            video: video.clone(),
+            qc_failures: outcome.qc.failures(),
+        });
     }
-    Ok(())
+    let (code, summary) = verdict(&ran);
+    if let Some(summary) = summary {
+        eprintln!("{summary}");
+    }
+    Ok(ExitCode::from(code))
 }
 
 /// Where a finished job left its subtitles and report, and how its quality check came out.

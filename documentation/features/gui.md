@@ -19,11 +19,12 @@ Dressrosa 12–48 from this window and accepted it, which completes M2.
   queue (`apps/tbd_subtitles/src/job_queue/`), the report (`apps/tbd_subtitles/src/job_report/`),
   the line review (`apps/tbd_subtitles/src/line_review/`), the log window
   (`apps/tbd_subtitles/src/log_console/`) and the settings (`apps/tbd_subtitles/src/settings/`).
-- Entry: `tbd-subtitles gui [VIDEO]...`, or the binary with no subcommand. It runs on the host,
-  opened from the container with `distrobox-host-exec target/debug/tbd-subtitles gui`
-  ([development environment](/documentation/runbooks/development_environment.md#steps)). The
-  window runs under X11 (XWayland on the owner's KDE Wayland desktop). A desktop entry comes with
-  the [automation](/documentation/features/automation.md) feature, which feeds the same queue.
+- Entry: `tbd-subtitles gui [VIDEO]...`, or the binary with no subcommand, with or without videos.
+  It runs on the host, opened from the container with
+  `distrobox-host-exec target/debug/tbd-subtitles gui`
+  ([development environment](/documentation/runbooks/development_environment.md#steps)), under X11
+  (XWayland on the owner's KDE Wayland desktop). [Automation](/documentation/features/automation.md)
+  feeds the same queue: Dolphin's entry, watch folders, and later launches.
 - Related: the [pipeline](/documentation/architecture/pipeline.md) each job runs, and the
   [subtitle style rules](/documentation/architecture/subtitle_style_rules.md) the quality check
   holds the subtitles to.
@@ -68,23 +69,21 @@ list and the line editor side by side.
   they download it shows the bytes on disk, the item now and a bar, with Stop (a stopped file
   resumes next time); then for a moment "All models are on disk." No job starts before then.
 - **Sidebar:** one row per video in the sections Now (running), Up Next (waiting) and Done
-  (finished, failed or cancelled, newest first), each heading with its count and folding away on
-  a click. While finished videos have lines to fix, the Done heading holds a small Fix All button
-  with a wand just left of its count ("Fix It on the 12 finished videos with lines to fix" on
-  hover), which starts [Fix It](/documentation/features/fix_it.md) on each, oldest finished first;
-  a click on it never folds the section. A row has a status mark, the video's name and one line: "Waiting · 2nd in line",
-  "Failed at Hear the speech", "Subtitles ready · 38 to check" (the count in orange),
+  (finished, failed or cancelled, newest first), each heading with its count and folding away on a
+  click. While finished videos have lines to fix, the Done heading holds a small Fix All button with
+  a wand just left of its count ("Fix It on the 12 finished videos with lines to fix" on hover),
+  which starts [Fix It](/documentation/features/fix_it.md) on each, oldest finished first; a click
+  on it never folds the section. A row has a status mark, the video's name and one line: "Waiting ·
+  2nd in line", "Failed at Hear the speech", "Subtitles ready · 38 to check" (the count in orange),
   "Needs attention · 1 problem", "Updating subtitles · 1 correction" while a
-  [correction run](/documentation/glossary.md#correction-run) of its video runs, "Fixing with
-  Claude · 2 of 4" with the working spinner while [Fix It](/documentation/features/fix_it.md)
-  runs, or "Subtitles ready · fixed by Claude" once a fixed job passes with nothing left to
-  check. A job finished
-  in an earlier window shows the same line. A click selects a row, a waiting row
-  drags to another place in line, and a right click opens the commands of its state: Run Next,
-  Move Up, Move Down, Cancel, Stop Updating Subtitles, Check Lines, Open in Player, Show in Folder,
-  Copy Subtitle Path, Run Again with Current Settings, Try Again, Remove from List. An empty list
-  says "No videos yet", and the detail pane shows a card to drop videos on or add them with its
-  buttons.
+  [correction run](/documentation/glossary.md#correction-run) of its video runs, "Fixing with Claude
+  · 2 of 4" with the working spinner while [Fix It](/documentation/features/fix_it.md) runs, or
+  "Subtitles ready · fixed by Claude" once a fixed job passes with nothing left to check. A job
+  finished in an earlier window shows the same line. A click selects a row, a waiting row drags to
+  another place in line, and a right click opens the commands of its state: Run Next, Move Up, Move
+  Down, Cancel, Stop Updating Subtitles, Check Lines, Open in Player, Show in Folder, Copy Subtitle
+  Path, Run Again with Current Settings, Try Again, Remove from List. An empty list says "No videos
+  yet", and the detail pane shows a card to drop videos on or add them with its buttons.
 - **Header:** the selected job's name in the 22 px title, and under it its length and how long it
   ran ("25:59 video · running for 10 min 00 s") or its place in line. On the right: Cancel (then
   "Stopping…") for a running job, or Overview | Check Lines for a finished one, Check Lines with
@@ -105,27 +104,23 @@ list and the line editor side by side.
   with a button such as Undo; errors are red.
 - **Overview** (a finished job): the file card says "Subtitles saved next to the video" with the
   pill "Passes the quality check" or "Needs attention"; right under it, once Fix It has run, the
-  green [Result card](/documentation/features/fix_it.md#the-result-card) ("Fixed by Claude
-  Opus", what it changed, cleared and left, See Changes). The card lists each whole-video problem
-  with its fix, shows a blue note while a correction run updates the file or
+  green [Result card](/documentation/features/fix_it.md#the-result-card) ("Fixed by Claude Opus",
+  what it changed, cleared and left, See Changes). The card lists each whole-video problem with its
+  fix, shows a blue note while a correction run updates the file or
   [Fix It](/documentation/features/fix_it.md) runs ("Fixing with Claude Opus · updating the
-  subtitles (4 of 4)…", or "Waiting for a free Claude call. 3 of 12 calls done." while every call
-  of its run waits under the cap on Claude calls at once), the Fix It row with its button while a flagged finding is one Claude has
-  not answered, the path, and Open in Player (the desktop's default player, through the
-  desktop portal), Show in Folder and Copy Path, each confirmed in a toast (a red one when the
-  desktop could not, or has not answered within 20 seconds). Each request to the desktop portal
-  has a D-Bus connection of its own, so one the desktop never answers holds up no other. The
-  window's log is also written to
-  `~/.local/state/tbd-subtitles/tbd-subtitles.log` (under `XDG_STATE_HOME` when set), emptied at
-  each start, since a launcher such as Gear Lever drops stderr; the [log window](#the-log-window)
-  shows the same lines. The lines card says "38 lines worth
-  a listen" with a green bar of those checked, Check Lines, and one row per finding group with its
-  explanation and count. A line Fix It changed or answered counts as checked; with none left, the
-  card says "All 38 lines checked" and "Claude checked 36 · you checked 2". Then Details
-  (subtitles, easy to read, unsure lines, words no engine heard, timing offset, speech and voice
-  with no subtitle, words timed by the aligner, and "Corrections you made", the owner's alone,
-  not Claude's) and Step times (each stage and step with its time, peak RAM and peak VRAM, and Open Full
-  Report), both folded away at first.
+  subtitles (4 of 4)…", or "Waiting for a free Claude call. 3 of 12 calls done." while every call of
+  its run waits under the cap on Claude calls at once), the Fix It row with its button while a
+  flagged finding is one Claude has not answered, the path, and Open in Player (the desktop's
+  default player, through the desktop portal), Show in Folder and Copy Path, each confirmed in a
+  toast (a red one when the desktop could not, or has not answered within 20 seconds). Each request
+  to the desktop portal has a D-Bus connection of its own, so one the desktop never answers holds up
+  no other. The lines card says "38 lines worth a listen" with a green bar of those checked, Check
+  Lines, and one row per finding group with its explanation and count. A line Fix It changed or
+  answered counts as checked; with none left, the card says "All 38 lines checked" and "Claude
+  checked 36 · you checked 2". Then Details (subtitles, easy to read, unsure lines, words no engine
+  heard, timing offset, speech and voice with no subtitle, words timed by the aligner, and
+  "Corrections you made", the owner's alone, not Claude's) and Step times (each stage and step with
+  its time, peak RAM and peak VRAM, and Open Full Report), both folded away at first.
 - **Check Lines** (a finished job):
 
   ```text
@@ -168,23 +163,26 @@ list and the line editor side by side.
   the owner's corrections change only lines the owner saved; Fix It changes others. With every
   line checked the pane says "All 38 lines checked" and "The subtitles are up to date.", with Show
   Checked Lines.
-- **Settings window:** a second native window, centred over the main one when it opens, in four
+- **Settings window:** a second native window, centred over the main one when it opens, in five
   tabs. General: the models folder and the work folder with their sizes, the subtitle format, the
   glossary with its count of names. Engines: vocal separation, the second speech engine, the
-  `claude` model a run asks and the one Fix It asks (Sonnet, Opus, Fable or Haiku; Sonnet and
-  Opus by default), processes at once, Fix It's Claude calls at once (1–100, 32 by default: how
-  many `claude` calls Fix It makes at once across every video it fixes; the rest wait their turn,
-  videos started first going first) and the switch Fix It after each job (off by default: Fix It
-  starts on each video when its job finishes, if it has lines to fix), the shot cut score. Models:
-  each model and runtime library with its size and state, Download Missing or Stop. This Computer: the GPU with its driver and
-  free VRAM, the CUDA libraries, FFmpeg and its clip sound, ffprobe, `claude`, the Whisper worker;
-  a missing CUDA runtime links to Models. A change is saved to `settings.toml` as it is made (a
-  list or the format on a choice, a stepper on each press, a typed number on Enter, when it loses
-  the focus or when the window closes) and applies to videos that have not started, as the footer
-  says. A number out of its range, a glossary that cannot be read, or a models folder moved while
-  a download runs is not saved and says why in red under its field; a `settings.toml` that could
-  not be read is kept as `settings.toml.broken` before the first change is saved. Folders show the
-  home as `~`. Watch folders come with the automation feature.
+  `claude` model a run asks and the one Fix It asks (Sonnet, Opus, Fable or Haiku; Sonnet and Opus
+  by default), processes at once, Fix It's Claude calls at once (1–100, 32 by default: how many
+  `claude` calls Fix It makes at once across every video it fixes; the rest wait their turn, videos
+  started first going first) and the switch Fix It after each job (off by default: Fix It starts on
+  each video when its job finishes, if it has lines to fix), the shot cut score. Models: each model
+  and runtime library with its size and state, Download Missing or Stop. This Computer: the GPU with
+  its driver and free VRAM, the CUDA libraries, FFmpeg and its clip sound, ffprobe, `claude`, the
+  Whisper worker; a missing CUDA runtime links to Models. Automation: the watch folders, with Add
+  Folder…, Remove and "Not found" for a missing one, and whether Dolphin's right-click entry
+  "Generate subtitles" is installed, with its path
+  ([automation](/documentation/features/automation.md)). A change is saved to `settings.toml` as it
+  is made (a list or the format on a choice, a stepper on each press, a typed number on Enter, when
+  it loses the focus or when the window closes) and applies to videos that have not started, as the
+  footer says. A number out of its range, a glossary that cannot be read, or a models folder moved
+  while a download runs is not saved and says why in red under its field; a `settings.toml` that
+  could not be read is kept as `settings.toml.broken` before the first change is saved. Folders show
+  the home as `~`.
 
 ### The log window
 
@@ -279,6 +277,9 @@ every language-model call with what was sent and what came back.
   queue on, and neither puts back a video that is already in the list.
 - A full run of a video waits while a correction run of the same video runs, and the reverse; a
   second correction run of a video waits while its first runs, even with a lane free.
+- The queue runs on while the window is minimized. A later launch of the app raises this window
+  and queues its videos; a watch folder or Dolphin's entry queues and starts; a job that ends
+  while the window is away gives a notification ([automation](/documentation/features/automation.md)).
 
 ### Overview to Check Lines
 
@@ -414,7 +415,8 @@ nothing.
   row's verdict and lines to check are read from `qc.json` and `review.json` when the window opens
   and after each run and correction of its video.
 - The log: `~/.local/state/tbd-subtitles/tbd-subtitles.log` (under `XDG_STATE_HOME` when set),
-  written as the window runs and emptied at each start; the log window's lines in memory.
+  written as the window runs, since a launcher such as Gear Lever drops stderr, and emptied at each
+  start; the [log window](#the-log-window) shows the same lines from memory.
 - Kept only while the window is open: unsaved line edits, correction-run status chips, the row
   removed last (for Undo), toasts, and which sidebar sections are folded.
 
@@ -450,8 +452,7 @@ nothing.
 
 ## Open work
 
-- None in M2. What comes next for the window is automation (watch folders, a Dolphin entry,
-  single-instance hand-off) in [M3](/documentation/roadmap.md#m3--automation).
+- None in M2 or [M3](/documentation/roadmap.md#m3--automation); M3 waits for the owner's test.
 
 ## Decisions
 
@@ -494,3 +495,5 @@ nothing.
   ([log window](/documentation/decisions/desktop_gui.md#2026-09-28--a-log-window-shows-everything-the-app-does)).
 - Model calls show whole in the log window, never in the log file
   ([model calls](/documentation/decisions/desktop_gui.md#2026-09-28--model-calls-show-in-the-log-window-never-in-the-log-file)).
+- One window per session, work while minimized, and job-end notifications
+  ([automation decisions](/documentation/decisions/automation.md)).

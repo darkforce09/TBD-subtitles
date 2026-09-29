@@ -9,7 +9,7 @@ owning one part of the window.
 ```text
 apps/tbd_subtitles/src/
 ├── application/  the eframe window: the queue state, the frame, and the actions applied after it
-├── cli/          the `gui`, `process`, `fix` and `worker` subcommands and their dispatch
+├── cli/          videos alone and the `gui`, `process`, `fix` and `worker` subcommands and their dispatch
 ├── core/         logging and the log buffer, threads' wake, the desktop portal, the shared look
 ├── job_queue/    the videos waiting for subtitles: toolbar, sidebar, progress, events and edits
 ├── job_report/   the report of a finished job: quality checks, flagged lines, the output file
@@ -23,8 +23,10 @@ apps/tbd_subtitles/src/
 ## How it works
 
 `main.rs` hands the process arguments to `cli`, which installs logging from `core`, and turns the
-result into the exit code: 0 on success, 1 with the whole error chain on stderr otherwise. `cli`
-parses with clap and opens the window through `application` for `gui` or no subcommand, or runs
+result into the exit code: the one the command chose on success (0, or 2 for a `process` run
+with a job that failed its quality check), 1 with the whole error chain on stderr otherwise.
+`cli` parses with clap and, for `gui`, no subcommand or `process --enqueue`, claims the single
+instance and opens the window through `application` or hands the videos to the open one, or runs
 its own `process`, `fix` and `worker` runners, which hand the jobs, Fix It and steps to
 `crates/pipeline/`.
 

@@ -27,7 +27,11 @@ undone by the owner, and the Overview shows its result when done; it runs on man
 ([Fix It](/documentation/features/fix_it.md)).
 The owner runs it as a self-contained AppImage from Gear Lever, built by `cargo appimage`
 (section 4). The owner ran the batch of Dressrosa 12–48 from the window and accepted it
-(2026-09-29); next is M3, automation ([roadmap](/documentation/roadmap.md)).
+(2026-09-29). M3, automation, is built and waits for the owner's test on the host: watch folders
+that queue finished downloads while the app is open, Dolphin's "Generate subtitles" entry, one
+window per session that later launches hand their videos to, a notification when a job ends, and
+the window's icon ([automation](/documentation/features/automation.md),
+[roadmap](/documentation/roadmap.md)).
 
 ## 1. Project laws
 

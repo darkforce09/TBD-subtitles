@@ -98,6 +98,16 @@ See: [Verdict](#verdict), [coding standards](/documentation/standards/coding_sta
 Model file formats: GGUF for ggml-based runtimes, ONNX for ONNX Runtime, safetensors for candle
 and burn. Downloaded ready-made; never converted by us.
 
+### Hand-off
+
+What a later launch of the app sends the window already open: its videos, whether to start the
+queue and whether to raise the window, as one JSON line over a local socket. The later launch
+then exits, so only one window runs.
+
+In code: `HandOff` in `apps/tbd_subtitles/src/core/single_instance.rs`.
+
+See: [automation](/documentation/features/automation.md#one-window)
+
 ### Hypothesis
 
 One speech engine's transcript of a stretch of audio.
@@ -188,6 +198,17 @@ The outcome of one check: held, failed, or did not run. A check that could not r
 or run its program did not run, and never counts as a pass.
 
 In code: `Verdict` and `NotRun` in `tools/verification_core/src/verdict.rs`.
+
+### Watch folder
+
+A folder the owner lists in Settings, Automation. While the app is open, each video in it or its
+subfolders that has finished downloading, has no subtitles and was never queued is queued, and
+the queue starts.
+
+In code: `apps/tbd_subtitles/src/job_queue/services/watch_scan.rs`; `watch_folders` in
+`settings.toml`.
+
+See: [automation](/documentation/features/automation.md#watch-folders)
 
 ### WER
 

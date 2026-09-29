@@ -7,6 +7,7 @@ answers in before the next frame.
 
 ```text
 apps/tbd_subtitles/src/application/actions/
+├── automation.rs   videos from any source into the queue and the history; hand-offs, watch folders, auto-start, job-end notices, the service menu
 ├── fix_it/         Fix It: its view and steps, start (one, Fix All, after a job) and Stop, end, finish
 ├── log_console.rs  the log window: open, read lines and calls, views, filters, clear, log file
 ├── mod.rs          the module list and the re-exports `application` uses
@@ -38,8 +39,9 @@ toast that it resumes where it left off, and a failed one says why in a red toas
 `queue.rs` applies each queue event, writes `queue.json` and lets the runner start what may
 start. Remove takes a row out and keeps it for Undo, which a toast offers for 6 s; a newer removal
 takes the older Undo toast away, and an Undo that names another row does nothing. Start and
-Resume turn the queue on, and Pause turns it off, pausing after the running full run, which a
-toast names. Try Again puts a failed or cancelled job first in line and Run Again a finished one
+Resume turn the queue on and end the owner's pause (`paused_by_owner`), and Pause turns it off,
+pausing after the running full run, which a toast names, and keeps automation from starting it
+again in this window. Try Again puts a failed or cancelled job first in line and Run Again a finished one
 with the settings saved now; `runner::start_now` then starts it at once when its lane is idle and
 every model is on disk, without turning the queue on, and a toast says whether it started, could
 not start (in red, with the reason), runs next ("from Hear the speech", while the queue runs or for
@@ -133,6 +135,23 @@ a step, a save or a filter, the clip stops and the frame at the line's start is 
 video has a picture. After a run of the video ends, its lines are read again with what the owner did
 carried over.
 
+`automation.rs` queues the videos of every `QueueVideos` (dropped, chosen, named on the command
+line, handed over, found in a watch folder) through `queue_editing::add_videos` and records each
+video queued in the queued history (`queued_videos.json`, seeded from the kept queue when the
+window opens, written whenever it grows). `poll_automation` runs before each frame, and while the
+window is minimized: it keeps the folder watcher on the saved watch folders, takes each hand-off
+of a later start (its videos queued with a toast, the queue started when it asks, the window
+brought forward when it asks), queues the watch folders' videos that the history does not hold,
+that have no subtitle file and that do not wait or run (with a toast), and starts the queue that
+waited for the models once they are on disk. A start from automation goes through
+`JobQueueEvent::Start`, as Start Queue does, unless the owner pressed Pause in this window; while
+a model is missing and the window is away it tells the desktop "1 video queued" with "Download
+the missing models in Settings to start them.". `runner.rs` hands it the notice of each full run
+that finished or failed (`job_queue::services::job_notice`), which it sends to the desktop, with
+the window's attention asked for, only while the window is away. `install_right_click` writes
+Dolphin's service menu as the window opens and turns how that went into the Automation tab's
+`RightClickEntry`, logged.
+
 `log_console.rs` opens and closes the log window; opening reads every line and model call the
 process's log buffer still holds that the console has not, and `poll_log` reads the new ones
 before each frame while the window is open, never while it is closed, so nothing logged meanwhile
@@ -146,8 +165,9 @@ line); Open Log File opens the log file in the desktop's text editor through `op
 - Depends on: `crate::settings` (events, models, services); `crate::job_queue` (events, models,
   services); `crate::job_report` (events, `models::finding_group`, services); `crate::line_review`
   (events, models, services); `crate::log_console` (events, models); `pipeline` (`JobOptions`, `CancelToken`, `workers::Binaries`); `media_io::preview`
-  (`Clip`); `crate::core::{portal, steps, toast}`; `crate::application` (`TbdSubtitlesApp`,
-  `Action`, `Environment`, `background::{Chooser, Opening}`).
+  (`Clip`); `crate::core::{format, portal, service_menu, single_instance, steps, toast}`;
+  `crate::application` (`TbdSubtitlesApp`, `Action`, `Environment`, `HandOffs`,
+  `background::{Chooser, Opening}`).
 - Used by: `crate::application`, in `apply` and `poll`.
 - Rules: one download and one check run at a time, and an edit or a chosen path is written only
   when it can make a job's settings (the header of `settings.rs`,
@@ -188,4 +208,12 @@ line); Open Log File opens the log file in the desktop's text editor through `op
   `fix_all_starts_every_finished_video_with_lines_to_fix_and_hides_once_all_are_fixing`,
   `fix_after_each_job_starts_when_a_full_run_finishes`, `fix_after_each_job_off_starts_nothing`,
   `claude_calls_at_once_applies_at_once` in
-  `apps/tbd_subtitles/src/application/tests/rendering_fix_many.rs`).
+  `apps/tbd_subtitles/src/application/tests/rendering_fix_many.rs`). Automation never starts a
+  queue the owner paused until Start, a watch folder never queues a video queued before, with
+  subtitles or in line, and the desktop hears of a job's end only while the window is away (the
+  header of `automation.rs`,
+  `automation_never_starts_a_queue_the_owner_paused_until_start`,
+  `a_watch_folder_queues_only_videos_never_queued_without_subtitles`,
+  `a_job_that_ends_while_the_window_is_away_tells_the_desktop`,
+  `a_job_that_ends_with_the_window_in_front_leaves_the_desktop_alone` in
+  `apps/tbd_subtitles/src/application/tests/rendering_automation.rs`).

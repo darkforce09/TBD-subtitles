@@ -16,8 +16,11 @@ apps/tbd_subtitles/
 ## How it works
 
 `src/main.rs` parses the command line, which installs logging, and runs the chosen subcommand. With no
-subcommand, or with `gui`, it opens a 1280 by 800 window (1100 by 700 at least, so the sidebar,
-the line list and the line editor fit side by side) titled "TBD Subtitles", drawn with eframe's
+subcommand (with or without videos), with `gui`, or with `process --enqueue`, it claims the one
+window of the desktop session: when a window is open already it hands the videos to it and exits;
+otherwise it opens a 1280 by 800 window (1100 by 700 at least, so the sidebar,
+the line list and the line editor fit side by side) titled "TBD Subtitles", with the app's own
+icon, drawn with eframe's
 glow renderer under X11 (XWayland on a Wayland desktop), in Adwaita Sans and the desktop's light
 or dark colour scheme. Videos named on the command line, dropped onto the window or added with
 Add Videos… and Add Folder… join the queue in the sidebar, skipping any already queued. The
@@ -25,12 +28,16 @@ window runs the queued jobs one at a time through `pipeline::run_job` on a threa
 shows each job's progress, time left and report, plays and corrects the lines worth a listen
 (each saved correction starts a [correction run](/documentation/glossary.md#correction-run) that
 re-times it), and opens Settings in a second window that saves each change to `settings.toml`
-and downloads the models. The queue is kept across windows.
+and downloads the models. The queue is kept across windows. While it is open the window watches
+the watch folders and queues each new video in them, starts the queue for videos handed over or
+found unless the owner paused it, tells the desktop when a job ends while the window is away, and
+writes Dolphin's "Generate subtitles" entry when it runs from its AppImage.
 
-`process` turns its options into the job settings, checks every video is a readable file, and
-runs one job per video through `pipeline::run_job`, printing each
+`process` turns its options into the job settings, finds the videos in the folders given, checks
+every path, and runs one job per video through `pipeline::run_job`, printing each
 [step](/documentation/architecture/pipeline.md) as it starts, is skipped as still valid, advances
-and finishes, then the subtitle file beside the video, the job's report and the quality summary.
+and finishes, then the subtitle file beside the video, the job's report and the quality summary;
+it exits 2 when a job failed its quality check.
 The job runner starts each worker step as `tbd-subtitles worker <step> <job dir>`, or, for the
 Whisper steps, as `tbd-subtitles-ggml worker <step> <job dir>` from the ggml worker in
 `apps/tbd_subtitles_ggml/`, which must be built into the same folder as this binary.
@@ -52,7 +59,8 @@ the host with `distrobox-host-exec`. A job run from the window or `process` need
 cargo build -p tbd_subtitles
 distrobox-host-exec target/debug/tbd-subtitles gui               # the window, with the kept queue
 distrobox-host-exec target/debug/tbd-subtitles gui a.mkv b.mkv   # with these videos queued too
-cargo run -p tbd_subtitles -- --help           # the usage and the three subcommands
+distrobox-host-exec target/debug/tbd-subtitles process --enqueue a.mkv   # queued and started in the window
+cargo run -p tbd_subtitles -- --help           # the usage and the four subcommands
 cargo build --release -p tbd_subtitles
 distrobox-host-exec target/release/tbd-subtitles process "<video>"   # subtitles beside the video
 ```
@@ -92,9 +100,11 @@ cargo gates file-length
 
 ## Public surface
 
-- The `tbd-subtitles` binary: `tbd-subtitles [COMMAND]`, with the subcommands `gui [VIDEOS]...`,
-  `process <VIDEOS>... [OPTIONS]` and `worker <STEP> <JOB_DIR>`, and `--help` and `--version`. It
-  exits 0 on success, 1 with the error chain on stderr, and 2 on a usage error.
+- The `tbd-subtitles` binary: `tbd-subtitles [VIDEOS]...` or `tbd-subtitles [COMMAND]`, with the
+  subcommands `gui [VIDEOS]...`, `process <PATHS>... [OPTIONS]` (or `process --enqueue
+  <PATHS>...`), `fix <VIDEO> [OPTIONS]` and `worker <STEP> <JOB_DIR>`, and `--help` and
+  `--version`. It exits 0 on success, 1 with the error chain on stderr, and 2 on a usage error or
+  a `process` run in which a job failed its quality check.
   `src/cli/README.md` describes each subcommand. There is no library target.
 
 ## Boundaries
@@ -104,7 +114,7 @@ cargo gates file-length
   quality check and the stage outputs the review reads; `crates/inference/` for the model store
   and the CUDA runtime; `crates/media_io/` for the clip's FFmpeg command lines;
   `crates/child_process/` for the machine check's version queries; `crates/stages/` for the
-  built-in One Piece glossary; the `eframe` (glow), `winit` (X11), `egui-phosphor`, `ashpd`,
+  built-in One Piece glossary; `crates/app_icon/` for the window's icon; the `eframe` (glow), `winit` (X11), `egui-phosphor`, `ashpd`,
   `pollster`, `futures-util`, `serde`, `serde_json`, `toml`, `anyhow`, `clap`, `tracing` and
   `tracing-subscriber` crates; at run time, FFmpeg, ffprobe, the desktop portal and
   `tbd-subtitles-ggml` beside it.

@@ -3,21 +3,23 @@
 //! the drop overlay, the toasts, the Settings window, the log window, and the actions they asked
 //! for.
 //!
-//! **Role:** note egui's clock and whether the window is away, run `poll`, ask the desktop for
-//! the window's attention when `poll` wants it, draw the frame from the borrowed state, and apply
-//! the actions it collected.
+//! **Role:** in `logic`, note egui's clock and whether the window is away, run `poll`, and
+//! minimize the window, bring it forward or ask the desktop for its attention when asked; in
+//! `ui`, draw the frame from the borrowed state and apply the actions it collected.
 //!
-//! **Position:** `eframe::App::ui` of `TbdSubtitlesApp`; lays out the panels and calls
-//! `shortcuts`, `feature_views`, `settings_window`, `log_window`, the queue's drop overlay and the
-//! toasts.
+//! **Position:** `eframe::App::logic` and `eframe::App::ui` of `TbdSubtitlesApp`; lays out the
+//! panels and calls `shortcuts`, `feature_views`, `settings_window`, `log_window`, the queue's
+//! drop overlay and the toasts.
 //!
 //! **Signals and state:** reads dropped files and whether the window is focused or minimized;
 //! asks for a frame each second while a job or a Fix It run runs, when the next toast is due to
 //! go, and when the banner that says every model is on disk goes.
 //!
-//! **Invariants:** `frame_ui` changes nothing; the toolbar is 52 px high and the sidebar 272 px
-//! wide; the banner spans the window under the toolbar while it shows; the toasts, the overlay
-//! and the Settings and log windows are drawn over the panes.
+//! **Invariants:** `logic` runs while the window is minimized too, when eframe draws nothing, so
+//! the queue and the threads' answers never wait for the window to show; `frame_ui` changes
+//! nothing; the toolbar is 52 px high and the sidebar 272 px wide; the banner spans the window
+//! under the toolbar while it shows; the toasts, the overlay and the Settings and log windows are
+//! drawn over the panes.
 
 use std::time::{Duration, Instant};
 
@@ -62,17 +64,31 @@ impl Presence {
 }
 
 impl eframe::App for TbdSubtitlesApp {
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
-        self.presence = Presence::read(ui.ctx());
+    fn logic(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        self.presence = Presence::read(ctx);
         self.poll();
+        if std::mem::take(&mut self.minimize_once) {
+            ctx.send_viewport_cmd(ViewportCommand::Minimized(true));
+        }
+        if std::mem::take(&mut self.raise) {
+            ctx.send_viewport_cmd(ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(ViewportCommand::Focus);
+            self.attention = true;
+        }
         if std::mem::take(&mut self.attention) {
             let informational = UserAttentionType::Informational;
-            ui.ctx()
-                .send_viewport_cmd(ViewportCommand::RequestUserAttention(informational));
+            ctx.send_viewport_cmd(ViewportCommand::RequestUserAttention(informational));
         }
+    }
+
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         theme::follow(ui.ctx(), self.scheme);
         let actions = self.frame_ui(ui);
         self.apply(actions);
+        // An action that asks for the desktop's attention is carried out by the next `logic`.
+        if self.attention || self.raise {
+            ui.ctx().request_repaint();
+        }
     }
 }
 

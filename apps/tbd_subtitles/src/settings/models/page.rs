@@ -99,11 +99,6 @@ impl DownloadProgress {
 /// Whether "Generate subtitles" is in Dolphin's menu for videos: the service menu the app writes
 /// when it is started from its AppImage.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-#[allow(
-    dead_code,
-    reason = "Installed and Failed come from writing the service menu, which the application \
-              wires in"
-)]
 pub(crate) enum RightClickEntry {
     /// No service menu is written: the app was not started from its AppImage.
     #[default]

@@ -15,25 +15,32 @@ apps/tbd_subtitles/src/application/
 ├── events.rs           `Action`, built from the features' events, and the tab to show
 ├── feature_views.rs    lends each feature its borrowed view and turns its events into actions
 ├── log_window.rs       the log window, a second native window near the main one's lower right
-├── mod.rs              `TbdSubtitlesApp`, `apply`, and `launch`, which opens the window
+├── mod.rs              `TbdSubtitlesApp`, `apply`, `Launch`, and `launch`, which opens the window
 ├── settings_window.rs  the Settings window, a second native window centred over the main one
 ├── shortcuts.rs        Ctrl+O, Ctrl+Shift+O, Ctrl+, , Ctrl+L, Delete, the arrows; Check Lines' keys
 ├── tests/              headless tests of the frame and of applying actions; the snapshot scenes
-└── window.rs           one frame: toolbar, banner, sidebar, job, overlay, toasts, Settings, log
+└── window.rs           `logic` (poll, minimize, raise, attention) and one frame: toolbar, banner, sidebar, job, overlay, toasts, Settings, log
 ```
 
 ## How it works
 
-`launch` opens a native window titled "TBD Subtitles" (application id `tbd-subtitles`), 1280 by 800
-and at least 1100 by 700 (the sidebar, the line list and the line editor side by side), with drag
-and drop on and the glow renderer, and returns when it closes. It runs under X11 (XWayland on the
+`launch` takes a `Launch` from `crate::cli::window_command`: the videos to queue, whether the
+queue starts and the window opens minimized (`process --enqueue`), and, when this window holds
+the single instance, the receiver of later starts' hand-offs with the cell that takes the
+window's wake. Before the window opens it writes Dolphin's "Generate subtitles" service menu
+(`core::service_menu::install_from_env`, only when the app runs from its AppImage) and puts how
+that went in the settings page's `right_click`, which the Automation tab shows. It opens a native
+window titled "TBD Subtitles" (application id `tbd-subtitles`) with the app's own icon
+(`app_icon::rgba(256)`), 1280 by 800 and at least 1100 by 700 (the sidebar, the line list and the
+line editor side by side), with drag and drop on and the glow renderer, and returns when it
+closes. It runs under X11 (XWayland on the
 owner's KDE Wayland desktop, forced through winit's `with_x11`), because only there can files be
 dropped onto the window and Settings and the log be placed beside it. Before the first frame it
 installs the theme from `core::ui::theme` (Adwaita Sans, the icon font, the mockup's palettes)
 and starts following the desktop's colour scheme through `core::color_scheme`, waiting up to
 250 ms for its first answer so the first frame already has the desktop's colours. Its
-`Environment` names the owner's settings file, the kept queue, the GPU lock and the runtime
-folder, holds the job runner (the pipeline's `run_job`) and Fix It's (`fix_video`), the notifier
+`Environment` names the owner's settings file, the kept queue, the queued history
+(`queued_videos.json`), the GPU lock and the runtime folder, holds the job runner (the pipeline's `run_job`) and Fix It's (`fix_video`), the notifier
 (`notify`, the desktop's notifications through `core::portal::notify`), the process's log buffer
 and log file, and wakes the window from any thread (`request_repaint`); the tests build one over
 a scratch folder with a stand-in runner, a log buffer of its own and no log file, a Fix It that
@@ -53,21 +60,31 @@ they are lost when the window closes), the one gate every Fix It run's `claude` 
 Fix It run that ended until its changes are in the subtitles (`fix_followups`), the video Fix It
 finished last with egui's time then (`just_fixed`, until another job is selected), egui's clock
 and whether the window is unfocused or minimized as the last frame saw them (`presence`),
-whether to ask the desktop for the window's attention, and `Pending`, the receiving end of every
-other thread it started (the choosers, the files the desktop was asked to open, the downloads and
-checks, and every Fix It run under way, by job). The videos passed to `launch` enter the queue as the first `Action`; the machine checks and the
-measures of the work and models folders start at once. While a job or a Fix It run runs the
+whether to ask the desktop for the window's attention, the later starts' hand-offs, the folder
+watcher on the saved watch folders, every video ever queued (`history`, seeded from the loaded
+queue), whether the owner pressed Pause in this window (`paused_by_owner`, not kept), whether to
+bring the window forward or minimize it at the next `logic`, and `Pending`, the receiving end of
+every other thread it started (the choosers, the files the desktop was asked to open, the
+downloads and checks, and every Fix It run under way, by job). The videos passed to `launch`
+enter the queue as the first `Action`, and the queue starts when the launch asks; the machine
+checks and the measures of the work and models folders start at once. While a job or a Fix It run runs the
 window redraws every second; a playing clip wakes it at each frame and a still frame when it is
 decoded.
 
-Each frame runs in these steps:
+Each pass runs in these steps. eframe calls `logic` alone while the window is minimized, so the
+queue, the hand-offs and the watch folders keep going with no frame drawn:
 
 ```text
-Presence::read         egui's clock, and whether the window is unfocused or minimized
-poll(&mut self)        the threads' answers: chooser paths, files opened, downloads, checks, sizes,
-                       job events, the colour scheme, the Fix It runs, new log lines while the log
-                       window is open; toasts whose time is up go
-attention              RequestUserAttention when Fix It finished while the window was away
+logic(ctx)
+  Presence::read       egui's clock, and whether the window is unfocused or minimized
+  poll(&mut self)      the threads' answers: chooser paths, files opened, downloads, checks, sizes,
+                       job events, the colour scheme, the Fix It runs, the hand-offs and the watch
+                       folders' videos (actions::automation), new log lines while the log window
+                       is open; toasts whose time is up go
+  minimize_once        Minimized(true), once, for a launch that queues
+  raise                Minimized(false), Focus and attention, for a later start that raises
+  attention            RequestUserAttention when a job or Fix It ended while the window was away
+ui(ui)
 theme::follow          light or dark, as the desktop reported
 frame_ui(&self)
   ├── dropped files ──▶ Action::QueueVideos
@@ -89,6 +106,7 @@ apply(&mut self, actions)
   ├── SeeFixChanges (a Fix It toast's See Changes): the job selected, Check Lines on Changed by
   │   Claude
   ├── FixIt / StopFix: Fix It started on that job's video, or its run stopped
+  ├── QueueVideos: actions::automation queues them and records them in the queued history
   └── actions::queue (edits, Undo, Try Again, Run Again, Start, Pause, Cancel, toasts),
       actions::runner (the next job of each lane, its options, how it ended, a review run's start
       and end for the status chip and for Fix It), actions::review (open on a group, edit, save or
@@ -101,7 +119,15 @@ apply(&mut self, actions)
 ```
 
 `frame_ui` borrows the state immutably and only collects actions; `apply` and `poll` are the only
-places the state changes, between frames. A chooser opens through `core::portal` on its own
+places the state changes, between frames. `actions::automation` is what the window does unasked:
+a later start's hand-off queues its videos, starts the queue when it asks (`process --enqueue`),
+and brings the window forward when it asks (videos alone, `gui`); the watcher's videos are queued
+unless the history holds them, a subtitle file lies beside them or they wait or run; either
+starts the queue as Start Queue does unless the owner pressed Pause in this window, and says so
+in a toast. Videos queued while a model is missing leave the queue on, tell the desktop so while
+the window is away, and start once the models are on disk. A full run that finishes or fails
+while the window is away notifies the desktop (`job_queue::services::job_notice`) and flashes
+the taskbar entry. A chooser opens through `core::portal` on its own
 thread; its answer goes into the queue or, as an edit written at once, into the settings, and a
 chooser that fails says so in a red toast. Open in Player, Show in Folder and Open Full Report
 ask the portal on a thread too:
@@ -154,10 +180,12 @@ everything onto disk (the frame asks for a redraw when it goes).
 
 - Depends on: `crate::job_queue`, `crate::job_report`, `crate::line_review`, `crate::log_console`
   and `crate::settings` (events, models, services and ui); `media_io::preview` for the clip;
-  `crate::core` (`background`, `color_scheme`, `log_buffer`, `logging`, `portal`, `steps`,
-  `toast`, `ui`); `inference::model_store` for the runtime folder; `eframe`, `winit` (the X11 event loop), `anyhow` and `tracing`; in the snapshot
-  test only, `egui_kittest` and `image`.
-- Used by: `crate::cli`, which calls `launch` for the `gui` subcommand and for no subcommand.
+  `crate::core` (`background`, `color_scheme`, `log_buffer`, `logging`, `portal`,
+  `service_menu`, `single_instance`, `steps`, `toast`, `ui`); `app_icon` for the window's icon;
+  `inference::model_store` for the runtime folder; `eframe`, `winit` (the X11 event loop),
+  `anyhow` and `tracing`; in the snapshot test only, `egui_kittest` and `image`.
+- Used by: `crate::cli`, whose `window_command` calls `launch` for videos alone, `gui` and
+  `process --enqueue` when no window is open yet.
 - Rules:
   - nothing changes state while a frame is drawn: every change is an `Action` applied after the
     frame (`actions_change_the_queue_only_when_applied` in `tests/rendering.rs`), and an edit is
@@ -218,6 +246,15 @@ everything onto disk (the frame asks for a redraw when it goes).
     `fix_after_each_job_starts_when_a_full_run_finishes`, `fix_after_each_job_off_starts_nothing`,
     `a_video_waiting_for_a_free_call_says_so`, `claude_calls_at_once_applies_at_once` in
     `tests/rendering_fix_many.rs`);
+  - a hand-off queues its videos, starts the queue when it asks and records them in the history;
+    one that raises brings the window forward through `logic` alone; a launch that queues
+    minimizes the window once and starts its videos; `logic` runs the queue with no frame drawn;
+    a watch folder queues only videos never queued, without subtitles and not in line, and the
+    watcher follows the saved folders; automation leaves a queue the owner paused alone until
+    Start; videos queued while a model is missing tell the desktop and start once it is on disk; a
+    full run that ends while the window is away notifies the desktop, one in front does not; the
+    history survives a window and is seeded from the kept queue; and the Automation tab's entry
+    says how writing the service menu went (`tests/rendering_automation.rs`);
   - Check Lines opens on the first line to check with its list, why, clip, readings, text box,
     flags and Looks Right; Use edits the line and Save moves on while the status chip goes from
     Updating subtitles… to Subtitles updated; Take Back, also from the Checked list and of the

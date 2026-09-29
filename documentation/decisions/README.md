@@ -11,6 +11,7 @@ the [roadmap](/documentation/roadmap.md#open-questions).
 
 ```text
 documentation/decisions/
+├── automation.md          watch folders, the one window, the Dolphin entry, notifications, the icon
 ├── batch.md               running many videos at once: Fix It on the whole batch under one cap
 ├── desktop_gui.md         the window, its queue, report, review and settings, and the batch
 ├── foundations.md         what is built, in what language, with which programs, where files go

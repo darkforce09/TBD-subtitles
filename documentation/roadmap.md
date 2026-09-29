@@ -95,14 +95,23 @@ owner accepted the batch on 2026-09-29.
 
 ## M3 — Automation
 
-- [ ] Watch folders: new videos are queued once they finish downloading.
-- [ ] Dolphin right-click entry "Generate subtitles" that queues the selected videos.
-- [ ] Single-instance hand-off: a second launch passes its files to the running app.
-- [ ] Desktop entry and a notification when a job finishes.
+- [x] Watch folders: new videos are queued once they finish downloading.
+- [x] Dolphin right-click entry "Generate subtitles" that queues the selected videos.
+- [x] Single-instance hand-off: a second launch passes its files to the running app.
+- [x] Desktop entry and a notification when a job finishes.
+
+Built: watch folders in Settings, Automation, scanned with their subfolders every 15 seconds
+while the app is open, queuing each finished video without subtitles once and starting the
+queue; the Dolphin entry, written by the app when it starts from its AppImage; one window per
+session, which later launches hand their videos to over a local socket; the desktop entry with
+`%F` for "Open With"; a notification when a job ends while the window is away; the window's
+icon; and a queue that keeps running while the window is minimized. The acceptance test runs on
+the host with the AppImage; M3 is done when the owner accepts it.
 
 Details: [automation](/documentation/features/automation.md).
 
-**Acceptance:** a video copied into a watched folder gets subtitles with no further action.
+**Acceptance:** a video copied into a watched folder gets subtitles with no further action while
+the app is open.
 
 ## M4 — Japanese on-screen text
 

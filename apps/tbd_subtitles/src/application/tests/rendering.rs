@@ -13,8 +13,11 @@ use crate::job_queue::events::JobQueueEvent;
 use crate::job_queue::models::progress::{FinishedStep, JobProgress, StepState};
 use crate::job_queue::models::queue::{Failure, JobState};
 use crate::job_queue::services::job_runner::RunJob;
+use crate::job_queue::services::queue_editing;
 use crate::settings::events::SettingsEvent;
 
+#[path = "rendering_automation.rs"]
+mod rendering_automation;
 #[path = "rendering_console.rs"]
 mod rendering_console;
 #[path = "rendering_detail.rs"]

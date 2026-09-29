@@ -8,7 +8,8 @@
 //! `line_review`, `settings`) owns one part of the window.
 //!
 //! **Signals and state:** reads the command line and `RUST_LOG`; logs to stderr, and the window
-//! also to its log file; exits 0 on success and 1 with the error chain on stderr otherwise.
+//! also to its log file; exits with the code the command chose (0 on success, 2 for a `process`
+//! run whose quality check failed) and 1 with the error chain on stderr on an error.
 //!
 //! **Invariants:** only this binary reports errors with `anyhow`; a command that cannot run says
 //! so and exits non-zero, never reporting success.
@@ -26,7 +27,7 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     match cli::run() {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(error) => {
             eprintln!("tbd-subtitles: {error:#}");
             ExitCode::FAILURE

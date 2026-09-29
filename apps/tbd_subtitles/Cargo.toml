@@ -25,6 +25,8 @@ media_io = { path = "../../crates/media_io" }
 child_process = { path = "../../crates/child_process" }
 # The built-in series glossary the `process` subcommand defaults to.
 stages = { path = "../../crates/stages" }
+# The window's own icon, the same picture the AppImage carries.
+app_icon = { path = "../../crates/app_icon" }
 # Typed settings and the queue kept across windows.
 serde = { version = "1", features = ["derive"] }
 # The queue kept across windows, and the job records and probes read for the time left.
@@ -33,7 +35,7 @@ serde_json = "1"
 toml = { version = "0.9", default-features = false, features = ["parse", "display", "std", "serde"] }
 # Error context at the top of the binary only; the library crates return typed errors.
 anyhow = "1"
-# The subcommands `gui`, `process` and `worker`.
+# The subcommands `gui`, `process`, `fix` and `worker`, and videos with no subcommand.
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions", "color"] }
 # The desktop portal over D-Bus (pure Rust, zbus on async-io): the file and folder chooser,
 # opening a video in the desktop's default player, the desktop's light or dark colour scheme

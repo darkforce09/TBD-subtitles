@@ -98,6 +98,7 @@ impl TbdSubtitlesApp {
         poll_settings(self);
         poll_runner(self);
         poll_fix(self);
+        self.poll_automation();
         poll_log(self);
         self.poll_chooser();
         self.poll_scheme();

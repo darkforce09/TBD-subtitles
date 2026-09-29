@@ -5,7 +5,8 @@
 //! review runs to the review lanes while one is idle; build the job's options, empty its steps to
 //! run again once the pipeline has recorded them, and record how each job ends: finished,
 //! cancelled with the steps it kept, or failed at a step with the steps it kept, moving it ahead
-//! of the jobs that ended before it; tell the open line review when a review run of its video
+//! of the jobs that ended before it; tell the desktop when a full run finished or failed while
+//! the window is away; tell the open line review when a review run of its video
 //! starts and ends, and Fix It when one ends, once the summaries and the report are read again;
 //! once they are, start Fix It on each full run that finished well when the owner asked for Fix
 //! It after each job.
@@ -36,7 +37,7 @@ use crate::application::TbdSubtitlesApp;
 use crate::job_queue::models::progress::JobProgress;
 use crate::job_queue::models::queue::{Failure, JobId, JobKind, JobResult, JobState};
 use crate::job_queue::services::job_runner::{Command, RunnerEvent};
-use crate::job_queue::services::{progress_tracking, queue_editing, time_left};
+use crate::job_queue::services::{job_notice, progress_tracking, queue_editing, time_left};
 use crate::settings::services::job_settings;
 
 impl TbdSubtitlesApp {
@@ -212,6 +213,7 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
     let mut ended_videos = Vec::new();
     let mut reviewed = Vec::new();
     let mut finished_full = Vec::new();
+    let mut notices = Vec::new();
     for event in events {
         match event {
             RunnerEvent::Progress(id, progress) => {
@@ -259,6 +261,7 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
                             JobState::Failed(Failure::new(step, error.to_string(), finished))
                         }
                     };
+                    notices.extend(job_notice::ended_notice(item));
                     ended_videos.push(item.video.clone());
                 }
                 queue_editing::newest_ended_first(&mut app.queue, id);
@@ -282,6 +285,7 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
         app.review_run_ended(video, *ok);
     }
     if ended {
+        app.notify_ended(notices);
         if let Ok(root) = job_settings::work_root(&app.settings.saved) {
             app.rates = time_left::from_history(&root);
         }

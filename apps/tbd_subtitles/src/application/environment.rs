@@ -24,6 +24,7 @@ use crate::core::log_buffer::LogBuffer;
 use crate::core::logging;
 use crate::core::portal;
 use crate::job_queue::services::job_runner::{self, RunJob};
+use crate::job_queue::services::queued_history;
 use crate::job_report::services::fix_it::{self, FixVideo};
 use crate::settings::services::settings_file;
 
@@ -40,6 +41,8 @@ pub(crate) struct Environment {
     pub(crate) settings_path: PathBuf,
     /// The queue kept across windows.
     pub(crate) queue_path: PathBuf,
+    /// Every video ever queued, which a watch folder never queues again.
+    pub(crate) history_path: PathBuf,
     /// The machine-wide GPU lock.
     pub(crate) gpu_lock: PathBuf,
     /// The runtime folder holding the CUDA libraries.
@@ -69,6 +72,8 @@ impl Environment {
         Ok(Environment {
             settings_path: settings_file::default_path()?,
             queue_path: data.join("queue.json"),
+            history_path: queued_history::default_path()
+                .ok_or_else(|| anyhow::anyhow!("the app's data folder is unknown"))?,
             gpu_lock: pipeline::work_dir::gpu_lock_path()?,
             runtime_dir: inference::model_store::runtime_dir()?,
             exe_dir: std::env::current_exe()
@@ -102,6 +107,7 @@ impl Environment {
         Environment {
             settings_path: root.join("config").join("settings.toml"),
             queue_path: root.join("data").join("queue.json"),
+            history_path: root.join("data").join("queued_videos.json"),
             gpu_lock: root.join("data").join("gpu.lock"),
             runtime_dir: root.join("runtime"),
             exe_dir: None,

@@ -185,3 +185,155 @@ fn fix_options_win_over_the_settings_file() {
     assert_eq!(chosen.work_root, Some(PathBuf::from("/big/work")));
     assert_eq!(args.video, PathBuf::from("a.mp4"));
 }
+
+#[test]
+fn videos_without_a_subcommand_open_the_window_with_them() {
+    let cli = parse(&["a.mkv", "b.mkv"]).unwrap();
+    assert!(cli.command.is_none());
+    let request = window_request(&cli).expect("the window opens");
+    let videos = vec![PathBuf::from("a.mkv"), PathBuf::from("b.mkv")];
+    assert_eq!(request, window_command::WindowRequest::open(videos));
+    let message = request.hand_off();
+    assert!(message.raise && !message.start, "{message:?}");
+    let launch = request.launch(None);
+    assert!(!launch.start && !launch.minimized);
+    assert_eq!(launch.videos.len(), 2);
+}
+
+#[test]
+fn gui_and_enqueue_concern_the_window_and_the_rest_do_not() {
+    let gui = parse(&["gui", "a.mkv"]).unwrap();
+    assert_eq!(
+        window_request(&gui),
+        Some(window_command::WindowRequest::open(vec![PathBuf::from(
+            "a.mkv"
+        )]))
+    );
+    let enqueue = parse(&["process", "--enqueue", "a.mkv", "b.mkv"]).unwrap();
+    let request = window_request(&enqueue).expect("--enqueue goes to the window");
+    assert!(request.enqueue);
+    assert_eq!(request.videos.len(), 2);
+    let message = request.hand_off();
+    assert!(message.start && !message.raise, "{message:?}");
+    let launch = request.launch(None);
+    assert!(launch.start && launch.minimized);
+    for args in [
+        &["process", "a.mkv"][..],
+        &["fix", "a.mkv"],
+        &["worker", "separation", "/tmp/job"],
+    ] {
+        assert!(window_request(&parse(args).unwrap()).is_none(), "{args:?}");
+    }
+}
+
+#[test]
+fn enqueue_takes_no_job_option() {
+    for option in [
+        &["--settings", "s.toml"][..],
+        &["--work-root", "/w"],
+        &["--models-dir", "/m"],
+        &["--glossary", "none"],
+        &["--audio-track", "1"],
+        &["--separator", "mdx-net"],
+        &["--whisper", "large-v3-turbo"],
+        &["--cut-score", "30"],
+        &["--llm-model", "opus"],
+        &["--format", "vtt"],
+        &["--rerun", "cues"],
+    ] {
+        let mut args = vec!["process", "--enqueue", "a.mkv"];
+        args.extend_from_slice(option);
+        let error = parse(&args).expect_err("an option with --enqueue is refused");
+        assert_eq!(
+            error.kind(),
+            clap::error::ErrorKind::ArgumentConflict,
+            "{option:?}"
+        );
+    }
+    assert!(process_args(&["process", "--enqueue", "a.mkv"]).enqueue);
+}
+
+#[test]
+fn process_run_refuses_enqueue() {
+    let error = dispatch(parse(&["process", "--enqueue", "a.mkv"]).unwrap()).unwrap_err();
+    assert!(format!("{error:#}").contains("--enqueue"), "{error:#}");
+}
+
+/// A scratch folder of its own for `name`, emptied.
+fn scratch(name: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("tbd-cli-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    root
+}
+
+/// A file at `path` with a few bytes in it, its folder made first.
+fn touch(path: &std::path::Path) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, b"video").unwrap();
+}
+
+#[test]
+fn a_folder_gives_every_video_under_it_without_subtitles() {
+    let root = scratch("expand");
+    let season = root.join("season");
+    for file in [
+        "b.mkv",
+        "a.mp4",
+        "deep/c.mkv",
+        "done.mkv",
+        "done.srt",
+        "notes.txt",
+    ] {
+        touch(&season.join(file));
+    }
+    let single = root.join("single.mkv");
+    touch(&single);
+    let paths = [single.clone(), season.clone(), single.clone()];
+    let videos = process_command::expand(&paths).unwrap();
+    assert_eq!(
+        videos,
+        vec![
+            single,
+            season.join("a.mp4"),
+            season.join("b.mkv"),
+            season.join("deep").join("c.mkv"),
+        ],
+        "the file first, then the folder's videos sorted, each once"
+    );
+    // A video named is processed even with subtitles beside it.
+    let done = season.join("done.mkv");
+    let named = process_command::expand(std::slice::from_ref(&done)).unwrap();
+    assert_eq!(named, vec![done]);
+    let empty = root.join("empty");
+    std::fs::create_dir_all(&empty).unwrap();
+    let error = process_command::expand(std::slice::from_ref(&empty)).unwrap_err();
+    let error = format!("{error:#}");
+    assert!(error.contains(&empty.display().to_string()), "{error}");
+    let missing = root.join("missing.mkv");
+    let error = process_command::expand(std::slice::from_ref(&missing)).unwrap_err();
+    let error = format!("{error:#}");
+    assert!(error.contains(&missing.display().to_string()), "{error}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn the_exit_code_says_whether_every_job_passed_the_quality_check() {
+    let ran = |video: &str, failures: &[&str]| process_command::Ran {
+        video: PathBuf::from("/videos").join(video),
+        qc_failures: failures.iter().map(|f| f.to_string()).collect(),
+    };
+    assert_eq!(process_command::verdict(&[]), (0, None));
+    let passed = [ran("a.mkv", &[]), ran("b.mkv", &[])];
+    assert_eq!(process_command::verdict(&passed), (0, None));
+    let (code, summary) = process_command::verdict(&[
+        ran("a.mkv", &[]),
+        ran("b.mkv", &["2 lines over 20 cps"]),
+        ran("c.mkv", &["gaps"]),
+    ]);
+    assert_eq!(code, 2);
+    assert_eq!(
+        summary.as_deref(),
+        Some("2 of 3 failed the quality check: b.mkv, c.mkv")
+    );
+}
