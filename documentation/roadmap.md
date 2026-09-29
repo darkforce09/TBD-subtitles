@@ -76,7 +76,9 @@ budget. The batch of Dressrosa 12–48 moved to M2 at the owner's word: it runs 
 - [x] Redesign: the owner's approved macOS-like window, built in eight phases: the look (the
   mockup's palettes, Adwaita Sans, Phosphor icons, the desktop's light or dark, X11), the queue's
   states, toolbar and sidebar, the detail pane, the overview, Check Lines and the Settings window.
-- [ ] Batch: Dressrosa 12–48 queued and run from the window, each with a report that passes QC.
+- [x] Batch: Dressrosa 12–48 queued and run from the window: 38 videos with subtitles, accepted by
+  the owner on 2026-09-29. After Fix It, nine reports flag one problem each: a too-short cue in
+  14, 20, 24, 25, 27, 28 and 29, speech with no cue in 25, 31 and 35.
 - [x] Packaging: `cargo appimage` builds one self-contained AppImage (bundled CUDA, cuDNN, ONNX
   Runtime and FFmpeg); it runs a full job on the host with only the NVIDIA driver, and opens
   from Gear Lever.
@@ -88,7 +90,8 @@ Details: [GUI](/documentation/features/gui.md), [Fix It](/documentation/features
 [building the AppImage](/documentation/runbooks/building_the_appimage.md).
 
 **Acceptance:** the owner processes a new video from the GUI alone and fixes a flagged line in it;
-episodes 12–48 have subtitles, made from the GUI, that pass QC.
+episodes 12–48 have subtitles, made from the GUI, that pass QC. M2 is done at the owner's word: the
+owner accepted the batch on 2026-09-29.
 
 ## M3 — Automation
 

@@ -6,8 +6,8 @@ The window the owner uses to make subtitles without a terminal: queue videos, ru
 time, watch each job's progress and time left, read whether its subtitles pass the quality check,
 and listen to and fix the lines worth a listen. It is milestone M2 and is built as the owner's
 approved macOS-like mockup: a toolbar, a sidebar of videos, the selected job on the right with its
-Overview and Check Lines tabs, and Settings in a window of their own. What is left of M2 is the
-batch of Dressrosa 12–48 run from this window.
+Overview and Check Lines tabs, and Settings in a window of their own. The owner ran the batch of
+Dressrosa 12–48 from this window and accepted it, which completes M2.
 
 ## Where it lives
 
@@ -450,9 +450,8 @@ nothing.
 
 ## Open work
 
-- The batch of Dressrosa 12–48 of [Muhn Pace](/documentation/glossary.md#muhn-pace), queued and
-  run from the window, each with a report that passes the quality check: the last item of M2 in
-  the [roadmap](/documentation/roadmap.md#m2--desktop-gui).
+- None in M2. What comes next for the window is automation (watch folders, a Dolphin entry,
+  single-instance hand-off) in [M3](/documentation/roadmap.md#m3--automation).
 
 ## Decisions
 

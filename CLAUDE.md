@@ -9,12 +9,12 @@ Netflix's English rules. It runs locally on the owner's PC. A later milestone tr
 text that appears on screen. The first job is the Muhn Pace Dressrosa English dub in
 `/run/media/system/Main_storage/Media/one_pace/` (41 episodes; no dub subtitles exist anywhere).
 
-**Current state:** milestones M0, M0.5 and M1 are done. `tbd-subtitles process <video>` runs 18
+**Current state:** milestones M0, M0.5, M1 and M2 are done. `tbd-subtitles process <video>` runs 18
 resumable steps, with GPU steps in workers of `tbd-subtitles` and `tbd-subtitles-ggml`, and
 writes the SRT, `report.md` and each step's time and memory. The owner accepted the Dressrosa 11
 pilot ([pilot run](/documentation/research/pilot_dressrosa_11.md)), and a 128.9-minute video ran
-in 19.2 minutes ([120-minute test](/documentation/research/long_video_120min.md)). Now: milestone
-M2, the desktop GUI. The window (`tbd-subtitles gui`) is redesigned to the owner's approved
+in 19.2 minutes ([120-minute test](/documentation/research/long_video_120min.md)). M2 is the
+desktop GUI: the window (`tbd-subtitles gui`) is redesigned to the owner's approved
 macOS-like mockup and runs jobs itself: a toolbar and models banner, a sidebar of videos in Now,
 Up Next and Done, the selected job's progress, its Overview report and Check Lines (clip playback,
 corrections re-timed by correction runs), and Settings in a window of their own, saved as they
@@ -26,8 +26,8 @@ undone by the owner, and the Overview shows its result when done; it runs on man
 (Fix All, or after each job) under one cap on Claude calls
 ([Fix It](/documentation/features/fix_it.md)).
 The owner runs it as a self-contained AppImage from Gear Lever, built by `cargo appimage`
-(section 4). Left is the batch of Dressrosa 12–48 run from the window, on the owner's go
-([roadmap](/documentation/roadmap.md)).
+(section 4). The owner ran the batch of Dressrosa 12–48 from the window and accepted it
+(2026-09-29); next is M3, automation ([roadmap](/documentation/roadmap.md)).
 
 ## 1. Project laws
 
