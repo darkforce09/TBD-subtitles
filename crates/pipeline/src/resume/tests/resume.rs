@@ -176,24 +176,6 @@ fn a_setting_changes_only_the_steps_that_read_it_and_the_video_changes_the_first
 }
 
 #[test]
-fn a_live_lock_refuses_a_second_run_and_a_dead_one_is_taken_over() {
-    let work = scratch("lock");
-    // Our own parent is alive and is not us.
-    let parent = std::os::unix::process::parent_id();
-    fs::write(work.lock(), parent.to_string()).expect("lock");
-    assert!(lock(&work).is_err());
-    fs::write(work.lock(), "999999999").expect("stale");
-    let held = lock(&work).expect("take over");
-    assert_eq!(
-        fs::read_to_string(work.lock()).expect("read"),
-        std::process::id().to_string()
-    );
-    drop(held);
-    assert!(!work.lock().exists());
-    let _ = fs::remove_dir_all(work.root());
-}
-
-#[test]
 fn the_stale_steps_are_the_invalid_ones_and_everything_that_reads_them() {
     let work = scratch("stale");
     let mut r = record();

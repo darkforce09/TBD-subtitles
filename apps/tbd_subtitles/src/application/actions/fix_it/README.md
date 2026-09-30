@@ -34,7 +34,8 @@ waits for a free slot, `Fixing::waiting`) and the sidebar each video's step of f
 the video and waits in `fix_followups`; once a correction run of the video ended well, or at once
 when nothing changed, the run finishes: a green toast with See Changes, the job marked just fixed,
 and a desktop notification while the window is away. A stopped or failed run says so in a toast
-naming its video.
+naming its video; a run refused because another process owns the job says the video is busy and
+names that process, which is no failure.
 
 ## Boundaries
 

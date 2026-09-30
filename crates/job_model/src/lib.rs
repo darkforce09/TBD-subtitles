@@ -22,6 +22,7 @@ pub mod onscreen;
 pub mod outputs;
 pub mod report;
 pub mod stage;
+pub mod store;
 
 pub use stage::{StageName, StepName};
 

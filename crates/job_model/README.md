@@ -48,7 +48,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p job_model   # the library
-cargo test -p job_model    # 106 unit tests, every rkyv round trip included; well under a second
+cargo test -p job_model    # 107 unit tests, every rkyv round trip included; well under a second
 ```
 
 ## Configuration
@@ -63,8 +63,9 @@ crate reads.
   `ArchivedStepName`, `UnknownStage`, `UnknownStep`), `job` (`JobRecord`,
   `StepRecord`, `StepMeasure`, `WorkerMeasure`, `JobSettings`, `Separator`, `WhisperModel`),
   `outputs` (the probe result, shot changes, speech plan, transcripts, sheet, sound events,
-  adjudication passes, re-decodes, sound cues and aligned words) and `report` (`QcCheck`,
-  `QcFinding`, `QcSummary`, `QcReport`).
+  adjudication passes, re-decodes, sound cues and aligned words), `report` (`QcCheck`,
+  `QcFinding`, `QcSummary`, `QcReport`) and `store` (`TableLayouts`, the layout version of every
+  table of a job database).
 - No binary.
 
 ## Boundaries
@@ -93,8 +94,8 @@ crate reads.
     `crates/job_model/src/stage/tests/step_name.rs`);
   - every contract type round-trips through rkyv, read in place from a misaligned slice
     (`round_trip` in `crates/job_model/src/tests/archive_round_trip.rs`, run by the
-    `tests/archive.rs` file of each module: `job`, `model_call`, `onscreen`, `outputs`, `report`
-    and `stage`), and a path that is not UTF-8 fails to archive
+    `tests/archive.rs` file of each module: `job`, `model_call`, `onscreen`, `outputs`, `report`,
+    `stage` and `store`), and a path that is not UTF-8 fails to archive
     (`a_path_that_is_not_utf8_fails_to_archive` in
     `crates/job_model/src/onscreen/tests/archive.rs`);
   - an archived job record's steps are found in place by an archived step name

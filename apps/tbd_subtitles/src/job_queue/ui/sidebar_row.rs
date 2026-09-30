@@ -232,7 +232,7 @@ fn status_icon(
 ) -> StatusIcon {
     match (&item.state, running) {
         (_, Some(share)) => StatusIcon::Running(share),
-        (JobState::Waiting, _) => StatusIcon::Waiting,
+        (JobState::Waiting | JobState::Busy { .. }, _) => StatusIcon::Waiting,
         (JobState::Failed(_), _) => StatusIcon::Failed,
         (JobState::Cancelled { .. }, _) => StatusIcon::Cancelled,
         _ if row.fold.is_some() || fixing => StatusIcon::Working,

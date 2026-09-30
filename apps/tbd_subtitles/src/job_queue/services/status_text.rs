@@ -3,10 +3,10 @@
 //!
 //! **Role:** write the status line of a sidebar row from its job's state ("Settling the words ·
 //! about 4 min left", "Waiting · 2nd in line", "Failed at Hear the speech", "Updating subtitles ·
-//! 2 corrections", "Fixing with Claude · 2 of 4", "Subtitles ready · 38 to check", "Subtitles
-//! ready · fixed by Claude", "Needs attention · 1 problem"); the detail pane's line of a job that
-//! has not finished ("25:59 video · running for 10 min 00 s"); and when a waiting job, or an ended
-//! one tried again, starts.
+//! 2 corrections", "Busy · process 4242 runs this video", "Fixing with Claude · 2 of 4",
+//! "Subtitles ready · 38 to check", "Subtitles ready · fixed by Claude", "Needs attention · 1
+//! problem"); the detail pane's line of a job that has not finished ("25:59 video · running for
+//! 10 min 00 s"); and when a waiting job, or an ended one tried again, starts.
 //!
 //! **Position:** called by the sidebar row for each row it draws, and by the queue's job cards
 //! and the application's detail header for the selected job.
@@ -51,6 +51,7 @@ pub(crate) fn status(
         JobState::Waiting => format!("Waiting{}", place_words(row.place, queue)),
         JobState::Failed(failure) => failed(failure),
         JobState::Cancelled { kept_steps } => cancelled(*kept_steps),
+        JobState::Busy { owner, .. } => busy(*owner),
         JobState::Finished(_) | JobState::FinishedBefore => {
             if let Some(step) = fixing {
                 return format!("Fixing with Claude · {step} of {FIX_STEPS}");
@@ -95,7 +96,8 @@ fn needs_attention(problems: usize) -> String {
 }
 
 /// The line under the detail pane's title for `item`: a running job's length and time so far, a
-/// waiting job's place, where a failed job failed, what a cancelled one kept; "Subtitles ready"
+/// waiting job's place, where a failed job failed, what a cancelled one kept, which process holds
+/// a busy one's video; "Subtitles ready"
 /// for a finished job, whose line the report gives.
 pub(crate) fn detail_line(item: &QueueItem, queue: &Queue, now: Instant) -> String {
     match &item.state {
@@ -118,6 +120,7 @@ pub(crate) fn detail_line(item: &QueueItem, queue: &Queue, now: Instant) -> Stri
         }
         JobState::Failed(failure) => failed(failure),
         JobState::Cancelled { kept_steps } => cancelled(*kept_steps),
+        JobState::Busy { owner, .. } => busy(*owner),
         JobState::Finished(_) | JobState::FinishedBefore => "Subtitles ready".to_string(),
     }
 }
@@ -200,6 +203,15 @@ fn failed(failure: &Failure) -> String {
     match failure.step {
         Some(step) => format!("Failed at {}", stage_of(step).title),
         None => "Failed".to_string(),
+    }
+}
+
+/// "Busy · process 4242 runs this video", or "Busy · another process runs this video" when
+/// `job.lock` names no process.
+pub(crate) fn busy(owner: Option<u32>) -> String {
+    match owner {
+        Some(pid) => format!("Busy · process {pid} runs this video"),
+        None => "Busy · another process runs this video".to_string(),
     }
 }
 

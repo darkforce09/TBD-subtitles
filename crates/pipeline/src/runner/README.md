@@ -13,8 +13,10 @@ crates/pipeline/src/runner/
 
 ## How it works
 
-`run_job` canonicalises the video, names its work directory with `work_dir::job_id`, takes the
-job's lock and opens `job.json`, or starts a new record when there is none or it belongs to
+`run_job` canonicalises the video, names its work directory with `work_dir::job_id`, opens the
+job's database with `JobStore::open` and holds it until it returns (another process running the
+job makes that open fail with the busy error kind, which names the owner's pid from `job.lock`),
+and opens `job.json`, or starts a new record when there is none or it belongs to
 another video. It records the video's size and modification time and this run's settings, drops
 the steps named in `JobOptions::rerun`, and saves the record. `Progress::JobStarted` names the
 steps this run will do (`resume::stale_steps`), and `Progress::JobDuration` the video's length once

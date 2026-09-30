@@ -308,3 +308,24 @@ fn review_runs_wait_in_their_own_lane_and_are_queued_once() {
     assert_eq!(next_waiting(&q, JobKind::Full), Some(0));
     assert_eq!(next_waiting(&q, JobKind::Review), Some(first));
 }
+
+#[test]
+fn a_busy_job_is_never_next_and_its_video_is_not_queued_twice() {
+    let mut q = queue(&["a.mp4", "b.mp4"]);
+    q.items[0].state = JobState::Busy {
+        owner: Some(4242),
+        since: std::time::Instant::now(),
+    };
+    assert_eq!(next_waiting(&q, JobKind::Full), Some(q.items[1].id));
+    assert_eq!(
+        first_startable(&q, JobKind::Full, |_| true),
+        Some(q.items[1].id)
+    );
+    assert_eq!(add_videos(&mut q, [PathBuf::from("a.mp4")]), 0);
+    let busy = q.items[0].id;
+    assert_eq!(try_again(&mut q, busy, None), Err(Refusal::NotEnded));
+    newest_ended_first(&mut q, busy);
+    assert_eq!(order(&q), ["a.mp4", "b.mp4"]);
+    q.items[1].state = running();
+    assert_eq!(next_waiting(&q, JobKind::Full), None);
+}

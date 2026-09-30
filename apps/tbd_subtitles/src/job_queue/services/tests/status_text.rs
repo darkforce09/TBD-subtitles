@@ -357,3 +357,25 @@ fn a_correction_run_tried_again_starts_at_once_while_a_review_lane_is_idle() {
         "four fill every lane"
     );
 }
+
+#[test]
+fn a_busy_row_names_the_process_that_runs_its_video() {
+    let mut q = queue(&["a", "b"]);
+    let since = Instant::now();
+    q.items[0].state = JobState::Busy {
+        owner: Some(4242),
+        since,
+    };
+    q.items[1].state = JobState::Busy { owner: None, since };
+    assert_eq!(
+        lines(&q),
+        [
+            "Busy · process 4242 runs this video",
+            "Busy · another process runs this video",
+        ]
+    );
+    assert_eq!(
+        detail_line(&q.items[0], &q, since),
+        "Busy · process 4242 runs this video"
+    );
+}

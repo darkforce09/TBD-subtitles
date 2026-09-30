@@ -5968,6 +5968,7 @@ dependencies = [
  "libc",
  "media_io",
  "nvml-wrapper",
+ "redb",
  "rkyv",
  "serde",
  "serde_json",

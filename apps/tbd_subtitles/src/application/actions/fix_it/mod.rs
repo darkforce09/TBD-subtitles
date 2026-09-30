@@ -116,9 +116,7 @@ impl TbdSubtitlesApp {
     fn fix_updating(&self, video: &Path) -> Option<&FixFollowup> {
         let followup = self.fix_followups.get(video)?;
         let pending = self.queue.items.iter().any(|item| {
-            item.video == video
-                && item.kind == JobKind::Review
-                && (item.state.is_running() || item.state.is_waiting())
+            item.video == video && item.kind == JobKind::Review && item.state.is_queued()
         });
         pending.then_some(followup)
     }
@@ -134,7 +132,7 @@ impl TbdSubtitlesApp {
         let busy = self.queue.items.iter().any(|item| {
             &item.video == video
                 && (item.state.is_running()
-                    || (item.kind == JobKind::Review && item.state.is_waiting()))
+                    || (item.kind == JobKind::Review && item.state.is_queued()))
         });
         busy.then_some("Wait until this video's subtitles are updated.")
     }

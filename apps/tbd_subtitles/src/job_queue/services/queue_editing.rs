@@ -12,9 +12,9 @@
 //! otherwise changes only the queue it is given.
 //!
 //! **Invariants:** a running job is never removed, moved or tried again; a video is never queued
-//! twice while it waits or runs, by adding, restoring or trying again; only waiting full runs
-//! move, among themselves; ended jobs stand newest first; the queue's control counts full runs
-//! only, since correction runs start by themselves.
+//! twice while it waits, runs or is busy, by adding, restoring or trying again; a busy job is
+//! never chosen to run; only waiting full runs move, among themselves; ended jobs stand newest
+//! first; the queue's control counts full runs only, since correction runs start by themselves.
 
 use std::path::{Path, PathBuf};
 
@@ -55,9 +55,10 @@ pub(crate) fn add_videos(queue: &mut Queue, videos: impl IntoIterator<Item = Pat
             vec![path]
         };
         for video in expanded {
-            let queued = queue.items.iter().any(|item| {
-                item.video == video && (item.state.is_waiting() || item.state.is_running())
-            });
+            let queued = queue
+                .items
+                .iter()
+                .any(|item| item.video == video && item.state.is_queued());
             if video.as_os_str().is_empty() || queued {
                 continue;
             }
@@ -137,13 +138,10 @@ pub(crate) fn restore(queue: &mut Queue, removed: Removed) -> Result<JobId, Refu
     Ok(id)
 }
 
-/// Whether a job other than `id` runs `video` as a `kind` run, or waits to.
+/// Whether a job other than `id` runs `video` as a `kind` run, or waits to (busy included).
 fn queued_elsewhere(queue: &Queue, id: JobId, video: &Path, kind: JobKind) -> bool {
     queue.items.iter().any(|item| {
-        item.id != id
-            && item.kind == kind
-            && item.video == video
-            && (item.state.is_waiting() || item.state.is_running())
+        item.id != id && item.kind == kind && item.video == video && item.state.is_queued()
     })
 }
 
@@ -212,7 +210,7 @@ pub(crate) fn try_again(
     let Some(item) = queue.get(id) else {
         return Err(Refusal::NotEnded);
     };
-    if item.state.is_waiting() || item.state.is_running() {
+    if item.state.is_queued() {
         return Err(Refusal::NotEnded);
     }
     if queued_elsewhere(queue, id, &item.video, item.kind) {
@@ -244,7 +242,7 @@ pub(crate) fn run_again(queue: &mut Queue, id: JobId) -> Result<(), Refusal> {
 /// Move ended job `id` before every other ended job, so the Done section lists the newest
 /// first.
 pub(crate) fn newest_ended_first(queue: &mut Queue, id: JobId) {
-    let ended = |item: &QueueItem| !item.state.is_waiting() && !item.state.is_running();
+    let ended = |item: &QueueItem| !item.state.is_queued();
     let Some(from) = queue
         .items
         .iter()
@@ -317,7 +315,8 @@ pub(crate) fn first_startable(
 }
 
 /// The first waiting job of `kind`, which runs next in its lane: full runs one after another
-/// while the queue runs, review runs as soon as they are queued.
+/// while the queue runs, review runs as soon as they are queued. A busy job is not waiting: it
+/// waits again once the process that owns its video ends.
 pub(crate) fn next_waiting(queue: &Queue, kind: JobKind) -> Option<JobId> {
     queue
         .items

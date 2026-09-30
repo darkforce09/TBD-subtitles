@@ -21,7 +21,8 @@ apps/tbd_subtitles/src/job_queue/models/
 A `QueueItem` is one video's job: its id, its kind (a full run, or a review run after the owner's
 corrections), its state (waiting, running with its progress, finished with its result, finished
 in an earlier window, failed with a `Failure`, a finished result naming the localized video when
-the job wrote one, cancelled with the finished steps it kept), whether
+the job wrote one, cancelled with the finished steps it kept, or busy while another process owns
+its database, with that process's pid when known and since when), whether
 it keeps its own settings (once it has started), the steps its next run does again, and, for a
 review run, how many corrections it carries. A `Failure` names the step that failed (none when
 the job failed before its first step), the message, and the steps it had finished, each a

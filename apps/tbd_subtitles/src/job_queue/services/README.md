@@ -3,12 +3,14 @@
 The queue logic, with no rendering code: editing the queue, the sidebar's rows and their status
 lines, the detail pane's words for the selected job, the threads that run its jobs, following
 their progress, a job's nine stages, the time left, the queue kept across windows, the videos in
-a folder, the watch folders' scans, every video ever queued, and the notice when a job ends.
+a folder, the watch folders' scans, every video ever queued, the notice when a job ends, and a
+busy job's owner.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/job_queue/services/
+├── busy_owner.rs         whether a busy job's owning process still runs, and busy jobs set waiting
 ├── folder_watcher.rs     the thread that scans the watch folders and sends each complete video
 ├── job_notice.rs         the desktop notice's words for a full run that finished or failed
 ├── job_runner.rs         the long-lived thread that runs one job at a time and reports its events
@@ -30,7 +32,7 @@ apps/tbd_subtitles/src/job_queue/services/
 
 ## How it works
 
-`queue_editing::add_videos` queues each video not already waiting or running; a folder stands for
+`queue_editing::add_videos` queues each video not already waiting, running or busy; a folder stands for
 its videos directly in it with no subtitle file beside them (`video_files::videos_in_folder`;
 `video_files::subtitle_file` finds one in any format the app writes). `remove` takes a row out with the correction runs folded into it, unless something on it
 runs, and hands the selection to the row now in its place or the one before; `restore` puts the
@@ -53,12 +55,14 @@ them to the one that already waits.
 
 `sidebar_rows::rows` builds the sidebar: a correction run that waits, runs or finished folds into
 the row of its video's newest finished full run (else its last full run), naming the one running
-now; one that failed or was cancelled keeps a row of its own; rows come in the order Now, Up Next,
-Done, each in queue order (ended jobs stand newest first),
-and the waiting full runs are numbered by their place in line. `status_text::status` writes a
+now; one that failed, was cancelled or is busy keeps a row of its own; rows come in the order Now,
+Up Next (a busy job stands there too, with no place), Done, each in queue order (ended jobs stand
+newest first), and the waiting full runs are numbered by their place in line. `status_text::status` writes a
 row's line from its job: a running job's stage and time left ("Settling the words · about 4 min
 left", "Stopping…"), a waiting job's place, shown past the first only while the queue runs, where
-a failed job failed, the steps a cancelled one kept; for a finished job, "Fixing with Claude · 2
+a failed job failed, the steps a cancelled one kept, the process a busy one waits for ("Busy ·
+process 4242 runs this video", or "another process" when `job.lock` named none); for a finished
+job, "Fixing with Claude · 2
 of 4" while Fix It fixes its video (its step of four, the correction run of its changes the
 fourth), else "Updating subtitles · 2 corrections" while a correction run is pending; for a
 finished job whose files the application read, its summary's "Needs attention · 1 problem" when
@@ -70,7 +74,7 @@ ready" when none is; without a summary, "Needs attention" from the run's own res
 row's warning mark. `status_text::detail_line` writes the line under the detail pane's
 title for a job that has not finished: "25:59 video · running for 10 min 00 s" ("Running for 3 s"
 until the length is known), "Length known once it starts · 2nd in line", or the row's line of a
-failed or cancelled job; `place_in_line` counts a waiting job's place among the waiting runs of its
+failed, cancelled or busy job; `place_in_line` counts a waiting job's place among the waiting runs of its
 kind; `waiting_start` says when a waiting job starts (a correction run as soon as its video is
 free; a full run after the current video, after the videos before it, or on Start Queue; either
 once the models are on disk), and `try_again_start` when an ended
@@ -148,6 +152,11 @@ failed" with "At <step title>: <message>", cut to 200 characters;
 a correction run, or a job waiting, running, cancelled or finished in an earlier window, gives
 none.
 
+`busy_owner::release_freed` sets waiting each busy job whose owner is gone: its `/proc/<pid>`
+folder no longer exists (`process_runs`), or no owner was named and `UNKNOWN_OWNER_WAIT` (5 s)
+has passed since it ended busy; the application calls it before each frame, and the window asks
+for a frame every `CHECK_EVERY` (1 s) while `any_busy` holds.
+
 ## Boundaries
 
 - Depends on: `crate::job_queue::models`; `crate::core::{background::Wake, format, steps}`;
@@ -212,7 +221,18 @@ none.
     (`a_saved_queue_loads_back_with_the_running_job_waiting`,
     `a_file_written_before_the_new_fields_still_loads`,
     `a_failure_an_older_window_kept_reads_its_finished_steps_from_job_json` in
-    `tests/queue_store.rs`);
+    `tests/queue_store.rs`), and a busy job is saved waiting
+    (`a_busy_job_is_saved_waiting_so_the_next_window_tries_it_again`);
+  - a busy job is never next, never queued twice, stands in Up Next with no place and a row of
+    its own, and names its owner (`a_busy_job_is_never_next_and_its_video_is_not_queued_twice` in
+    `tests/queue_editing.rs`,
+    `a_busy_job_stands_in_up_next_without_a_place_and_keeps_its_own_row` in
+    `tests/sidebar_rows.rs`, `a_busy_row_names_the_process_that_runs_its_video` in
+    `tests/status_text.rs`);
+  - a busy job waits again only once its owner is gone, or 5 s after a busy end with no owner
+    named (`this_process_runs_and_a_pid_that_cannot_exist_does_not`,
+    `a_named_owner_is_gone_once_its_process_is_and_an_unknown_one_after_five_seconds`,
+    `only_the_busy_jobs_whose_owner_is_gone_wait_again_in_place` in `tests/busy_owner.rs`);
   - the walk under a folder skips hidden, symlinked, empty, downloading and subtitled entries and
     stops `MAX_DEPTH` folders down (`the_walk_leaves_out_hidden_empty_downloading_and_subtitled_videos`,
     `the_walk_does_not_follow_a_symlinked_folder`, `the_walk_stops_max_depth_folders_down` in

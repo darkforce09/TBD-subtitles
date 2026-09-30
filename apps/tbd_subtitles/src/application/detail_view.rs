@@ -133,7 +133,10 @@ fn right_ui(ui: &mut Ui, app: &TbdSubtitlesApp, item: &QueueItem, actions: &mut 
                 actions.push(Action::from(JobQueueEvent::Cancel(item.id)));
             }
         }
-        JobState::Waiting | JobState::Failed(_) | JobState::Cancelled { .. } => {}
+        JobState::Waiting
+        | JobState::Failed(_)
+        | JobState::Cancelled { .. }
+        | JobState::Busy { .. } => {}
     }
 }
 

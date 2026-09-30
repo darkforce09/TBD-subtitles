@@ -28,6 +28,9 @@ inference = { path = "../inference" }
 media_io = { path = "../media_io" }
 # The cue track and the SRT writer.
 subtitle_formats = { path = "../subtitle_formats" }
+# The job database, `job.redb`, owned by the process that runs the job; pinned to the measured
+# release, the same pin as `tools/redb_process_probe`, whose findings hold for this version only.
+redb = "=4.3.0"
 # Every step's output and `job.json` are JSON.
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 serde_json = "1"

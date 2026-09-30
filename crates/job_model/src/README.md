@@ -15,6 +15,7 @@ crates/job_model/src/
 ├── outputs/     the typed output of each step, one JSON file per step in the work directory
 ├── report/      the quality check's result: every check, its findings and the summary counts
 ├── stage/       every stage and every step in run order, with the names they carry
+├── store/       the layout version of every table of the job database
 └── tests/       the rkyv round trip every module's `tests/archive.rs` runs
 ```
 
@@ -45,6 +46,8 @@ UTF-8 strings.
   `crates/pipeline/`.
 - `model_call`: `ModelExchange`, for `crates/inference/src/llm/`,
   `crates/pipeline/` and the app's log window.
+- `store`: `TableLayouts`, the layout version of every table of a job database, for
+  `crates/pipeline/src/work_dir/store/`.
 
 ## Boundaries
 

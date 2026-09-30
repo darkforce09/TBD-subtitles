@@ -9,7 +9,7 @@ measurements, the progress events and the report.
 ```text
 crates/pipeline/src/
 ├── cancel.rs  `CancelToken`: the shared flag that stops a running job and its worker
-├── error.rs   `PipelineError`: what was being done, why it failed or that it was cancelled
+├── error.rs   `PipelineError`: what was being done, why, and its kind: failed, cancelled or busy
 ├── fix_it/    Fix It on a finished job: the model's kept changes written into the corrections
 ├── graph/     the step table: inputs, placement, GPU use, revision, settings, timeout and outputs
 ├── lib.rs     the crate root: the module list, the crate header and the `run_job` re-exports
@@ -17,10 +17,10 @@ crates/pipeline/src/
 ├── models/    the models a job needs: each step's model folder, the required list, the missing ones
 ├── progress/  the events a running job reports and the sink they go to
 ├── report/    `report.md` from the quality check and the job record
-├── resume/    step fingerprints, whether a recorded output is reusable, and the job lock
+├── resume/    step fingerprints and whether a recorded output is reusable
 ├── runner/    `run_job`: one video through every step, in order, with resume and the shot scan
 ├── tasks/     the body of every step, shared by the runner and the `worker` subcommands
-├── work_dir/  the path of every job file, the job id, the default root and complete JSON writes
+├── work_dir/  the path of every job file, the job id, complete JSON writes and the job store
 └── workers/   starting a step's worker binary, reading its frames, forwarding its progress
 ```
 
@@ -40,16 +40,19 @@ runner ──▶ resume ──▶ graph            is the step's record still va
 
 `runner` owns the loop and the job record. `graph` is the one table every other module asks: what
 a step reads, where it runs, whether it needs the GPU, which settings it depends on, how long it
-may run and which files it leaves. `resume` hashes that into a fingerprint and holds the
-`job.lock`. `work_dir` names every path and writes JSON through a part file, so a file that exists
-is complete. `tasks` holds the body of each step; a worker binary calls `tasks::worker_main`,
+may run and which files it leaves. `resume` hashes that into a fingerprint. `work_dir` names
+every path and writes JSON through a part file, so a file that exists is complete; its `store`
+owns `job.redb`, which the runner and Fix It hold open while they work (one process at a time,
+one shared handle in it, its pid in `job.lock`), and which no step writes to yet. `tasks` holds
+the body of each step; a worker binary calls `tasks::worker_main`,
 which sends `Progress`, `ModelCall`, `Measure` and `Done` (or `Failed`) frames of the worker
 channel (`crates/worker_channel/`) on its stdout, and `workers` turns those into progress events
 and a `StepMeasure`, adding the VRAM that `measure::gpu_monitor` sampled. `report` renders `report.md` after every run. Every fallible call
-returns `PipelineError`.
+returns `PipelineError`, whose `ErrorKind` says whether it failed, was cancelled, or found the job
+owned by another process (`Busy`, with that process's pid when known).
 
-`fix_it` works beside the runner, on a finished job: it reads the job's outputs, runs
-`stages::fix_it` with a `claude` backend the cancel token stops, keeps each answered call in
+`fix_it` works beside the runner, on a finished job: it holds the job's store, reads the job's
+outputs, runs `stages::fix_it` with a `claude` backend the cancel token stops, keeps each answered call in
 `fix/calls/`, writes `fix.json`, and puts the kept changes into `review.json` through
 `work_dir::update_corrections`. The caller then runs the job again, and the corrections' digest
 makes only the review step and the steps after it run.
@@ -68,11 +71,14 @@ makes only the review step and the steps after it run.
 - `fix_it::{fix_video, FixOptions, FixProgress, FixStage, FixOutcome}`: Fix It, for the window
   and the `fix` subcommand; `work_dir::update_corrections`: the window's line review.
 - `measure::gpu_monitor` and `measure::memory`: used by `tools/stack_spike/`.
+- `work_dir::JobStore` and `error::ErrorKind`: the job database the runner owns, and the busy kind
+  the window turns into a busy job; `tools/visual_validation/` holds a `JobStore` too.
 
 ## Boundaries
 
 - Depends on: `stages`, `inference`, `media_io`, `subtitle_formats`, `child_process`,
-  `job_model`, `worker_channel`, `serde_json`, `rkyv`, `sha2`, `libc` and `nvml-wrapper`.
+  `job_model`, `worker_channel`, `redb`, `serde_json`, `rkyv`, `sha2`, `libc` and
+  `nvml-wrapper`.
 - Used by: `apps/tbd_subtitles/src/cli/`, `apps/tbd_subtitles_ggml/src/main.rs` and
   `tools/stack_spike/src/measure/`.
 - Rules:

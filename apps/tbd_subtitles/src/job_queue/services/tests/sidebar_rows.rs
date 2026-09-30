@@ -149,3 +149,30 @@ fn done_rows_list_the_newest_ended_first() {
         .collect();
     assert_eq!(done, ["c", "a"]);
 }
+
+#[test]
+fn a_busy_job_stands_in_up_next_without_a_place_and_keeps_its_own_row() {
+    let mut q = queue(&["/v/a.mp4", "/v/b.mp4", "/v/c.mp4"]);
+    let since = std::time::Instant::now();
+    q.items[0].state = JobState::Busy {
+        owner: Some(4242),
+        since,
+    };
+    q.items[2].state = JobState::FinishedBefore;
+    queue_review(&mut q, PathBuf::from("/v/c.mp4"), 1);
+    q.items[3].state = JobState::Busy { owner: None, since };
+    let rows = rows(&q);
+    assert_eq!(
+        names(&rows),
+        [
+            (Section::UpNext, "a".to_string()),
+            (Section::UpNext, "b".to_string()),
+            (Section::UpNext, "c · 1 correction".to_string()),
+            (Section::Done, "c".to_string()),
+        ]
+    );
+    assert_eq!(rows[0].place, None);
+    assert!(!rows[0].draggable && rows[0].removable);
+    assert_eq!(rows[1].place, Some(1));
+    assert!(rows[3].fold.is_none());
+}

@@ -49,7 +49,8 @@ pub(crate) fn ended_notice(item: &QueueItem) -> Option<Notice> {
         JobState::Waiting
         | JobState::Running(_)
         | JobState::FinishedBefore
-        | JobState::Cancelled { .. } => None,
+        | JobState::Cancelled { .. }
+        | JobState::Busy { .. } => None,
     }
 }
 

@@ -76,13 +76,26 @@ fn failing(rerun: Arc<Mutex<Vec<StepName>>>) -> RunJob {
     })
 }
 
-/// A stand-in that fails before its job starts, as when another process holds the job's lock.
+/// A stand-in that fails before its job starts, as when its work folder cannot be written.
 fn locked() -> RunJob {
     Arc::new(|_video, _options, _progress| {
         Err(PipelineError::new(
             "lock the work directory",
             "another process runs this job",
         ))
+    })
+}
+
+/// A stand-in whose first run finds process `owner` running the video, and whose later runs
+/// succeed as `stand_in` does.
+fn busy_once(owner: u32) -> RunJob {
+    let refused = Arc::new(AtomicBool::new(false));
+    let run = stand_in();
+    Arc::new(move |video, options, progress| {
+        if !refused.swap(true, Ordering::SeqCst) {
+            return Err(PipelineError::busy("job /work/a", Some(owner)));
+        }
+        run(video, options, progress)
     })
 }
 

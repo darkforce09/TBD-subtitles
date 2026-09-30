@@ -43,6 +43,7 @@ pub(crate) fn progress_view_ui(
         JobState::Cancelled { kept_steps } => {
             job_cards::cancelled_ui(ui, view, item, *kept_steps, events);
         }
+        JobState::Busy { owner, .. } => job_cards::busy_ui(ui, item, *owner, events),
         JobState::Finished(_) | JobState::FinishedBefore => {}
     }
 }

@@ -14,6 +14,7 @@ use super::rendering_report::{check, finding, scratch, write_job};
 use super::rendering_review::{work_dir, write_lines};
 use super::*;
 use crate::application::environment::NOTIFIED;
+use crate::core::toast::ToastKind;
 use crate::job_queue::models::queue::JobKind;
 use crate::job_report::events::ReportEvent;
 use crate::job_report::models::finding_group::LineGroup;
@@ -513,4 +514,27 @@ fn fix_it_is_off_while_the_video_s_subtitles_are_updated_and_hidden_with_nothing
     let (text, _) = render(&app);
     assert!(!text.contains("Fix It with"), "{text}");
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_fix_refused_because_another_process_runs_the_video_is_no_failure() {
+    let root = scratch("fix-it-busy");
+    let refuse: FixVideo = Arc::new(|_video, _options, _progress| {
+        Err(PipelineError::busy("job /work/dressrosa-12", Some(4242)))
+    });
+    let (mut app, _) = finished_with(&root, "Dressrosa 12", refuse);
+    app.apply(vec![Action::from(ReportEvent::FixIt)]);
+    until_fixed(&mut app);
+    let toast = app.toasts.shown().last().expect("a toast");
+    assert_eq!(toast.kind, ToastKind::Info);
+    assert_eq!(
+        toast.text,
+        "Dressrosa 12 is busy: process 4242 runs it; Fix It again once it ends."
+    );
+    assert!(
+        app.queue
+            .items
+            .iter()
+            .all(|item| item.kind == JobKind::Full)
+    );
 }

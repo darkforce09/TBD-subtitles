@@ -1,8 +1,9 @@
 //! The queue logic: editing the queue, the sidebar's rows and their status lines, running its
 //! jobs, following their progress, its stages, estimating the time left, keeping the queue across
 //! windows, finding videos in folders and watching the watch folders, remembering every video
-//! queued, and the notice when a job ends.
+//! queued, the notice when a job ends, and trying a busy job again once its owner ends.
 
+pub(crate) mod busy_owner;
 pub(crate) mod folder_watcher;
 pub(crate) mod job_notice;
 pub(crate) mod job_runner;

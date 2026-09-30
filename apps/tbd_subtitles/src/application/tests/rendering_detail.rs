@@ -220,3 +220,47 @@ fn a_failed_job_shows_the_steps_it_ran_as_done_with_their_times() {
     );
     assert!(actions.is_empty(), "an idle frame asks for nothing");
 }
+
+#[test]
+fn a_job_another_process_runs_waits_busy_and_starts_once_that_process_ends() {
+    let owner = std::os::unix::process::parent_id();
+    let mut app = app_with(
+        "detail-busy",
+        vec![PathBuf::from("a.mp4")],
+        busy_once(owner),
+    );
+    app.settings.items.iter_mut().for_each(|i| i.present = true);
+    app.apply(vec![Action::from(JobQueueEvent::Start)]);
+    settle(&mut app);
+    let id = app.queue.items[0].id;
+    assert!(
+        matches!(app.queue.items[0].state, JobState::Busy { owner: Some(pid), .. } if pid == owner),
+        "{:?}",
+        app.queue.items[0].state
+    );
+    assert!(app.queue.running, "a busy job keeps the queue on");
+    app.apply(vec![Action::from(JobQueueEvent::Select(id))]);
+    let (text, _) = render(&app);
+    for expected in [
+        format!("Busy · process {owner} runs this video"),
+        format!(
+            "Process {owner}, outside this window, runs this video. It starts once that process \
+             ends."
+        ),
+    ] {
+        assert!(text.contains(&expected), "{expected} not in {text}");
+    }
+    assert!(!text.contains("Failed"), "{text}");
+
+    // The owner ends: the job waits again and the queue starts it.
+    if let JobState::Busy { owner, .. } = &mut app.queue.items[0].state {
+        *owner = Some(u32::MAX);
+    }
+    app.poll_busy(Instant::now());
+    settle(&mut app);
+    assert!(
+        matches!(app.queue.items[0].state, JobState::Finished(_)),
+        "{:?}",
+        app.queue.items[0].state
+    );
+}

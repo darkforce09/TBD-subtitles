@@ -18,7 +18,7 @@ use pipeline::{
     progress::Progress,
     resume,
     tasks::{self, Job},
-    work_dir::{self, WorkDir},
+    work_dir::{self, JobStore, WorkDir},
     workers::{self, Binaries},
 };
 use std::path::Path;
@@ -38,7 +38,7 @@ pub fn run(
     let video = video.canonicalize()?;
     let binaries = binaries.canonicalize()?;
     let work = WorkDir::new(output);
-    let _job_lock = resume::lock(&work)?;
+    let _store = JobStore::open(&work)?;
     let meta = std::fs::metadata(&video)?;
     ensure!(meta.is_file(), "pilot input must be a video file");
     let modified_s = meta.modified()?.duration_since(UNIX_EPOCH)?.as_secs() as i64;

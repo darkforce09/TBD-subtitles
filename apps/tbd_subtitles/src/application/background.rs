@@ -3,7 +3,7 @@
 //! **Role:** hold the receiving end of every thread the application started (the desktop's
 //! chooser, the files the desktop was asked to open, the model download, the machine checks, the
 //! sizes of the work and models folders, the desktop's colour scheme, the Fix It runs) and apply
-//! what they sent;
+//! what they sent; put each busy job back in line once the process that owns its video ends;
 //! let the toasts whose time is up go.
 //!
 //! **Position:** owned by `TbdSubtitlesApp`; polled by `window` before each frame; the settings
@@ -98,6 +98,7 @@ impl TbdSubtitlesApp {
         poll_settings(self);
         self.poll_text();
         poll_runner(self);
+        self.poll_busy(Instant::now());
         poll_fix(self);
         self.poll_automation();
         poll_log(self);

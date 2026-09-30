@@ -180,3 +180,21 @@ fn a_failure_an_older_window_kept_reads_its_finished_steps_from_job_json() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_busy_job_is_saved_waiting_so_the_next_window_tries_it_again() {
+    let dir = scratch("busy");
+    let path = dir.join("queue.json");
+    let mut queue = Queue::default();
+    queue_editing::push(&mut queue, PathBuf::from("a.mp4"), JobKind::Full);
+    queue.items[0].state = JobState::Busy {
+        owner: Some(4242),
+        since: std::time::Instant::now(),
+    };
+    queue.items[0].keep_settings = true;
+    save(&path, &queue).expect("save");
+    let back = load(&path).expect("load");
+    assert!(back.items[0].state.is_waiting());
+    assert!(back.items[0].keep_settings);
+    let _ = std::fs::remove_dir_all(&dir);
+}

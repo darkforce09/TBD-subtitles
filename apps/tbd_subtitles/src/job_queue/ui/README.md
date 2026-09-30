@@ -10,7 +10,7 @@ right, drawn from a borrowed view; they return events and change nothing.
 apps/tbd_subtitles/src/job_queue/ui/
 ├── drop_overlay.rs   the blue wash and card while files are dragged over the window
 ├── empty_state.rs    the card in the middle while the list is empty: drop here, or the add buttons
-├── job_cards.rs      the waiting, failed and cancelled cards with their buttons
+├── job_cards.rs      the waiting, busy, failed and cancelled cards with their buttons
 ├── mod.rs            the module list and the entry points
 ├── progress_card.rs  a running job's stage, step, thick bar, time left and time so far
 ├── progress_view.rs  the selected job's cards by its state: the dispatcher
@@ -81,7 +81,9 @@ Queue.", "It waits until the models are on disk."), the raw message wrapped on t
 the blue Try Again and Show in Folder, and the stage list under it (the steps it ran done with
 their times, those still valid "already done") unless it failed before its first step. A
 cancelled job's card has a stop mark, the steps kept, when Try Again starts it, Try Again and
-Remove from List.
+Remove from List. A busy job's card, "Busy", has the waiting mark, which process outside the
+window runs its video ("Process 4242, outside this window, runs this video. It starts once that
+process ends."), the video's path and Remove from List; its row has the waiting mark too.
 
 ## Boundaries
 
@@ -100,6 +102,8 @@ Remove from List.
   `a_running_job_works_out_its_time_left_until_its_length_is_known`,
   `a_waiting_job_shows_its_place_and_what_starts_it`,
   `a_job_that_failed_before_its_first_step_shows_no_stages`,
-  `a_failed_job_shows_the_steps_it_ran_as_done_with_their_times`) and `tests/rendering.rs`
+  `a_failed_job_shows_the_steps_it_ran_as_done_with_their_times`,
+  `a_job_another_process_runs_waits_busy_and_starts_once_that_process_ends`) and
+  `tests/rendering.rs`
   (`a_cancelled_job_keeps_its_finished_steps_and_can_be_retried`,
   `a_failed_job_records_its_step_and_the_steps_it_kept`).

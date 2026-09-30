@@ -10,8 +10,9 @@
 //! **Signals and state:** none; reads the queue.
 //!
 //! **Invariants:** every job is on exactly one row, as the row's job or folded into it; a
-//! correction run that failed or was cancelled keeps a row of its own, so it can be tried again;
-//! rows are in section order, and in queue order within a section, where ended jobs stand
+//! correction run that failed or was cancelled keeps a row of its own, so it can be tried again,
+//! and so does a busy one, so its state shows; a busy job stands in Up Next with no place in
+//! line; rows are in section order, and in queue order within a section, where ended jobs stand
 //! newest first.
 
 use std::collections::HashMap;
@@ -40,7 +41,11 @@ pub(crate) fn rows(queue: &Queue) -> Vec<SidebarRow> {
         let full = queue
             .get(row.id)
             .is_some_and(|item| item.kind == JobKind::Full);
-        if row.section == Section::UpNext && full {
+        // A busy job stands in Up Next without a place: it waits for another process, not in line.
+        let waiting = queue
+            .get(row.id)
+            .is_some_and(|item| item.state.is_waiting());
+        if row.section == Section::UpNext && full && waiting {
             place += 1;
             row.place = Some(place);
         }
@@ -51,9 +56,12 @@ pub(crate) fn rows(queue: &Queue) -> Vec<SidebarRow> {
 /// The full run whose row correction run `item` folds into: the newest finished full run of its
 /// video (the first in the queue, where ended jobs stand newest first), else its last full run.
 /// None for a full run, for a correction run with no full run of its video, and for one that
-/// failed or was cancelled.
+/// failed, was cancelled or is busy.
 fn host(queue: &Queue, item: &QueueItem) -> Option<JobId> {
-    let ended = matches!(item.state, JobState::Failed(_) | JobState::Cancelled { .. });
+    let ended = matches!(
+        item.state,
+        JobState::Failed(_) | JobState::Cancelled { .. } | JobState::Busy { .. }
+    );
     if item.kind != JobKind::Review || ended {
         return None;
     }
@@ -77,7 +85,7 @@ fn finished(state: &JobState) -> bool {
 fn row(item: &QueueItem, folded: &[&QueueItem]) -> SidebarRow {
     let section = match item.state {
         JobState::Running(_) => Section::Now,
-        JobState::Waiting => Section::UpNext,
+        JobState::Waiting | JobState::Busy { .. } => Section::UpNext,
         _ => Section::Done,
     };
     let name = match (item.kind, item.corrections) {

@@ -123,7 +123,8 @@ JSON answers, use structured schemas in the stage that makes the call.
 work/<job id>/            <video file stem as a slug>-<8 hex of its path>
 ├── job.json              the video, its size and time, the settings, and each finished step's
 │                         fingerprint, finish time and measure
-├── job.lock              the pid of the run holding the job
+├── job.redb              the job database, open read-write by the one process running the job
+├── job.lock              the pid of that process, written once it has `job.redb` open
 ├── probe.json            the probe result and the decoded audio track
 ├── audio/                mix_16k.f32, vocals_16k.f32, background_16k.f32 (streamed, chunked)
 ├── shots.json            every shot change with its scdet score

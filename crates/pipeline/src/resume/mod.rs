@@ -1,5 +1,4 @@
-//! Resume: a step's fingerprint, whether its recorded output can be reused, and the lock that
-//! keeps two runs off one job.
+//! Resume: a step's fingerprint, and whether its recorded output can be reused.
 //!
 //! **Role:** a fingerprint hashes the step's name and revision, the settings it reads, the
 //! video's identity (for steps that read the video), and the fingerprint and finish time of each
@@ -8,10 +7,11 @@
 //!
 //! **Position:** used by `runner` before each step.
 //!
-//! **Signals and state:** the lock file holds the running process's pid.
+//! **Signals and state:** reads the job's corrections, the model files and the reference folder
+//! for the fingerprints; writes nothing.
 //!
 //! **Invariants:** re-running a step changes its finish time, so every step that reads it runs
-//! again; a missing output re-runs its step; a lock whose pid is gone is taken over.
+//! again; a missing output re-runs its step.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,6 @@ use job_model::onscreen::TextCorrections;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::error::{Context, PipelineError, Result};
 use crate::graph;
 use crate::work_dir::WorkDir;
 
@@ -221,40 +220,6 @@ pub fn stale_steps(record: &JobRecord, work: &WorkDir) -> Vec<StepName> {
         }
     }
     stale
-}
-
-/// Holds a job's lock file while alive.
-#[derive(Debug)]
-pub struct JobLock {
-    path: std::path::PathBuf,
-}
-
-impl Drop for JobLock {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
-    }
-}
-
-/// Take the job's lock, refusing when another live process holds it.
-pub fn lock(work: &WorkDir) -> Result<JobLock> {
-    let path = work.lock();
-    if let Ok(text) = fs::read_to_string(&path)
-        && let Ok(pid) = text.trim().parse::<u32>()
-        && pid != std::process::id()
-        && Path::new(&format!("/proc/{pid}")).exists()
-    {
-        return Err(PipelineError::new(
-            format!("job {}", work.root().display()),
-            format!(
-                "process {pid} is already running it (lock {})",
-                path.display()
-            ),
-        ));
-    }
-    fs::create_dir_all(work.root()).context(format!("cannot create {}", work.root().display()))?;
-    fs::write(&path, std::process::id().to_string())
-        .context(format!("cannot write {}", path.display()))?;
-    Ok(JobLock { path })
 }
 
 #[cfg(test)]

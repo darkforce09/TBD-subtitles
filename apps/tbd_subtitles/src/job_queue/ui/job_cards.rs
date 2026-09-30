@@ -1,9 +1,10 @@
-//! The cards of a selected job that is not running: waiting, failed or cancelled.
+//! The cards of a selected job that is not running: waiting, busy, failed or cancelled.
 //!
 //! **Role:** draw a waiting job's place in line, when it starts, its path, Run Next (for a full
-//! run) and Remove from List; a failed job's stage in plain words, the raw message in a box, the steps it kept
-//! and when Try Again starts it, with Try Again and Show in Folder; a cancelled job's kept steps
-//! and when Try Again starts it, with Try Again and Remove from List.
+//! run) and Remove from List; a busy job's owning process and that it starts once that process
+//! ends, with Remove from List; a failed job's stage in plain words, the raw message in a box,
+//! the steps it kept and when Try Again starts it, with Try Again and Show in Folder; a cancelled
+//! job's kept steps and when Try Again starts it, with Try Again and Remove from List.
 //!
 //! **Position:** called by `progress_view` for the selected job; the words come from
 //! `status_text`.
@@ -102,6 +103,31 @@ pub(super) fn failed_ui(
                 events.push(JobQueueEvent::Reveal(item.video.clone()));
             }
         });
+    });
+}
+
+/// The card of busy job `item`, whose video process `owner` (when known) runs.
+pub(super) fn busy_ui(
+    ui: &mut Ui,
+    item: &QueueItem,
+    owner: Option<u32>,
+    events: &mut Vec<JobQueueEvent>,
+) {
+    let p = palette(ui);
+    let who = match owner {
+        Some(pid) => format!("Process {pid}, outside this window, runs this video."),
+        None => "Another process, outside this window, runs this video.".to_string(),
+    };
+    card(ui, true, |ui| {
+        card_head(ui, StatusIcon::Waiting, "Busy", |ui| {
+            card_text(
+                ui,
+                &format!("{who} It starts once that process ends."),
+                p.text2,
+            );
+        });
+        well_text(ui, &item.video.display().to_string(), false);
+        buttons(ui, |ui| remove_ui(ui, item, events));
     });
 }
 

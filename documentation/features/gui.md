@@ -68,7 +68,7 @@ list and the line editor side by side.
   2 runtime libraries are missing (10.7 GiB)"), with Details… (the Models tab) and Download; while
   they download it shows the bytes on disk, the item now and a bar, with Stop (a stopped file
   resumes next time); then for a moment "All models are on disk." No job starts before then.
-- **Sidebar:** one row per video in the sections Now (running), Up Next (waiting) and Done
+- **Sidebar:** one row per video in the sections Now (running), Up Next (waiting or busy) and Done
   (finished, failed or cancelled, newest first), each heading with its count and folding away on a
   click. While finished videos have lines to fix, the Done heading holds a small Fix All button with
   a wand just left of its count ("Fix It on the 12 finished videos with lines to fix" on hover),
@@ -100,7 +100,7 @@ list and the line editor side by side.
   failed job's card names the stage and step in plain words ("Failed at Hear the speech", "Listen
   with Whisper stopped with an error."), the raw message, the finished steps kept and when Try
   Again starts it, with Try Again and Show in Folder. A cancelled job's card gives the finished
-  steps kept, with Try Again and Remove from List.
+  steps kept, with Try Again and Remove from List; a busy job's card names the process instead.
 - **Toasts:** short messages at the bottom centre for what the window shows nowhere else, some
   with a button such as Undo; errors are red.
 - **Overview** (a finished job): the file card says "Subtitles saved next to the video" with the
@@ -293,6 +293,8 @@ every language-model call with what was sent and what came back.
   queue on, and neither puts back a video that is already in the list.
 - A full run of a video waits while a correction run of the same video runs, and the reverse; a
   second correction run of a video waits while its first runs, even with a lane free.
+- A job whose `job.redb` another process owns reads "Busy · process 4242 runs this video", not
+  failed; the queue goes on and it waits again once that process ends. Fix It there says so.
 - The queue runs on while the window is minimized. A later launch of the app raises this window
   and queues its videos; a watch folder or Dolphin's entry queues and starts; a job that ends
   while the window is away gives a notification, naming the localized video when it saved one

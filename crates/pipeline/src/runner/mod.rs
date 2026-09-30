@@ -1,14 +1,15 @@
-//! The jo runner: one video through every step, skipping what is still valid, the shot scan
+//! The job runner: one video through every step, skipping what is still valid, the shot scan
 //! alongside the GPU steps, each step's measure recorded, and the report written at the end.
 //!
-//! **Role:** open or create the job's work directory and record, take its lock, walk
+//! **Role:** open or create the job's work directory and record, own its database, walk
 //! `StepName::ALL`, run each stale step in process or in its worker, and record it.
 //!
 //! **Position:** called by the app's `process` subcommand and its window; uses `resume`,
 //! `workers`, `tasks` and `report`.
 //!
-//! **Signals and state:** reads the owner's corrections for their digest; writes `job.json` after
-//! every finished step; emits progress events.
+//! **Signals and state:** holds the job's `JobStore` (and so `job.redb` and `job.lock`) until the
+//! run returns; reads the owner's corrections for their digest; writes `job.json` after every
+//! finished step; emits progress events.
 //!
 //! **Invariants:** `job.json` always describes finished steps only, so a killed job resumes from
 //! the last one; one worker loads the GPU at a time (the shot scan uses none); a step starts only
@@ -30,7 +31,7 @@ use crate::error::{Context, PipelineError, Result};
 use crate::graph::{self, Placement};
 use crate::progress::{Progress, ProgressSink};
 use crate::tasks::{self, Job};
-use crate::work_dir::{self, WorkDir};
+use crate::work_dir::{self, JobStore, WorkDir};
 use crate::workers::{self, Binaries};
 use crate::{report, resume};
 
@@ -79,7 +80,8 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map_or(0, |d| d.as_secs() as i64);
     let work = WorkDir::new(options.work_root.join(work_dir::job_id(&video)));
-    let _lock = resume::lock(&work)?;
+    // Another process running this job makes the open fail with the busy kind.
+    let _store = JobStore::open(&work)?;
     let video_text = video.to_string_lossy().into_owned();
     let mut record = match work_dir::read_json::<JobRecord>(&work.job_json()) {
         Ok(r) if r.video == video_text => r,

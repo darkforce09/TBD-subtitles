@@ -5,7 +5,8 @@
 //! **Role:** when a run ends with changes, mark the lines it changed and queue the correction run
 //! that times them; once that run ended (at once when nothing changed), say what Fix It did in a
 //! toast with See Changes, mark the job just fixed for its result card, and tell the desktop when
-//! the window is away; a stopped or failed run says so, naming its video.
+//! the window is away; a stopped or failed run says so, naming its video, and so does a run
+//! refused because another process runs the video, which is no failure.
 //!
 //! **Position:** part of the application's Fix It actions (`super`); `poll_fix` hands it each run
 //! that ended, the runner each correction run that ended (`fix_run_ended`), and a toast's See
@@ -34,6 +35,16 @@ use crate::job_report::events::{LinesToCheck, ReportEvent};
 use crate::job_report::models::finding_group::LineGroup;
 use crate::job_report::services::fix_it;
 use crate::line_review::services::review_editing;
+
+/// "{name} is busy: process 4242 runs it; Fix It again once it ends", or "another process" when
+/// `job.lock` names none.
+fn busy_words(name: &str, owner: Option<u32>) -> String {
+    let who = owner.map_or_else(
+        || "another process".to_string(),
+        |pid| format!("process {pid}"),
+    );
+    format!("{name} is busy: {who} runs it; Fix It again once it ends.")
+}
 
 /// How long the toast that says Fix It finished shows.
 const FINISHED_SHOWN: Duration = Duration::from_secs(8);
@@ -76,10 +87,14 @@ impl TbdSubtitlesApp {
                      it stopped."
                 ),
             ),
-            Err(error) => self.toast(
-                ToastKind::Error,
-                format!("Fix It failed on {name}: {}", error.message),
-            ),
+            Err(error) => match error.busy_owner() {
+                // Another process runs this video: nothing failed, and nothing was changed.
+                Some(owner) => self.toast(ToastKind::Info, busy_words(&name, owner)),
+                None => self.toast(
+                    ToastKind::Error,
+                    format!("Fix It failed on {name}: {}", error.message),
+                ),
+            },
         }
         self.start_next();
         self.refresh_summaries(Some(&video));

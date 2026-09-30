@@ -10,7 +10,7 @@
 //! **Position:** called by the window's Fix It and the `fix` subcommand; uses `inputs.rs`,
 //! `cache.rs` and `merge.rs`. The caller queues the correction run that times the changes.
 //!
-//! **Signals and state:** takes the job lock; reads the work directory; writes `fix.json`,
+//! **Signals and state:** holds the job's `JobStore` while it runs; reads the work directory; writes `fix.json`,
 //! `fix/calls/` and `review.json`; starts `claude` processes in `claude-cwd/`.
 //!
 //! **Invariants:** each model is `CachedModel(Gated(ClaudeCli))`, so an answer kept on disk never
@@ -37,8 +37,7 @@ use stages::fix_it::{self, FixFailure, Make, Pass};
 
 use crate::cancel::CancelToken;
 use crate::error::{Context, PipelineError, Result};
-use crate::resume;
-use crate::work_dir::{self, WorkDir};
+use crate::work_dir::{self, JobStore, WorkDir};
 
 pub use merge::{Merged, merge};
 
@@ -131,7 +130,8 @@ pub fn fix_job(
     make: &Make<'_>,
     progress: &(dyn Fn(FixProgress) + Sync),
 ) -> Result<FixOutcome> {
-    let _lock = resume::lock(work)?;
+    // Shares the window's handle when a job of this video runs in this process.
+    let _store = JobStore::open(work)?;
     let inputs = inputs::load(work, video, &options.glossary_name)?;
     let glossary = inputs.glossary();
     let episode = inputs.episode(&glossary);

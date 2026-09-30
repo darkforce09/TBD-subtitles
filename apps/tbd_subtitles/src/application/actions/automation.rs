@@ -191,12 +191,12 @@ impl TbdSubtitlesApp {
     }
 }
 
-/// Whether a run of `video` waits or runs in `queue`.
+/// Whether a run of `video` waits, runs or is busy in `queue`.
 fn in_line(queue: &Queue, video: &Path) -> bool {
     queue
         .items
         .iter()
-        .any(|item| item.video == video && (item.state.is_waiting() || item.state.is_running()))
+        .any(|item| item.video == video && item.state.is_queued())
 }
 
 /// The queued history kept in `path`, with every video of `queue` recorded in it.

@@ -4,8 +4,9 @@
 //! **Role:** hand the next waiting full run to the full runner when no full run runs, and waiting
 //! review runs to the review lanes while one is idle; build the job's options, empty its steps to
 //! run again once the pipeline has recorded them, and record how each job ends: finished,
-//! cancelled with the steps it kept, or failed at a step with the steps it kept, moving it ahead
-//! of the jobs that ended before it; tell the desktop when a full run finished or failed while
+//! cancelled with the steps it kept, failed at a step with the steps it kept, moving it ahead
+//! of the jobs that ended before it, or busy while another process runs its video, until that
+//! process ends and it waits again; tell the desktop when a full run finished or failed while
 //! the window is away; tell the open line review when a review run of its video
 //! starts and ends, and Fix It when one ends, once the summaries and the report are read again;
 //! once they are, start Fix It on each full run that finished well when the owner asked for Fix
@@ -20,7 +21,7 @@
 //! **Invariants:** at most one full run runs at once, on its own runner, and up to four review
 //! runs, each on its own review lane (`REVIEW_LANES`), never two of the same video; no job starts
 //! while a model is missing; a job started at once (Try Again, Run Again) leaves the queue off,
-//! and a pause ends once the full lane is idle; a run of a video never starts while another run
+//! and a pause ends once the full lane is idle, while no full run is busy; a run of a video never starts while another run
 //! of the same video runs or Fix It fixes it, and a waiting full run holds its lane meanwhile; a
 //! job takes the settings saved now until it has started once, and its own `job.json` settings
 //! after that, as a review run always does.
@@ -38,7 +39,7 @@ use crate::job_queue::models::progress::JobProgress;
 use crate::job_queue::models::queue::{Failure, JobId, JobKind, JobResult, JobState};
 use crate::job_queue::services::job_runner::{Command, RunnerEvent};
 use crate::job_queue::services::{
-    job_notice, progress_tracking, queue_editing, time_left, video_files,
+    busy_owner, job_notice, progress_tracking, queue_editing, time_left, video_files,
 };
 use crate::settings::models::machine::ItemKind;
 use crate::settings::services::job_settings;
@@ -58,6 +59,12 @@ impl TbdSubtitlesApp {
                         || self.video_fixing(id)
                         || self.models_missing_for(id) => {}
                 Some(id) => self.start(id),
+                // A busy full run keeps the queue on: it waits again once its video is free.
+                None if self
+                    .queue
+                    .items
+                    .iter()
+                    .any(|item| item.kind == JobKind::Full && item.state.is_busy()) => {}
                 None => self.queue.running = false,
             }
         }
@@ -204,6 +211,13 @@ impl TbdSubtitlesApp {
         own.map_or_else(|| job_settings::job_settings(saved), Ok)
     }
 
+    /// Put each busy job whose owning process ended back in line, and start what can start.
+    pub(crate) fn poll_busy(&mut self, now: Instant) {
+        if busy_owner::release_freed(&mut self.queue, now) {
+            self.start_next();
+        }
+    }
+
     /// The shared runtime and this job's models, rather than every new job's model choice.
     pub(crate) fn models_missing_for(&self, id: JobId) -> bool {
         let Ok(settings) = self.settings_for(id) else {
@@ -305,9 +319,16 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
                             wall_s,
                         }),
                         Err(error) if error.is_cancelled() => JobState::Cancelled { kept_steps },
-                        Err(error) => {
-                            JobState::Failed(Failure::new(step, error.to_string(), finished))
-                        }
+                        // Another process runs this video: the job waits for it, it did not fail.
+                        Err(error) => match error.busy_owner() {
+                            Some(owner) => JobState::Busy {
+                                owner,
+                                since: Instant::now(),
+                            },
+                            None => {
+                                JobState::Failed(Failure::new(step, error.to_string(), finished))
+                            }
+                        },
                     };
                     notices.extend(job_notice::ended_notice(item));
                     ended_videos.push(item.video.clone());

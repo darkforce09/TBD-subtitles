@@ -1,12 +1,14 @@
 //! The job's work directory: where every step's output lives, the job id, and JSON written so a
 //! killed job never leaves half a file.
 //!
-//! **Role:** name every path of a job (`job.json`, `audio/`, `asr/`, `adjudication/`, `logs/`,
-//! the outputs) in one place, and read and write the JSON files.
+//! **Role:** name every path of a job (`job.json`, `job.redb`, `audio/`, `asr/`, `adjudication/`,
+//! `logs/`, the outputs) in one place, read and write the JSON files, and hold the job's database
+//! through `store`.
 //!
 //! **Position:** used by every other module of the crate and by the worker tasks.
 //!
-//! **Signals and state:** creates folders and files under the job's folder only.
+//! **Signals and state:** creates folders and files under the job's folder only; `store` keeps a
+//! process-wide registry of the open job databases.
 //!
 //! **Invariants:** every JSON file is written to `<name>.part` and renamed, so a file that exists
 //! is complete; the job id depends only on the video's path.
@@ -22,8 +24,10 @@ use sha2::{Digest, Sha256};
 use crate::error::{Context, Result};
 
 mod corrections;
+pub mod store;
 
 pub use corrections::{corrections_digest, read_corrections, update_corrections};
+pub use store::JobStore;
 
 /// One job's folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +51,11 @@ impl WorkDir {
     pub fn job_json(&self) -> PathBuf {
         self.at("job.json")
     }
+    /// The job database, owned by the one process that has it open.
+    pub fn database(&self) -> PathBuf {
+        self.at("job.redb")
+    }
+    /// The pid of the process that has the job database open, written once the open succeeds.
     pub fn lock(&self) -> PathBuf {
         self.at("job.lock")
     }

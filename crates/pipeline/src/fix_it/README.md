@@ -18,7 +18,7 @@ crates/pipeline/src/fix_it/
 ## How it works
 
 ```text
-fix_video ─▶ job lock ─▶ inputs::load ─▶ stages::fix_it::run (claude, through cache)
+fix_video ─▶ JobStore ─▶ inputs::load ─▶ stages::fix_it::run (claude, through cache)
                                                    │
              review.json ◀─ update_corrections(merge) ◀─ fix.json
 ```
@@ -27,7 +27,9 @@ fix_video ─▶ job lock ─▶ inputs::load ─▶ stages::fix_it::run (claude
 so Stop kills the running `claude` processes, and wraps it in `inference::llm::call_gate::Gated`
 on the run's seat (`FixOptions::calls`): each call takes a slot at the gate the runs share, runs
 started earlier go first, a Stop ends a wait, and a busy answer is asked again after 30, 60 and
-120 s. `fix_job` takes the job lock and refuses a job
+120 s. `fix_job` opens the job's store (`work_dir::JobStore::open`), sharing the handle of a
+job of the same video running in this process and failing with the busy error kind when another
+process owns the job, and refuses a job
 whose quality check or output step has not finished, or whose corrections changed since its last
 run ("your latest corrections are not in the subtitles yet"). It reads the sheet with the
 re-decoded alternatives, the lines with the corrections in place, the corrections, `qc.json`,
@@ -65,7 +67,7 @@ reused from an earlier run", with its purpose.
 ## Boundaries
 
 - Depends on: `stages::fix_it`, `stages::adjudication::redecode`, `inference::llm`,
-  `crate::work_dir`, `crate::resume` (the job lock), `crate::tasks::corrected_lines`, `job_model`,
+  `crate::work_dir` (its `JobStore` too), `crate::tasks::corrected_lines`, `job_model`,
   `sha2`.
 - Used by: `apps/tbd_subtitles/src/application/` (the window's Fix It) and
   `apps/tbd_subtitles/src/cli/` (the `fix` subcommand).

@@ -39,18 +39,18 @@ long-lived thread, and the queue stops when none is left or after the running vi
 A review run (a correction run), queued when the owner saves a correction and counting each
 correction saved while it waits, runs at once on one of four review lanes, each a runner of its
 own, unless a run of the same video is running; only its review step and the steps after it run,
-and up to four correction runs of different videos run at once. Every lane lives in one process, so
-the job lock does not keep them apart: a full run whose video has a review run running waits,
+and up to four correction runs of different videos run at once. Every lane lives in one process,
+which shares one handle of each job's database, so the job store does not keep them apart: a full run whose video has a review run running waits,
 and the full lane waits with it. No job starts while a model or runtime archive is missing.
 
 The sidebar shows one row per video in the sections Now, Up Next and Done (the newest ended job
 first), each under a heading with its count that folds it away; while finished videos have lines
 to fix, Done's heading offers Fix All, which asks the application to start Fix It on each of them
 (`JobQueueEvent::FixAll`). A correction run folds into its video's row, which then reads
-"Updating subtitles · 2 corrections" and offers Stop Updating Subtitles while it runs; one that failed or was cancelled keeps a row of its own, so it can be
-tried again. Each row has a status mark and a status line ("Settling the words · about
+"Updating subtitles · 2 corrections" and offers Stop Updating Subtitles while it runs; one that
+failed or was cancelled keeps a row of its own, so it can be tried again, and so does a busy one. Each row has a status mark and a status line ("Settling the words · about
 4 min left", "Waiting · 2nd in line", "Failed at Hear the speech", "Cancelled · 9 finished steps
-kept"); a finished row gives its verdict and lines to check from its work folder, through the
+kept", "Busy · process 4242 runs this video"); a finished row gives its verdict and lines to check from its work folder, through the
 summary the application reads (`job_report::models::summary::RowSummary`): "Subtitles ready · 38
 to check" with the orange count 38 at its end, "Subtitles ready · fixed by Claude" once Fix It
 answered its lines and none is left to check, "Subtitles ready · all checked", or "Needs
@@ -78,7 +78,13 @@ go to the pipeline as `JobOptions.rerun`, and leave the queue once the pipeline 
 (its first event); a job that fails before that keeps them. Cancel sets the running job's token:
 the pipeline kills its worker and the job ends cancelled with the number of finished steps it
 kept; a failed job records the step that failed (its stage and plain title shown), the message and
-the steps it kept. The runner's events move each step from pending to running (with its progress
+the steps it kept. A job whose database another process owns (a `tbd-subtitles process` run from a
+terminal on the same video) ends busy, not failed: it stands in Up Next with no place in line,
+its row and card name the owner's pid from `job.lock` (or "another process"), and the window,
+which asks for a frame each second while a job is busy, checks `/proc/<pid>` at each frame; once
+that process is gone, or 5 s after a busy end that named no owner, the job waits again and the
+queue starts it (a busy full run keeps the queue on meanwhile). A busy job is never picked to
+run, never queued twice, and `queue.json` saves it as waiting, so a new window tries it again. The runner's events move each step from pending to running (with its progress
 and last line) to done or failed; the time left is each step's measured seconds per second of
 video, from the earlier jobs in the work folder or the pilot's, over the steps still to run, a
 running step judged by its own pace once it reports one. The queue is written to `queue.json`

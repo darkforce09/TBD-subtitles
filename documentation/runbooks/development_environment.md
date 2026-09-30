@@ -231,8 +231,10 @@ into the runtime folder `~/.local/share/tbd-subtitles/runtime/`:
   with `distrobox-host-exec` as in step 7.
 - **`tbd-subtitles-ggml … is missing` at the `asr_whisper` step:** build the worker as in step 12,
   into the same folder as `tbd-subtitles`.
-- **`process <pid> is already running it`:** another run holds the job's `job.lock`. Wait for it,
-  or stop it; a lock whose process is gone is taken over.
+- **`process <pid> is already running it`:** another process has the job's database, `job.redb`,
+  open, and `job.lock` names it. Wait for it, or stop it; once that process ends, the file is free
+  (a file a killed run left is repaired on the next open). "another process is already running it"
+  means `job.lock` names no process.
 - **A step fails:** the error names the step and quotes the end of its log,
   `logs/<step>.log` in the job's work directory. Fix the cause and run the same command again;
   the finished steps are skipped.

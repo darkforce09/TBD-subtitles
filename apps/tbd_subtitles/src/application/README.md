@@ -276,13 +276,17 @@ everything onto disk (the frame asks for a redraw when it goes).
   - a running job shows its length and time so far, Cancel (or "Stopping…"), what its stage does,
     "step 9 of 29", the time left (or that it is being worked out) and its stages with "Show all
     29 steps"; a waiting job its place and when it starts; a job that failed before its first step
-    no stages; and the hint shows while no job is selected
+    no stages; a job another process runs waits busy, naming it, and starts once it ends; and the
+    hint shows while no job is selected
     (`a_running_job_shows_its_stage_its_step_and_its_stages`,
     `a_running_job_works_out_its_time_left_until_its_length_is_known`,
     `a_waiting_job_shows_its_place_and_what_starts_it`,
     `a_job_that_failed_before_its_first_step_shows_no_stages`,
-    `a_failed_job_shows_the_steps_it_ran_as_done_with_their_times` in
-    `tests/rendering_detail.rs`);
+    `a_failed_job_shows_the_steps_it_ran_as_done_with_their_times`,
+    `a_job_another_process_runs_waits_busy_and_starts_once_that_process_ends` in
+    `tests/rendering_detail.rs`); a Fix It refused because another process runs the video is no
+    failure (`a_fix_refused_because_another_process_runs_the_video_is_no_failure` in
+    `tests/rendering_fix_it.rs`);
   - the window draws in the desktop's scheme and follows its changes
     (`the_window_draws_in_the_desktops_scheme`, `a_change_of_the_desktops_scheme_is_followed`);
     the rendering harness installs the theme;

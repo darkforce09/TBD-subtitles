@@ -11,9 +11,9 @@
 //! **Signals and state:** reads and writes `queue.json` (through a part file); reads a failed
 //! job's `job.json` in the work folder.
 //!
-//! **Invariants:** a job running when the window closed waits again; a loaded queue does not run
-//! until the owner presses Start; a file written before a field existed still loads, the field
-//! taking its default, and a job there that no longer waits keeps its own settings.
+//! **Invariants:** a job running or busy when the window closed waits again; a loaded queue does
+//! not run until the owner presses Start; a file written before a field existed still loads, the
+//! field taking its default, and a job there that no longer waits keeps its own settings.
 
 use std::path::{Path, PathBuf};
 
@@ -73,7 +73,10 @@ pub(crate) fn save(path: &Path, queue: &Queue) -> Result<(), String> {
         .iter()
         .map(|item| {
             let (state, failure, kept_steps) = match &item.state {
-                JobState::Waiting | JobState::Running(_) => ("waiting", None, 0),
+                // A busy job waits in the next window, which tries it again.
+                JobState::Waiting | JobState::Running(_) | JobState::Busy { .. } => {
+                    ("waiting", None, 0)
+                }
                 JobState::Finished(_) | JobState::FinishedBefore => ("finished", None, 0),
                 JobState::Failed(failure) => ("failed", Some(failure), failure.kept_steps),
                 JobState::Cancelled { kept_steps } => ("cancelled", None, *kept_steps),
@@ -104,7 +107,7 @@ pub(crate) fn save(path: &Path, queue: &Queue) -> Result<(), String> {
     std::fs::rename(&part, path).map_err(|e| e.to_string())
 }
 
-/// The queue kept in `path`: waiting jobs wait again; a finished, failed or cancelled job comes
+/// The queue kept in `path`: waiting jobs (and busy ones) wait again; a finished, failed or cancelled job comes
 /// back as it was, with its report read from its work directory when shown. No file is an empty
 /// queue; a broken one is an error.
 pub(crate) fn load(path: &Path) -> Result<Queue, String> {

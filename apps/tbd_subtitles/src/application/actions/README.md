@@ -57,7 +57,8 @@ that it could not, in a red one; a copied subtitle path says so in a toast; Fix 
 full lane on its own runner and four review lanes (`job_queue::services::review_lanes`), each with
 a runner of its own: full runs start one after another while the queue runs, and review runs
 start as soon as one waits and a review lane is idle, up to four at once and never two of the same
-video. Every lane runs in this one process, so the job lock does not keep them apart: a review run
+video. Every lane runs in this one process, which shares one handle of each job's database, so
+the job store does not keep them apart: a review run
 waits while another run of its video runs, and the full lane waits while a review run of its next
 video runs. A pause ends once the full
 lane is idle. A job starts only
@@ -66,8 +67,12 @@ and from its own `job.json` after that (a review run always), with the steps it 
 as `JobOptions.rerun`; starting marks the job as keeping its settings. The runners' events fold
 into the queue: progress into the running job (its first event empties the steps to run again,
 which the pipeline has recorded by then, so a job failing before it keeps them), the end into a
-finished job, a cancelled one with the finished steps it kept, or a failed one with the step that
-failed and the steps it had finished (each with its seconds, or still valid), after which the
+finished job, a cancelled one with the finished steps it kept, a failed one with the step that
+failed and the steps it had finished (each with its seconds, or still valid), or a busy one when
+another process owns the job's database (the pipeline's busy error kind, with that process's
+pid); `poll_busy`, before each frame, sets a busy job waiting once `job_queue::services::busy_owner`
+finds its owner gone and starts the next jobs, and a busy full run keeps the queue on. After an
+end the
 step rates, the summaries of the rows of each video whose run ended, the report and an open review
 are read again and the next job of each lane starts. A review run's start, and its end first,
 before the next run starts, are passed to the open review of its video, whose saved lines go
@@ -118,8 +123,10 @@ changed; the job is marked just fixed (`just_fixed`, until another job is select
 card; and while the window is unfocused or minimized (`presence`), the desktop gets a notification
 ("Dressrosa 12 is fixed", "Claude changed 17 lines. The subtitles are ready.") and the window asks
 for its attention. A correction run that fails or is stopped forgets the run; a stopped Fix It
-says nothing changed on that video ("Fix It stopped on Dressrosa 12. …"), and a failed one says
-why ("Fix It failed on Dressrosa 12: …").
+says nothing changed on that video ("Fix It stopped on Dressrosa 12. …"), a failed one says
+why ("Fix It failed on Dressrosa 12: …"), and one refused because another process runs the video
+says so, in an information toast and not as a failure ("Dressrosa 12 is busy: process 4242 runs
+it; Fix It again once it ends.").
 
 `review.rs` opens the selected job's review on its lines to check, narrowed to a group when one
 is named, with the edits it had when it last closed, or says in a red toast why it cannot,

@@ -13,6 +13,7 @@
 //! own settings.
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use job_model::StepName;
 
@@ -86,11 +87,30 @@ pub(crate) enum JobState {
     Cancelled {
         kept_steps: usize,
     },
+    /// Another process owns the job's database, `owner` when `job.lock` names it, since `since`;
+    /// the job waits again once that process ends and then starts with the queue.
+    Busy {
+        owner: Option<u32>,
+        since: Instant,
+    },
 }
 
 impl JobState {
     pub(crate) fn is_waiting(&self) -> bool {
         matches!(self, JobState::Waiting)
+    }
+
+    pub(crate) fn is_busy(&self) -> bool {
+        matches!(self, JobState::Busy { .. })
+    }
+
+    /// Whether the job is still to run or runs: waiting, running, or busy until another process
+    /// lets its video go.
+    pub(crate) fn is_queued(&self) -> bool {
+        matches!(
+            self,
+            JobState::Waiting | JobState::Running(_) | JobState::Busy { .. }
+        )
     }
 
     pub(crate) fn is_running(&self) -> bool {
