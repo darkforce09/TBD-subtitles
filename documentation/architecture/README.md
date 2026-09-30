@@ -9,6 +9,7 @@ into a subtitle file, and the layout rules every subtitle file follows.
 
 ```text
 documentation/architecture/
+├── binary_storage_plan.md           proposal: step outputs in redb with rkyv, per-frame tables, a sign library
 ├── pipeline.md                      every stage from video to subtitle file, with its rules and guards
 ├── subtitle_style_rules.md          Netflix English SDH layout and timing rules, as the cue builder applies them
 ├── system_overview.md               processes, crates and layers, job work directory, models, configuration
