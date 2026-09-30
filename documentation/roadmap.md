@@ -174,6 +174,68 @@ Details: [Japanese on-screen text](/documentation/features/japanese_onscreen_tex
 **Acceptance:** the owner watches a localized Dressrosa episode with its `.localized.ass` in VLC
 and accepts it, and accepts the localized video's review in Check Text.
 
+## M6 — 24 GB workstation scaling (DDR5-6000 high-throughput architecture)
+
+Following the completion of the redb and rkyv binary storage foundation, scale directly to the
+owner's 32 GB DDR5-6000 workstation hardware (24 GB RAM target, 5.5 GB worker VRAM boundary),
+bypassing throwaway intermediate 8 GB/16 GB redesigns.
+
+- [ ] Full 1080p native visual screening across 28 threads (no 640-pixel proxy information loss).
+- [ ] Concurrent audio recognition and visual screening execution (35–45% total wall-time reduction).
+- [ ] In-memory uncompressed video frame ring buffers (3–4 GB) for zero-stall decoding and encoding.
+- [ ] 6–8 GB resident plate, mask, and composed patch cache (zero disk reads during localization).
+- [ ] Resident in-memory Mel spectrogram tensor cache shared across VAD, CED, alignment, and ASR.
+- [ ] Upgraded local translation models (Qwen 7B / 14B) for near-human Japanese idiom translation.
+
+Details: [Memory profiles](/documentation/optimizations/memory_profiles.md).
+
+**Acceptance:** Dressrosa 11 processes end-to-end in under 4 minutes wall time with zero disk
+thrashing; visual text screening runs at native 1080p; audio and visual screening run concurrently.
+
+## M7 — High-accuracy dialogue and audio ensembling
+
+Advance dialogue accuracy from 95% to 99%+ by closing the diff-sheet backbone blind spot,
+biasing Whisper toward arc vocabulary, enabling self-learning series glossaries, and utilizing
+the 24 GB memory headroom for full-bandwidth separation.
+
+- [ ] Full-bandwidth 44.1 kHz / 48 kHz stereo vocal separation preserving high-frequency consonant transients.
+- [ ] Multi-model separation ensemble (Mel-Band RoFormer + HTDemucs v4) eliminating vocal dropouts.
+- [ ] Symmetric orphan recovery in `diff_sheet`: preserve speech heard by secondary engines when
+      the backbone chunk has zero words.
+- [ ] Dynamic arc vocabulary prompt in Whisper (`initial_prompt` via CrispASR) to eliminate
+      phonetic English drift on character names, attacks, and locations.
+- [ ] Self-learning series dictionary in `library.redb`: confirmed name corrections in Check Lines
+      automatically propagate to subsequent queued episodes.
+- [ ] Conversational dialogue context windows in Claude adjudication (feeding the previous three
+      settled utterances).
+- [ ] Selective vocal stem normalization and consonant pre-emphasis for `UNSURE` re-decodes.
+- [ ] Third ASR engine acoustic voting (Qwen3-ASR or Canary) to break 1-vs-1 engine ties.
+- [ ] Global episode-wide acoustic memory for automated speaker diarization and character attribution.
+
+Details: [Audio accuracy](/documentation/optimizations/audio_accuracy.md).
+
+**Acceptance:** zero spoken lines dropped across an entire episode; proper-noun errors reduced to
+under one per episode on Dressrosa benchmark episodes; speech recognition exhibits zero consonant clipping.
+
+## M8 — Advanced visual tracking and video acceleration
+
+Achieve sub-pixel perspective stability on moving signs, eliminate inpainting flicker, and
+accelerate `localized_video` from minutes to seconds.
+
+- [ ] Planar homography and optical flow tracking: compute 3×3 perspective transformation matrices
+      per frame and store them in `job.redb`.
+- [ ] Motion-compensated plate warping: inpaint primary keyframes with LaMa and warp plates along
+      tracking vectors to eliminate background flicker.
+- [ ] Smart lossless segment re-encoding: cut video at GOP boundaries, re-encode only intervals
+      with active patches, and concatenate untouched footage losslessly (`localized_video` under 15 seconds).
+- [ ] Trajectory smoothing (Kalman filtering) and shot-boundary snapping for entrance/exit stability.
+- [ ] Multi-modal audio-visual synchronization: snap on-screen text appearances to sharp sound cues.
+
+Details: [Visual and video](/documentation/optimizations/visual_and_video.md).
+
+**Acceptance:** localized video encoding for a 30-minute episode finishes in under 20 seconds; moving
+text replacements exhibit zero jitter and zero background flicker.
+
 ## Later
 
 Items the owner moved out of the pipeline milestone to keep it small (see the

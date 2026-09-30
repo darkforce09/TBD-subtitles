@@ -15,6 +15,7 @@ documentation/
 ├── decisions/           dated decision log, one file per subject
 ├── features/            one document per user-facing feature: GUI, automation, Japanese text
 ├── glossary.md          the project's terms and abbreviations
+├── optimizations/       dialogue accuracy, visual tracking, fast re-encoding, memory scaling
 ├── research/            dated research snapshots: speech recognition and the Rust ML stack
 ├── roadmap.md           milestones with checklists, acceptance tests and open questions
 ├── runbooks/            procedures: development environment, continuing in Claude Code
@@ -59,6 +60,7 @@ When two sources disagree, the higher one wins and the lower one is corrected:
 | the processes, crates and data flow | [architecture/](/documentation/architecture/README.md) |
 | each stage from video to subtitle file | [architecture/pipeline.md](/documentation/architecture/pipeline.md) |
 | how subtitles must look and be timed | [architecture/subtitle_style_rules.md](/documentation/architecture/subtitle_style_rules.md) |
+| optimization designs, audio accuracy and memory scaling | [optimizations/](/documentation/optimizations/README.md) |
 | which Rust crates and model files to use | [research/rust_ml_stack.md](/documentation/research/rust_ml_stack.md) |
 | a planned feature's behaviour | [features/](/documentation/features/README.md) |
 | how to set up, build, run or hand over | [runbooks/](/documentation/runbooks/README.md) |

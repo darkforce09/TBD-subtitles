@@ -55,7 +55,7 @@ version do not match the dub's words or cut.
 | Timing | Aligner-to-engine word timing median difference under 30 ms; no speech longer than 1 s left without a cue |
 | Layout | QC finds no overlaps, no cue over 42 characters per line or two lines, no cue under 5/6 s; at least 95 % of cues at or under 20 characters per second |
 | Speed | 120-minute video in 30 minutes or less; each stage's time recorded in the job report |
-| Memory | Peak RAM under 8 GB; each GPU stage fits in 5.5 GB of VRAM |
+| Memory | Peak RAM within 24 GB; each GPU stage fits in 5.5 GB of VRAM |
 | Robustness | Killing the app mid-job and restarting resumes from the last finished stage |
 
 ## Performance budget

@@ -190,3 +190,22 @@ optionally, `claude`.
 **Supersedes:** 2026-09-25 — Repository tooling may run git and cargo (widens what `tools/`
 programs may run as child processes).
 
+
+### 2026-09-30 — The pipeline targets the owner's 32 GB machine: 24 GB of RAM
+
+**Context:** The 8 GB RAM limit kept the prototype lean, but it rules out full-resolution text
+screening, per-frame data held for a whole shot, longer separation windows and steps running side
+by side. The app runs on one machine, the owner's: an i7-14700K with 32 GB of DDR5-6000 and an
+RTX 3070. Designing for 8 GB or 16 GB machines serves no user.
+
+**Decision:** Peak RAM stays within 24 GB, leaving 8 GB to the desktop; each GPU worker stays
+within 5.5 GB of VRAM, the card's 8 GB less the display's share. Memory stays bounded: audio and
+frames are streamed or held in bounded windows, never grown with the video without limit.
+
+**Consequences:** Law 5 of CLAUDE.md and the memory row of the success criteria change. Work
+limited by the GPU (the detector, LaMa, speech models, the local translation model) gains nothing
+from the extra RAM; the VRAM cap still decides which models fit. Each use of the headroom is
+measured on a real episode before it is kept.
+
+**Supersedes:** the 8 GB RAM limit of law 5 and of the success criteria in
+[vision and goals](/documentation/vision_and_goals.md).

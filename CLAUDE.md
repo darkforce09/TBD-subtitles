@@ -91,9 +91,11 @@ the [video inpainting pipeline](/documentation/architecture/video_inpainting_pip
    safetensors); we never convert models.
 5. **Fast and bounded.** The completed M1 audio pipeline has a 30-minute target for a 120-minute
    video on the RTX 3070. Visual processing may take additional time, measured separately on one
-   20–30-minute episode for M4 acceptance. Retain the 8 GB RAM and 5.5 GB worker VRAM limits.
-   Audio is streamed and chunked, never held whole at 44.1 kHz; visual scans stream frames and
-   retain representative crops and bounded tracking data rather than extracting the whole video.
+   20–30-minute episode for M4 acceptance. The pipeline targets the owner's machine: peak RAM
+   within 24 GB (32 GB installed, 8 GB left to the desktop) and each GPU worker within 5.5 GB of
+   VRAM. Memory stays bounded: audio and frames are streamed or held in bounded windows, and
+   visual steps keep crops and per-frame records in the job's database rather than extracting
+   the whole video.
 6. **Resumable steps.** Each step commits its output and its record in one transaction, and is
    skipped while its record's revision and input fingerprint are current. One process owns a
    job's `job.redb`; values are `rkyv` archives; no JSON fallback, importer or migration
@@ -215,6 +217,7 @@ BtbN autobuild is gone: re-pin it in `tools/appimage_builder/src/ffmpeg/`. Detai
 | What is decided? | [Decisions](/documentation/decisions/) |
 | What comes next? | [Roadmap](/documentation/roadmap.md) |
 | How does the pipeline work? | [Pipeline](/documentation/architecture/pipeline.md) |
+| What optimizations and accuracy steps are planned? | [Optimizations](/documentation/optimizations/README.md) |
 | Which Rust crates and models? | [Rust ML stack](/documentation/research/rust_ml_stack.md) |
 | How should subtitles look? | [Subtitle style rules](/documentation/architecture/subtitle_style_rules.md) |
 | What does a word mean? | [Glossary](/documentation/glossary.md) |
