@@ -21,8 +21,23 @@ use serde::{Deserialize, Serialize};
 use super::StageName;
 
 /// One step of the pipeline.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
+#[rkyv(compare(PartialEq), derive(Debug, PartialEq, Eq, PartialOrd, Ord))]
 pub enum StepName {
     /// ffprobe the video and stream the mix to 16 kHz mono.
     ProbeDecode,

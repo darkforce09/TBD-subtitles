@@ -14,7 +14,8 @@ crates/job_model/src/
 ├── model_call/  one language-model call for the app's log window, and the worker line carrying it
 ├── outputs/     the typed output of each step, one JSON file per step in the work directory
 ├── report/      the quality check's result: every check, its findings and the summary counts
-└── stage/       every stage and every step in run order, with the names they carry
+├── stage/       every stage and every step in run order, with the names they carry
+└── tests/       the rkyv round trip every module's `tests/archive.rs` runs
 ```
 
 ## How it works
@@ -24,7 +25,10 @@ subcommands and the work directory all use those names. `job/` holds the record 
 by step, with the settings every step's fingerprint reads. `outputs/` holds what each step writes,
 from the probe result to the aligned words, and `report/` the quality check's result that
 `report.md` is rendered from. Everything here is plain data: no module reads a file, spawns a
-process or holds state.
+process or holds state. Every data type derives serde, for the JSON files, and rkyv's `Archive`,
+`Serialize` and `Deserialize`, for the job database of the
+[binary storage plan](/documentation/architecture/binary_storage_plan.md); path fields archive as
+UTF-8 strings.
 
 ## Public surface
 
@@ -44,11 +48,13 @@ process or holds state.
 
 ## Boundaries
 
-- Depends on: `serde` for the derives.
+- Depends on: `serde` and `rkyv` (with `unaligned`) for the derives.
 - Used by: every other product crate and both app binaries.
 - Rules: the JSON names never change once a step writes them, so a resumed job reads what an
   earlier run wrote (`json_names_match_the_command_line_names` in `stage/tests/stage_name.rs`,
-  `steps_serialise_by_name` in `stage/tests/step_name.rs`).
+  `steps_serialise_by_name` in `stage/tests/step_name.rs`); every data type round-trips through
+  rkyv from a misaligned slice (`round_trip` in `tests/archive_round_trip.rs`, run by each
+  module's `tests/archive.rs`).
 
 ## Related documentation
 

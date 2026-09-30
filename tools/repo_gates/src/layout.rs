@@ -36,6 +36,7 @@ pub(crate) const TOOL_DEPENDENCIES: &[(&str, &[&str])] = &[
         "appimage_builder",
         &["app_icon", "child_process", "inference"],
     ),
+    ("redb_process_probe", &[]),
     ("repo_gates", &["verification_core"]),
     (
         "stack_spike",

@@ -10,13 +10,14 @@ app; the AppImage builder only packs it.
 
 ```text
 tools/
-├── visual_validation/  visual pilot recognition and annotated acceptance checks
-├── appimage_builder/   the `cargo appimage` builder: the app, its GPU libraries and FFmpeg in one AppImage
-├── repo_gates/         the `cargo gates` runner: one gate per checkable repository law
-├── stack_spike/        the measuring harness: each ML stack piece on one video, and the model downloads
-├── stack_spike_ggml/   the stack spike's worker for the ggml models, a binary of its own
-├── stack_spike_llm/    the stack spike's worker for the local language model, a binary of its own
-└── verification_core/  the fail-closed verdict library every gate reports through
+├── appimage_builder/    the `cargo appimage` builder: the app, its GPU libraries and FFmpeg in one AppImage
+├── redb_process_probe/  how redb behaves when a second process opens a job database
+├── repo_gates/          the `cargo gates` runner: one gate per checkable repository law
+├── stack_spike/         the measuring harness: each ML stack piece on one video, and the model downloads
+├── stack_spike_ggml/    the stack spike's worker for the ggml models, a binary of its own
+├── stack_spike_llm/     the stack spike's worker for the local language model, a binary of its own
+├── verification_core/   the fail-closed verdict library every gate reports through
+└── visual_validation/   visual pilot recognition and annotated acceptance checks
 ```
 
 ## How it works
@@ -50,7 +51,12 @@ packaging program.
 language model, each a binary of its own because ggml, candle and ONNX Runtime cannot share a
 process.
 
-All six crates are members of the one Cargo workspace. The gate crates may run `git` and
+`redb_process_probe` is a binary crate that tests redb rather than the repository: it opens one
+database file from two processes (it starts itself again as the second), read-write and
+read-only, idle, writing and killed, and prints what redb did as a Markdown table; it also reads
+an rkyv archive in place from a redb value. It depends on no workspace crate.
+
+All eight crates are members of the one Cargo workspace. The gate crates may run `git` and
 `cargo` as child processes; the AppImage builder also runs the app it built and the FFmpeg it
 bundles, to check them; the app never runs `git` or `cargo`.
 
@@ -75,9 +81,11 @@ tests need `git` on the `PATH`: some build a temporary git checkout, and some ju
   `crates/media_io`, `crates/stages` and `crates/job_model` in the stack spike tools, and
   `crates/pipeline` (its measurements) in `stack_spike`; `crates/inference` in
   `appimage_builder`; the crates.io crates `clap`, `anyhow`, `regex`, `syn`, `proc-macro2`,
-  `toml`, `object`, `backhand` and `png`; the `git` and `cargo` programs.
-- Used by: people and agents before a commit, through `cargo gates`, a developer measuring the
-  stack, through `stack-spike`, and a developer packaging the app, through `cargo appimage`; no product crate depends on anything here.
+  `toml`, `object`, `backhand`, `png`, `redb` and `rkyv`; the `git` and `cargo` programs.
+- Used by: people and agents before a commit, through `cargo gates`; a developer measuring the
+  stack, through `stack-spike`; a developer packaging the app, through `cargo appimage`; a
+  developer checking redb across processes, through `redb-process-probe`; no product crate
+  depends on anything here.
 - Rules:
   - a tool depends only on the workspace crates the tool table in
     `tools/repo_gates/src/layout.rs` lists for it (`cargo gates crate-layering`, and the

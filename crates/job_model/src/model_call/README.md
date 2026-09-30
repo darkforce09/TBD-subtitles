@@ -8,7 +8,7 @@ schema sent, the answer that came back or why there was none, the tokens, the co
 ```text
 crates/job_model/src/model_call/
 ├── mod.rs  `ModelExchange` and the worker's stdout line that carries it (`model-call <json>`)
-└── tests/  unit tests of the line's round trip and of lines that carry no call
+└── tests/  unit tests of the line's round trip, of lines that carry no call and of the rkyv archive
 ```
 
 ## How it works

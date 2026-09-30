@@ -10,7 +10,7 @@ crates/job_model/src/stage/
 ├── mod.rs         the module tree and the re-exports of the stage and step names
 ├── stage_name.rs  every stage in run order, with its name and whether it runs in a worker
 ├── step_name.rs   every step in run order, with its name and the stage it belongs to
-└── tests/         unit tests for the stage and step names
+└── tests/         unit tests for the stage and step names, JSON and rkyv
 ```
 
 ## How it works

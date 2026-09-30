@@ -2,9 +2,10 @@
 
 # Binary storage: redb and rkyv
 
-The proposed move of every job's step outputs from loose JSON files into one embedded `redb`
+The approved move of every job's step outputs from loose JSON files into one embedded `redb`
 database per job, with values archived by `rkyv`, and of approved signs into one library shared
-by every episode. It is a proposal the owner has not approved; nothing here is built.
+by every episode. The owner approved it; phase 1 (the decision, the pinned releases and the
+archived types) is built, and no step reads or writes a database yet.
 
 ## Why
 
@@ -36,18 +37,32 @@ of erasing, lettering and asking Claude again.
 
 ## Process ownership
 
-`redb` is expected to let one process open a database file at a time, a second open failing;
-phase 1 confirms it against the pinned release before anything depends on it. The pipeline runs
-GPU steps in separate worker processes (law 7), and the window reads a job while it runs, so:
+`redb` 4.3.0 with default features (the pinned release) allows one process per database file while
+it writes. A read-write open locks the file exclusively and a read-only open locks it shared, with
+non-blocking open-file locks, so while a process holds `job.redb` read-write every other open, read
+or write, from another process or from a second handle in the same process, fails at once with
+`DatabaseAlreadyOpen`; read-only opens share only with each other. A file left by a killed writer
+refuses read-only opens (`RepairAborted`) until a read-write open repairs it, which takes a few
+milliseconds and keeps every committed transaction. The locks hold across the container and the
+host. The `experimental-multiprocess` feature's `SingleWriter` mode would let readers open beside
+the writer, but it is part of the redb 5 API preview, so this plan does not use it
+([measurements](/documentation/research/redb_multi_process.md)). The pipeline runs GPU steps in
+separate worker processes (law 7), and the window reads a job while it runs, so:
 
-- **The runner owns `job.redb`.** Only the process running the job opens it, for the whole job.
+- **The runner owns `job.redb`.** Only the process running the job opens it, read-write, once,
+  for the whole job, and writes its process id to `job.lock` first. That open also repairs a file
+  a crashed run left.
 - **Workers never open it.** The runner hands a worker its inputs (as today: arguments, stdin, or
   files it writes for the worker) and the worker returns its output on stdout or in a file under
   `work/<job>/exchange/`; the runner validates it and commits it.
 - **The window reads through its runner.** The window runs jobs in its own process and shares
-  that process's handle. When another process owns a job (a `tbd-subtitles process` run from a
-  terminal), the window shows the job as busy and opens it after that process exits, and writes
-  corrections only then; `review.json.lock` and Fix It's writes move to the same rule.
+  that process's one handle per job (a second handle in the same process fails like one
+  from another process). When another process owns a job (a `tbd-subtitles process` run from a
+  terminal), its open fails with `DatabaseAlreadyOpen`; the window shows the job as busy, reads
+  `job.lock` to name the owner, retries after that process exits, and writes corrections only
+  then; `review.json.lock` and Fix It's writes move to the same rule.
+- **A job no process runs** is opened read-write by whichever process needs it (the window, `dump`,
+  a correction run), so a crashed job is repaired before anything reads it.
 - **Fix It and corrections** write through the owning process in one transaction each.
 
 ## Storage layout
@@ -92,12 +107,12 @@ rerun, and Git keeps the old code.
 
 ## Resume and reruns
 
-Law 6 becomes: *each step commits its output and its record in one transaction, and is skipped
+Law 6 reads: *each step commits its output and its record in one transaction, and is skipped
 while its record's revision and input fingerprint are current.* A rerun of a step deletes that
 step's output and record and those of every step that reads it (the graph in
 `crates/pipeline/src/graph/`), plus their `frames` and `readings` rows, in one transaction; files
-they named become unreferenced and are removed on the next open. A decision entry records the
-new law, and CLAUDE.md changes with it.
+they named become unreferenced and are removed on the next open. The
+[decision entry](/documentation/decisions/storage.md) records the law.
 
 ## Library shared by episodes
 
@@ -105,8 +120,10 @@ new law, and CLAUDE.md changes with it.
 sign's keyframe crop: the English, the lettering style, and the patch and mask of the approved
 replacement. A later occurrence whose crop matches starts from the stored translation and
 lettering and is still erased, composed and read back in its own frames. The window's Settings
-shows the library's size and clears it. Only the running job writes to it, one sign per
-transaction; readers open it read-only only when no job runs, otherwise through the runner.
+shows the library's size and clears it. A job run from a terminal and the window can run at the
+same time, and a second open of the file fails at once, so no process keeps `library.redb` open: a
+process opens it read-write for one transaction (a lookup, or one approved sign), closes it, and
+retries after a short wait while another process holds it.
 
 ## Phases
 
@@ -114,11 +131,13 @@ Each phase passes `cargo fmt`, `clippy -D warnings`, `cargo test --workspace` an
 and reruns Dressrosa 11 and 28 with identical `.ass` and `.localized.ass` files and the same
 `text_verify` verdicts.
 
-1. **Decision and types.** A test program confirms how `redb` behaves when a second process
-   opens a database (and whether a read-only open is possible while another process writes),
-   and this plan's ownership rules are corrected to what it finds. Decision entry and the new
-   law 6. Current `redb` and `rkyv` releases pinned in the workspace. `rkyv` derives on every `job_model` type, with string forms for
-   `PathBuf` and ordered maps where `HashMap` does not archive; round-trip tests per type.
+1. **Decision and types (done).** `tools/redb_process_probe` measured how `redb` behaves when a
+   second process opens a database ([findings](/documentation/research/redb_multi_process.md)),
+   and the ownership rules above follow them. The [decision entry](/documentation/decisions/storage.md)
+   and the new law 6. `redb` 4.3.0 pinned by the probe (the pipeline takes the same pin in phase
+   2) and `rkyv` 0.8.18 by `job_model`, its format pinned to `unaligned`, `little_endian` and
+   `pointer_width_32`. `rkyv` derives on every `job_model` type,
+   `PathBuf` archived as a UTF-8 string, both maps already ordered; round-trip tests per type.
 2. **Store, ownership and dump.** `JobStore` in `crates/pipeline/src/work_dir/` owns `job.redb`,
    opens it once per job, and exposes typed `put`/`get`/archived `view` per table. The runner
    passes worker outputs through `exchange/`. `tbd-subtitles dump <job_or_video> <table> [key]`

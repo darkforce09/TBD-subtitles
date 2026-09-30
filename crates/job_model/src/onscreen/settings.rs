@@ -9,11 +9,21 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(default)]
 pub struct TextSettings {
     pub enabled: bool,
     pub claude_fallback: bool,
+    #[rkyv(with = rkyv::with::Map<rkyv::with::AsString>)]
     pub reference_folder: Option<PathBuf>,
     /// Erase replaceable writing and draw its English into `<video>.localized.mkv`.
     pub localized_video: bool,

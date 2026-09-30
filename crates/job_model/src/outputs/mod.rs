@@ -27,3 +27,7 @@ pub use sound_cues::{CandidateKind, SoundCandidate, SoundCue, SoundCues};
 pub use sound_events::SoundEvent;
 pub use speech::{SpeechPlan, TimeSpan};
 pub use words::{ChunkWords, EngineTranscript, TimedWord};
+
+#[cfg(test)]
+#[path = "tests/archive.rs"]
+mod archive_tests;

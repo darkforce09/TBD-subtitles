@@ -15,6 +15,7 @@ members = [
     "crates/stages",
     "crates/subtitle_formats",
     "tools/appimage_builder",
+    "tools/redb_process_probe",
     "tools/repo_gates",
     "tools/stack_spike",
     "tools/stack_spike_ggml",

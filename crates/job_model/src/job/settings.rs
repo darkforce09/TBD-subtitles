@@ -14,8 +14,20 @@
 use serde::{Deserialize, Serialize};
 
 /// The vocal-separation model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
+#[rkyv(compare(PartialEq), derive(Debug, PartialEq, Eq))]
 pub enum Separator {
     /// Mel-Band RoFormer: the default, the cleaner vocal stem.
     Roformer,
@@ -24,8 +36,20 @@ pub enum Separator {
 }
 
 /// The second speech engine's model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
+#[rkyv(compare(PartialEq), derive(Debug, PartialEq, Eq))]
 pub enum WhisperModel {
     /// Whisper large-v3: the default.
     LargeV3,
@@ -34,8 +58,21 @@ pub enum WhisperModel {
 }
 
 /// The subtitle file format the output step writes.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
+#[rkyv(compare(PartialEq), derive(Debug, PartialEq, Eq))]
 pub enum OutputFormat {
     /// SubRip: the default, what VLC and every player read.
     #[default]
@@ -60,7 +97,16 @@ impl OutputFormat {
 }
 
 /// Everything that changes a job's output. A step's fingerprint covers the settings it reads.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct JobSettings {
     pub separator: Separator,
     pub whisper: WhisperModel,

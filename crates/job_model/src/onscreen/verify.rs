@@ -15,7 +15,17 @@ use serde::{Deserialize, Serialize};
 use super::ReplacementDocument;
 
 /// What the OCR found in one finished frame of an occurrence.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct VerifyReading {
     /// The frame index read, on the decoded timeline.
     pub frame: u64,
@@ -30,7 +40,17 @@ pub struct VerifyReading {
 }
 
 /// The readings of one checked occurrence, in frame order.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct TextCheck {
     /// The `TextOccurrence` id.
     pub id: String,
@@ -53,7 +73,17 @@ impl TextCheck {
 }
 
 /// The replacements after the read-back check, with what it read.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct VerifiedReplacements {
     #[serde(flatten)]
     pub document: ReplacementDocument,

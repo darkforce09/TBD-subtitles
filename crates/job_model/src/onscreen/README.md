@@ -10,7 +10,7 @@ crates/job_model/src/onscreen/
 ├── mod.rs       geometry, observations, translations, corrections and summary counts
 ├── settings.rs  new-job and saved-job defaults
 ├── verify.rs    the read-back check's result: replacements with final statuses and each reading
-└── tests/       correction validation, compatibility defaults, replacement invariants, checks
+└── tests/       correction validation, compatibility defaults, replacement invariants, rkyv
 ```
 
 ## How it works

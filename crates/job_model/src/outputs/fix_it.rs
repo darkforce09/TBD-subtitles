@@ -24,8 +24,23 @@ use crate::job::JobRecord;
 use crate::report::{QcCheck, QcReport};
 
 /// The kinds of problem Fix It asks about, in the order it asks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
+#[rkyv(compare(PartialEq), derive(Debug, PartialEq, Eq, PartialOrd, Ord))]
 pub enum FixFamily {
     /// Unsure lines, words no engine heard, heard words replaced, and lines that do not fit.
     Words,
@@ -49,14 +64,34 @@ impl FixFamily {
 }
 
 /// A line the first pass found out of place in the conversation.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct Suspect {
     pub id: String,
     pub why: String,
 }
 
 /// What the first pass worked out about the video from its names and its lines.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct FixBrief {
     /// The series, such as "One Piece (anime), English dub".
     pub show: String,
@@ -72,7 +107,16 @@ pub struct FixBrief {
 }
 
 /// One family's change to a line, as it passed the guard.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct FixStep {
     pub family: FixFamily,
     pub text: String,
@@ -81,7 +125,16 @@ pub struct FixStep {
 }
 
 /// What became of a line Fix It asked about.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum FixVerdict {
     /// Nothing to write: no answer, or no change worth keeping.
@@ -118,7 +171,16 @@ impl FixVerdict {
 }
 
 /// One line Fix It asked about.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct LineFix {
     pub id: String,
     /// The problems it was asked about, in words.
@@ -168,7 +230,17 @@ impl LineFix {
 }
 
 /// The quality check's problems before the first Fix It run.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct FixBefore {
     /// Findings per check.
     pub counts: BTreeMap<QcCheck, usize>,
@@ -198,7 +270,17 @@ impl FixBefore {
 
 /// Every Fix It run of a video: the latest run's lines with the lines earlier runs answered, and
 /// what all the calls cost.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct FixRecord {
     /// The `claude` model, such as `opus`.
     pub model: String,

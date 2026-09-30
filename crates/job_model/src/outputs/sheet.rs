@@ -6,7 +6,16 @@ use serde::{Deserialize, Serialize};
 use super::words::TimedWord;
 
 /// One utterance of the sheet.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct Utterance {
     pub id: String,
     pub start_s: f64,

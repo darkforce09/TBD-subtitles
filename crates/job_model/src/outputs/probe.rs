@@ -1,9 +1,26 @@
 //! What ffprobe found in a video: its duration, its video stream and its audio tracks.
+//!
+//! **Role:** describe the video's streams for every step that decodes it.
+//!
+//! **Position:** returned by `media_io`; kept in `probe.json` by the probe-and-decode step.
+//!
+//! **Signals and state:** none; plain data, written as JSON and archived with rkyv.
+//!
+//! **Invariants:** a stream field ffprobe does not report is `None`, never a guessed value.
 
 use serde::{Deserialize, Serialize};
 
 /// The probe result kept in `job.json`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct ProbeResult {
     /// The container's duration in seconds.
     pub duration_s: f64,
@@ -14,7 +31,17 @@ pub struct ProbeResult {
 }
 
 /// One video stream.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct VideoStream {
     pub index: u32,
     pub codec: String,
@@ -47,7 +74,16 @@ pub struct VideoStream {
 }
 
 /// One audio stream.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct AudioStream {
     /// The stream index in the file, as ffprobe numbers it.
     pub index: u32,
@@ -70,7 +106,16 @@ impl VideoStream {
 
 /// What the probe-and-decode step keeps in `probe.json`: the probe, the audio track it decoded,
 /// and how many 16 kHz samples the mix file holds.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct ProbeDecoded {
     pub probe: ProbeResult,
     pub track: AudioStream,

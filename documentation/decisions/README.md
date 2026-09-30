@@ -16,7 +16,8 @@ documentation/decisions/
 ├── desktop_gui.md         the window, its queue, report, review and settings, and the batch
 ├── foundations.md         what is built, in what language, with which programs, where files go
 ├── onscreen_detection.md  how the detection step screens proxies: batch, arena, which detector
-└── stack_and_pipeline.md  the runtimes, models and binaries, the pipeline's steps, the pilot
+├── stack_and_pipeline.md  the runtimes, models and binaries, the pipeline's steps, the pilot
+└── storage.md             the job database, archived values, the owning process, the sign library
 ```
 
 ## How it works

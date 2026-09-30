@@ -5,7 +5,16 @@ use serde::{Deserialize, Serialize};
 use super::speech::TimeSpan;
 
 /// One word with its time in seconds from the start of the video.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct TimedWord {
     /// The word as the engine wrote it, with any punctuation attached.
     pub text: String,
@@ -16,7 +25,17 @@ pub struct TimedWord {
 }
 
 /// One engine's words over the chunk plan.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct EngineTranscript {
     /// The engine and model, such as `parakeet-tdt-0.6b-v2`.
     pub engine: String,
@@ -26,7 +45,16 @@ pub struct EngineTranscript {
 }
 
 /// The words heard in one chunk.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct ChunkWords {
     pub span: TimeSpan,
     pub words: Vec<TimedWord>,

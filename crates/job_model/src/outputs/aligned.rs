@@ -1,10 +1,33 @@
 //! The final words with their times and where each time came from, as kept in `aligned.json`.
+//!
+//! **Role:** carry the timed final words from the alignment to the cues and the quality check.
+//!
+//! **Position:** written by the alignment stage and the review step; read by the cue layout and
+//! the quality check.
+//!
+//! **Signals and state:** none; plain data, written as JSON and archived with rkyv.
+//!
+//! **Invariants:** utterances are in time order; every word names the source that timed it.
 
 use serde::{Deserialize, Serialize};
 
 /// Which source timed a word, best first.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
+#[rkyv(compare(PartialEq), derive(Debug, PartialEq, Eq, PartialOrd, Ord))]
 pub enum TimingSource {
     /// The CTC aligner, over a whole block.
     Ctc,
@@ -35,7 +58,16 @@ impl TimingSource {
 }
 
 /// One displayed word with its time in video seconds.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct AlignedWord {
     pub text: String,
     pub start_s: f64,
@@ -44,7 +76,16 @@ pub struct AlignedWord {
 }
 
 /// One kept utterance's final words.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct AlignedUtterance {
     pub id: String,
     pub words: Vec<AlignedWord>,
@@ -63,7 +104,17 @@ pub struct AlignedUtterance {
 }
 
 /// Every kept utterance, in time order, and the alignment's own measures.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct Aligned {
     pub utterances: Vec<AlignedUtterance>,
     pub blocks: usize,

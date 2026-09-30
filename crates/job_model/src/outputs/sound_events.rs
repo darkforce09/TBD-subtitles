@@ -4,7 +4,16 @@
 use serde::{Deserialize, Serialize};
 
 /// One stretch where a sound class scored over its threshold.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct SoundEvent {
     /// The AudioSet class name, such as `Explosion` or `Laughter`.
     pub label: String,

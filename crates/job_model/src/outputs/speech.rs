@@ -3,7 +3,17 @@
 use serde::{Deserialize, Serialize};
 
 /// The voice-activity result and the chunk plan every engine transcribes.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct SpeechPlan {
     /// The detector's frame length in seconds.
     pub frame_s: f64,
@@ -16,7 +26,17 @@ pub struct SpeechPlan {
 }
 
 /// A stretch of time in seconds from the start of the video.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct TimeSpan {
     pub start_s: f64,
     pub end_s: f64,

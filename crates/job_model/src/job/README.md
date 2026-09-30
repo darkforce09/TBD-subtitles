@@ -11,7 +11,7 @@ crates/job_model/src/job/
 ├── mod.rs       the module tree and the re-exports
 ├── record.rs    `JobRecord`, `StepRecord`, `StepMeasure` and `WorkerMeasure`
 ├── settings.rs  `JobSettings`, its model choices `Separator` and `WhisperModel`, and `OutputFormat`
-└── tests/       unit tests for the record's JSON
+└── tests/       unit tests for the record's JSON and every type's rkyv round trip
 ```
 
 ## How it works

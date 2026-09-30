@@ -4,7 +4,18 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// The output step's record.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct OutputRecord {
     /// The subtitle file beside the video.
     pub path: String,

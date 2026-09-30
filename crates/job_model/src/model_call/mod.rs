@@ -18,7 +18,17 @@ use serde::{Deserialize, Serialize};
 pub const WORKER_LINE_PREFIX: &str = "model-call ";
 
 /// One call to a language model.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct ModelExchange {
     /// Unique in a run of the app: `<pid>-<n>`, the process and its count of calls.
     pub id: String,
@@ -60,3 +70,7 @@ impl ModelExchange {
 #[cfg(test)]
 #[path = "tests/model_call.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/archive.rs"]
+mod archive_tests;

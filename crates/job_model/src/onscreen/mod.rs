@@ -23,14 +23,36 @@ pub use localize::{
 pub use settings::TextSettings;
 pub use verify::{TextCheck, VerifiedReplacements, VerifyReading};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct Point {
     pub x: f64,
     pub y: f64,
 }
 
 /// Clockwise corners: top left, top right, bottom right, bottom left.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct Quad(pub [Point; 4]);
 
 impl Quad {
@@ -60,7 +82,16 @@ impl Quad {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct TextFrame {
     pub time_s: f64,
     pub end_s: f64,
@@ -70,8 +101,19 @@ pub struct TextFrame {
     pub surface_rgb: Option<[u8; 3]>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
+#[rkyv(compare(PartialEq), derive(Debug, PartialEq, Eq))]
 pub enum TextTreatment {
     #[default]
     Auto,
@@ -79,21 +121,51 @@ pub enum TextTreatment {
     Nearby,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct TextPresentation {
     pub treatment: TextTreatment,
     pub anchor: Option<Point>,
     pub font_size: Option<f64>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct TextProvenance {
     pub backend: String,
+    #[rkyv(with = rkyv::with::Map<rkyv::with::AsString>)]
     pub reference: Option<PathBuf>,
     pub reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct TextOccurrence {
     pub id: String,
     pub start_s: f64,
@@ -102,6 +174,7 @@ pub struct TextOccurrence {
     pub english: Option<String>,
     pub confidence: f64,
     /// Representative crops relative to the job directory.
+    #[rkyv(with = rkyv::with::Map<rkyv::with::AsString>)]
     pub crops: Vec<PathBuf>,
     pub frames: Vec<TextFrame>,
     pub provenance: TextProvenance,
@@ -125,9 +198,19 @@ pub struct TextOccurrence {
 
 /// One observed frame of an occurrence with its downscaled whole-frame still, relative to the
 /// job directory, for image requests that need the surrounding picture.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct TextKeyframe {
     pub time_s: f64,
+    #[rkyv(with = rkyv::with::AsString)]
     pub image: PathBuf,
 }
 
@@ -161,7 +244,17 @@ impl TextOccurrence {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct TextDocument {
     pub width: u32,
     pub height: u32,
@@ -178,7 +271,16 @@ pub struct TextDocument {
     pub sample_step: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct TextEdit {
     pub english: Option<String>,
     pub start_s: f64,
@@ -241,7 +343,17 @@ impl TextEdit {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct TextCorrections {
     pub edits: BTreeMap<String, TextEdit>,
     /// Occurrences whose OCR and translation must be retried on the next run.
@@ -249,7 +361,17 @@ pub struct TextCorrections {
     pub retry: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct TextSummary {
     pub detected: usize,
     pub translated: usize,
@@ -293,3 +415,7 @@ impl TextDocument {
 #[cfg(test)]
 #[path = "tests/contracts.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/archive.rs"]
+mod archive_tests;

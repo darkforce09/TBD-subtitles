@@ -1,5 +1,14 @@
 //! What `job.json` records: the video it is for, the settings, and each finished step with its
 //! fingerprint, finish time and measurements; plus what a worker process reports about itself.
+//!
+//! **Role:** the record the job runner keeps of one job and resumes from.
+//!
+//! **Position:** written and read by `pipeline`; built from the settings the app gives it.
+//!
+//! **Signals and state:** none; plain data, written as JSON and archived with rkyv.
+//!
+//! **Invariants:** a step is in `steps` only once it finished; a measure of `None` means not
+//! measured, never zero.
 
 use std::collections::BTreeMap;
 
@@ -9,7 +18,16 @@ use super::settings::JobSettings;
 use crate::stage::StepName;
 
 /// The record of one job.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct JobRecord {
     /// The video, as given.
     pub video: String,
@@ -31,7 +49,16 @@ pub struct JobRecord {
 }
 
 /// One finished step.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct StepRecord {
     /// The hash of the step's settings and of what its inputs were, when it ran.
     pub fingerprint: String,
@@ -42,7 +69,17 @@ pub struct StepRecord {
 }
 
 /// A step's time and memory. `None` means not measured, never zero.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct StepMeasure {
     /// Wall time around the whole step, in seconds.
     pub wall_s: f64,
@@ -62,7 +99,17 @@ pub struct StepMeasure {
 }
 
 /// What a worker process writes about itself when its step finishes.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct WorkerMeasure {
     pub load_s: f64,
     pub process_s: f64,

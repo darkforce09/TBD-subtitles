@@ -6,3 +6,7 @@ mod settings;
 
 pub use record::{JobRecord, StepMeasure, StepRecord, WorkerMeasure};
 pub use settings::{JobSettings, OutputFormat, Separator, WhisperModel};
+
+#[cfg(test)]
+#[path = "tests/archive.rs"]
+mod archive_tests;

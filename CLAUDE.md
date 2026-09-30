@@ -94,8 +94,11 @@ the [video inpainting pipeline](/documentation/architecture/video_inpainting_pip
    20–30-minute episode for M4 acceptance. Retain the 8 GB RAM and 5.5 GB worker VRAM limits.
    Audio is streamed and chunked, never held whole at 44.1 kHz; visual scans stream frames and
    retain representative crops and bounded tracking data rather than extracting the whole video.
-6. **Resumable stages.** Each pipeline stage writes its output to the job's work directory and is
-   skipped when a valid output already exists.
+6. **Resumable steps.** Each step commits its output and its record in one transaction, and is
+   skipped while its record's revision and input fingerprint are current. One process owns a
+   job's `job.redb`; values are `rkyv` archives; no JSON fallback, importer or migration
+   ([decision](/documentation/decisions/storage.md#2026-09-30--step-outputs-live-in-one-redb-database-per-job-archived-with-rkyv-owned-by-one-process),
+   [plan](/documentation/architecture/binary_storage_plan.md); steps move in its phases 2–4).
 7. **One worker process per GPU stage.** GPU stages run as subcommands of their assigned binary
    in their own process under the shared GPU lock: exiting frees VRAM and keeps ONNX Runtime,
    ggml and mistral.rs apart.
@@ -134,7 +137,7 @@ TBD-subtitles/
 │   ├── tbd_subtitles_ggml/ the ggml worker binary: the Whisper steps (feature `crispasr`)
 │   └── tbd_subtitles_llm/  the mistral.rs worker binary: local on-screen translation
 ├── crates/                layers, lowest first:
-│   ├── job_model/         0  stage names and the serde contracts between stages
+│   ├── job_model/         0  stage names and the serde and rkyv contracts between stages
 │   ├── child_process/     0  external programs with deadlines, group kills, drained pipes,
 │   │                         streamed stdin
 │   ├── media_io/          1  ffprobe, FFmpeg PCM and timestamped RGB streaming, region crops,
@@ -145,6 +148,7 @@ TBD-subtitles/
 │   └── pipeline/          3  step graph, resume, work directory, workers, tasks, runner, report
 ├── tools/
 │   ├── appimage_builder/  `cargo appimage`: packages the app as a self-contained AppImage
+│   ├── redb_process_probe/ how redb behaves when a second process opens a job database
 │   ├── repo_gates/        `cargo gates`: every law a program can check
 │   ├── stack_spike*/      the stack spike: measuring harness and its ggml and llm workers
 │   ├── verification_core/ fail-closed verdicts and reports for the gates

@@ -8,7 +8,7 @@ name, the findings each leaves with a timestamp to look at, and the counts that 
 ```text
 crates/job_model/src/report/
 ├── mod.rs  `QcCheck`, `QcFinding`, `QcSummary`, `QcReport` and `CPS_TARGET`
-└── tests/  unit tests for the pass rule and a finding without an utterance
+└── tests/  unit tests for the pass rule, a finding without an utterance and the rkyv round trips
 ```
 
 ## How it works

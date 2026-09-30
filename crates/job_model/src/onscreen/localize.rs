@@ -17,7 +17,19 @@ use serde::{Deserialize, Serialize};
 use super::Quad;
 
 /// An axis-aligned rectangle of source pixels.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct PixelRect {
     pub x: u32,
     pub y: u32,
@@ -53,7 +65,17 @@ impl PixelRect {
 }
 
 /// Whether an occurrence is drawn into the localized video or left in Japanese.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(rename_all = "snake_case", tag = "kind", content = "reason")]
 pub enum ReplaceStatus {
     /// Not yet decided by a later step.
@@ -66,7 +88,16 @@ pub enum ReplaceStatus {
 }
 
 /// The lettering style measured from the original strokes before they are erased.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct LetteringStyle {
     /// Dominant colour of the glyph interiors.
     pub fill_rgb: [u8; 3],
@@ -83,7 +114,16 @@ pub struct LetteringStyle {
 }
 
 /// A run of consecutive frames that share one background plate.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct Plate {
     /// First frame of the run, inclusive.
     pub first_frame: u64,
@@ -96,20 +136,33 @@ pub struct Plate {
     /// Scale of the writing relative to the keyframe quad at this run.
     pub scale: f64,
     /// The original pixels of `rect` at `first_frame` (RGB PNG).
+    #[rkyv(with = rkyv::with::AsString)]
     pub source: PathBuf,
     /// The erase mask for `rect` (8-bit PNG: 255 erases, 0 keeps).
+    #[rkyv(with = rkyv::with::AsString)]
     pub mask: PathBuf,
     /// The inpainted pixels of `rect` (RGB PNG), once inpainting has run.
     #[serde(default)]
+    #[rkyv(with = rkyv::with::Map<rkyv::with::AsString>)]
     pub plate: Option<PathBuf>,
     /// The English lettering composed onto the plate (RGBA PNG), once composition has run; alpha
     /// covers the erased strokes and the new lettering.
     #[serde(default)]
+    #[rkyv(with = rkyv::with::Map<rkyv::with::AsString>)]
     pub patch: Option<PathBuf>,
 }
 
 /// One occurrence's replacement.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct ReplacedText {
     /// The `TextOccurrence` id.
     pub id: String,
@@ -127,6 +180,7 @@ pub struct ReplacedText {
     pub plates: Vec<Plate>,
     /// The keyframe with the composed replacement (RGB PNG) for review.
     #[serde(default)]
+    #[rkyv(with = rkyv::with::Map<rkyv::with::AsString>)]
     pub preview: Option<PathBuf>,
     /// Where the English is lettered at the keyframe when the occurrence's own quad is only a
     /// loose box around the writing: the bounds of the ink the mask erases, in source pixels.
@@ -135,7 +189,17 @@ pub struct ReplacedText {
 }
 
 /// The replacements of a job, written by the mask, inpaint and compose steps in turn.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct ReplacementDocument {
     pub width: u32,
     pub height: u32,
@@ -184,7 +248,17 @@ impl ReplacementDocument {
 }
 
 /// What the localized-video step produced.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct LocalizedVideoRecord {
     /// The localized video beside the source, when one was written.
     pub path: Option<String>,

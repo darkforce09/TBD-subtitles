@@ -19,7 +19,7 @@ crates/job_model/src/outputs/
 ├── sound_cues.rs    the sound-cue candidates, the chosen and worded cues, the refused answers
 ├── sound_events.rs  a sound event: class, stem, times and peak probability
 ├── speech.rs        the speech plan: speech regions and the chunks the engines transcribe
-├── tests/           unit tests for the Fix It record and the corrections' JSON and ownership
+├── tests/           unit tests for the Fix It record, the corrections, every output's rkyv form
 └── words.rs         an engine's transcript: timed words per chunk, with the engine and its input
 ```
 

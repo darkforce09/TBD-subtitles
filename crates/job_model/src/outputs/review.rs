@@ -15,7 +15,17 @@
 use serde::{Deserialize, Serialize};
 
 /// Where a corrected text came from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Chosen {
     /// One engine's hypothesis, by its tag (`P`, `W`, `ALT p`, `ALT w`) or `adjudicated`.
@@ -36,7 +46,17 @@ impl Chosen {
 }
 
 /// One corrected utterance.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct Correction {
     /// The utterance id, such as `U0412`.
     pub id: String,
@@ -60,7 +80,18 @@ impl Correction {
 }
 
 /// Every correction of one job, at most one per utterance.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct Corrections {
     pub lines: Vec<Correction>,
 }

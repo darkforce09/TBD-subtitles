@@ -19,8 +19,23 @@ use serde::{Deserialize, Serialize};
 pub const CPS_TARGET: f64 = 0.95;
 
 /// One kind of problem the quality check looks for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
+#[rkyv(compare(PartialEq), derive(Debug, PartialEq, Eq, PartialOrd, Ord))]
 pub enum QcCheck {
     /// Two cues on screen at once.
     Overlap,
@@ -95,7 +110,16 @@ impl QcCheck {
 }
 
 /// One flagged line.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct QcFinding {
     pub check: QcCheck,
     /// Where to look, in video seconds.
@@ -110,7 +134,17 @@ pub struct QcFinding {
 }
 
 /// The counts the report opens with.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct QcSummary {
     pub cues: usize,
     pub dialogue_cues: usize,
@@ -141,7 +175,17 @@ pub struct QcSummary {
 }
 
 /// The quality check's whole result.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct QcReport {
     pub summary: QcSummary,
     /// Every finding, in time order.
@@ -207,3 +251,7 @@ impl QcReport {
 #[cfg(test)]
 #[path = "tests/report.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/archive.rs"]
+mod archive_tests;
