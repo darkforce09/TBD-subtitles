@@ -62,12 +62,15 @@ pub(crate) struct JobProgress {
     pub(crate) work_dir: Option<PathBuf>,
     pub(crate) duration_s: Option<f64>,
     pub(crate) steps: Vec<StepRow>,
+    /// Steps the job's settings leave with nothing to do: they only record that they are off,
+    /// so they add no time left.
+    pub(crate) idle: Vec<StepName>,
     /// The cancel button was pressed; the job is stopping.
     pub(crate) cancelling: bool,
 }
 
 impl JobProgress {
-    /// A job that has just started: every step pending, none known stale yet.
+    /// A job that has just started: every step pending, none known stale yet, none idle.
     pub(crate) fn new(started: Instant) -> JobProgress {
         JobProgress {
             started,
@@ -81,6 +84,7 @@ impl JobProgress {
                     stale: true,
                 })
                 .collect(),
+            idle: Vec::new(),
             cancelling: false,
         }
     }

@@ -126,7 +126,7 @@ pub(super) fn file_card_ui(ui: &mut Ui, view: &OverviewView<'_>, events: &mut Ve
 
 /// `…/<folder>/<file>`: the file and the folder that holds it, as the mockup shows the path; the
 /// whole path when it has no folder.
-fn short_path(path: &Path) -> String {
+pub(super) fn short_path(path: &Path) -> String {
     match (path.parent().and_then(Path::file_name), path.file_name()) {
         (Some(folder), Some(file)) => {
             format!("…/{}/{}", folder.to_string_lossy(), file.to_string_lossy())

@@ -1,4 +1,5 @@
-//! A finished job's Overview: the file card with Fix It's result, the lines card, then the Details
+//! A finished job's Overview: the file card with Fix It's result, the localized video's card when
+//! the job wrote one, the lines card, then the Details
 //! and Step times disclosures, in the column the application gives it, 16 px apart; and the head
 //! the two cards share.
 //!
@@ -17,6 +18,7 @@ use crate::job_report::models::fixing::FixView;
 use crate::job_report::models::report::JobReport;
 use crate::job_report::ui::file_card::file_card_ui;
 use crate::job_report::ui::lines_card::lines_card_ui;
+use crate::job_report::ui::localized_card::localized_card_ui;
 use crate::job_report::ui::report_details::{details_ui, step_times_ui};
 
 /// The space between a head's mark and its text, and between its title and its line.
@@ -39,6 +41,11 @@ pub(crate) struct OverviewView<'a> {
 /// Draw the Overview of `view` and push what the owner asked for onto `events`.
 pub(crate) fn overview_ui(ui: &mut Ui, view: &OverviewView<'_>, events: &mut Vec<ReportEvent>) {
     file_card_ui(ui, view, events);
+    let localized = view.report.localized.as_ref();
+    if let Some(video) = localized.and_then(|localized| localized.video.as_deref()) {
+        let subtitles = localized.and_then(|localized| localized.subtitles.as_deref());
+        localized_card_ui(ui, video, subtitles, events);
+    }
     lines_card_ui(ui, view.report, events);
     if let Some(text) = &view.report.visual {
         let p = palette(ui);
@@ -49,8 +56,11 @@ pub(crate) fn overview_ui(ui: &mut Ui, view: &OverviewView<'_>, events: &mut Vec
                     ui.set_width(ui.available_width());
                     ui.spacing_mut().item_spacing.y = 12.0;
                     ui.heading("On-screen text");
+                    let replaced = localized
+                        .and_then(|localized| localized.replaced)
+                        .map_or_else(String::new, |n| format!(" · {n} replaced in the video"));
                     ui.label(format!(
-                        "{} detected · {} translated · {} nearby · {} unresolved",
+                        "{} detected · {} translated · {} nearby · {} unresolved{replaced}",
                         text.detected, text.translated, text.fallback, text.unresolved
                     ));
                     let seconds: f64 = view

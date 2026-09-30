@@ -26,9 +26,9 @@ fn states(rows: &[StageRow]) -> Vec<StageState> {
 }
 
 #[test]
-fn a_running_job_has_eight_stages_whose_steps_are_every_step_in_order() {
+fn a_running_job_has_nine_stages_whose_steps_are_every_step_in_order() {
     let rows = running(&JobProgress::new(Instant::now()), Instant::now());
-    assert_eq!(rows.len(), 8);
+    assert_eq!(rows.len(), 9);
     assert_eq!(
         rows.iter().map(|row| row.stage.title).collect::<Vec<_>>(),
         [
@@ -40,6 +40,7 @@ fn a_running_job_has_eight_stages_whose_steps_are_every_step_in_order() {
             "Lay out the subtitles",
             "Translate on-screen text",
             "Write the subtitles",
+            "Write the localized video",
         ]
     );
     let steps: Vec<StepName> = rows
@@ -68,9 +69,13 @@ fn a_running_job_has_eight_stages_whose_steps_are_every_step_in_order() {
         StepName::TextTrack,
         StepName::TextTranslate,
         StepName::TextReview,
+        StepName::TextMask,
+        StepName::TextInpaint,
+        StepName::TextCompose,
         StepName::TextTypeset,
         StepName::Qc,
         StepName::Output,
+        StepName::LocalizedVideo,
     ];
     assert_eq!(steps, expected);
     assert_eq!(StepName::ALL, expected);
@@ -100,6 +105,7 @@ fn stages_before_the_running_one_are_done_in_the_sum_of_their_steps() {
                 share: 0.375 / 5.0,
                 seconds: 40.0
             },
+            StageState::Pending,
             StageState::Pending,
             StageState::Pending,
             StageState::Pending,
@@ -194,6 +200,7 @@ fn a_failed_job_lists_exactly_the_steps_it_kept() {
             StageState::Pending,
             StageState::Pending,
             StageState::Pending,
+            StageState::Pending,
         ],
         "the shot scan the cues never joined does not hold Read the video open"
     );
@@ -253,18 +260,20 @@ fn the_shot_scan_runs_in_the_background_and_never_holds_its_stage_open() {
 }
 
 #[test]
-fn steps_are_numbered_from_one_of_twenty_four() {
-    assert_eq!(StepName::ALL.len(), 24);
+fn steps_are_numbered_from_one_of_twenty_eight() {
+    assert_eq!(StepName::ALL.len(), 28);
     assert_eq!(step_number(StepName::ProbeDecode), 1);
     assert_eq!(step_number(StepName::Adjudicate), 9);
     assert_eq!(step_number(StepName::TextDetect), 17);
-    assert_eq!(step_number(StepName::TextTypeset), 22);
-    assert_eq!(step_number(StepName::Qc), 23);
-    assert_eq!(step_number(StepName::Output), 24);
+    assert_eq!(step_number(StepName::TextMask), 22);
+    assert_eq!(step_number(StepName::TextTypeset), 25);
+    assert_eq!(step_number(StepName::Qc), 26);
+    assert_eq!(step_number(StepName::Output), 27);
+    assert_eq!(step_number(StepName::LocalizedVideo), 28);
 }
 
 #[test]
-fn the_visual_stage_reports_six_steps_and_their_measured_progress() {
+fn the_visual_stage_reports_nine_steps_and_their_measured_progress() {
     let now = Instant::now();
     let mut progress = JobProgress::new(now);
     for (step, wall_s) in [
@@ -297,13 +306,16 @@ fn the_visual_stage_reports_six_steps_and_their_measured_progress() {
             StepName::TextTrack,
             StepName::TextTranslate,
             StepName::TextReview,
+            StepName::TextMask,
+            StepName::TextInpaint,
+            StepName::TextCompose,
             StepName::TextTypeset,
         ]
     );
     assert_eq!(
         rows[6].state,
         StageState::Running {
-            share: 3.5 / 6.0,
+            share: 3.5 / 9.0,
             seconds: 100.0,
         }
     );
@@ -314,13 +326,20 @@ fn the_visual_stage_reports_six_steps_and_their_measured_progress() {
             seconds: 10.0,
         }
     );
-    assert_eq!(rows[6].steps[4].state, StageState::Pending);
-    assert_eq!(rows[6].steps[5].state, StageState::Pending);
+    assert!(
+        rows[6].steps[4..]
+            .iter()
+            .all(|line| line.state == StageState::Pending)
+    );
     assert_eq!(rows[7].state, StageState::Pending);
+    assert_eq!(rows[8].state, StageState::Pending);
 
     for (step, wall_s) in [
         (StepName::TextTranslate, 20.0),
         (StepName::TextReview, 5.0),
+        (StepName::TextMask, 3.0),
+        (StepName::TextInpaint, 10.0),
+        (StepName::TextCompose, 2.0),
         (StepName::TextTypeset, 5.0),
     ] {
         progress.row_mut(step).expect("visual step").state = StepState::Done { wall_s };
@@ -328,7 +347,7 @@ fn the_visual_stage_reports_six_steps_and_their_measured_progress() {
     assert_eq!(
         running(&progress, now)[6].state,
         StageState::Done {
-            seconds: Some(120.0)
+            seconds: Some(135.0)
         }
     );
 }
@@ -343,13 +362,17 @@ fn disabled_visual_steps_are_kept_without_measured_time() {
         StepName::TextTrack,
         StepName::TextTranslate,
         StepName::TextReview,
+        StepName::TextMask,
+        StepName::TextInpaint,
+        StepName::TextCompose,
         StepName::TextTypeset,
+        StepName::LocalizedVideo,
     ] {
         progress.row_mut(step).expect("visual step").stale = false;
     }
     let rows = running(&progress, now);
     assert_eq!(rows[6].state, StageState::Kept);
-    assert_eq!(rows[6].steps.len(), 6);
+    assert_eq!(rows[6].steps.len(), 9);
     assert!(
         rows[6]
             .steps
@@ -357,4 +380,5 @@ fn disabled_visual_steps_are_kept_without_measured_time() {
             .all(|line| line.state == StageState::Kept)
     );
     assert_eq!(rows[7].state, StageState::Pending);
+    assert_eq!(rows[8].state, StageState::Kept);
 }

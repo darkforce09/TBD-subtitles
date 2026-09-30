@@ -1,7 +1,8 @@
 # On-screen text
 
-The six visual stages of a video job. They keep observations separate from spoken cues and produce
-[ASS](/documentation/glossary.md#ass) events on a 1920 by 1080 script canvas.
+The visual stages of a video job. They keep observations separate from spoken cues, produce
+[ASS](/documentation/glossary.md#ass) events on a 1920 by 1080 script canvas and, for the
+localized video, replace the writing itself with English lettering.
 
 ## Contents
 
@@ -15,6 +16,7 @@ crates/stages/src/onscreen_text/
 ├── mod.rs                stage module exports
 ├── read.rs               Japanese readings, compatible fragments and furigana evidence
 ├── reference.rs          scene-validated reference wording
+├── replace/              stroke masks, inpainted plates and English lettering for the localized video
 ├── review.rs             source-identity checks and owner corrections
 ├── tests/                recognition, translation, geometry, tracking and rendering checks
 ├── track.rs              sampled geometry checks against the keyframe quad

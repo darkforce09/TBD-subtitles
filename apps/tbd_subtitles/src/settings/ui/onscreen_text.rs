@@ -1,12 +1,14 @@
 //! Settings for translated Japanese writing in the same job as dialogue subtitles.
 //!
-//! **Role:** show visual processing, translation fallback, reference folders and model readiness.
+//! **Role:** show visual processing, the localized video, translation fallback, reference folders
+//! and model readiness.
 //!
 //! **Position:** drawn by `settings_window` on On-screen Text; uses the shared form controls.
 //!
 //! **Signals and state:** reads the settings page; sends edits and navigation as settings events.
 //!
-//! **Invariants:** each edit goes through save-on-change; the view starts no work or downloads.
+//! **Invariants:** each edit goes through save-on-change; the view starts no work or downloads;
+//! Replace text in the video is off to clicks while translation is off.
 
 use std::path::PathBuf;
 
@@ -21,6 +23,11 @@ use crate::settings::events::SettingsEvent;
 use crate::settings::models::machine::CheckState;
 use crate::settings::models::page::{Field, SettingsPage, SettingsTab};
 use crate::settings::services::model_list;
+
+/// What Replace text in the video does, under its switch.
+const REPLACE_HELP: &str = "Erase the Japanese and draw the English into a copy of the video, \
+                            <name>.localized.mkv, saved beside the original. Its subtitles go in \
+                            <name>.localized.ass. The original video is never changed.";
 
 /// Draw the visual settings; every changed value is saved by the application after this frame.
 pub(super) fn onscreen_text_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<SettingsEvent>) {
@@ -39,9 +46,27 @@ pub(super) fn onscreen_text_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Ve
         form::help(
             ui,
             "Dialogue, sound cues and tracked English text are saved together in one ASS file. \
-             The video stays unchanged.",
+             The original video is never changed.",
         );
         form::field_error(ui, page, Field::OnscreenText);
+    });
+    form::row(ui, "Replace text in the video", |ui| {
+        ui.add_space(4.5);
+        let replace = settings.localized_video;
+        let clicked = ui
+            .add_enabled_ui(settings.enabled, |ui| {
+                switch(ui, replace, "Replace text in the video").clicked()
+            })
+            .inner;
+        if clicked {
+            let mut edited = page.saved.clone();
+            edited.onscreen_text.localized_video = !replace;
+            events.push(SettingsEvent::Edit(Box::new(edited)));
+        }
+        form::help(ui, REPLACE_HELP);
+        if !settings.enabled {
+            form::help(ui, "Turn on Translate on-screen text to use it.");
+        }
     });
     form::divider(ui);
     form::row(ui, "Translation", |ui| {

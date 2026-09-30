@@ -37,7 +37,9 @@ use crate::application::TbdSubtitlesApp;
 use crate::job_queue::models::progress::JobProgress;
 use crate::job_queue::models::queue::{Failure, JobId, JobKind, JobResult, JobState};
 use crate::job_queue::services::job_runner::{Command, RunnerEvent};
-use crate::job_queue::services::{job_notice, progress_tracking, queue_editing, time_left};
+use crate::job_queue::services::{
+    job_notice, progress_tracking, queue_editing, time_left, video_files,
+};
 use crate::settings::models::machine::ItemKind;
 use crate::settings::services::job_settings;
 
@@ -131,7 +133,9 @@ impl TbdSubtitlesApp {
                 return;
             }
         };
-        item.state = JobState::Running(Box::new(JobProgress::new(Instant::now())));
+        let mut progress = JobProgress::new(Instant::now());
+        progress.idle = time_left::idle_steps(&options.settings);
+        item.state = JobState::Running(Box::new(progress));
         item.keep_settings = true;
         let kind = item.kind;
         let command = Command {
@@ -293,6 +297,7 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
                     }
                     item.state = match outcome {
                         Ok(outcome) => JobState::Finished(JobResult {
+                            localized: video_files::localized_video(&outcome.work_dir),
                             subtitles: outcome.subtitles,
                             work_dir: outcome.work_dir,
                             failures: outcome.qc.failures(),

@@ -1,7 +1,7 @@
-//! The pipeline's steps as the window names them: eight stages the owner recognises, and a plain
+//! The pipeline's steps as the window names them: nine stages the owner recognises, and a plain
 //! title for every step.
 //!
-//! **Role:** group the twenty-four steps into the eight stages the window shows, each with its title
+//! **Role:** group the twenty-eight steps into the nine stages the window shows, each with its title
 //! ("Settle the words") and what it does while it runs ("Settling the words"), and give every
 //! step a plain title in place of its file name.
 //!
@@ -25,8 +25,8 @@ pub(crate) struct Stage {
     pub(crate) steps: &'static [StepName],
 }
 
-/// The eight stages, in run order.
-pub(crate) const STAGES: [Stage; 8] = [
+/// The nine stages, in run order.
+pub(crate) const STAGES: [Stage; 9] = [
     Stage {
         title: "Read the video",
         doing: "Reading the video",
@@ -77,6 +77,9 @@ pub(crate) const STAGES: [Stage; 8] = [
             StepName::TextTrack,
             StepName::TextTranslate,
             StepName::TextReview,
+            StepName::TextMask,
+            StepName::TextInpaint,
+            StepName::TextCompose,
             StepName::TextTypeset,
         ],
     },
@@ -84,6 +87,11 @@ pub(crate) const STAGES: [Stage; 8] = [
         title: "Write the subtitles",
         doing: "Writing the subtitles",
         steps: &[StepName::Qc, StepName::Output],
+    },
+    Stage {
+        title: "Write the localized video",
+        doing: "Writing the localized video",
+        steps: &[StepName::LocalizedVideo],
     },
 ];
 
@@ -119,9 +127,13 @@ pub(crate) fn step_title(step: StepName) -> &'static str {
         StepName::TextTrack => "Track writing through the scene",
         StepName::TextTranslate => "Translate writing into English",
         StepName::TextReview => "Apply your text corrections",
+        StepName::TextMask => "Find the strokes to erase",
+        StepName::TextInpaint => "Paint over the Japanese",
+        StepName::TextCompose => "Letter the English in place",
         StepName::TextTypeset => "Place and style the English text",
         StepName::Qc => "Quality check",
         StepName::Output => "Save the subtitle file",
+        StepName::LocalizedVideo => "Save the localized video",
     }
 }
 

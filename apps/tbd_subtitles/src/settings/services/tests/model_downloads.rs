@@ -57,6 +57,28 @@ fn empty_folders_miss_every_model_and_runtime_archive() {
 }
 
 #[test]
+fn replacing_text_in_the_video_lists_lama_and_the_latin_fonts_with_their_sizes() {
+    let mut settings = JobSettings::with_glossary(vec![]);
+    settings.onscreen_text.enabled = true;
+    settings.onscreen_text.localized_video = false;
+    let folders = empty_folders("localized");
+    let without = plan(&folders, &settings);
+    assert!(
+        !without
+            .iter()
+            .any(|i| i.id == "lama-inpaint" || i.id == "latin-fonts")
+    );
+    settings.onscreen_text.localized_video = true;
+    let with = plan(&folders, &settings);
+    let size = |id: &str| with.iter().find(|i| i.id == id).map(|i| i.bytes);
+    assert_eq!(size("lama-inpaint"), Some(208_044_816));
+    assert_eq!(size("latin-fonts"), Some(2_049_096 + 4_396));
+    let rows = crate::settings::services::model_list::rows(&with, None);
+    assert!(rows.iter().any(|row| row.name == "lama-inpaint"));
+    assert!(rows.iter().any(|row| row.name == "latin-fonts"));
+}
+
+#[test]
 fn the_build_toolkit_is_not_downloaded_for_the_app() {
     let ids: Vec<&str> = runtime_archives().map(|a| a.id).collect();
     assert!(ids.contains(&"onnxruntime"));

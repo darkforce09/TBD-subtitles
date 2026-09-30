@@ -131,3 +131,90 @@ fn an_unset_cancel_flag_lets_the_child_finish() {
         .unwrap();
     assert_eq!(running.wait().unwrap().code, 3);
 }
+
+#[test]
+fn a_piped_stdin_streams_bytes_through_the_child() {
+    use std::io::Write;
+    let mut running = Run::new("cat")
+        .stdin_piped()
+        .timeout(Duration::from_secs(30))
+        .spawn()
+        .unwrap();
+    let mut stdin = running.take_stdin().unwrap();
+    assert!(
+        running.take_stdin().is_none(),
+        "the stdin is handed out once"
+    );
+    let stdout = running.take_stdout().unwrap();
+    // Read on a thread, so the child never blocks on a full stdout while this one writes.
+    let reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let mut stdout = stdout;
+        stdout.read_to_end(&mut bytes).unwrap();
+        bytes
+    });
+    let chunk: Vec<u8> = (0..=255u8).collect();
+    for _ in 0..1024 {
+        stdin.write_all(&chunk).unwrap();
+    }
+    drop(stdin);
+    let bytes = reader.join().unwrap();
+    let finished = running.wait().unwrap();
+    assert_eq!(finished.code, 0);
+    assert_eq!(bytes.len(), 256 * 1024);
+    assert!(bytes.chunks(256).all(|part| part == chunk.as_slice()));
+}
+
+#[test]
+fn an_untaken_piped_stdin_is_closed_by_the_wait() {
+    let running = Run::new("cat")
+        .stdin_piped()
+        .timeout(Duration::from_secs(10))
+        .spawn()
+        .unwrap();
+    assert_eq!(running.wait().unwrap().code, 0);
+}
+
+#[test]
+fn a_run_without_a_piped_stdin_hands_none_out() {
+    let mut running = Run::new("sh").arg("-c").arg("exit 0").spawn().unwrap();
+    assert!(running.take_stdin().is_none());
+    assert_eq!(running.wait().unwrap().code, 0);
+}
+
+#[test]
+fn a_cancel_flag_kills_a_child_while_the_caller_writes() {
+    use std::io::Write;
+    let started = Instant::now();
+    let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // The child never reads its stdin, so the writer blocks once the pipe buffer is full.
+    let mut running = Run::new("sh")
+        .arg("-c")
+        .arg("sleep 30")
+        .stdin_piped()
+        .cancel_on(flag.clone())
+        .spawn()
+        .unwrap();
+    let mut stdin = running.take_stdin().unwrap();
+    let setter = {
+        let flag = flag.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        })
+    };
+    let chunk = vec![0u8; 64 * 1024];
+    let written = (0..1024).try_for_each(|_| stdin.write_all(&chunk));
+    assert!(
+        written.is_err(),
+        "the write must fail once the child is killed"
+    );
+    drop(stdin);
+    let result = running.wait();
+    setter.join().unwrap();
+    assert!(
+        matches!(result, Err(RunError::Cancelled { .. })),
+        "{result:?}"
+    );
+    assert!(started.elapsed() < Duration::from_secs(10));
+}

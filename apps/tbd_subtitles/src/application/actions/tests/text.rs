@@ -108,6 +108,7 @@ impl Fixture {
             flagged_only: false,
             error: None,
             thumbnails: vec![],
+            localized: None,
         }
     }
 
@@ -767,4 +768,130 @@ fn selecting_another_video_stops_its_hidden_preview_and_finishes_the_original_as
     assert_eq!(saved.edits["sign"].english.as_deref(), Some("English 0"));
     assert!(fixture.app.text.parked_saves.is_empty());
     assert_eq!(fixture.app.queue.selected, Some(fixture.ids[1]));
+}
+
+/// A localized video not written yet, whose one replacement has a replaced plate on disk.
+fn localized_review(fixture: &Fixture) -> crate::text_review::models::LocalizedReview {
+    use crate::text_review::models::{LocalizedReview, PreviewMode, Replacement};
+    use job_model::onscreen::ReplaceStatus;
+    let plate = fixture.root.join("plate.png");
+    image::RgbImage::from_pixel(64, 16, image::Rgb([1, 2, 3]))
+        .save(&plate)
+        .expect("plate");
+    LocalizedReview {
+        video: None,
+        subtitles: None,
+        replacements: [(
+            "sign".to_string(),
+            Replacement {
+                status: ReplaceStatus::Baked,
+                preview: Some(plate),
+                mask: None,
+            },
+        )]
+        .into(),
+        mode: PreviewMode::Localized,
+        show_mask: false,
+        pictures: None,
+    }
+}
+
+#[test]
+fn the_preview_switches_between_the_subtitles_and_the_localized_video() {
+    use crate::text_review::models::PreviewMode;
+    let mut fixture = Fixture::new();
+    fixture.show(0);
+    let review = localized_review(&fixture);
+    let session = fixture.app.text.session.as_mut().expect("session");
+    session.localized = Some(review);
+    assert_eq!(
+        player::rendered_source(session),
+        None,
+        "nothing to render before the localized video is written"
+    );
+    fixture
+        .app
+        .apply_text(Event::PreviewMode(PreviewMode::Subtitles));
+    let session = fixture.app.text.session.as_mut().expect("session");
+    assert_eq!(
+        session.localized.as_ref().map(|l| l.mode),
+        Some(PreviewMode::Subtitles)
+    );
+    assert_eq!(
+        player::rendered_source(session),
+        Some((session.video.clone(), Some(session.ass.clone())))
+    );
+    assert!(fixture.app.text.player.is_some(), "the preview restarts");
+    let written = fixture.root.join("original.localized.mkv");
+    let subtitles = fixture.root.join("original.localized.ass");
+    let session = fixture.app.text.session.as_mut().expect("session");
+    let localized = session.localized.as_mut().expect("localized");
+    localized.video = Some(written.clone());
+    localized.subtitles = Some(subtitles.clone());
+    fixture
+        .app
+        .apply_text(Event::PreviewMode(PreviewMode::Localized));
+    let session = fixture.app.text.session.as_ref().expect("session");
+    assert_eq!(
+        player::rendered_source(session),
+        Some((written, Some(subtitles))),
+        "the localized video plays with its own subtitle file"
+    );
+    fixture.app.apply_text(Event::ShowMask(true));
+    let session = fixture.app.text.session.as_ref().expect("session");
+    assert!(session.localized.as_ref().is_some_and(|l| l.show_mask));
+}
+
+#[test]
+fn selecting_an_occurrence_loads_its_replaced_plate_off_the_window_thread() {
+    let mut fixture = Fixture::new();
+    fixture.show(0);
+    let review = localized_review(&fixture);
+    let session = fixture.app.text.session.as_mut().expect("session");
+    session.localized = Some(review);
+    fixture.app.apply_text(Event::Select(0));
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let loaded = |app: &TbdSubtitlesApp| {
+        app.text
+            .session
+            .as_ref()
+            .and_then(|session| session.localized.as_ref())
+            .and_then(|localized| localized.pictures.as_ref())
+            .map(|pictures| (pictures.id.clone(), pictures.preview.is_some()))
+    };
+    while loaded(&fixture.app).is_none() && Instant::now() < deadline {
+        fixture.app.poll_text();
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert_eq!(loaded(&fixture.app), Some(("sign".to_string(), true)));
+}
+
+#[test]
+fn a_reloaded_session_keeps_the_chosen_picture_and_mask_switch() {
+    use crate::text_review::models::PreviewMode;
+    let mut fixture = Fixture::new();
+    fixture.show(0);
+    let mut review = localized_review(&fixture);
+    review.mode = PreviewMode::Subtitles;
+    review.show_mask = true;
+    fixture
+        .app
+        .text
+        .session
+        .as_mut()
+        .expect("session")
+        .localized = Some(review);
+    fixture.app.refresh_text();
+    let mut reloaded = fixture.session(0);
+    reloaded.localized = Some(localized_review(&fixture));
+    let (send, receive) = mpsc::channel();
+    fixture.app.text.pending = Some(receive);
+    send.send(Ok(reloaded)).expect("send");
+    fixture.app.poll_text();
+    let session = fixture.app.text.session.as_ref().expect("reloaded");
+    let localized = session.localized.as_ref().expect("localized");
+    assert_eq!(
+        (localized.mode, localized.show_mask),
+        (PreviewMode::Subtitles, true)
+    );
 }

@@ -61,6 +61,7 @@ impl Fixture {
                         frame_rate_num: 24_000,
                         frame_rate_den: 1001,
                         start_time_s: 0.0,
+                        ..Default::default()
                     }),
                     audio: vec![track.clone()],
                 },
@@ -374,4 +375,100 @@ fn malformed_corrections_are_reported_and_never_overwritten() {
         fs::read(path).expect("preserved malformed file"),
         b"{invalid correction"
     );
+}
+
+impl Fixture {
+    /// Set the job's localized video on or off.
+    fn localized(&mut self, on: bool) {
+        self.record.settings.onscreen_text.localized_video = on;
+        work_dir::write_json(&self.work.job_json(), &self.record).expect("job record");
+    }
+}
+
+#[test]
+fn a_job_without_the_localized_video_loads_no_replacements() {
+    let mut fixture = Fixture::new("not-localized");
+    fixture.localized(false);
+    assert!(fixture.load().localized.is_none());
+}
+
+#[test]
+fn a_localized_job_loads_each_replacement_and_the_selected_one_s_pictures() {
+    use job_model::onscreen::{PixelRect, Plate, ReplaceStatus, ReplacedText, ReplacementDocument};
+    let mut fixture = Fixture::new("localized");
+    fixture.localized(true);
+    let session = fixture.load();
+    let localized = session.localized.expect("the job writes a localized video");
+    assert!(localized.replacements.is_empty(), "no composition yet");
+    assert_eq!(localized.video, None);
+
+    let folder = fixture.work.root().join("visual/patches/board");
+    fs::create_dir_all(&folder).expect("patch folder");
+    image::RgbImage::from_pixel(96, 32, image::Rgb([10, 20, 30]))
+        .save(folder.join("preview.png"))
+        .expect("preview");
+    image::GrayImage::from_pixel(96, 32, image::Luma([255]))
+        .save(folder.join("mask.png"))
+        .expect("mask");
+    let rect = PixelRect {
+        x: 960,
+        y: 540,
+        width: 96,
+        height: 32,
+    };
+    let text = |id: &str, status: ReplaceStatus, plates: Vec<Plate>| ReplacedText {
+        id: id.into(),
+        first_frame: 240,
+        last_frame: 287,
+        status,
+        style: None,
+        container: None,
+        plates,
+        preview: None,
+    };
+    let mut board = text(
+        "board",
+        ReplaceStatus::Baked,
+        vec![Plate {
+            first_frame: 240,
+            last_frame: 287,
+            rect,
+            shift: [0.0, 0.0],
+            scale: 1.0,
+            source: PathBuf::from("visual/patches/board/preview.png"),
+            mask: PathBuf::from("visual/patches/board/mask.png"),
+            plate: None,
+            patch: None,
+        }],
+    );
+    board.preview = Some(PathBuf::from("visual/patches/board/preview.png"));
+    let name = text(
+        "name",
+        ReplaceStatus::Fallback("the writing is too small".into()),
+        Vec::new(),
+    );
+    let composed = ReplacementDocument {
+        width: 1920,
+        height: 1080,
+        frame_count: 720,
+        texts: vec![board, name],
+    };
+    work_dir::write_json(&fixture.work.text(StepName::TextCompose), &composed).expect("compose");
+    let session = fixture.load();
+    let localized = session.localized.expect("localized");
+    assert_eq!(localized.replacements["board"].status, ReplaceStatus::Baked);
+    assert_eq!(
+        localized.replacements["name"].status,
+        ReplaceStatus::Fallback("the writing is too small".into())
+    );
+    assert_eq!(session.document.occurrences[session.selected].id, "board");
+    let pictures = localized
+        .pictures
+        .expect("the selected occurrence's pictures");
+    assert_eq!(pictures.id, "board");
+    let plate = pictures.preview.expect("replaced plate");
+    assert_eq!((plate.width, plate.height), (96, 32));
+    let mask = pictures.mask.expect("erase mask");
+    assert_eq!(mask.rect, rect);
+    assert!(mask.coverage.iter().all(|&c| c == 255));
 }

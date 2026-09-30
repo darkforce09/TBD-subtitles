@@ -471,3 +471,30 @@ inside the misses the owner already accepts, and a sign shown for fewer than fou
 one file, which Settings offers to download.
 
 **Supersedes:** none.
+
+### 2026-09-30 — Writing is replaced in a localized video, re-encoded beside the source
+
+**Context:** ASS cannot erase pixels, so over artwork the English sat beside the Japanese. The
+owner asked for replacement in the picture, as Google Translate does it, with the source
+read-only and a file near the source's size. No pure-Rust inpainting network exists. An encode at
+constant quality alone wrote 1.16 GB from a 647 MB source.
+
+**Decision:** Steps `text_mask`, `text_inpaint` and `text_compose` run between `text_review` and
+`text_typeset`, and `localized_video` after `output`. Strokes are separated per occurrence and
+dilated into a mask; LaMa (`Carve/LaMa-ONNX` `lama_fp32.onnx`, Apache-2.0, 512 × 512) fills it
+through ONNX Runtime in a worker under the GPU lock; the English is lettered in Noto Sans (OFL)
+with `ttf-parser` and `tiny-skia`, at 2× and warped by the keyframe's homography. The whole video
+is re-encoded with `hevc_nvenc`, else libx264, its peak rate capped at 1.25× the source's bit rate
+(1.5× for libx264), with the audio copied and no subtitle stream, as `<video>.localized.mkv`;
+`<video>.localized.ass` holds the dialogue, sound cues and on-screen English not drawn in, and
+`<video>.ass` stays as it was. New jobs have it on; saved jobs without the setting keep it off.
+
+**Consequences:** Writing that cannot be separated, followed, repainted or lettered legibly, or
+that the owner set to Nearby, stays in the localized ASS with `Not replaced in the video:
+<reason>`. A variable frame rate fails the step; a `.localized.mkv` the job did not write is never
+overwritten, and folder scans skip `*.localized.mkv`. On Dressrosa 11 the steps add 4.9 minutes
+and the file is 707 MB; each text correction re-encodes it. `lama-inpaint` and `latin-fonts` join
+the downloads.
+
+**Supersedes:** none; no entry recorded the ASS-only end state. The 2026-09-29 sampled-screening
+entry still holds for the ASS file, whose moving signs keep nearby placement.

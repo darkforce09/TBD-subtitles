@@ -6,6 +6,7 @@
 //! **Invariants:** times use the video's presentation timeline; coordinates use source pixels;
 //! unreadable writing has no invented English translation.
 
+mod localize;
 mod settings;
 
 use std::collections::BTreeMap;
@@ -14,6 +15,10 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub use localize::{
+    LetteringStyle, LocalizedVideoRecord, PixelRect, Plate, ReplaceStatus, ReplacedText,
+    ReplacementDocument,
+};
 pub use settings::TextSettings;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]

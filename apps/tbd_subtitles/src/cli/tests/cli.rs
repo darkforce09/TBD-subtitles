@@ -337,3 +337,15 @@ fn the_exit_code_says_whether_every_job_passed_the_quality_check() {
         Some("2 of 3 failed the quality check: b.mkv, c.mkv")
     );
 }
+
+#[test]
+fn step_progress_prints_once_per_tenth_whatever_the_report_size() {
+    use job_model::StepName;
+    let printed: Vec<usize> = (0..=44_489)
+        .step_by(240)
+        .chain([44_489])
+        .filter(|&done| process_command::enters_tenth(StepName::LocalizedVideo, done, 44_489))
+        .collect();
+    assert_eq!(printed.len(), 11, "{printed:?}");
+    assert_eq!(printed.last(), Some(&44_489));
+}

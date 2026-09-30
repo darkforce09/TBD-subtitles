@@ -16,6 +16,7 @@ crates/stages/src/
 ├── diff_sheet/    every engine's words aligned to the backbone engine's, as the sheet to adjudicate
 ├── fix_it/        on a finished job, a stronger model fixes the flagged lines in three passes
 ├── lib.rs         the crate root: the module list and the crate header
+├── localize/      composed English patches blended over every frame and encoded as the localized video
 ├── output/        the subtitle file written beside the video, backing up the file it replaces
 ├── probe_decode/  ffprobe the video, choose its audio track, stream the mix into the work directory
 ├── qc/            the cues checked against the layout, timing and coverage rules; the job report
@@ -64,6 +65,8 @@ reading the quality check's findings and writing corrections that a correction r
   - `qc`: `check`, `QcInput` and `markdown::render`;
   - `output`: `install` and `subtitle_path`.
 - `fix_it`: `run` and `items::asks_about`, for `crates/pipeline/src/fix_it/` and the window.
+- `localize`: `render`, `RenderRequest`, `Rendered` and `frame_format`, for the localized-video
+  step in `crates/pipeline/src/tasks/localized.rs`.
 
 ## Boundaries
 
@@ -75,7 +78,7 @@ reading the quality check's findings and writing corrections that a correction r
   subcommand (the glossary); the stack spike tools in `tools/stack_spike/`,
   `tools/stack_spike_ggml/` and `tools/stack_spike_llm/`.
 - Rules: each stage module is named exactly as its stage's `StageName::as_str` name (`fix_it/`
-  runs outside the stages), and a stage's output is complete or absent, never partial (the crate
+  runs outside the stages, and `localize/` is the `localized_video` stage), and a stage's output is complete or absent, never partial (the crate
   header in `lib.rs`).
 
 ## Related documentation

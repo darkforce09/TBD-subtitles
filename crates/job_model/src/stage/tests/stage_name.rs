@@ -48,7 +48,8 @@ fn only_model_stages_run_in_a_worker() {
             "sound_events",
             "adjudication",
             "alignment",
-            "onscreen_text"
+            "onscreen_text",
+            "localized_video"
         ]
     );
 }

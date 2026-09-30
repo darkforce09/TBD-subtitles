@@ -1,5 +1,5 @@
 //! A running job's progress card: what its stage is doing, the step at work ("Now: Language model
-//! settles the words · step 9 of 18"), a thick bar of the share done, and the time left beside
+//! settles the words · step 9 of 28"), a thick bar of the share done, and the time left beside
 //! the time so far.
 //!
 //! **Role:** draw the running job's headline progress from its step states and the step rates.

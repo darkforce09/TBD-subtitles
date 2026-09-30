@@ -139,6 +139,40 @@ Missed faint text and false detections are accepted limitations, as is writing s
 half-second sample step that no sample or cut lands on. The sampled scan with bisected boundaries
 and one Claude call per keyframe is built; its single-episode measurement is the open benchmark.
 
+## M5 — In-place on-screen text
+
+Replace visible Japanese inside the picture, as Google Translate does, in a localized copy of the
+video beside the source. M4 stays open as it stands; M5 builds on its detection and translation.
+
+- [x] Three resumable replacement steps between review and typesetting: stroke masks with
+      per-frame following of moving writing, LaMa inpainting through ONNX Runtime in its own
+      worker, and Noto Sans lettering in the measured style through tiny-skia.
+- [x] A `localized_video` step after the output: every frame decoded, the patches blended and the
+      video re-encoded with `hevc_nvenc` (libx264 fallback), its peak rate capped near the
+      source's, audio and chapters copied, no subtitle stream: `<video>.localized.mkv`.
+- [x] `<video>.localized.ass` with the dialogue, sound cues and the on-screen English not drawn
+      into the video, each fallback flagged with its reason; `<video>.ass` unchanged.
+- [x] Guards: variable frame rate refused, a `.localized.mkv` the job did not write never
+      overwritten, watch folders and folder adds skip `*.localized.mkv`.
+- [x] Settings → On-screen Text "Replace text in the video", on by default for new jobs; the
+      `lama-inpaint` and `latin-fonts` models in the model manifest and the download list.
+- [x] Check Text's Subtitles | Localized video control, Show erase mask and replacement status;
+      the Overview's localized-video card and replaced count; the job-end notification's line.
+- [x] One episode measured: Dressrosa 11, 4.9 minutes added, 707 MB against a 647 MB source,
+      15 of 21 candidates replaced
+      ([localized video on Dressrosa 11](/documentation/research/localized_video_dressrosa_11.md)).
+- [x] Outlined lettering on translucent name cards, numerals on signs and strokes a detector box
+      clips separate cleanly: the Rebecca name and role cards are replaced on Dressrosa 11.
+- [ ] Playback check of the localized video with its `.localized.ass` in VLC and mpv.
+- [ ] AppImage rebuild and host smoke test with the localized video on.
+- [ ] Owner acceptance of the localized video and its review in Check Text.
+
+Details: [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md#replacement-in-the-video),
+[video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md).
+
+**Acceptance:** the owner watches a localized Dressrosa episode with its `.localized.ass` in VLC
+and accepts it, and accepts the localized video's review in Check Text.
+
 ## Later
 
 Items the owner moved out of the pipeline milestone to keep it small (see the
@@ -156,5 +190,5 @@ Items the owner moved out of the pipeline milestone to keep it small (see the
 
 | Question | Settle by |
 |---|---|
-| Visual output | ASS whenever on-screen translation is enabled |
+| Visual output | ASS whenever on-screen translation is enabled; with Replace text in the video on (the default), also a localized video and its own ASS ([decision](/documentation/decisions/stack_and_pipeline.md#2026-09-30--writing-is-replaced-in-a-localized-video-re-encoded-beside-the-source)) |
 | Visible Japanese scope | All readable writing, including credits, decoration and visible lyrics |

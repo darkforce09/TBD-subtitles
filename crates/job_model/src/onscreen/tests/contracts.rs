@@ -3,7 +3,14 @@ use super::*;
 #[test]
 fn old_settings_do_not_enable_work_but_new_jobs_do() {
     assert!(!TextSettings::default().enabled);
+    assert!(!TextSettings::default().localized_video);
     assert!(TextSettings::new_job().enabled);
+    assert!(TextSettings::new_job().localized_video);
+    let saved: TextSettings = serde_json::from_str(r#"{"enabled": true}"#).unwrap();
+    assert!(
+        !saved.localized_video,
+        "a saved job keeps the localized video off"
+    );
 }
 
 #[test]

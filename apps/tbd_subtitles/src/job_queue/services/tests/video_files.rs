@@ -121,3 +121,49 @@ fn a_folder_that_cannot_be_read_gives_no_videos() {
     assert!(videos_under(&dir).is_empty());
     assert!(videos_in_folder(&dir).is_empty());
 }
+
+#[test]
+fn a_localized_copy_is_never_taken_as_a_video_to_subtitle() {
+    let dir = folder("localized");
+    for name in ["a.mkv", "a.localized.mkv", "B.Localized.MKV"] {
+        write(&dir.join(name), b"x");
+    }
+    write(&dir.join("sub").join("c.localized.mkv"), b"x");
+    assert!(is_localized_copy(&dir.join("B.Localized.MKV")));
+    assert!(!is_localized_copy(&dir.join("a.mkv")));
+    assert_eq!(videos_in_folder(&dir), [dir.join("a.mkv")]);
+    assert_eq!(videos_under(&dir), [dir.join("a.mkv")]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_job_s_localized_video_is_the_recorded_file_while_it_is_there() {
+    let dir = folder("localized-record");
+    let work = dir.join("work");
+    assert_eq!(localized_video(&work), None, "no record");
+    let video = dir.join("a.localized.mkv");
+    let record = |path: Option<&Path>| LocalizedVideoRecord {
+        path: path.map(|path| path.display().to_string()),
+        frames: 10,
+        replaced: 2,
+        ..LocalizedVideoRecord::default()
+    };
+    let at = WorkDir::new(&work).text(StepName::LocalizedVideo);
+    write(
+        &at,
+        serde_json::to_string(&record(None))
+            .expect("json")
+            .as_bytes(),
+    );
+    assert_eq!(localized_video(&work), None, "a job that wrote none");
+    write(
+        &at,
+        serde_json::to_string(&record(Some(&video)))
+            .expect("json")
+            .as_bytes(),
+    );
+    assert_eq!(localized_video(&work), None, "the file is gone");
+    write(&video, b"x");
+    assert_eq!(localized_video(&work), Some(video));
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -26,6 +26,7 @@ fn finished(failures: &[&str], findings: usize) -> JobState {
         failures: failures.iter().map(|f| f.to_string()).collect(),
         findings,
         wall_s: 600.0,
+        localized: None,
     })
 }
 
@@ -108,5 +109,20 @@ fn other_jobs_give_no_notice() {
     assert_eq!(
         ended_notice(&item(JobKind::Review, failed(None, "stopped"))),
         None
+    );
+}
+
+#[test]
+fn a_job_that_wrote_a_localized_video_names_it_after_the_verdict() {
+    let mut state = finished(&[], 38);
+    if let JobState::Finished(result) = &mut state {
+        result.localized = Some(PathBuf::from(
+            "/videos/[Muhn Pace] Dressrosa 16.localized.mkv",
+        ));
+    }
+    let notice = ended_notice(&item(JobKind::Full, state)).expect("notice");
+    assert_eq!(
+        notice.body,
+        "The quality check passed. Localized video saved: [Muhn Pace] Dressrosa 16.localized.mkv."
     );
 }

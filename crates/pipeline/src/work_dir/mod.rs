@@ -133,6 +133,22 @@ impl WorkDir {
     pub fn text_ass(&self) -> PathBuf {
         self.at("visual/events.ass")
     }
+    /// The typeset events of the writing left in the localized video, for its subtitle file.
+    pub fn text_ass_localized(&self) -> PathBuf {
+        self.at("visual/events_localized.ass")
+    }
+    /// Erase masks and the original pixels behind each plate, relative to the job folder.
+    pub fn masks_relative() -> &'static str {
+        "visual/masks"
+    }
+    /// Inpainted plates, relative to the job folder.
+    pub fn plates_relative() -> &'static str {
+        "visual/plates"
+    }
+    /// Composed lettering patches and review previews, relative to the job folder.
+    pub fn patches_relative() -> &'static str {
+        "visual/patches"
+    }
     pub fn qc(&self) -> PathBuf {
         self.at("qc.json")
     }

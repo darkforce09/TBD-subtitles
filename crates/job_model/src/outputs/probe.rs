@@ -14,7 +14,7 @@ pub struct ProbeResult {
 }
 
 /// One video stream.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct VideoStream {
     pub index: u32,
     pub codec: String,
@@ -24,6 +24,26 @@ pub struct VideoStream {
     pub frame_rate_num: u32,
     pub frame_rate_den: u32,
     pub start_time_s: f64,
+    /// FFmpeg's name for the decoded pixel format, such as `yuv420p10le`; `None` when ffprobe
+    /// reports none or the probe predates the field.
+    #[serde(default)]
+    pub pix_fmt: Option<String>,
+    /// The colour primaries tag, such as `bt709`; `None` when unknown.
+    #[serde(default)]
+    pub color_primaries: Option<String>,
+    /// The transfer characteristics tag, such as `bt709`; `None` when unknown.
+    #[serde(default)]
+    pub color_transfer: Option<String>,
+    /// The matrix coefficients tag, such as `bt709`; `None` when unknown.
+    #[serde(default)]
+    pub color_space: Option<String>,
+    /// The sample range, `tv` (limited) or `pc` (full); `None` when unknown.
+    #[serde(default)]
+    pub color_range: Option<String>,
+    /// The stream's average bit rate in bits per second, else the whole file's; `None` when
+    /// ffprobe reports neither.
+    #[serde(default)]
+    pub bit_rate: Option<u64>,
 }
 
 /// One audio stream.

@@ -12,7 +12,7 @@ documentation/features/
 ├── automation.md               watch folders, the Dolphin entry, one window, job-end notifications
 ├── fix_it.md                   a stronger model fixes a finished job's flagged lines; keep or undo each
 ├── gui.md                      the desktop window: job queue, progress, reports, review of flagged lines
-└── japanese_onscreen_text.md   translated subtitles for Japanese text shown on screen
+└── japanese_onscreen_text.md   Japanese text shown on screen: translated subtitles and the localized video
 ```
 
 ## How it works

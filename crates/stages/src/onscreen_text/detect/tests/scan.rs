@@ -203,6 +203,7 @@ impl Run {
             frame_rate_num: 24,
             frame_rate_den: 1,
             start_time_s: 0.0,
+            ..Default::default()
         };
         let root = Temporary::new();
         let calls = Mutex::new(Vec::new());

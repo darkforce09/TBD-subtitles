@@ -3,14 +3,18 @@
 # System overview
 
 The shape of TBD-subtitles: an app binary with a job runner, separate ggml and local-language-model
-worker binaries, FFmpeg for media, and a work directory per job. The 24-step pipeline runs from
+worker binaries, FFmpeg for media, and a work directory per job. The 28-step pipeline runs from
 the command line (`tbd-subtitles process`) or the window. A video occupies one queue entry for
 dialogue, sound cues and on-screen Japanese translation. Enabled visual translation produces one
-ASS file beside the unchanged source video.
+ASS file beside the source video; with the localized video on (the default for new jobs), the job
+also writes a copy of the video with the Japanese writing replaced in English,
+`<video>.localized.mkv`, and its own subtitle file, `<video>.localized.ass`. The source video is
+only read.
 
 The window includes visual settings, progress and timings, Overview counts and warnings, and
 Check Text beside Check Lines. Check Text edits wording, timing and presentation, regenerates
-the combined ASS, and compares source frames with FFmpeg rendering of that file. These M4
+the combined ASS, and compares source frames with FFmpeg rendering of that file, or with the
+localized video and its own subtitle file (M5, under validation). These M4
 components are integrated; annotated coverage, the episode benchmark, full GUI/VLC validation,
 packaged host checks and owner acceptance remain in progress
 ([GUI](/documentation/features/gui.md),
@@ -22,7 +26,7 @@ packaged host checks and owner acceptance remain in progress
  user / Dolphin / watcher
             |
             v
- tbd-subtitles: GUI or CLI -> one job runner -> 24 resumable steps
+ tbd-subtitles: GUI or CLI -> one job runner -> 28 resumable steps
             |                                      |
             | spawns assigned workers               | alongside initial decode
             v                                      v
@@ -30,7 +34,8 @@ packaged host checks and owner acceptance remain in progress
       probe_decode · separation · asr_parakeet    (FFmpeg scdet, CPU)
       sound_events · alignment · redecode_parakeet
       review (CPU) · adjudicate · readjudicate · sound_cues (claude)
-      text_detect · text_read (ONNX) · text_track (CPU)
+      text_detect · text_read · text_inpaint (ONNX) · text_track (CPU)
+      text_mask · text_compose (CPU) · localized_video (FFmpeg, NVENC)
       tbd-subtitles-ggml worker <step>
       asr_whisper · redecode_whisper
       tbd-subtitles-llm worker text_translate (mistral.rs; optional claude)
@@ -40,6 +45,7 @@ packaged host checks and owner acceptance remain in progress
                             | text_review / text_typeset / QC / output in runner
                             v
                  <video folder>/<video base name>.ass
+                 <video folder>/<video base name>.localized.mkv and .localized.ass
 ```
 
 - **gui** — the eframe desktop app ([GUI feature](/documentation/features/gui.md)). It runs one
@@ -61,8 +67,10 @@ packaged host checks and owner acceptance remain in progress
   tools disabled and shares one admission limit across worker processes and Fix It. There is
   no paid API backend or billing fallback.
 - **Steps** — each stage is one or more steps with their own output, fingerprint and timing row.
-  Detect → Read → Track → Translate → Review → Typeset follows dialogue cue construction and
-  precedes final QC/output. A disabled visual branch writes empty artifacts without loading models
+  Detect → Read → Track → Translate → Review → Mask → Inpaint → Compose → Typeset follows
+  dialogue cue construction and precedes final QC/output; the localized video is written last.
+  A disabled visual branch, or a job with the localized video off, writes empty artifacts for
+  those steps without loading models
   ([pipeline](/documentation/architecture/pipeline.md#steps-and-processes)).
 
 ## Crates
@@ -75,17 +83,19 @@ apps/
 └── tbd_subtitles_llm/    the mistral.rs worker binary: local visual translation
 crates/
 ├── app_icon/             the application icon, painted in code as RGBA pixels
-├── child_process/        external programs with deadlines, process-group kills, drained pipes, and
-│                         death with their parent
+├── child_process/        external programs with deadlines, process-group kills, drained pipes, a
+│                         stdin the caller streams into, and death with their parent
 ├── inference/            backends behind traits: onnx (ort), ggml, candle, llm (claude CLI, mistral.rs),
 │                         model store, CUDA runtime locator
 ├── job_model/            serde types for the job record, stage and step names, stage outputs, the QC
 │                         report — the contracts
-├── media_io/             ffprobe JSON, FFmpeg PCM and timestamped RGB streaming, shot-change scan
+├── media_io/             ffprobe JSON, FFmpeg PCM and timestamped RGB streaming, region crops and
+│                         native frames, shot-change scan, the localized-video encode
 ├── pipeline/             step graph, resume, work directory, worker processes, measurements, tasks,
 │                         runner, progress events, report
 ├── stages/               one module folder per stage (probe_decode, separation, vad, asr, diff_sheet,
-│                         sound_events, adjudication, alignment, cues, onscreen_text, qc, output)
+│                         sound_events, adjudication, alignment, cues, onscreen_text with its
+│                         replace/ steps, qc, output, localize)
 └── subtitle_formats/     cue model (frames), SRT/VTT/ASS writers and subtitle import
 tools/
 ├── appimage_builder/     the three binaries and runtime libraries in one AppImage
@@ -127,13 +137,15 @@ work/<job id>/            <video file stem as a slug>-<8 hex of its path>
 ├── fix.json, fix/        Fix It's last run; its answered calls until a run finishes
 ├── reviewed.json         the aligned words with the corrected lines timed again
 ├── cues.json             finished cues, in frames (and cues_dropped_sounds.json)
-├── visual/               six text_<step>.json artifacts, corrections.json, events.ass,
-│                         representative crops and cached translations
+├── visual/               nine text_<step>.json documents, corrections.json, events.ass,
+│                         events_localized.ass, localized_video.json, representative crops,
+│                         keyframe stills, cached readings and translations, and masks/,
+│                         plates/ and patches/ of the writing replaced in the video
 ├── qc.json               the quality check
-├── output.json           where the subtitle file went and what it replaced
+├── output.json           where the subtitle file (and the localized one) went and what it replaced
 ├── report.md             QC results, flagged lines with timestamps, step timings and memory
 ├── steps/, logs/         each worker's own measure and its stderr
-├── backup/               subtitle files the output step replaced
+├── backup/               subtitle files the output step replaced, the localized one included
 └── claude-cwd/           the empty folder `claude -p` runs in
 ```
 
@@ -146,8 +158,11 @@ invalidate reading/translation. Valid audio artifacts remain reusable. A step re
 fingerprint captured before execution, so an edit during a run still makes its result stale.
 Deleting a step's output, or `--rerun <step>`, reruns that step and its dependants.
 
-Records without visual settings keep that branch disabled until an explicit rerun enables it.
-New jobs enable it by default and select ASS. Replacing a job's SRT with ASS uses the subtitle
+Records without visual settings keep that branch disabled until an explicit rerun enables it,
+and records without the localized-video setting keep the localized video off. New jobs enable
+both by default and select ASS. Turning the localized video on or off reruns only the
+replacement steps, typesetting, the quality check, the output and the localized video, never
+translation. Replacing a job's SRT with ASS uses the subtitle
 backup mechanism. Uncertain text completes with review flags; infrastructure failures remain
 explicit and resumable.
 
@@ -162,7 +177,10 @@ crops. Qwen3.5-4B supplies local translations with dialogue context and the glos
 ASS wording is reused only after a scene and content match; its timing and geometry are not
 copied. Claude image input can resolve uncertain crops when enabled. Typesetting uses ordinary
 ASS text or vector glyphs for perspective. Uncertain surfaces receive nearby translations and
-flags; ASS cannot reconstruct hidden artwork.
+flags; ASS cannot reconstruct hidden artwork. The localized video can: LaMa (`lama-inpaint`,
+`Carve/LaMa-ONNX` `lama_fp32.onnx`, 208 MB, on ONNX Runtime) fills the erased strokes, and
+Noto Sans (`latin-fonts`, the variable font with its OFL licence) letters the English, drawn with
+tiny-skia. Both are required only while the localized video is on.
 
 ## Configuration
 
@@ -171,8 +189,9 @@ holds the owner's choices: the models folder, the work folder, the glossary (the
 Piece glossary by default), the separator and Whisper model, the language-model backend, the
 model a run asks and the one Fix It asks, the process count, the shared `claude` call cap,
 whether Fix It starts on each video when its job finishes, the cut score and the output format.
-The On-screen Text section controls visual processing, Claude fallback, the reference ASS folder
-and model availability/downloads; local translation runs first. Enabled visual processing takes
+The On-screen Text section controls visual processing, the localized video (Replace text in the
+video; a settings file without the key means on), Claude fallback, the reference ASS folder and
+model availability/downloads; local translation runs first. Enabled visual processing takes
 precedence over the selected format and writes ASS. A missing file means the defaults; an
 unknown key or a bad value stops the run with its name. The window edits the file and the command
 line reads it; `tbd-subtitles process --help` lists the options that win over it for one run,
@@ -191,17 +210,22 @@ plus the audio track and the steps to run again. The job record keeps the job's 
 - Resource limits: 8 GB RAM and 5.5 GB VRAM per GPU worker with the desktop running. Visual
   processing adds measured time to the audio pipeline.
 - One GPU worker at a time on the machine: every GPU worker holds `gpu.lock` in the app data
-  folder while it runs, whichever process of the app started it.
+  folder while it runs, whichever process of the app started it. The inpainting worker and the
+  localized-video worker, whose FFmpeg encodes with NVENC, hold it too.
 
 The completed M1 audio benchmark is 128.9 minutes of video in 19.2 minutes against a
 30-minute target for two hours ([measurement](/documentation/research/long_video_120min.md)).
 It contains no visual workload. M4 acceptance uses one 20–30-minute episode, as requested by the
 owner in place of the two-hour visual benchmark, and reports the added visual processing time
-and peak memory. That validation and owner acceptance are outstanding.
+and peak memory. That validation and owner acceptance are outstanding. The localized video adds
+about 4.9 minutes to a 30.9-minute episode, 4.5 of them encoding
+([measurement](/documentation/research/localized_video_dressrosa_11.md)).
 
 ## Related documentation
 
 - [Pipeline](/documentation/architecture/pipeline.md) — what each stage does.
 - [Rust ML stack](/documentation/research/rust_ml_stack.md) — the crates and model files.
+- [Video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md) — the
+  replacement steps and the localized video.
 - [Development environment](/documentation/runbooks/development_environment.md) — host, container
   and toolchain facts.

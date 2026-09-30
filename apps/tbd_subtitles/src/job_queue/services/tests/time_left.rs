@@ -28,7 +28,7 @@ fn a_new_job_has_the_pilot_audio_time_and_initial_visual_time_left() {
     p.duration_s = Some(PILOT_VIDEO_S);
     let (left, share) = estimate(&p, &pilot_rates(), now).expect("estimate");
     let pilot: f64 = PILOT.iter().map(|(_, s)| s).sum();
-    let initial_visual = PILOT_VIDEO_S * 0.82;
+    let initial_visual = PILOT_VIDEO_S * 1.24;
     assert!(
         (left - pilot - initial_visual).abs() < 0.01,
         "{left} vs audio {pilot} and visual {initial_visual}"
@@ -45,7 +45,11 @@ fn every_visual_step_has_a_positive_estimate_without_measured_history() {
         (StepName::TextTrack, 250.0),
         (StepName::TextTranslate, 200.0),
         (StepName::TextReview, 10.0),
+        (StepName::TextMask, 50.0),
+        (StepName::TextInpaint, 100.0),
+        (StepName::TextCompose, 20.0),
         (StepName::TextTypeset, 10.0),
+        (StepName::LocalizedVideo, 250.0),
     ] {
         let mut progress = JobProgress::new(now);
         progress.duration_s = Some(1000.0);
@@ -75,7 +79,11 @@ fn disabled_visual_steps_add_no_time_even_with_measured_history() {
         StepName::TextTrack,
         StepName::TextTranslate,
         StepName::TextReview,
+        StepName::TextMask,
+        StepName::TextInpaint,
+        StepName::TextCompose,
         StepName::TextTypeset,
+        StepName::LocalizedVideo,
     ] {
         progress.row_mut(step).expect("visual step").stale = false;
         rates.per_step.insert(step, 100.0);
@@ -88,6 +96,62 @@ fn disabled_visual_steps_add_no_time_even_with_measured_history() {
         row.stale = false;
     }
     assert_eq!(estimate(&progress, &rates, now), Some((0.0, 0.0)));
+}
+
+/// Settings with on-screen translation `enabled` and the localized video `localized`.
+fn settings(enabled: bool, localized: bool) -> JobSettings {
+    let mut settings = JobSettings::with_glossary(vec![]);
+    settings.onscreen_text.enabled = enabled;
+    settings.onscreen_text.localized_video = localized;
+    settings
+}
+
+const REPLACEMENT: [StepName; 4] = [
+    StepName::TextMask,
+    StepName::TextInpaint,
+    StepName::TextCompose,
+    StepName::LocalizedVideo,
+];
+
+#[test]
+fn the_steps_a_job_leaves_idle_follow_its_settings() {
+    assert!(idle_steps(&settings(true, true)).is_empty());
+    assert_eq!(idle_steps(&settings(true, false)), REPLACEMENT);
+    let off = idle_steps(&settings(false, true));
+    let visual: Vec<StepName> = StepName::ALL
+        .into_iter()
+        .filter(|step| step.stage() == job_model::StageName::OnscreenText)
+        .chain([StepName::LocalizedVideo])
+        .collect();
+    assert_eq!(off, visual, "translation off leaves every visual step idle");
+    for step in [StepName::Separation, StepName::Output, StepName::Qc] {
+        assert!(works_in(step, &settings(false, false)), "{step}");
+    }
+}
+
+#[test]
+fn idle_steps_add_no_time_left_even_while_stale() {
+    let now = Instant::now();
+    let rates = pilot_rates();
+    let audio: f64 = PILOT.iter().map(|(_, seconds)| seconds).sum();
+    let mut progress = JobProgress::new(now);
+    progress.duration_s = Some(PILOT_VIDEO_S);
+    progress.idle = idle_steps(&settings(false, false));
+    let (left, _) = estimate(&progress, &rates, now).expect("known duration");
+    assert!((left - audio).abs() < 0.01, "{left} vs {audio}");
+    progress.idle = idle_steps(&settings(true, false));
+    let (left, _) = estimate(&progress, &rates, now).expect("known duration");
+    let reading = PILOT_VIDEO_S * (0.2 + 0.15 + 0.25 + 0.2 + 0.01 + 0.01);
+    assert!(
+        (left - audio - reading).abs() < 0.01,
+        "the replacement steps add nothing: {left}"
+    );
+    progress.idle = idle_steps(&settings(true, true));
+    let (left, _) = estimate(&progress, &rates, now).expect("known duration");
+    assert!(
+        (left - audio - PILOT_VIDEO_S * 1.24).abs() < 0.01,
+        "the localized video adds its steps: {left}"
+    );
 }
 
 #[test]
@@ -147,6 +211,51 @@ fn history_replaces_the_pilot_rate_of_each_step_it_measured() {
     assert_eq!(
         rates.per_step.get(&StepName::Alignment),
         pilot_rates().per_step.get(&StepName::Alignment)
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn history_ignores_the_time_of_a_step_the_job_left_idle() {
+    let root = std::env::temp_dir().join(format!("tbd-idle-rates-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let job = root.join("job-a");
+    std::fs::create_dir_all(&job).expect("dir");
+    let mut record = JobRecord {
+        video: "a.mp4".into(),
+        video_size: 1,
+        video_modified_s: 0,
+        settings: settings(true, false),
+        models_dir: None,
+        corrections: None,
+        steps: Default::default(),
+    };
+    for (step, wall_s) in [(StepName::TextMask, 0.01), (StepName::TextDetect, 300.0)] {
+        record.steps.insert(
+            step,
+            StepRecord {
+                fingerprint: String::new(),
+                finished_ns: 0,
+                measure: StepMeasure {
+                    wall_s,
+                    ..StepMeasure::default()
+                },
+            },
+        );
+    }
+    std::fs::write(
+        job.join("job.json"),
+        serde_json::to_string(&record).expect("json"),
+    )
+    .expect("write");
+    let probe = r#"{"probe":{"duration_s":1000.0,"video":null,"audio":[]},"track":{"index":1,"audio_position":0,"codec":"aac","language":null,"channels":2,"sample_rate":48000,"start_time_s":0.0},"samples":0}"#;
+    std::fs::write(job.join("probe.json"), probe).expect("write");
+    let rates = from_history(&root);
+    assert_eq!(rates.per_step.get(&StepName::TextDetect), Some(&0.3));
+    assert_eq!(
+        rates.per_step.get(&StepName::TextMask),
+        None,
+        "an idle run teaches no rate"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

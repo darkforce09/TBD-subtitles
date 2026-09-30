@@ -11,7 +11,7 @@ apps/tbd_subtitles/src/job_report/models/
 ├── fixing.rs         `FixView`: Fix It hidden, ready, off with why, running or updating; its steps
 ├── mod.rs            the module list
 ├── problem.rs        `Problem` and `Remedy`: a broken pass rule in plain words, its fix and its button
-├── report.rs         `JobReport`: the video, the files, the check, corrections, problems, lines, Fix It
+├── report.rs         `JobReport`: the video, the files, the check, corrections, problems, lines, Fix It; `LocalizedOutput`
 ├── summary.rs        `LineCounts` and `RowSummary`: lines worth a listen, checked, and a row's verdict
 └── tests/            unit tests for the groups, the problems' words and buttons, Fix It's steps and words
 ```

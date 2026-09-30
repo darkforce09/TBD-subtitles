@@ -10,6 +10,7 @@ apps/tbd_subtitles/src/job_report/ui/
 ├── file_card.rs        the verdict, Fix It's notes, the correction note, problems, the Fix It row, buttons
 ├── fix_result_card.rs  Fix It's result: what Claude changed, cleared and left, examples, See Changes
 ├── lines_card.rs       the lines worth a listen, the checked bar, Check Lines, a row per group
+├── localized_card.rs   the localized video beside the original and its subtitle file, with their buttons
 ├── mod.rs              the module list and the entry point
 ├── overview.rs         `OverviewView` and `overview_ui`: the cards in order; the head both cards share
 └── report_details.rs   the Details and Step times disclosures, and Open Full Report
@@ -17,9 +18,14 @@ apps/tbd_subtitles/src/job_report/ui/
 
 ## How it works
 
-`overview_ui` draws the file and dialogue cards, visual results when present, then details and times,
-in the application's column, 16 px apart. The visual card gives detection, translation, fallback and
-unresolved counts, measured processing time and a direct Check Text action. The file card's head is
+`overview_ui` draws the file card, the localized video's card when the job wrote one, the dialogue
+card, visual results when present, then details and times, in the application's column, 16 px
+apart. The visual card gives detection, translation, fallback and unresolved counts ("· 4 replaced
+in the video" once the localized video's steps ran), measured processing time and a direct Check
+Text action. The localized video's card, shown while `<video>.localized.mkv` is on disk, has a
+green film mark, "Localized video saved next to the original" and a line under it, the video's
+path and its subtitle file's path on the well (folder and file, the whole path on hover), and Open
+in Player, Show in Folder and Copy Path for the localized video. The file card's head is
 a 28 px captions mark (green, or orange when there are problems), "Subtitles saved next to the
 video" with a line under it, and on the right the pill "Passes the quality check" or "Needs
 attention". Once Fix It has answered lines, and while it is not under way on the video, its

@@ -397,17 +397,18 @@ fn fields(ui: &mut Ui, session: &Session, text: &TextOccurrence, draft: &mut Tex
                 .suffix(" s"),
         );
     });
+    let localized = session.localized.is_some();
     ui.horizontal_wrapped(|ui| {
         ui.label("Treatment");
         egui::ComboBox::from_id_salt("text-treatment")
-            .selected_text(treatment_name(&draft.presentation.treatment))
+            .selected_text(treatment_name(&draft.presentation.treatment, localized))
             .show_ui(ui, |ui| {
                 for treatment in [
                     TextTreatment::Auto,
                     TextTreatment::Replace,
                     TextTreatment::Nearby,
                 ] {
-                    let label = treatment_name(&treatment);
+                    let label = treatment_name(&treatment, localized);
                     ui.selectable_value(&mut draft.presentation.treatment, treatment, label);
                 }
             });
@@ -459,9 +460,12 @@ fn fields(ui: &mut Ui, session: &Session, text: &TextOccurrence, draft: &mut Tex
     });
 }
 
-fn treatment_name(treatment: &TextTreatment) -> &'static str {
+/// A treatment's name; Replace says it draws into the video when the job writes a `localized`
+/// video.
+fn treatment_name(treatment: &TextTreatment, localized: bool) -> &'static str {
     match treatment {
         TextTreatment::Auto => "Automatic",
+        TextTreatment::Replace if localized => "Replace in the video",
         TextTreatment::Replace => "Replace",
         TextTreatment::Nearby => "Nearby translation",
     }

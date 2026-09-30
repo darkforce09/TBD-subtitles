@@ -31,8 +31,8 @@ and the key. `save` writes the whole file through a part file and a rename.
 or a glossary file's name without its extension);
 `models_dir` and `work_root` give the named folders, else the defaults of `pipeline`.
 `page_editing::apply` takes the saved settings with one field changed and writes them at once,
-returning what they made stale (the models list when the models folder or an engine changed, the
-models folder's size, the work folder's size; never the machine checks). It refuses, writing
+returning what they made stale (the models list when the models folder, an engine, on-screen
+translation or Replace text in the video changed, the models folder's size, the work folder's size; never the machine checks). It refuses, writing
 nothing, with a `FieldError` naming the field and why: a number out of its range (`PROCESSES`
 1–16, `FIX_CALLS` 1–100, `CUT_SCORES` 1–100, and never one that is not finite), the models
 folder while a download runs ("Stop the download first."), or a new glossary that cannot be read
@@ -96,8 +96,9 @@ found in as its `path`), asks FFmpeg, ffprobe and `claude` for their versions, l
     written at once, a bad glossary is not written and names its field, an unreadable saved
     glossary blocks no other edit and keeps its error, numbers out of range or not finite are
     never written, the models folder stays while a download runs, an unreadable settings file is
-    kept before the first write, and only the models folder and the engines make the models list
-    stale (`a_valid_edit_is_written_at_once`, `a_bad_glossary_is_not_written_and_names_its_field`,
+    kept before the first write, and only the models folder, the engines, on-screen translation
+    and the localized video make the models list stale
+    (`replacing_text_in_the_video_makes_the_models_list_stale`, `a_valid_edit_is_written_at_once`, `a_bad_glossary_is_not_written_and_names_its_field`,
     `an_unreadable_saved_glossary_blocks_no_other_edit_and_its_error_stays`,
     `numbers_out_of_range_or_not_finite_are_never_written`,
     `claude_calls_at_once_stay_from_1_to_100`,

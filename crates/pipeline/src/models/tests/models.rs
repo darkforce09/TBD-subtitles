@@ -21,7 +21,8 @@ fn the_settings_choose_the_separator_and_whisper_folders() {
     settings.separator = Separator::MdxNet;
     settings.whisper = WhisperModel::LargeV3Turbo;
     let models = required(&settings);
-    assert_eq!(models.len(), 8);
+    assert_eq!(models.len(), 10);
+    assert!(models.contains(&"lama-inpaint") && models.contains(&"latin-fonts"));
     assert!(models.contains(&"pp-ocrv5"));
     assert!(models.contains(&"manga-ocr"));
     assert!(models.contains(&"qwen3.5-4b"));

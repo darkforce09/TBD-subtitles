@@ -241,7 +241,8 @@ pub(crate) fn stale(before: &AppSettings, after: &AppSettings) -> Stale {
     Stale {
         models: models_folder
             || before.engines != after.engines
-            || before.onscreen_text.enabled != after.onscreen_text.enabled,
+            || before.onscreen_text.enabled != after.onscreen_text.enabled
+            || before.onscreen_text.localized_video != after.onscreen_text.localized_video,
         models_size: models_folder,
         work_size: before.work_root != after.work_root,
     }

@@ -39,6 +39,8 @@ pub(crate) struct JobResult {
     pub(crate) failures: Vec<String>,
     pub(crate) findings: usize,
     pub(crate) wall_s: f64,
+    /// The video with its writing replaced in English beside the source, when the job wrote one.
+    pub(crate) localized: Option<PathBuf>,
 }
 
 /// Why and where a job failed.

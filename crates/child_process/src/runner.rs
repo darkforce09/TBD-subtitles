@@ -7,8 +7,8 @@
 //! **Position:** called through [`Run`]; uses `stream.rs` for the pipes, `trace.rs` for the log,
 //! and `libc` for the process group calls.
 //!
-//! **Signals and state:** spawns one child per call, writes its stdin once, and holds nothing
-//! after it is reaped.
+//! **Signals and state:** spawns one child per call, writes its stdin once (or closes a piped
+//! stdin at once), and holds nothing after it is reaped.
 //!
 //! **Invariants:** a timed-out run leaves no process of its group alive; a signalled child is
 //! [`RunError::Signalled`], never an exit code.
@@ -21,7 +21,7 @@ use crate::RunError;
 
 use crate::stream::{SeparateDrains, start_merged_drain};
 use crate::trace::Tag;
-use crate::{Merged, Output, Run};
+use crate::{Merged, Output, Run, Stdin};
 
 /// How often a pending child is polled while waiting on a deadline. Short enough that a timeout
 /// is punctual, long enough that an hour-long worker does not spin a core.
@@ -38,7 +38,7 @@ impl Run {
         // `setsid` made the child a group leader, so its pgid equals its pid.
         let pgid = child.id() as i32;
         let tag = Tag::started(&self, child.id());
-        feed_stdin(&mut child, self.stdin.as_deref());
+        feed_stdin(&mut child, &self.stdin);
 
         // Drain both pipes for the child's whole life. See the crate documentation, invariant 3.
         let drains = SeparateDrains::start(&mut child, &tag);
@@ -106,7 +106,7 @@ impl Run {
         let mut child = spawn(&mut cmd, &self.program, &label)?;
         let pgid = child.id() as i32;
         let tag = Tag::started(&self, child.id());
-        feed_stdin(&mut child, self.stdin.as_deref());
+        feed_stdin(&mut child, &self.stdin);
 
         // Drop OUR copies of the write end. Without this the read below never sees EOF, because
         // the pipe stays open on handles this process still holds. `cmd` owns both.
@@ -152,17 +152,17 @@ impl Run {
 
     /// The configured [`Command`], with the child placed in its own process group.
     ///
-    /// Stdin is a pipe only when this run carries a body to write; otherwise it is `/dev/null`,
-    /// so a child that reads stdin sees EOF rather than inheriting this process's terminal.
+    /// Stdin is a pipe only when this run carries a body to write or is piped for the caller;
+    /// otherwise it is `/dev/null`, so a child that reads stdin sees EOF rather than inheriting
+    /// this process's terminal.
     pub(crate) fn command(&self, stdout: Stdio, stderr: Stdio) -> Command {
         let mut cmd = Command::new(&self.program);
         cmd.args(&self.args)
             .stdout(stdout)
             .stderr(stderr)
-            .stdin(if self.stdin.is_some() {
-                Stdio::piped()
-            } else {
-                Stdio::null()
+            .stdin(match self.stdin {
+                Stdin::Null => Stdio::null(),
+                Stdin::Body(_) | Stdin::Piped => Stdio::piped(),
             });
         if let Some(ref d) = self.cwd {
             cmd.current_dir(d);
@@ -226,12 +226,13 @@ pub(crate) fn spawn(cmd: &mut Command, program: &str, label: &str) -> Result<Chi
     started
 }
 
-/// Write `body` to the child's stdin and close it.
+/// Write the body, if the run carries one, to the child's stdin and close it; a piped stdin
+/// closes unwritten.
 ///
 /// A closed stdin (the child exited early) is the child's business, not an error here.
-pub(crate) fn feed_stdin(child: &mut Child, body: Option<&str>) {
-    if let Some(body) = body
-        && let Some(mut sink) = child.stdin.take()
+pub(crate) fn feed_stdin(child: &mut Child, stdin: &Stdin) {
+    if let Some(mut sink) = child.stdin.take()
+        && let Stdin::Body(body) = stdin
     {
         use std::io::Write;
         let _ = sink.write_all(body.as_bytes());

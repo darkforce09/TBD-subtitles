@@ -120,7 +120,7 @@ fn key_value_ui(ui: &mut Ui, key: &str, value: &str) {
         .galley(pos2(rect.left() + KEY_WIDTH + SIDE, top), value, p.text);
 }
 
-/// The Step times disclosure: a table of the six stages, each with its steps, then Open Full
+/// The Step times disclosure: a table of the nine stages, each with its steps, then Open Full
 /// Report.
 pub(super) fn step_times_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<ReportEvent>) {
     card(ui, false, |ui| {

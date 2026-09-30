@@ -13,8 +13,8 @@ use crate::job_queue::models::queue::JobId;
 use crate::job_queue::services::queue_editing;
 use crate::line_review::{events::ReviewEvent, services::review_loading};
 use crate::settings::services::job_settings;
-use crate::text_review::models::{Event, Session};
-use crate::text_review::services::{player, session};
+use crate::text_review::models::{Event, PreviewMode, ReplacementPictures, Session};
+use crate::text_review::services::{localized, player, session};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
@@ -26,9 +26,13 @@ pub(crate) struct State {
     pub(crate) saving: Option<PendingSave>,
     parked_saves: Vec<PendingSave>,
     pub(crate) player: Option<player::Player>,
+    /// The selected occurrence's replaced plate and erase mask, while they load.
+    pictures: Option<Receiver<ReplacementPictures>>,
     pub(crate) error: Option<String>,
     selected_text: Option<String>,
     preserved_draft: Option<(String, job_model::onscreen::TextEdit)>,
+    /// The right picture and the erase mask switch chosen before the session reloaded.
+    preserved_preview: Option<(PreviewMode, bool)>,
 }
 
 pub(crate) struct PendingSave {
@@ -72,6 +76,15 @@ impl State {
         } else {
             None
         };
+        let preserved_preview = if self.job == job {
+            self.session
+                .as_ref()
+                .and_then(|session| session.localized.as_ref())
+                .map(|localized| (localized.mode, localized.show_mask))
+                .or(self.preserved_preview)
+        } else {
+            None
+        };
         let selected_text = if self.job == job {
             self.session
                 .as_ref()
@@ -85,6 +98,7 @@ impl State {
             job,
             selected_text,
             preserved_draft,
+            preserved_preview,
             ..Self::default()
         };
         for save in saves {
@@ -167,12 +181,28 @@ impl TbdSubtitlesApp {
                             ));
                         }
                     }
+                    if let (Some(localized), Some((mode, show_mask))) = (
+                        session.localized.as_mut(),
+                        self.text.preserved_preview.take(),
+                    ) {
+                        localized.mode = mode;
+                        localized.show_mask = show_mask;
+                    }
+                    let shown = session.document.occurrences.get(session.selected);
+                    let stale_pictures = session.localized.as_ref().is_some_and(|localized| {
+                        localized.pictures.as_ref().map(|pictures| &pictures.id)
+                            != shown.map(|text| &text.id)
+                    });
                     self.text.session = Some(session);
+                    if stale_pictures {
+                        self.text_pictures();
+                    }
                     self.text_preview(false);
                 }
                 Err(error) => self.text.error = Some(error),
             }
         }
+        self.poll_text_pictures();
         let video = self
             .text
             .job
@@ -224,6 +254,20 @@ impl TbdSubtitlesApp {
             Event::Select(index) => {
                 if select(session, index) {
                     preview = true;
+                    self.text_pictures();
+                }
+            }
+            Event::PreviewMode(mode) => {
+                if let Some(localized) = session.localized.as_mut()
+                    && localized.mode != mode
+                {
+                    localized.mode = mode;
+                    preview = true;
+                }
+            }
+            Event::ShowMask(show) => {
+                if let Some(localized) = session.localized.as_mut() {
+                    localized.show_mask = show;
                 }
             }
             Event::Edit(edit) => session.draft = Some(edit),
@@ -275,6 +319,52 @@ impl TbdSubtitlesApp {
         }
         if preview {
             self.text_preview(false);
+        }
+    }
+
+    /// Decode the selected occurrence's replaced plate and erase mask off the window thread; the
+    /// pictures of the occurrence shown before go at once.
+    fn text_pictures(&mut self) {
+        let Some(session) = self.text.session.as_mut() else {
+            return;
+        };
+        let Some(localized) = session.localized.as_mut() else {
+            return;
+        };
+        localized.pictures = None;
+        self.text.pictures = None;
+        let Some((id, replacement)) = session
+            .document
+            .occurrences
+            .get(session.selected)
+            .and_then(|text| Some((text.id.clone(), localized.replacements.get(&text.id)?)))
+        else {
+            return;
+        };
+        let replacement = replacement.clone();
+        let (send, receive) = mpsc::channel();
+        self.text.pictures = Some(receive);
+        let wake = self.env.wake.clone();
+        std::thread::spawn(move || {
+            let _ = send.send(localized::pictures(&id, &replacement));
+            wake();
+        });
+    }
+
+    /// Take the selected occurrence's pictures once they are decoded, if they still belong to it.
+    fn poll_text_pictures(&mut self) {
+        let Some(Ok(pictures)) = self.text.pictures.as_ref().map(Receiver::try_recv) else {
+            return;
+        };
+        self.text.pictures = None;
+        let Some(session) = self.text.session.as_mut() else {
+            return;
+        };
+        let selected = session.document.occurrences.get(session.selected);
+        if let Some(localized) = session.localized.as_mut()
+            && selected.is_some_and(|text| text.id == pictures.id)
+        {
+            localized.pictures = Some(pictures);
         }
     }
 

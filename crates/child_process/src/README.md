@@ -20,29 +20,32 @@ crates/child_process/src/
 ## How it works
 
 ```text
-Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
+Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..) | .stdin_piped()
   ├─ output()         two pipes ──▶ SeparateDrains: a thread per pipe ──▶ Output
   ├─ merged_output()  one std::io::pipe for both ──▶ one drain thread ──▶ Merged
   ├─ status()         output(), then the code alone
-  └─ spawn()          stdout to the caller, stderr drain thread, watchdog ──▶ Running ──wait──▶ Finished
+  └─ spawn()          stdout (and a piped stdin) to the caller, stderr drain thread, watchdog
+                      ──▶ Running ──wait──▶ Finished
         │
         ├─ command()      pre_exec: setsid (or setpgid(0, 0)), then PR_SET_PDEATHSIG=SIGKILL
         ├─ spawn()        NotFound ──▶ ProgramAbsent; any other error ──▶ Failed
-        ├─ feed_stdin()   write the body once and close the pipe
+        ├─ feed_stdin()   write the body once and close the pipe (a piped stdin stays open
+        │                 for `spawn`'s caller; the collecting runs close it unwritten)
         ├─ wait_within()  no deadline: wait; a deadline: try_wait every 20 ms,
         │                 then killpg(SIGKILL), reap ──▶ Timeout
         └─ signal check   status.signal() ──▶ Signalled; otherwise the raw code
 ```
 
 - `lib.rs` holds the data: `Run` stores the program, its arguments, the working folder, the
-  environment changes, the deadline and the stdin body. `Run::display` renders the program and its
+  environment changes, the deadline and what the child reads on stdin: nothing, a body, or a
+  pipe the caller streams into. `stdin` and `stdin_piped` replace each other; the last call wins. `Run::display` renders the program and its
   arguments joined by spaces; it is the `program` in `Failed`, `Signalled` and `Timeout`, while
   `ProgramAbsent` carries the bare program name.
 - `runner.rs` builds the `Command`. The child asks the kernel for SIGKILL when the thread that
   started it dies (`PR_SET_PDEATHSIG`), and gives up before exec if that parent is already gone,
   so a caller starts a child only from a thread that lives until the child is reaped. Because
   `setsid` makes the child a group leader, its pid is its process-group id, which `wait_within`
-  hands to `killpg`. Stdin is a pipe only when the run carries a body; otherwise it is `/dev/null`,
+  hands to `killpg`. Stdin is a pipe only when the run carries a body or is piped; otherwise it is `/dev/null`,
   so a child that reads stdin sees EOF instead of this process's terminal. A closed stdin, when the
   child exits early, is not an error.
 - `stream.rs` starts the drains before the wait and reads each pipe to EOF, so a child that fills
@@ -58,8 +61,10 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
 - `running.rs` hands the child's stdout to the caller (FFmpeg's PCM pipe) and drains stderr on a
   thread. With a deadline or a cancel flag (`cancel_on`), a watchdog thread polls every 50 ms and
   kills the group when the deadline passes or the flag is set, so a caller blocked on a read sees
-  EOF; `wait` then reports `Timeout` or `Cancelled`. `wait` closes an unread
-  stdout before reaping, and dropping a `Running` that was never waited on kills its group.
+  EOF; `wait` then reports `Timeout` or `Cancelled`. A piped stdin (`stdin_piped`) is handed out
+  once by `take_stdin`, for FFmpeg's raw video input; a kill makes a blocked write fail with a
+  broken pipe, and the caller drops the stdin to send EOF. `wait` closes an unread stdout and an
+  untaken stdin before reaping, and dropping a `Running` that was never waited on kills its group.
 - `trace.rs` names each child `program[pid]` and logs under the `child_process` target: its start
   with its command line at debug (an argument over 160 bytes or on several lines, such as a
   prompt or a schema, stands as its size), each stderr line at debug (split at carriage returns,
@@ -75,14 +80,15 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
 
 ## Public surface
 
-- `Run`, with `new`, `arg`, `args`, `cwd`, `env`, `env_remove`, `timeout`, `stdin`, `display`,
+- `Run`, with `new`, `arg`, `args`, `cwd`, `env`, `env_remove`, `timeout`, `stdin`, `stdin_piped`, `display`,
   `output`, `merged_output`, `status` and `spawn`: the one way `media_io`, `inference`, `pipeline`
   and the tools start a program; `tools/verification_core/src/proc.rs` re-exports it for the
   repository gates.
 - `Output`, `Merged` and `RunError`: the answers, re-exported by the same file; `media_io` wraps
   `RunError` in its own error.
-- `Running` and `Finished`: the streamed child and its result, for the FFmpeg PCM stream in
-  `crates/media_io/src/pcm_stream/mod.rs` and the worker processes in
+- `Running` (with `pid`, `take_stdout`, `take_stdin`, `kill`, `has_exited`, `wait`) and
+  `Finished`: the streamed child and its result, for the FFmpeg PCM stream in
+  `crates/media_io/src/pcm_stream/mod.rs`, the video encoder in `crates/media_io/src/encode/` and the worker processes in
   `crates/pipeline/src/workers/mod.rs` and `tools/stack_spike/src/measure/mod.rs`.
 - `which`, `retry` and `wait_for`: re-exported from `lookup.rs` at the crate root; the gates call
   `which` through `tools/verification_core/src/proc.rs`.
@@ -104,7 +110,9 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..)
     `timeout_reports_timeout`);
   - a streamed child dies at its deadline, on its cancel flag and on drop
     (`a_deadline_kills_a_reader_blocked_child`, `a_cancel_flag_kills_a_reader_blocked_child`,
-    `dropping_an_unwaited_handle_kills_the_child` in `tests/running.rs`), and every child dies with the thread that started it
+    `dropping_an_unwaited_handle_kills_the_child` in `tests/running.rs`), also while the caller
+    writes its stdin (`a_cancel_flag_kills_a_child_while_the_caller_writes`), and every child
+    dies with the thread that started it
     (`a_child_dies_with_the_thread_that_started_it`, same file);
   - no pipe deadlocks a run (`large_output_does_not_deadlock`,
     `merged_output_times_out_without_deadlocking_on_a_full_pipe`), and the shared pipe keeps the

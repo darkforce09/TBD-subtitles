@@ -200,7 +200,10 @@ everything onto disk (the frame asks for a redraw when it goes).
     then briefly that all is on disk
     (`the_banner_says_what_is_missing_and_details_opens_the_models_tab`,
     `a_download_shows_its_progress_and_then_briefly_that_all_is_on_disk` in
-    `tests/rendering_settings.rs`);
+    `tests/rendering_settings.rs`); Replace text in the video is a switch under Translate
+    on-screen text that sends its edit, and off to clicks while translation is off
+    (`replace_text_in_the_video_is_a_switch_under_translation`,
+    `replace_text_in_the_video_is_off_while_translation_is` in `tests/rendering_settings.rs`);
   - a running queue shows NOW, UP NEXT and DONE with Pause After This Video, a waiting correction
     run does not enable Start, Delete removes the selected row with an Undo toast that puts it
     back (only the row removed last, and not while its video is in the list again), a job tried
@@ -224,7 +227,15 @@ everything onto disk (the frame asks for a redraw when it goes).
     earlier window shows its verdict and lines to check (`a_finished_job_shows_its_report`,
     `a_failed_language_model_call_needs_attention_and_try_again_reruns_the_calls`,
     `a_job_finished_in_an_earlier_window_shows_its_verdict_and_lines_to_check` in
-    `tests/rendering_report.rs`), Check Lines opens the line review, Overview closes it,
+    `tests/rendering_report.rs`), a job with a localized video shows its card and how many
+    occurrences were replaced in the video
+    (`a_job_with_a_localized_video_shows_its_card_and_what_it_replaced`), a localized job's Check
+    Text shows Subtitles | Localized video, the replaced plate before the video is written, Show
+    erase mask and whether each occurrence was replaced, and a job without one keeps the
+    subtitles preview alone
+    (`a_localized_job_previews_the_localized_video_its_mask_and_whether_text_was_replaced`,
+    `a_job_without_a_localized_video_keeps_the_subtitles_preview_alone` in
+    `tests/rendering_text.rs`), Check Lines opens the line review, Overview closes it,
     and so does running the job again, and a saved correction queues a review run that
     starts at once and shows on its video's one row
     (`a_saved_correction_queues_a_review_run_that_runs_at_once`), and a full run waits while its
@@ -263,8 +274,8 @@ everything onto disk (the frame asks for a redraw when it goes).
     list to it; an edit waits while Check Lines is closed; and the keys save, keep, play and move
     through the lines, but not while typing (`tests/rendering_review.rs`);
   - a running job shows its length and time so far, Cancel (or "Stopping…"), what its stage does,
-    "step 9 of 18", the time left (or that it is being worked out) and its stages with "Show all
-    18 steps"; a waiting job its place and when it starts; a job that failed before its first step
+    "step 9 of 28", the time left (or that it is being worked out) and its stages with "Show all
+    28 steps"; a waiting job its place and when it starts; a job that failed before its first step
     no stages; and the hint shows while no job is selected
     (`a_running_job_shows_its_stage_its_step_and_its_stages`,
     `a_running_job_works_out_its_time_left_until_its_length_is_known`,

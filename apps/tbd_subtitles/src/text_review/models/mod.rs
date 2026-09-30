@@ -1,12 +1,19 @@
 //! Plain state and events for reviewing on-screen text.
 //!
-//! **Role:** hold a loaded visual document, draft edit and preview position.
+//! **Role:** hold a loaded visual document, draft edit, preview position and, for a job that
+//! writes a localized video, its replacements.
 //! **Position:** shared by the text review services and rendering.
 //! **Signals and state:** no rendering or filesystem operations.
 //! **Invariants:** source observations remain immutable while the draft is edited.
 
 use job_model::onscreen::{TextCorrections, TextDocument, TextEdit};
 use std::path::PathBuf;
+
+mod localized;
+
+pub(crate) use localized::{
+    LocalizedReview, Mask, MaskPlate, PreviewMode, Replacement, ReplacementPictures,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Session {
@@ -24,6 +31,8 @@ pub(crate) struct Session {
     pub(crate) flagged_only: bool,
     pub(crate) error: Option<String>,
     pub(crate) thumbnails: Vec<Option<Picture>>,
+    /// The localized video, when the job writes one.
+    pub(crate) localized: Option<LocalizedReview>,
 }
 
 #[derive(Debug, Clone)]
@@ -37,7 +46,8 @@ pub(crate) struct Picture {
 #[derive(Debug, Clone)]
 pub(crate) struct Comparison {
     pub(crate) original: Picture,
-    pub(crate) rendered: Picture,
+    /// The right picture; none while it shows the localized video before it is written.
+    pub(crate) rendered: Option<Picture>,
     pub(crate) time_s: f64,
 }
 
@@ -53,4 +63,8 @@ pub(crate) enum Event {
     Play,
     Stop,
     FlaggedOnly(bool),
+    /// Show the source with its subtitles, or the localized video, on the right.
+    PreviewMode(PreviewMode),
+    /// Show the erase mask over the original picture.
+    ShowMask(bool),
 }

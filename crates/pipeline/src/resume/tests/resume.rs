@@ -43,6 +43,23 @@ fn touch(paths: &[std::path::PathBuf]) {
     }
 }
 
+/// The records whose contents the resume check reads, as a finished step leaves them.
+fn write_records(step: StepName, work: &WorkDir) {
+    match step {
+        StepName::Output => fs::write(
+            work.output_record(),
+            br#"{"path":"a.srt","unchanged":false}"#,
+        )
+        .unwrap(),
+        StepName::LocalizedVideo => fs::write(
+            work.text(step),
+            br#"{"path":null,"encoder":"","frames":0,"replaced":0}"#,
+        )
+        .unwrap(),
+        _ => {}
+    }
+}
+
 #[test]
 fn missing_visual_crop_invalidates_visual_descendants_without_repeating_audio() {
     let work = scratch("missing-visual-crop");
@@ -67,6 +84,7 @@ fn missing_visual_crop_invalidates_visual_descendants_without_repeating_audio() 
             .unwrap();
             touch(&[work.root().join("visual/crops/one.png")]);
         }
+        write_records(step, &work);
         r.steps.insert(
             step,
             StepRecord {
@@ -86,9 +104,13 @@ fn missing_visual_crop_invalidates_visual_descendants_without_repeating_audio() 
             StepName::TextTrack,
             StepName::TextTranslate,
             StepName::TextReview,
+            StepName::TextMask,
+            StepName::TextInpaint,
+            StepName::TextCompose,
             StepName::TextTypeset,
             StepName::Qc,
             StepName::Output,
+            StepName::LocalizedVideo,
         ]
     );
     let _ = fs::remove_dir_all(work.root());
@@ -187,6 +209,7 @@ fn the_stale_steps_are_the_invalid_ones_and_everything_that_reads_them() {
         if step == StepName::TextDetect {
             fs::write(work.text(step), br#"{"occurrences":[]}"#).unwrap();
         }
+        write_records(step, &work);
     }
     assert!(stale_steps(&r, &work).is_empty(), "a finished job");
     r.steps.remove(&StepName::Cues);
@@ -196,9 +219,13 @@ fn the_stale_steps_are_the_invalid_ones_and_everything_that_reads_them() {
             StepName::Cues,
             StepName::TextTranslate,
             StepName::TextReview,
+            StepName::TextMask,
+            StepName::TextInpaint,
+            StepName::TextCompose,
             StepName::TextTypeset,
             StepName::Qc,
-            StepName::Output
+            StepName::Output,
+            StepName::LocalizedVideo
         ]
     );
     let _ = fs::remove_dir_all(work.root());

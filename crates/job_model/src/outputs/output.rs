@@ -17,6 +17,9 @@ pub struct OutputRecord {
     /// Where the job's file of another format went when the output format changed.
     #[serde(default)]
     pub retired: Option<String>,
+    /// The subtitle file beside the localized video, when the job writes one.
+    #[serde(default)]
+    pub localized: Option<String>,
 }
 
 /// `true`, or the text `"true"` that records written as plain notes hold.

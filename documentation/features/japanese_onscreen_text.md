@@ -4,8 +4,12 @@
 
 The visual translation pipeline and Check Text interface are implemented; M4 acceptance is still
 underway. A video job produces one ASS file containing dialogue, sound cues and English for
-visible Japanese writing. The source video stays unchanged. Pilot coverage, full-episode quality,
-resource limits, packaged playback and owner acceptance are not yet established by this document.
+visible Japanese writing. With Replace text in the video on (the default for new jobs), it also
+writes a [localized video](/documentation/glossary.md#localized-video): a copy with the Japanese
+erased and the English drawn in its place where that can be done cleanly, and a subtitle file of
+its own for everything else. That part is M5, implemented and under validation, not accepted. The
+source video is only read. Pilot coverage, full-episode quality, resource limits, packaged
+playback and owner acceptance are not yet established by this document.
 
 The owner accepts missed faint text and false detections as current limitations. The AppImage
 is built and passes its host startup smoke check. Detection screens sampled proxy frames and
@@ -15,8 +19,14 @@ remain open.
 
 ## Where it lives
 
-- The six visual stages: [on-screen text stages](/crates/stages/src/onscreen_text/), orchestrated
-  by [visual pipeline tasks](/crates/pipeline/src/tasks/onscreen.rs).
+- The nine visual steps: [on-screen text stages](/crates/stages/src/onscreen_text/), orchestrated
+  by [visual pipeline tasks](/crates/pipeline/src/tasks/onscreen.rs) and, for the three
+  replacement steps, [replacement tasks](/crates/pipeline/src/tasks/replace.rs) over the
+  [replacement stages](/crates/stages/src/onscreen_text/replace/).
+- The localized video: the [localize stage](/crates/stages/src/localize/) and its
+  [task](/crates/pipeline/src/tasks/localized.rs), with FFmpeg's [encode](/crates/media_io/src/encode/)
+  and LaMa in the [inference crate](/crates/inference/src/onnx/lama/). The architecture is in the
+  [video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md).
 - Detection and reading: [OCR backends](/crates/inference/src/ocr/); translation:
   [language-model backends](/crates/inference/src/llm/) and the isolated
   [local-model worker](/apps/tbd_subtitles_llm/).
@@ -42,6 +52,12 @@ Settings → On-screen Text provides:
 
 - **Translate on-screen text**, enabled for new jobs. When enabled, the effective output format is
   ASS even if General selects SRT or WebVTT. The ASS also contains the job's ordinary subtitles.
+  Its help says the original video is never changed.
+- **Replace text in the video**, on for new jobs and for a settings file saved before the switch
+  existed; off to clicks while translation is off ("Turn on Translate on-screen text to use it.").
+  Its help: the Japanese is erased and the English drawn into a copy of the video,
+  `<name>.localized.mkv`, saved beside the original, whose subtitles go in `<name>.localized.ass`.
+  Turning it on adds the LaMa inpainting model and the Latin fonts to the required models.
 - **Claude fallback**, enabled by default. The installed, signed-in Claude CLI reads and
   translates every detected text event once from its keyframe, under the existing shared call
   limit with structured replies; local OCR and Qwen answer whatever it leaves. Off, or with the
@@ -54,17 +70,23 @@ Settings → On-screen Text provides:
   Computer; a missing or unsigned-in CLI leaves an actionable warning on uncertain text.
 
 Changes save as they are made. They apply to jobs that have not started. Saved job records without
-visual settings keep visual processing disabled; opening or resuming them does not silently add a
-new scan. Run Again with Current Settings explicitly adopts the enabled setting for that video.
+visual settings keep visual processing disabled, and records without the localized-video setting
+keep the localized video off; opening or resuming them does not silently add a new scan or a
+re-encode. Run Again with Current Settings explicitly adopts the current settings for that video.
 
 ### One combined job
 
-After dialogue cue construction, the job runs six resumable visual steps before final quality
-checking and output:
+After dialogue cue construction, the job runs nine resumable visual steps before final quality
+checking and output, and writes the localized video last:
 
 ```text
-Dialogue cues -> Detect -> Read -> Track -> Translate -> Review -> Typeset -> QC -> combined ASS
+Dialogue cues -> Detect -> Read -> Track -> Translate -> Review -> Mask -> Inpaint -> Compose
+  -> Typeset -> QC -> combined ASS (+ localized ASS) -> localized video
 ```
+
+Mask, Inpaint, Compose and the localized video are described under
+[replacement in the video](#replacement-in-the-video); with the localized video off they record
+that they are off and do nothing.
 
 | Step | Work and retained result |
 |---|---|
@@ -73,7 +95,7 @@ Dialogue cues -> Detect -> Read -> Track -> Translate -> Review -> Typeset -> QC
 | Track | Checks that every sampled box keeps its centre (within a fifth of the keyframe box height) and half its overlap with the keyframe quad, without decoding video; a detector box that only grows or shrinks around unmoved writing passes. A moving or unverified surface gains a review warning and nearby placement. |
 | Translate | Asks Claude first, one call per keyframe frame with the whole-frame still and the crops of its regions, for each region's Japanese, English, confidence and box plus any other writing on the frame. Qwen3.5-4B, with short dialogue context and the glossary, loads only for occurrences Claude leaves unanswered; compatible corrected occurrences consolidate before review. |
 | Review | Checks a saved correction's source identity before applying the owner's English, timing and presentation independently of dialogue corrections. |
-| Typeset | Produces ASS text or vector glyph events, with stable typography and frame-specific geometry. Unsafe replacement uses nearby English with a review warning. |
+| Typeset | Produces ASS text or vector glyph events, with stable typography and frame-specific geometry. Unsafe replacement uses nearby English with a review warning. With the localized video on, it also writes the events of the occurrences not drawn into the video. |
 
 Claude image requests run as many at once as the job's `claude` process count, before any local
 model loads; requests for the same keyframe share a cache lock, and the existing Claude process
@@ -124,7 +146,7 @@ the reference sign wording must agree with the independent translation of the vi
 Only wording and its source are reused. Placement, geometry and timing come from the current
 video. An absent folder falls back to local translation; a mismatched scene supplies no wording.
 
-### Replacement and fallbacks
+### Replacement in the ASS file
 
 ASS can draw shapes, text and vector glyphs; it cannot recover artwork hidden behind the Japanese
 letters. Replacement is limited to surfaces whose measured colour and track pass the safety
@@ -150,23 +172,71 @@ language-model answer becomes an unresolved result; an unavailable optional Clau
 reported with its reason. Cancel and Try Again operate on the existing video's job and reuse
 valid completed stages.
 
+### Replacement in the video
+
+With Replace text in the video on, the job tries every displayable translated occurrence (reviewed,
+or at a confidence of 0.85 or more) for replacement in the picture, including writing the ASS file
+places nearby because it moves or only Claude found it:
+
+1. **Mask** separates the writing's strokes from their background on the keyframe, measures their
+   colour, outline and thickness, follows moving writing frame by frame and divides the span into
+   runs of unchanged background, decoding only the region around the writing.
+2. **Inpaint** fills the erased strokes of each run's background with the LaMa model, in its own
+   GPU worker.
+3. **Compose** letters the English in Noto Sans in the writing's place, colour and weight, fitted
+   to its area; writing that sits together on one card keeps its size ratio.
+4. **Typeset** writes the usual ASS events for `<name>.ass`, and for `<name>.localized.ass` only the
+   occurrences not drawn into the video.
+5. After the subtitle files, **the localized video** decodes every frame, blends the lettering in
+   and re-encodes the whole video with the GPU's HEVC encoder (H.264 in software when it cannot
+   run), at about the source's size, with the source's audio and chapters and no subtitle stream.
+
+The result beside the source is `<name>.localized.mkv` and `<name>.localized.ass`; `<name>.ass`
+stays the complete subtitle file for the original video. A player loads the `.localized.ass` with
+the localized video, so every line of dialogue, sound cue and on-screen English appears exactly
+once: drawn into the picture or as a subtitle.
+
+An occurrence is left in the picture, its English in `<name>.localized.ass` with the warning `Not
+replaced in the video: <reason>`, when the owner chose Nearby in Check Text, when its strokes
+cannot be separated from the background, when it moves in a way that cannot be followed or sweeps
+over a quarter of the frame, when its background changes into more than 2,000 runs, when the
+English would be smaller than 14 pixels of cap height at 1080p, or when the font lacks one of its
+characters. A variable-frame-rate video fails the localized-video step with that reason; a
+`<name>.localized.mkv` the job did not write is never overwritten, and the step asks for it to be
+moved away. The report adds a Localized video section: occurrences replaced, fallbacks, the file
+and the encoder. On Dressrosa 11, 15 of 21 candidates were replaced, the Rebecca name card among them
+([measurement](/documentation/research/localized_video_dressrosa_11.md)). Algorithms and bounds:
+[video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md).
+
 ### Reviewing the result
 
 1. Queue a video normally. Its progress includes the visual steps, their elapsed time and the
    estimate for the combined job. The sidebar keeps one video entry.
-2. In Overview, inspect detected, translated, fallback and unresolved text counts, visual
-   processing time and the final ASS path. Check Text opens the visual review directly.
+2. In Overview, inspect detected, translated, fallback and unresolved text counts ("· 15 replaced
+   in the video" once the replacement steps ran), visual processing time and the final ASS path.
+   While the localized video is on disk, a card says "Localized video saved next to the
+   original" with its path and its subtitle file's, and Open in Player, Show in Folder and Copy
+   Path for the video. Check Text opens the visual review directly.
 3. In Check Text, select an occurrence by thumbnail and timestamp. The view shows the Japanese
    reading, English, confidence, translation provenance and review status; a filter narrows the
    list to flagged occurrences.
 4. Compare Original and English previews, play, scrub or step by one source frame. FFmpeg renders
    the actual exported ASS before reducing the picture for the preview. Unsaved editor changes
-   do not appear in that exported preview.
+   do not appear in that exported preview. For a job with the localized video, a **Subtitles |
+   Localized video** control over the right picture chooses between the source with `<name>.ass`
+   and the localized video with `<name>.localized.ass` (the default); until the video is written,
+   the right picture is the occurrence's replaced keyframe plate, captioned "Localized video not
+   written yet". **Show erase mask** beside the original picture's title tints the keyframe's
+   [stroke mask](/documentation/glossary.md#stroke-mask) over it. A line under the time says
+   "Replaced in the video" in green or `Not replaced in the video: <reason>` in orange, and the
+   Replace treatment reads "Replace in the video".
 5. Edit the English, start/end times, placement, size or replacement/nearby treatment. **Save &
    regenerate ASS** keeps the result and queues a correction run; **Undo** removes that occurrence's
    saved correction. **Retry selected text** requests another reading and translation for the occurrence.
 6. Wait for regeneration and inspect the rendered result again. Changes invalidate affected visual
-   stages and final output while valid audio work remains reusable. Each **Retry selected text**
+   stages and final output while valid audio work remains reusable; with the localized video on,
+   a correction also redoes the replacement steps and re-encodes the localized video, which takes
+   minutes rather than seconds. Each **Retry selected text**
    advances that occurrence's cache generation: it requests fresh work once, and a resumed run
    reuses valid answers from that generation. Another explicit retry advances it again.
 
@@ -185,9 +255,10 @@ overwriting the selected video's session. Loading, preview decoding and model wo
 the window thread; closing a preview cancels its child processes.
 
 The existing log window includes OCR diagnostics, local and Claude model calls, visual-step
-messages and failures. Completion follows final QC/output after audio and visual processing;
-there is no separate scan-complete notification. Replacing a job's SRT with ASS uses the existing
-subtitle backup and retirement mechanism.
+messages and failures. Completion follows final QC/output after audio and visual processing,
+and the localized video after them; there is no separate scan-complete notification. The
+job-end notification adds "Localized video saved: `<name>.localized.mkv`." when one was written. Replacing a job's SRT with ASS uses the existing subtitle backup and
+retirement mechanism.
 
 ## Data
 
@@ -197,20 +268,26 @@ as the audio stages:
 | File or contract | Purpose |
 |---|---|
 | `job.json` | Job settings, model location and stage fingerprints/measurements, including visual processing. |
-| `visual/text_detect.json` through `visual/text_typeset.json` | Typed `TextDocument` outputs: readings, tracks, provenance, warnings, source identity, presentation and rendered status, plus review warnings without a current occurrence. |
+| `visual/text_detect.json` through `visual/text_review.json`, and `visual/text_typeset.json` | Typed `TextDocument` outputs: readings, tracks, provenance, warnings (including `Not replaced in the video: <reason>`), source identity, presentation and rendered status, plus review warnings without a current occurrence. |
+| `visual/text_mask.json`, `visual/text_inpaint.json`, `visual/text_compose.json` | The `ReplacementDocument` each replacement step writes: per occurrence its frame span, status (pending, baked or fallback with its reason), measured lettering style, container and plates. |
+| `visual/masks/`, `visual/plates/`, `visual/patches/` | Per occurrence: [stroke masks](/documentation/glossary.md#stroke-mask) and source crops, inpainted [plates](/documentation/glossary.md#plate), and RGBA [patches](/documentation/glossary.md#patch) with a `preview.png` for Check Text. |
 | `visual/crops/` | Representative full-resolution crops from each keyframe, used by OCR, Claude image requests and review thumbnails. |
 | `visual/keyframes/` | One 1280-wide whole-frame still per keyframe frame, sent to Claude with the crops it holds. |
 | `visual/readings/` | Cached readings keyed by crop, OCR model pins and retry generation. |
 | `visual/translations/` | Cached structured replies keyed by request, model identity/pins and retry generation; a keyframe request also includes the still, its crops and the highest retry generation among its regions. |
 | `visual/corrections.json` | Per-occurrence `TextEdit` values with original-source fingerprints and retry requests; written atomically under `visual/corrections.json.lock`. |
 | `visual/events.ass` | Typeset visual events merged into the final ASS. |
-| `output.json` | The exported subtitle path and any backup or retired output. |
+| `visual/events_localized.ass` | The events of the occurrences not drawn into the video, merged into the localized ASS. |
+| `visual/localized_video.json` | The localized video's path, encoder, frames written and occurrences replaced; the earlier path while the setting is off. |
+| `output.json` | The exported subtitle path, the localized subtitle path, and any backup or retired output. |
 
 The [visible-text contracts](/crates/job_model/src/onscreen/) keep visual geometry separate from
 dialogue layout. Times use the normalized presentation timeline and positions use source pixels;
 the typesetter maps them to the ASS script canvas. Model identities, relevant settings, reference
 contents and correction inputs participate in resume decisions. Editing an occurrence does not
-change the source video or the dialogue correction file.
+change the source video or the dialogue correction file. Beside the source, a job with the
+localized video writes `<name>.localized.mkv` and `<name>.localized.ass` next to `<name>.ass`;
+watch folders and folder adds never queue a `*.localized.mkv`.
 
 ## Design
 
@@ -219,9 +296,15 @@ Overview cards, Check Text beside Check Lines, and an On-screen Text tab in Sett
 separate translation launcher or queue. Text review uses the same palette, typography, controls
 and save-and-regenerate pattern as line review.
 
-The output favours readable, reviewable English when clean replacement cannot be justified.
-Restoring the exact hidden background in the supplied board, title-card and name-card examples
-is outside ASS-only output; generative frame editing is not part of this implementation.
+The output favours readable, reviewable English when clean replacement cannot be justified. The
+subtitle file alone cannot restore the background hidden by the Japanese in the supplied board,
+title-card and name-card examples, so the localized video edits a copy of the picture: the owner
+asked for replacement as Google Translate does it on photographs. Only pixels under a stroke
+mask, its one-pixel feather and the new lettering are painted, and only in the copy, which is
+re-encoded whole at about the source's bit rate; the source is only read. Anything the
+replacement cannot do cleanly stays a subtitle, with its reason shown in Check Text, rather than
+a smeared guess. The localized video carries no subtitle stream, so a player shows the sidecar
+`.localized.ass` and never two copies of the same English.
 
 ## Open work
 
@@ -236,6 +319,11 @@ is outside ASS-only output; generative frame editing is not part of this impleme
   benchmark reporting added visual time and compliance with 8 GB RAM / 5.5 GB worker VRAM,
   packaging and host smoke checks, and explicit owner acceptance of the UI and playback.
   Acceptance remains open; unit tests and the harness do not establish these media-level results.
+- [M5 — In-place on-screen text](/documentation/roadmap.md#m5--in-place-on-screen-text): on
+  Dressrosa 11, 6 of 21 candidates fell back as "could not be separated from its background":
+  a title logo whose box spans its artwork and boxes Claude placed away from their writing. The
+  localized video still needs a playback check in VLC and mpv, an AppImage rebuild with its host
+  smoke test, and the owner's acceptance.
 
 ## Decisions
 
@@ -247,5 +335,9 @@ is outside ASS-only output; generative frame editing is not part of this impleme
   [decision entry](/documentation/decisions/stack_and_pipeline.md#2026-09-29--on-screen-text-is-found-by-sampled-screening-with-bisected-boundaries-and-read-once-per-event-by-claude-vision).
 - [ASS positioning, transforms and vector drawing](https://aegisub.org/docs/latest/ass_tags/)
   keep the source video intact and allow one file to carry dialogue, sound cues and signs.
+- Writing is replaced in a localized video beside the source: LaMa through ONNX Runtime, Noto Sans
+  through tiny-skia, a full `hevc_nvenc` re-encode capped near the source's bit rate, no embedded
+  subtitles, `<name>.localized.ass` beside it, on by default for new jobs
+  ([decision entry](/documentation/decisions/stack_and_pipeline.md#2026-09-30--writing-is-replaced-in-a-localized-video-re-encoded-beside-the-source)).
 - References contribute verified wording, never unchecked timing or placement from a different
   edit. Unreadable content and unsafe masks remain reviewable instead of being fabricated.

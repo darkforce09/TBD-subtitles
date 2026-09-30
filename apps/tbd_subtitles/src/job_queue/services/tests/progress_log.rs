@@ -96,7 +96,7 @@ fn a_model_call_is_no_line_and_a_stopped_job_ends_with_an_error() {
     };
     assert_eq!(log.describe(&call), None);
     let error = PipelineError::new("step asr_parakeet", "boom");
-    let line = describe_end(&Err(error));
+    let line = describe_end(&Err(error), None);
     assert_eq!(line.level, Level::ERROR);
     assert!(line.text.starts_with("Job stopped: "), "{}", line.text);
     assert!(line.text.contains("boom"), "{}", line.text);
@@ -130,4 +130,31 @@ fn a_worker_s_model_call_reaches_the_log_window_under_the_job_s_span() {
     assert_eq!(kept[0].video.as_deref(), Some("Dressrosa 12"));
     assert_eq!(kept[0].step.as_deref(), Some("sound_cues"));
     assert!(buffer.since(0).is_empty(), "a call is never a line");
+}
+
+#[test]
+fn a_finished_job_names_its_subtitles_and_its_localized_video() {
+    let outcome = || {
+        Ok(JobOutcome {
+            work_dir: PathBuf::from("/work/job"),
+            subtitles: PathBuf::from("/videos/a.ass"),
+            report: PathBuf::from("/work/job/report.md"),
+            qc: job_model::report::QcReport::default(),
+            ran: vec![StepName::Cues, StepName::Output],
+            skipped: vec![StepName::Vad],
+        })
+    };
+    let line = describe_end(&outcome(), None);
+    assert_eq!(line.level, Level::INFO);
+    assert_eq!(
+        line.text,
+        "Job finished: 2 steps ran, 1 kept; subtitles /videos/a.ass"
+    );
+    let localized = PathBuf::from("/videos/a.localized.mkv");
+    let line = describe_end(&outcome(), Some(&localized));
+    assert_eq!(
+        line.text,
+        "Job finished: 2 steps ran, 1 kept; subtitles /videos/a.ass; localized video \
+         /videos/a.localized.mkv"
+    );
 }

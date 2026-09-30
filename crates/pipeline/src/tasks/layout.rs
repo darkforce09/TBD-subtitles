@@ -249,11 +249,35 @@ pub(super) fn output(job: &Job) -> Result<TaskReport> {
     if let Some(retired) = shown(&installed.retired) {
         report.note("retired", &retired);
     }
+    let localized = if super::replace::localized(job) {
+        let events = std::fs::read_to_string(job.work.text_ass_localized())
+            .context("cannot read the localized video's on-screen text events")?;
+        let mut localized_text = ass::write(&track);
+        localized_text.push_str(&events);
+        let installed = output::install_localized_subtitles(
+            &job.video(),
+            &localized_text,
+            &job.work.backup(),
+            &stamp,
+        )
+        .context(format!(
+            "cannot write the localized subtitle file beside {}",
+            job.record.video
+        ))?;
+        report.note("localized", installed.path.display());
+        if let Some(backup) = shown(&installed.backup) {
+            report.note("localized_backup", &backup);
+        }
+        shown(&Some(installed.path))
+    } else {
+        None
+    };
     let record = OutputRecord {
         path: installed.path.to_string_lossy().into_owned(),
         unchanged: installed.unchanged,
         backup: shown(&installed.backup),
         retired: shown(&installed.retired),
+        localized,
     };
     work_dir::write_json(&job.work.output_record(), &record)?;
     Ok(report)

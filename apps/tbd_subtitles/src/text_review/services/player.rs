@@ -1,10 +1,14 @@
 //! Paired original and rendered playback for visual text review.
 //!
-//! **Role:** stream two RGB previews and optional sound while the window remains responsive.
+//! **Role:** stream two RGB previews and optional sound while the window remains responsive: the
+//! source, and on the right the source with the exported ASS burned in or the localized video
+//! with its own subtitle file burned in.
 //! **Position:** started by application actions; publishes plain pictures to the text-review view.
-//! **Signals and state:** one background thread, three cancellable FFmpeg children and one frame slot.
-//! **Invariants:** frames stay bounded at 720 pixels per edge; both pictures share time and size;
-//! the exported ASS is rendered; dropping the player cancels all children.
+//! **Signals and state:** one background thread, up to three cancellable FFmpeg children and one
+//! frame slot.
+//! **Invariants:** frames stay bounded at 720 pixels per edge; both pictures share time, pacing
+//! and size; a localized video not written yet streams no right picture; dropping the player
+//! cancels all children.
 
 use std::io::{self, Read};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -19,7 +23,7 @@ use media_io::preview::{
 };
 
 use crate::core::background::Wake;
-use crate::text_review::models::{Comparison, Picture, Session};
+use crate::text_review::models::{Comparison, Picture, PreviewMode, Session};
 
 static SERIAL: AtomicU64 = AtomicU64::new(1);
 
@@ -84,12 +88,17 @@ pub(crate) fn start(session: &Session, time_s: f64, play: bool, wake: Wake) -> P
         .min(session.duration_s);
     let request = VisualPreview {
         video: session.video.clone(),
-        ass: Some(session.ass.clone()),
+        ass: None,
         time_s,
         duration_s: if play { (end - time_s).max(0.0) } else { 0.0 },
         size,
         fps: session.fps,
     };
+    let rendered = rendered_source(session).map(|(video, ass)| VisualPreview {
+        video,
+        ass,
+        ..request.clone()
+    });
     let audio = session.audio_position;
     let (stop, playing, state) = (
         player.stop.clone(),
@@ -97,7 +106,7 @@ pub(crate) fn start(session: &Session, time_s: f64, play: bool, wake: Wake) -> P
         player.state.clone(),
     );
     std::thread::spawn(move || {
-        if let Err(error) = run(request, audio, play, &stop, &state, &wake)
+        if let Err(error) = run(request, rendered, audio, play, &stop, &state, &wake)
             && !stop.load(Ordering::SeqCst)
         {
             tracing::warn!(%error, "the visual preview could not play");
@@ -111,10 +120,30 @@ pub(crate) fn start(session: &Session, time_s: f64, play: bool, wake: Wake) -> P
     player
 }
 
+/// The video and subtitle file the right picture renders: the source with the exported ASS, or
+/// in localized mode the localized video with its own subtitle file; none while the localized
+/// video is not written.
+pub(crate) fn rendered_source(
+    session: &Session,
+) -> Option<(std::path::PathBuf, Option<std::path::PathBuf>)> {
+    match &session.localized {
+        Some(localized) if localized.mode == PreviewMode::Localized => localized
+            .video
+            .clone()
+            .map(|video| (video, localized.subtitles.clone())),
+        _ => Some((session.video.clone(), Some(session.ass.clone()))),
+    }
+}
+
+/// A fresh identity for a picture's texture, even after changing jobs.
+pub(crate) fn serial() -> u64 {
+    SERIAL.fetch_add(1, Ordering::Relaxed)
+}
+
 /// Assign a fresh identity to a thumbnail or preview frame, even after changing jobs.
 pub(crate) fn picture(width: u32, height: u32, rgb: Vec<u8>) -> Picture {
     Picture {
-        serial: SERIAL.fetch_add(1, Ordering::Relaxed),
+        serial: serial(),
         width,
         height,
         rgb,
@@ -137,29 +166,39 @@ fn spawn(
 
 fn run(
     request: VisualPreview,
+    rendered: Option<VisualPreview>,
     audio: u32,
     play: bool,
     stop: &Arc<AtomicBool>,
     state: &Mutex<State>,
     wake: &Wake,
 ) -> Result<(), String> {
-    let rendered_args = visual::args(&request).map_err(|error| error.to_string())?;
-    let mut original = request.clone();
-    original.ass = None;
-    let original_args = visual::args(&original).map_err(|error| error.to_string())?;
+    let original_args = visual::args(&request).map_err(|error| error.to_string())?;
+    let rendered_args = rendered
+        .as_ref()
+        .map(visual::args)
+        .transpose()
+        .map_err(|error| error.to_string())?;
     let deadline = Duration::from_secs_f64(request.duration_s + 30.0);
     let ffmpeg = Programs::beside_current_exe().ffmpeg;
     let mut original = spawn(&ffmpeg, original_args, deadline, stop)?;
-    let mut rendered = spawn(&ffmpeg, rendered_args, deadline, stop)?;
+    let mut rendered = rendered_args
+        .map(|args| spawn(&ffmpeg, args, deadline, stop))
+        .transpose()?;
     let mut left = original
         .take_stdout()
         .ok_or("The original preview has no picture pipe.")?;
-    let mut right = rendered
-        .take_stdout()
-        .ok_or("The rendered preview has no picture pipe.")?;
+    let mut right = match rendered.as_mut() {
+        Some(rendered) => Some(
+            rendered
+                .take_stdout()
+                .ok_or("The rendered preview has no picture pipe.")?,
+        ),
+        None => None,
+    };
     let bytes = (request.size.0 * request.size.1 * 3) as usize;
     let mut left_frame = vec![0; bytes];
-    let mut right_frame = vec![0; bytes];
+    let mut right_frame = vec![0; if right.is_some() { bytes } else { 0 }];
     let mut index = 0;
     let mut began = None;
     let mut sound = None;
@@ -168,7 +207,10 @@ fn run(
             return Ok(());
         }
         let original_frame = read_frame(&mut left, &mut left_frame)?;
-        let rendered_frame = read_frame(&mut right, &mut right_frame)?;
+        let rendered_frame = match right.as_mut() {
+            Some(right) => read_frame(right, &mut right_frame)?,
+            None => original_frame,
+        };
         if !original_frame || !rendered_frame {
             if original_frame != rendered_frame {
                 return Err("Original and rendered previews ended on different frames.".into());
@@ -204,7 +246,9 @@ fn run(
         if let Ok(mut state) = state.lock() {
             state.comparison = Some(Comparison {
                 original: picture(request.size.0, request.size.1, left_frame.clone()),
-                rendered: picture(request.size.0, request.size.1, right_frame.clone()),
+                rendered: right
+                    .is_some()
+                    .then(|| picture(request.size.0, request.size.1, right_frame.clone())),
                 time_s: request.time_s + offset,
             });
         }
@@ -212,7 +256,9 @@ fn run(
         index += 1;
     }
     finish(original, "Original preview")?;
-    finish(rendered, "Rendered preview")?;
+    if let Some(rendered) = rendered {
+        finish(rendered, "Rendered preview")?;
+    }
     if let Some(sound) = sound {
         finish(sound, "Preview sound")?;
     }

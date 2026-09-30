@@ -7,13 +7,25 @@ every run so its step table shows the latest times.
 
 ```text
 crates/pipeline/src/report/
-└── mod.rs  `write`: read `qc.json` and the dropped sounds, render, write `report.md`
+├── mod.rs  `write`: read `qc.json` and the dropped sounds, render, add the on-screen text section, write `report.md`
+└── tests/  the localized-video lines and when they appear
 ```
+
+## How it works
+
+`write` renders the quality check with `stages::qc::markdown::render`. With on-screen text on, it
+adds the on-screen text section from `visual/text_typeset.json`: the counts, the visual processing
+time, the review warnings and every occurrence with a warning or no English. When the
+localized-video step ran without recording itself disabled, a `Localized video` subsection
+follows: the occurrences replaced in the video (from `visual/localized_video.json`), the fallbacks
+left to the localized subtitles (from `visual/text_compose.json`), the localized video's path and
+the encoder that wrote it.
 
 ## Boundaries
 
 - Depends on: `stages::qc::markdown::render` and `stages::output::subtitle_path`; `job_model`
-  (`JobRecord`, `QcReport`); `crate::work_dir`.
+  (`JobRecord`, `QcReport`, `TextDocument`, `ReplacementDocument`, `LocalizedVideoRecord`);
+  `crate::work_dir`.
 - Used by: `crate::runner`, at the end of every job, skipped steps included.
 - Rules: the report is written through a part file like every job file, and a missing dropped
   sounds file counts as none.

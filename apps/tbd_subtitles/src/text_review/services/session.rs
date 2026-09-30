@@ -1,6 +1,7 @@
 //! Loading visual review state and persisting the owner's corrections.
 //!
-//! **Role:** join visual results with the job, probe, output and current corrections.
+//! **Role:** join visual results with the job, probe, output, current corrections and, for a job
+//! that writes a localized video, its replacements and the selected occurrence's pictures.
 //! **Position:** called off the window thread by application actions; depends on plain models.
 //! **Signals and state:** reads job files and crops; locks and atomically writes visual corrections.
 //! **Invariants:** existing corrections are reread under lock; thumbnails have bounded total size;
@@ -15,8 +16,8 @@ use job_model::onscreen::{TextCorrections, TextDocument, TextEdit};
 use job_model::outputs::{OutputRecord, ProbeDecoded};
 use pipeline::work_dir::{self, WorkDir};
 
-use super::player;
-use crate::text_review::models::{Event, Picture, Session};
+use super::{localized, player};
+use crate::text_review::models::{Event, LocalizedReview, Picture, ReplacementPictures, Session};
 
 const THUMBNAIL_EDGE: u32 = 128;
 const THUMBNAIL_BUDGET: usize = 32 * 1024 * 1024;
@@ -83,7 +84,12 @@ pub(crate) fn load(work: &Path) -> Result<Session, String> {
             thumbnail
         })
         .collect();
+    let mut localized = localized::load(&work_dir, &job, &output, &document);
+    if let Some(review) = localized.as_mut() {
+        review.pictures = selected_pictures(review, &document, selected);
+    }
     Ok(Session {
+        localized,
         work: work.into(),
         video: job.video.into(),
         ass: output.path.into(),
@@ -174,6 +180,17 @@ pub(crate) fn save(session: &Session, event: &Event) -> Result<(), String> {
     work_dir::write_json(&path, &current).map_err(|error| error.to_string())?;
     drop(lock);
     Ok(())
+}
+
+/// The pictures of occurrence `index`'s replacement, when it has one.
+pub(crate) fn selected_pictures(
+    review: &LocalizedReview,
+    document: &TextDocument,
+    index: usize,
+) -> Option<ReplacementPictures> {
+    let id = &document.occurrences.get(index)?.id;
+    let replacement = review.replacements.get(id)?;
+    Some(localized::pictures(id, replacement))
 }
 
 fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {

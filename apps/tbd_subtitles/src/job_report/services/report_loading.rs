@@ -1,5 +1,7 @@
 //! A finished job's report read from its work directory: `job.json`, `qc.json`, `output.json`,
-//! the owner's `review.json` and Fix It's `fix.json`; and the summary its sidebar row shows.
+//! the owner's `review.json`, Fix It's `fix.json`, and for a localized video
+//! `visual/localized_video.json` and `visual/text_compose.json`; and the summary its sidebar row
+//! shows.
 //!
 //! **Role:** find the video's work directory as the pipeline names it, read its files, and count
 //! its problems and lines worth a listen through `line_counts`, and what Fix It did through
@@ -12,19 +14,21 @@
 //!
 //! **Invariants:** a missing or broken file is an error naming it, but for `output.json`, whose
 //! path the settings give, `review.json`, which exists only once a line was corrected, and
-//! `fix.json`, which exists only once Fix It ran; a Fix It record counts only while it belongs to
+//! `fix.json`, which exists only once Fix It ran, and the localized video's records, which exist
+//! only once its steps ran and never fail the report; a Fix It record counts only while it belongs to
 //! the job's re-adjudication as it stands (`FixRecord::is_current`).
 
 use std::path::{Path, PathBuf};
 
 use job_model::StepName;
 use job_model::job::JobRecord;
+use job_model::onscreen::{LocalizedVideoRecord, ReplacementDocument};
 use job_model::outputs::{Corrections, FixRecord, OutputRecord};
 use job_model::report::QcReport;
 use pipeline::work_dir::WorkDir;
 use stages::fix_it::items::Answered;
 
-use crate::job_report::models::report::JobReport;
+use crate::job_report::models::report::{JobReport, LocalizedOutput};
 use crate::job_report::models::summary::RowSummary;
 use crate::job_report::services::{fix_result, line_counts};
 
@@ -37,11 +41,12 @@ pub(crate) fn load(video: &Path, work_root: &Path) -> Result<JobReport, String> 
     let corrections = corrections(&work_dir)?;
     let fix = current_fix(&work_dir, Some(&record))?;
     let answered = answered(fix.as_ref());
-    let subtitles = read::<OutputRecord>(&work_dir.join("output.json"))
-        .map(|output| output.path.into())
-        .unwrap_or_else(|_| {
-            stages::output::subtitle_path(&video, record.settings.effective_output_format())
-        });
+    let output = read::<OutputRecord>(&work_dir.join("output.json")).ok();
+    let subtitles = output.as_ref().map_or_else(
+        || stages::output::subtitle_path(&video, record.settings.effective_output_format()),
+        |output| output.path.clone().into(),
+    );
+    let localized = localized(&work_dir, &record, output.as_ref());
     let steps = StepName::ALL
         .iter()
         .filter_map(|step| {
@@ -67,6 +72,7 @@ pub(crate) fn load(video: &Path, work_root: &Path) -> Result<JobReport, String> 
         } else {
             None
         },
+        localized,
         report_file: work_dir.join("report.md"),
         lines: line_counts::line_counts(&qc, &corrections, &answered),
         fixable: line_counts::fixable(&qc, &corrections, &answered),
@@ -94,6 +100,40 @@ pub(crate) fn summary(video: &Path, work_root: &Path) -> Result<RowSummary, Stri
         &answered(fix.as_ref()),
         fix.as_ref().is_some_and(answered_any),
     ))
+}
+
+/// What the localized video left, when the job in `work_dir` writes one: the occurrences drawn
+/// into it once its steps ran (from its record, else from the composed replacements), and its
+/// video and subtitle file while they are there. A missing or broken record counts as not
+/// written.
+fn localized(
+    work_dir: &Path,
+    record: &JobRecord,
+    output: Option<&OutputRecord>,
+) -> Option<LocalizedOutput> {
+    let text = &record.settings.onscreen_text;
+    if !(text.enabled && text.localized_video) {
+        return None;
+    }
+    let work = WorkDir::new(work_dir);
+    let written = read::<LocalizedVideoRecord>(&work.text(StepName::LocalizedVideo))
+        .ok()
+        .filter(|written| written.path.is_some());
+    let replaced = match &written {
+        Some(written) if record.steps.contains_key(&StepName::LocalizedVideo) => {
+            Some(written.replaced)
+        }
+        _ => read::<ReplacementDocument>(&work.text(StepName::TextCompose))
+            .ok()
+            .filter(|_| record.steps.contains_key(&StepName::TextCompose))
+            .map(|document| document.baked().count()),
+    };
+    let present = |path: Option<String>| path.map(PathBuf::from).filter(|path| path.is_file());
+    Some(LocalizedOutput {
+        replaced,
+        video: present(written.and_then(|written| written.path)),
+        subtitles: present(output.and_then(|output| output.localized.clone())),
+    })
 }
 
 /// The canonical video and its job's work directory, as the pipeline names it.

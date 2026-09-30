@@ -20,15 +20,16 @@ apps/tbd_subtitles/src/job_queue/models/
 
 A `QueueItem` is one video's job: its id, its kind (a full run, or a review run after the owner's
 corrections), its state (waiting, running with its progress, finished with its result, finished
-in an earlier window, failed with a `Failure`, cancelled with the finished steps it kept), whether
+in an earlier window, failed with a `Failure`, a finished result naming the localized video when
+the job wrote one, cancelled with the finished steps it kept), whether
 it keeps its own settings (once it has started), the steps its next run does again, and, for a
 review run, how many corrections it carries. A `Failure` names the step that failed (none when
 the job failed before its first step), the message, and the steps it had finished, each a
 `FinishedStep`: done in that run with its seconds (or in a time not known, for a failure an older
 window kept with no `job.json` to read), or still valid from an earlier run; its count of kept
 steps is the list's length once the list is known. A `JobProgress`
-holds the work directory, the video's length and a row per step: whether this run does it, and
-pending, still valid, running (since when, how far, its last line), done (its time) or failed;
+holds the work directory, the video's length, the steps the job's settings leave idle (which add
+no time left) and a row per step: whether this run does it, and pending, still valid, running (since when, how far, its last line), done (its time) or failed;
 it answers which steps are finished and so kept (done, or valid from an earlier run),
 which step runs now (beside the shot scan, the later one), which one the window names (the running
 step, else the last one started, never the shot scan, which runs in the background) and which

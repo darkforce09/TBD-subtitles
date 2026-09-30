@@ -1,6 +1,6 @@
 //! A finished job's report as the window shows it: the quality check with its problems and its
-//! lines worth a listen, the owner's corrections, what Fix It did, the files, and each step's
-//! time and memory.
+//! lines worth a listen, the owner's corrections, what Fix It did, the files (the localized video
+//! among them), and each step's time and memory.
 
 use std::path::PathBuf;
 
@@ -13,10 +13,23 @@ use crate::job_report::models::fix_result::FixResult;
 use crate::job_report::models::problem::Problem;
 use crate::job_report::models::summary::{LineCounts, RowSummary};
 
+/// What a job that replaces writing in a localized video left.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct LocalizedOutput {
+    /// The occurrences drawn into the video, once the replacement steps have run.
+    pub(crate) replaced: Option<usize>,
+    /// The localized video beside the source, while the file is there.
+    pub(crate) video: Option<PathBuf>,
+    /// The localized video's subtitle file, while the file is there.
+    pub(crate) subtitles: Option<PathBuf>,
+}
+
 /// Everything the Overview shows about one job.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct JobReport {
     pub(crate) visual: Option<job_model::onscreen::TextSummary>,
+    /// What the localized video left, when the job writes one.
+    pub(crate) localized: Option<LocalizedOutput>,
     pub(crate) video: PathBuf,
     pub(crate) work_dir: PathBuf,
     /// The subtitle file beside the video.

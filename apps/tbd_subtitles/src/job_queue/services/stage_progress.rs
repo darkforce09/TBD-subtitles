@@ -1,4 +1,4 @@
-//! A job's eighteen steps as the six stages the window shows, each with where it stands.
+//! A job's twenty-eight steps as the nine stages the window shows, each with where it stands.
 //!
 //! **Role:** turn the step states of a running job, or the steps a failed job had finished, into
 //! one row per stage: kept from an earlier run, still to run, running (its share done and seconds
@@ -10,7 +10,7 @@
 //!
 //! **Signals and state:** none; pure.
 //!
-//! **Invariants:** always six rows in run order, whose steps read in order are `StepName::ALL`; a
+//! **Invariants:** always nine rows in run order, whose steps read in order are `StepName::ALL`; a
 //! step this run does not do is kept, never to run; a failed step makes its stage failed, and a
 //! running one its stage running, but for the shot scan, which never holds its stage open; a
 //! failed job's list keeps exactly the steps its failure counts as kept.
@@ -109,7 +109,7 @@ pub(crate) fn failed(failure: &Failure) -> Vec<StageRow> {
     })
 }
 
-/// The number of `step` among all steps, from 1: "step 9 of 18".
+/// The number of `step` among all steps, from 1: "step 9 of 28".
 pub(crate) fn step_number(step: StepName) -> usize {
     StepName::ALL
         .iter()

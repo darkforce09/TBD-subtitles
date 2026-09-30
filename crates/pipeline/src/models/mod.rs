@@ -54,6 +54,9 @@ pub fn required(settings: &JobSettings) -> Vec<&'static str> {
     ];
     if settings.onscreen_text.enabled {
         models.extend(["pp-ocrv5", "manga-ocr", "qwen3.5-4b"]);
+        if settings.onscreen_text.localized_video {
+            models.extend([inference::onnx::lama::MODEL, "latin-fonts"]);
+        }
     }
     models
 }

@@ -275,3 +275,71 @@ fn show_nearby_lines_opens_every_line_at_the_one_nearest_the_speech_with_no_subt
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn a_job_with_a_localized_video_shows_its_card_and_what_it_replaced() {
+    let root = scratch("localized-report");
+    let (mut app, video) = finished(&root, "Dressrosa 16");
+    write_job(&root, &video, &check(Vec::new()), None);
+    let job = root.join("work").join(pipeline::work_dir::job_id(
+        &std::fs::canonicalize(&video).expect("c"),
+    ));
+    let mut record: job_model::job::JobRecord =
+        serde_json::from_slice(&std::fs::read(job.join("job.json")).expect("job")).expect("json");
+    record.settings.onscreen_text.enabled = true;
+    record.settings.onscreen_text.localized_video = true;
+    record.steps.insert(
+        StepName::LocalizedVideo,
+        job_model::job::StepRecord {
+            fingerprint: String::new(),
+            finished_ns: 0,
+            measure: Default::default(),
+        },
+    );
+    std::fs::write(job.join("job.json"), json(&record)).expect("job.json");
+    std::fs::create_dir_all(job.join("visual")).expect("visual");
+    let document = job_model::onscreen::TextDocument::default();
+    std::fs::write(job.join("visual/text_typeset.json"), json(&document)).expect("text");
+    let folder = std::fs::canonicalize(&root).expect("root");
+    let mkv = folder.join("Dressrosa 16.localized.mkv");
+    let ass = folder.join("Dressrosa 16.localized.ass");
+    std::fs::write(&mkv, b"mkv").expect("mkv");
+    std::fs::write(&ass, b"ass").expect("ass");
+    let written = job_model::onscreen::LocalizedVideoRecord {
+        path: Some(mkv.display().to_string()),
+        frames: 10,
+        replaced: 4,
+        ..Default::default()
+    };
+    std::fs::write(job.join("visual/localized_video.json"), json(&written)).expect("record");
+    let output = job_model::outputs::OutputRecord {
+        path: folder.join("Dressrosa 16.ass").display().to_string(),
+        localized: Some(ass.display().to_string()),
+        ..Default::default()
+    };
+    std::fs::write(job.join("output.json"), json(&output)).expect("output");
+    let id = app.queue.items[0].id;
+    app.apply(vec![Action::from(JobQueueEvent::Select(id))]);
+    let (text, actions) = render(&app);
+    let folder_name = folder.file_name().expect("name").to_string_lossy();
+    for expected in [
+        "Subtitles saved next to the video",
+        "Localized video saved next to the original",
+        "The Japanese writing is replaced in English where it could be;",
+        &format!("…/{folder_name}/Dressrosa 16.localized.mkv"),
+        &format!("…/{folder_name}/Dressrosa 16.localized.ass"),
+        "On-screen text",
+        "4 replaced in the video",
+    ] {
+        assert!(text.contains(expected), "{expected} not in {text}");
+    }
+    assert!(actions.is_empty(), "an idle frame asks for nothing");
+    std::fs::remove_file(&mkv).expect("remove");
+    app.refresh_report(true);
+    let (text, _) = render(&app);
+    assert!(
+        !text.contains("Localized video saved next to the original"),
+        "no card without the file: {text}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

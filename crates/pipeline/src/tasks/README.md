@@ -8,12 +8,14 @@ process of either app binary for the rest.
 
 ```text
 crates/pipeline/src/tasks/
-├── onscreen.rs   six resumable visual steps and their isolated model workers
+├── onscreen.rs   the visual steps from detection to typesetting and their isolated model workers
 ├── alignment.rs  forced alignment: Parakeet-CTC and CTC Viterbi over the vocal stem, block by block
 ├── layout.rs     cue building at the frame rate, the quality check, the subtitle file beside the video
+├── localized.rs  the localized video: composed patches blended over every frame and encoded
 ├── llm.rs        adjudication and re-adjudication through `claude -p`, several processes at once
 ├── media.rs      probe and decode, the shot scan, and vocal separation with the chosen separator
 ├── mod.rs        `Job`, `TaskReport`, the dispatcher `run`, and `in_process` and `worker_main`
+├── replace.rs    stroke masks, inpainting in its ONNX Runtime worker, and lettering composition
 ├── review.rs     the corrections timed again, each alone, on the CPU; other lines kept
 ├── sounds.rs     sound events with CED over both stems, and the sound cues the language model picks
 ├── speech.rs     voice activity and chunk plan, Parakeet and Whisper, the diff sheet, re-decodes

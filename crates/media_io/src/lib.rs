@@ -1,16 +1,19 @@
 //! Media input through FFmpeg and ffprobe.
 //!
 //! **Role:** everything the pipeline reads from a video file: the probe result, the audio as
-//! 32-bit float PCM, and the shot-change times.
+//! 32-bit float PCM, the shot-change times and the video frames; and the localized video it
+//! encodes from raw frames beside the source.
 //!
 //! **Position:** called by `stages` and the stack spike tool; runs `ffprobe` and `ffmpeg` through
 //! `child_process` and returns `job_model` types. Links no libav.
 //!
-//! **Signals and state:** reads the video file through child processes; writes nothing itself.
+//! **Signals and state:** reads the video file through child processes; writes only the encode
+//! output FFmpeg is asked for.
 //!
 //! **Invariants:** audio is streamed in fixed-size chunks through a bounded channel and never held
 //! whole at 44.1 kHz; FFmpeg's stderr is drained on its own thread; the source video is only read.
 
+pub mod encode;
 pub mod pcm_stream;
 pub mod preview;
 pub mod probe;

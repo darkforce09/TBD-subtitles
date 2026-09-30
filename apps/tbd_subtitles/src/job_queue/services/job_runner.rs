@@ -24,6 +24,7 @@ use pipeline::{JobOptions, JobOutcome, PipelineError};
 use crate::core::background::Wake;
 use crate::job_queue::models::queue::JobId;
 use crate::job_queue::services::progress_log::{self, ProgressLog};
+use crate::job_queue::services::video_files;
 
 /// How a job is run: the pipeline's `run_job`, or a stand-in in the tests.
 pub(crate) type RunJob = Arc<
@@ -99,7 +100,12 @@ pub(crate) fn start(name: &str, run: RunJob, wake: Wake) -> JobRunner {
                     wake();
                 };
                 let outcome = run(&command.video, &command.options, &sink);
-                progress_log::emit(&name, &progress_log::describe_end(&outcome));
+                let localized = outcome
+                    .as_ref()
+                    .ok()
+                    .and_then(|done| video_files::localized_video(&done.work_dir));
+                let end = progress_log::describe_end(&outcome, localized.as_deref());
+                progress_log::emit(&name, &end);
                 let _ = send.send(RunnerEvent::Ended(id, outcome));
                 wake();
             }

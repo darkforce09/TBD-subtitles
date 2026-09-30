@@ -9,9 +9,10 @@ into a subtitle file, and the layout rules every subtitle file follows.
 
 ```text
 documentation/architecture/
-├── pipeline.md              every stage from video to subtitle file, with its rules and guards
-├── subtitle_style_rules.md  Netflix English SDH layout and timing rules, as the cue builder applies them
-└── system_overview.md       processes, crates and layers, job work directory, models, configuration
+├── pipeline.md                      every stage from video to subtitle file, with its rules and guards
+├── subtitle_style_rules.md          Netflix English SDH layout and timing rules, as the cue builder applies them
+├── system_overview.md               processes, crates and layers, job work directory, models, configuration
+└── video_inpainting_pipeline.md     writing replaced in the picture: stroke masks, LaMa, lettering, the localized video
 ```
 
 ## How it works
@@ -20,7 +21,8 @@ The [system overview](/documentation/architecture/system_overview.md) is the map
 a GUI, a CLI and worker subcommands; a job runner that runs stages in order; FFmpeg for all media
 input. The [pipeline](/documentation/architecture/pipeline.md) is the detail of each stage, and the
 [subtitle style rules](/documentation/architecture/subtitle_style_rules.md) fix how the cue
-builder lays text out. The crate and model choices behind them come from the
+builder lays text out. The [video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md)
+details the steps that replace on-screen writing in a localized copy of the video. The crate and model choices behind them come from the
 [Rust ML stack](/documentation/research/rust_ml_stack.md) research.
 
 ## Code

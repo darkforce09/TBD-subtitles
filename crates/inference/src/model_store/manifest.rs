@@ -65,6 +65,28 @@ pub const MODEL_FILES: &[PinnedFile] = &[
         sha256: "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
     },
     PinnedFile {
+        model: "latin-fonts",
+        file: "NotoSans.ttf",
+        url: "https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf",
+        size: 2_049_096,
+        sha256: "bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d",
+    },
+    PinnedFile {
+        model: "latin-fonts",
+        file: "OFL.txt",
+        url: "https://raw.githubusercontent.com/google/fonts/main/ofl/notosans/OFL.txt",
+        size: 4_396,
+        sha256: "cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a",
+    },
+    hf!(
+        "lama-inpaint",
+        "Carve/LaMa-ONNX",
+        "lama_fp32.onnx",
+        "lama_fp32.onnx",
+        208_044_816,
+        "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6"
+    ),
+    PinnedFile {
         model: "pp-ocrv5",
         file: "det.onnx",
         url: "https://github.com/GreatV/oar-ocr/releases/download/v0.3.0/pp-ocrv5_server_det.onnx",

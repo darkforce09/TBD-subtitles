@@ -92,6 +92,11 @@ fn each_settings_tab_shows_its_settings_under_the_tab_bar_and_over_the_footer() 
             "Download Missing (",
         ],
     );
+    // The line under the table shows while every row fits the window: the list without the
+    // localized video's two models.
+    let mut edited = app.settings.saved.clone();
+    edited.onscreen_text.localized_video = false;
+    app.apply(vec![Action::from(SettingsEvent::Edit(Box::new(edited)))]);
     app.settings.items.iter_mut().for_each(|i| i.present = true);
     let text = render_tab(&mut app, SettingsTab::Models);
     assert_shows(&text, &["On disk", "Everything a job needs is on disk."]);
@@ -169,10 +174,17 @@ fn a_bad_glossary_is_not_written_and_names_its_field() {
 fn the_banner_says_what_is_missing_and_details_opens_the_models_tab() {
     let mut app = app("banner", Vec::new());
     let (text, _) = render(&app);
+    // Eight models, and LaMa and the Latin fonts too while text is replaced in the video.
+    let models = if app.settings.saved.onscreen_text.localized_video {
+        10
+    } else {
+        8
+    };
+    let missing = format!("{models} models and 2 runtime libraries are missing (");
     assert_shows(
         &text,
         &[
-            "8 models and 2 runtime libraries are missing (",
+            &missing,
             "Videos can't start until they're on disk. Each file downloads once and is checked \
              for damage.",
             "Details…",
@@ -255,10 +267,10 @@ fn the_models_folder_stays_while_a_download_runs() {
     );
 }
 
-/// The whole window with the Settings window on Automation, driven through its accessibility
+/// The whole window with the Settings window open, driven through its accessibility
 /// tree; its state is the app and the actions each frame asked for. The first frame only installs
 /// the window's fonts.
-fn automation_harness(
+fn settings_harness(
     app: TbdSubtitlesApp,
 ) -> egui_kittest::Harness<'static, (TbdSubtitlesApp, Vec<Action>)> {
     let mut installed = false;
@@ -305,7 +317,7 @@ fn the_automation_tab_lists_the_watch_folders_and_edits_them() {
         ],
     );
     let saved = app.settings.saved.clone();
-    let mut harness = automation_harness(app);
+    let mut harness = settings_harness(app);
     harness
         .get_all_by_label("Remove")
         .nth(1)
@@ -361,4 +373,66 @@ fn a_chosen_watch_folder_is_added_once() {
     let written = crate::settings::services::settings_file::load(&app.env.settings_path)
         .expect("the settings file");
     assert_eq!(written.watch_folders, app.settings.saved.watch_folders);
+}
+
+/// An app whose saved on-screen settings are `enabled` and `localized_video`, with Settings open
+/// on On-screen Text; the text it paints.
+fn onscreen_app(name: &str, enabled: bool, localized_video: bool) -> (TbdSubtitlesApp, String) {
+    let mut app = app(name, Vec::new());
+    let mut edited = app.settings.saved.clone();
+    edited.onscreen_text.enabled = enabled;
+    edited.onscreen_text.localized_video = localized_video;
+    app.apply(vec![Action::from(SettingsEvent::Edit(Box::new(edited)))]);
+    let text = render_tab(&mut app, SettingsTab::OnscreenText);
+    (app, text)
+}
+
+#[test]
+fn replace_text_in_the_video_is_a_switch_under_translation() {
+    use egui_kittest::kittest::Queryable as _;
+    let (app, text) = onscreen_app("replace-in-video", true, false);
+    assert_shows(
+        &text,
+        &[
+            "Translate on-screen text",
+            "The original video is never changed.",
+            "Replace text in the video",
+            "Erase the Japanese and draw the English into a copy of the video,",
+            "<name>.localized.mkv, saved beside the original.",
+            "<name>.localized.ass. The original video is never changed.",
+        ],
+    );
+    assert!(!text.contains("The video stays unchanged."), "{text}");
+    assert!(!text.contains("Turn on Translate on-screen text"), "{text}");
+    let saved = app.settings.saved.clone();
+    let mut harness = settings_harness(app);
+    harness.get_by_label("Replace text in the video").click();
+    harness.run();
+    let mut on = saved;
+    on.onscreen_text.localized_video = true;
+    assert_eq!(
+        harness.state().1,
+        [Action::Settings(SettingsEvent::Edit(Box::new(on)))],
+        "the switch turns the localized video on"
+    );
+}
+
+#[test]
+fn replace_text_in_the_video_is_off_while_translation_is() {
+    use egui_kittest::kittest::Queryable as _;
+    let (app, text) = onscreen_app("replace-while-off", false, true);
+    assert_shows(
+        &text,
+        &[
+            "Replace text in the video",
+            "Turn on Translate on-screen text to use it.",
+        ],
+    );
+    let mut harness = settings_harness(app);
+    harness.get_by_label("Replace text in the video").click();
+    harness.run();
+    assert!(
+        harness.state().1.is_empty(),
+        "the switch asks for nothing while translation is off"
+    );
 }

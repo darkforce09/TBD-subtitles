@@ -297,6 +297,23 @@ pub(super) fn print_outcome(outcome: &JobOutcome) {
 }
 
 /// One line per event on stderr.
+/// The step and tenth of its work last printed, so a step that reports in steps of any size
+/// prints once per tenth.
+static PRINTED_TENTH: std::sync::Mutex<Option<(StepName, usize)>> = std::sync::Mutex::new(None);
+
+/// Whether `done` of `total` reaches a tenth of `step`'s work not yet printed, or finishes it.
+pub(super) fn enters_tenth(step: StepName, done: usize, total: usize) -> bool {
+    let tenth = (done * 10).checked_div(total).unwrap_or(10);
+    let mut printed = PRINTED_TENTH
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let new = done == total || *printed != Some((step, tenth));
+    if new {
+        *printed = Some((step, tenth));
+    }
+    new
+}
+
 pub(super) fn print(event: Progress) {
     match event {
         Progress::JobStarted {
@@ -317,7 +334,7 @@ pub(super) fn print(event: Progress) {
         Progress::StepSkipped(step) => eprintln!("  = {step} (still valid)"),
         Progress::StepStarted(step) => eprintln!("  > {step}"),
         Progress::StepAdvanced { step, done, total } => {
-            if done == total || done % (total / 10).max(1) == 0 {
+            if enters_tenth(step, done, total) {
                 eprintln!("    {step} {done}/{total}");
             }
         }

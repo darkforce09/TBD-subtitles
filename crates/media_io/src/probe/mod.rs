@@ -8,7 +8,8 @@
 //!
 //! **Signals and state:** reads the video through ffprobe; holds nothing.
 //!
-//! **Invariants:** `und` is no language; several untagged tracks are refused, never guessed.
+//! **Invariants:** `und` is no language; several untagged tracks are refused, never guessed; a
+//! pixel format or colour tag ffprobe reports as unknown or unspecified is no tag.
 
 use std::path::Path;
 use std::time::Duration;
@@ -63,6 +64,17 @@ pub fn parse(json: &str) -> Result<ProbeResult, MediaError> {
                     frame_rate_num: num,
                     frame_rate_den: den,
                     start_time_s: seconds(stream.start_time.as_deref()),
+                    pix_fmt: known(&stream.pix_fmt),
+                    color_primaries: known(&stream.color_primaries),
+                    color_transfer: known(&stream.color_transfer),
+                    color_space: known(&stream.color_space),
+                    color_range: known(&stream.color_range),
+                    bit_rate: stream
+                        .bit_rate
+                        .as_deref()
+                        .or(raw.format.as_ref().and_then(|f| f.bit_rate.as_deref()))
+                        .and_then(|rate| rate.parse().ok())
+                        .filter(|&rate: &u64| rate > 0),
                 });
             }
             Some("audio") => audio.push(AudioStream {
@@ -117,6 +129,14 @@ fn fraction(text: &str) -> (u32, u32) {
     (num, den)
 }
 
+/// A tag ffprobe knows: its placeholders for an unset value are no value.
+fn known(tag: &Option<String>) -> Option<String> {
+    tag.as_deref()
+        .map(str::trim)
+        .filter(|tag| !matches!(*tag, "" | "unknown" | "unspecified" | "reserved"))
+        .map(String::from)
+}
+
 fn seconds(text: Option<&str>) -> f64 {
     text.and_then(|t| t.parse().ok()).unwrap_or(0.0)
 }
@@ -137,6 +157,12 @@ struct RawStream {
     height: Option<u32>,
     r_frame_rate: Option<String>,
     start_time: Option<String>,
+    pix_fmt: Option<String>,
+    color_primaries: Option<String>,
+    color_transfer: Option<String>,
+    color_space: Option<String>,
+    color_range: Option<String>,
+    bit_rate: Option<String>,
     channels: Option<u32>,
     sample_rate: Option<String>,
     tags: Option<RawTags>,
@@ -150,6 +176,7 @@ struct RawTags {
 #[derive(Deserialize)]
 struct RawFormat {
     duration: Option<String>,
+    bit_rate: Option<String>,
 }
 
 #[cfg(test)]

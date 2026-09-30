@@ -67,7 +67,9 @@ fn fingerprint_with_work(step: StepName, record: &JobRecord, work: Option<&WorkD
         if matches!(
             step,
             StepName::TextDetect | StepName::TextRead | StepName::TextTranslate
-        ) {
+        ) || (record.settings.onscreen_text.localized_video
+            && matches!(step, StepName::TextInpaint | StepName::TextCompose))
+        {
             value["text_models"] = text_models(step, record);
         }
         if step == StepName::TextTranslate {
@@ -114,6 +116,8 @@ fn text_models(step: StepName, record: &JobRecord) -> Value {
         StepName::TextRead => file.model == "manga-ocr"
             || (file.model == "pp-ocrv5" && !file.file.starts_with("det")),
         StepName::TextTranslate => file.model == "qwen3.5-4b",
+        StepName::TextInpaint => file.model == "lama-inpaint",
+        StepName::TextCompose => file.model == "latin-fonts",
         _ => false,
     }).map(|file| {
         let path = root.as_ref().map(|root| root.join(file.model).join(file.file));

@@ -34,6 +34,7 @@ that of `job_model::StageName`:
 | 9 | `cues` | the runner | lays the words and sound cues out as subtitle cues |
 | 10 | `qc` | the runner | checks the cues and renders the job report |
 | 11 | `output` | the runner | installs the subtitle file beside the video |
+| 12 | `localize` | a worker (FFmpeg) | blends the composed English patches into every frame and encodes the localized video |
 
 Media work goes through `media_io`, models through `inference`, and cues through
 `subtitle_formats`. `probe_decode` streams the mix to 16 kHz; `separation` streams it through a
@@ -65,7 +66,8 @@ cargo test -p stages    # 111 unit tests, well under a second; no model, GPU or 
 ## Public surface
 
 - The library `stages`, with one public module per stage: `probe_decode`, `separation`, `vad`,
-  `asr`, `diff_sheet`, `sound_events`, `adjudication`, `alignment`, `cues`, `qc` and `output`,
+  `asr`, `diff_sheet`, `sound_events`, `adjudication`, `alignment`, `cues`, `qc`, `output` and
+  `localize`,
   each offering the functions its step task in `crates/pipeline/src/tasks/` calls
   (`src/README.md` lists them).
 - `adjudication::glossary`: the built-in One Piece glossary and the glossary file reader, for the
@@ -87,8 +89,9 @@ cargo test -p stages    # 111 unit tests, well under a second; no model, GPU or 
   - every GPU step runs in a worker, and Whisper alone in the ggml binary
     (`gpu_steps_run_in_workers_and_whisper_alone_in_the_ggml_binary` in
     `crates/pipeline/src/graph/tests/graph.rs`);
-  - a stage's output is complete or absent, never partial, and only the output stage writes
-    beside the video (the crate header in `crates/stages/src/lib.rs`);
+  - a stage's output is complete or absent, never partial, and only the output stage, and
+    `localize` at the path its task hands it, write beside the video (the crate header in
+    `crates/stages/src/lib.rs`);
   - no stage invents a word that no speech engine heard (the crate header, held for the language
     model by the checks in `crates/stages/src/adjudication/checks.rs`).
 

@@ -15,6 +15,7 @@
 //! a model call is never a line.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use inference::llm::call_log::EXCHANGE_TARGET;
 use job_model::StepName;
@@ -116,17 +117,24 @@ impl ProgressLog {
     }
 }
 
-/// The line for a job's end.
-pub(crate) fn describe_end(outcome: &Result<JobOutcome, PipelineError>) -> JobLine {
+/// The line for a job's end, naming the `localized` video when the job wrote one.
+pub(crate) fn describe_end(
+    outcome: &Result<JobOutcome, PipelineError>,
+    localized: Option<&Path>,
+) -> JobLine {
     match outcome {
         Ok(done) => JobLine::new(
             Level::INFO,
             None,
             format!(
-                "Job finished: {} steps ran, {} kept; subtitles {}",
+                "Job finished: {} steps ran, {} kept; subtitles {}{}",
                 done.ran.len(),
                 done.skipped.len(),
-                done.subtitles.display()
+                done.subtitles.display(),
+                localized.map_or_else(String::new, |path| format!(
+                    "; localized video {}",
+                    path.display()
+                ))
             ),
         ),
         Err(error) => JobLine::new(Level::ERROR, None, format!("Job stopped: {error}")),

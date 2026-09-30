@@ -12,13 +12,14 @@
 //! **Signals and state:** none; plain data.
 //!
 //! **Invariants:** an unknown key is an error, never ignored, so a typo cannot silently fall back
-//! to a default.
+//! to a default; a missing `onscreen_text.localized_video` means on, as for new jobs.
 
 use std::path::PathBuf;
 
 use job_model::job::{OutputFormat, Separator, WhisperModel};
 use job_model::onscreen::TextSettings;
-use serde::{Deserialize, Serialize};
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// The glossary name that means the built-in One Piece glossary.
 pub(crate) const ONE_PIECE: &str = "one_piece";
@@ -47,7 +48,9 @@ pub(crate) struct AppSettings {
     pub(crate) watch_folders: Vec<PathBuf>,
     pub(crate) engines: Engines,
     pub(crate) language_model: LanguageModel,
-    /// How Japanese writing is translated and included in each new video's ASS subtitles.
+    /// How Japanese writing is translated and included in each new video's ASS subtitles, and
+    /// whether it is replaced in a localized copy of the video.
+    #[serde(deserialize_with = "saved_onscreen_text")]
     pub(crate) onscreen_text: TextSettings,
 }
 
@@ -99,9 +102,33 @@ impl Default for AppSettings {
             watch_folders: Vec::new(),
             engines: Engines::default(),
             language_model: LanguageModel::default(),
-            onscreen_text: TextSettings::new_job(),
+            onscreen_text: new_job_onscreen_text(),
         }
     }
+}
+
+/// On-screen text settings for new jobs: translated, and replaced in a localized video.
+fn new_job_onscreen_text() -> TextSettings {
+    TextSettings {
+        localized_video: true,
+        ..TextSettings::new_job()
+    }
+}
+
+/// On-screen text settings as saved: a file written before the localized video existed has no
+/// `localized_video` key and takes the new-job choice, on; a saved `false` stays off.
+fn saved_onscreen_text<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<TextSettings, D::Error> {
+    let table = toml::Table::deserialize(deserializer)?;
+    let chosen = table.contains_key("localized_video");
+    let mut settings: TextSettings = toml::Value::Table(table)
+        .try_into()
+        .map_err(D::Error::custom)?;
+    if !chosen {
+        settings.localized_video = true;
+    }
+    Ok(settings)
 }
 
 impl Default for Engines {

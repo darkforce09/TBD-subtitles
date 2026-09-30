@@ -54,13 +54,13 @@ fn changed_steps_carry_their_revision_and_the_rest_are_at_one() {
     assert_eq!(revision(Review), 2);
     assert_eq!(revision(Cues), 3);
     assert_eq!(revision(Qc), 5);
-    assert_eq!(revision(Output), 2);
+    assert_eq!(revision(Output), 3);
     assert_eq!(revision(TextDetect), 4);
     assert_eq!(revision(TextRead), 3);
     assert_eq!(revision(TextTrack), 3);
     assert_eq!(revision(TextTranslate), 7);
     assert_eq!(revision(TextReview), 2);
-    assert_eq!(revision(TextTypeset), 2);
+    assert_eq!(revision(TextTypeset), 3);
     for step in StepName::ALL {
         if !matches!(
             step,
@@ -104,6 +104,35 @@ fn visual_typesetting_runs_in_a_cancellable_worker_without_a_gpu_runtime_or_lock
     );
     assert!(!uses_gpu(StepName::TextTypeset));
     assert!(!loads_onnx_runtime(StepName::TextTypeset));
+}
+
+#[test]
+fn replacement_steps_keep_onnx_runtime_and_the_gpu_lock_to_inpainting_and_encoding() {
+    use StepName::*;
+    for step in [TextMask, TextInpaint, TextCompose, LocalizedVideo] {
+        assert_eq!(placement(step), Placement::Worker(Binary::Main), "{step}");
+    }
+    assert!(uses_gpu(TextInpaint) && loads_onnx_runtime(TextInpaint));
+    assert!(uses_gpu(LocalizedVideo) && !loads_onnx_runtime(LocalizedVideo));
+    for step in [TextMask, TextCompose] {
+        assert!(!uses_gpu(step) && !loads_onnx_runtime(step), "{step}");
+    }
+}
+
+#[test]
+fn the_localized_video_switch_leaves_the_translation_fingerprint_alone() {
+    let mut on = JobSettings::with_glossary(Vec::new());
+    on.onscreen_text.enabled = true;
+    on.onscreen_text.localized_video = false;
+    let mut both = on.clone();
+    both.onscreen_text.localized_video = true;
+    assert_eq!(
+        settings(StepName::TextTranslate, &on),
+        settings(StepName::TextTranslate, &both)
+    );
+    for step in [StepName::TextMask, StepName::TextTypeset, StepName::Output] {
+        assert_ne!(settings(step, &on), settings(step, &both), "{step}");
+    }
 }
 
 #[test]

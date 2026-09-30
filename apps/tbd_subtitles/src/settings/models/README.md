@@ -22,8 +22,11 @@ data folder), the glossary (`one_piece`, `none` or a file), the shot-cut score, 
 the watch folders (none by default, and an empty list is not written), the engines (separator and Whisper model) and the language model (backend, the model a run asks,
 the model Fix It asks, and how many run at once; Sonnet and Opus by default; how many `claude`
 calls Fix It makes at once across every video, 32 by default; and whether Fix It starts on each
-video when its full run finishes, off by default). Every struct takes its defaults for missing
-keys, so a file written before a setting existed still loads, and refuses unknown ones. The one backend is the `claude` CLI. `SettingsPage` holds the settings as the file has them (`saved`; an
+video when its full run finishes, off by default), and the on-screen text settings (translation,
+Claude fallback, a reference folder, and Replace text in the video, on for new jobs). Every struct
+takes its defaults for missing keys, so a file written before a setting existed still loads, and
+refuses unknown ones; a file with on-screen text settings but no `localized_video` key, written
+before the localized video existed, replaces text in the video, while a saved `false` stays off. The one backend is the `claude` CLI. `SettingsPage` holds the settings as the file has them (`saved`; an
 edit is written at once, so there is no draft), the `FieldError` of the last edit that was
 refused (its `Field` and why), why the file could not be read, the saved glossary's count of
 names, the model folders and runtime archives with a running download and when a download last

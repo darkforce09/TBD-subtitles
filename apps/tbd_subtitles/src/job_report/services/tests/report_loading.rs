@@ -5,6 +5,7 @@ use job_model::outputs::{Chosen, Correction, FixVerdict, LineFix};
 use job_model::report::{QcCheck, QcFinding};
 
 use super::*;
+use crate::job_report::models::report::LocalizedOutput;
 
 fn scratch(name: &str) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!("tbd-report-{name}-{}", std::process::id()));
@@ -237,5 +238,151 @@ fn a_job_without_a_check_names_the_missing_file() {
     std::fs::write(&video, b"video").expect("video");
     let error = load(&video, &root.join("work")).expect_err("no job");
     assert!(error.contains("job.json"), "{error}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A finished job of `video` under `work_root` with on-screen text on and the localized video
+/// `localized`, having run `steps`; its work directory.
+fn visual_job(video: &Path, work_root: &Path, localized: bool, steps: &[StepName]) -> PathBuf {
+    let job = work_root.join(pipeline::work_dir::job_id(
+        &std::fs::canonicalize(video).expect("c"),
+    ));
+    std::fs::create_dir_all(job.join("visual")).expect("job");
+    let mut settings = JobSettings::with_glossary(vec![]);
+    settings.onscreen_text.enabled = true;
+    settings.onscreen_text.localized_video = localized;
+    let record = |step: &StepName| {
+        let done = StepRecord {
+            fingerprint: String::new(),
+            finished_ns: 0,
+            measure: StepMeasure::default(),
+        };
+        (*step, done)
+    };
+    write(
+        &job.join("job.json"),
+        &JobRecord {
+            video: video.to_string_lossy().into_owned(),
+            video_size: 5,
+            video_modified_s: 0,
+            settings,
+            models_dir: None,
+            corrections: None,
+            steps: steps.iter().map(record).collect(),
+        },
+    );
+    write(&job.join("qc.json"), &QcReport::default());
+    write(
+        &job.join("visual/text_typeset.json"),
+        &job_model::onscreen::TextDocument::default(),
+    );
+    job
+}
+
+/// A replacement document with `baked` occurrences drawn in and one left out.
+fn composed(baked: usize) -> ReplacementDocument {
+    use job_model::onscreen::{ReplaceStatus, ReplacedText};
+    let text = |id: String, status: ReplaceStatus| ReplacedText {
+        id,
+        first_frame: 0,
+        last_frame: 1,
+        status,
+        style: None,
+        container: None,
+        plates: Vec::new(),
+        preview: None,
+    };
+    let mut texts: Vec<ReplacedText> = (0..baked)
+        .map(|n| text(format!("T{n}"), ReplaceStatus::Baked))
+        .collect();
+    texts.push(text(
+        "T9".into(),
+        ReplaceStatus::Fallback("too busy".into()),
+    ));
+    ReplacementDocument {
+        width: 1920,
+        height: 1080,
+        frame_count: 10,
+        texts,
+    }
+}
+
+#[test]
+fn a_job_without_the_localized_video_reports_none() {
+    let root = scratch("no-localized");
+    let video = root.join("a.mp4");
+    std::fs::write(&video, b"video").expect("video");
+    let work_root = root.join("work");
+    let job = visual_job(&video, &work_root, false, &[StepName::LocalizedVideo]);
+    write(
+        &job.join("visual/localized_video.json"),
+        &LocalizedVideoRecord::default(),
+    );
+    let report = load(&video, &work_root).expect("report");
+    assert_eq!(report.localized, None);
+    assert!(report.visual.is_some());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_localized_video_reports_what_it_replaced_and_its_files_while_they_are_there() {
+    let root = scratch("localized");
+    let video = root.join("a.mp4");
+    std::fs::write(&video, b"video").expect("video");
+    let work_root = root.join("work");
+    visual_job(&video, &work_root, true, &[]);
+    let report = load(&video, &work_root).expect("no records are no error");
+    assert_eq!(report.localized, Some(LocalizedOutput::default()));
+
+    let job = visual_job(&video, &work_root, true, &[StepName::TextCompose]);
+    write(&job.join("visual/text_compose.json"), &composed(3));
+    let report = load(&video, &work_root).expect("report");
+    let localized = report.localized.expect("localized");
+    assert_eq!(localized.replaced, Some(3), "counted from the composition");
+    assert_eq!(localized.video, None, "not written yet");
+
+    let steps = [StepName::TextCompose, StepName::LocalizedVideo];
+    let job = visual_job(&video, &work_root, true, &steps);
+    let mkv = root.join("a.localized.mkv");
+    let ass = root.join("a.localized.ass");
+    write(
+        &job.join("visual/localized_video.json"),
+        &LocalizedVideoRecord {
+            path: Some(mkv.display().to_string()),
+            frames: 10,
+            replaced: 2,
+            ..LocalizedVideoRecord::default()
+        },
+    );
+    write(
+        &job.join("output.json"),
+        &OutputRecord {
+            path: root.join("a.ass").display().to_string(),
+            localized: Some(ass.display().to_string()),
+            ..OutputRecord::default()
+        },
+    );
+    let report = load(&video, &work_root).expect("report");
+    let localized = report.localized.clone().expect("localized");
+    assert_eq!(localized.replaced, Some(2), "the video's own count");
+    assert_eq!(
+        (localized.video, localized.subtitles),
+        (None, None),
+        "no files"
+    );
+    std::fs::write(&mkv, b"mkv").expect("mkv");
+    std::fs::write(&ass, b"ass").expect("ass");
+    let localized = load(&video, &work_root).expect("report").localized;
+    assert_eq!(
+        localized,
+        Some(LocalizedOutput {
+            replaced: Some(2),
+            video: Some(mkv),
+            subtitles: Some(ass),
+        })
+    );
+    std::fs::write(job.join("visual/localized_video.json"), b"not json").expect("broken");
+    let report = load(&video, &work_root).expect("a broken record is no error");
+    assert_eq!(report.localized.expect("localized").video, None);
     let _ = std::fs::remove_dir_all(&root);
 }

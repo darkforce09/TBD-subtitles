@@ -11,15 +11,18 @@
 //! **Signals and state:** `from_history` reads the work folder; the rest is pure.
 //!
 //! **Invariants:** the shot scan, which runs alongside the other steps, never adds to the time
-//! left; a running step that reports its progress is estimated from its own pace.
+//! left, and neither does a step the job's settings leave idle (the on-screen text steps with
+//! translation off, the replacement steps and the localized video with it off), nor does such a
+//! step's near-zero time lower the rate learnt from history; a running step that reports its
+//! progress is estimated from its own pace.
 
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Instant;
 
-use job_model::StepName;
-use job_model::job::JobRecord;
+use job_model::job::{JobRecord, JobSettings};
 use job_model::outputs::ProbeDecoded;
+use job_model::{StageName, StepName};
 
 use crate::job_queue::models::progress::{JobProgress, Rates, StepState};
 
@@ -68,6 +71,9 @@ pub(crate) fn from_history(work_root: &Path) -> Rates {
             continue;
         }
         for (step, done) in &record.steps {
+            if !works_in(*step, &record.settings) {
+                continue;
+            }
             let entry = sums.entry(*step).or_insert((0.0, 0));
             entry.0 += done.measure.wall_s / probe.probe.duration_s;
             entry.1 += 1;
@@ -78,6 +84,29 @@ pub(crate) fn from_history(work_root: &Path) -> Rates {
         rates.per_step.insert(step, sum / n as f64);
     }
     rates
+}
+
+/// Whether a job with `settings` does work in `step`: the on-screen text steps only with
+/// translation on, the replacement steps and the localized video only with the localized video
+/// on too; every other step always.
+pub(crate) fn works_in(step: StepName, settings: &JobSettings) -> bool {
+    let text = &settings.onscreen_text;
+    match step {
+        StepName::TextMask
+        | StepName::TextInpaint
+        | StepName::TextCompose
+        | StepName::LocalizedVideo => text.enabled && text.localized_video,
+        step if step.stage() == StageName::OnscreenText => text.enabled,
+        _ => true,
+    }
+}
+
+/// The steps a job with `settings` runs with nothing to do, in run order.
+pub(crate) fn idle_steps(settings: &JobSettings) -> Vec<StepName> {
+    StepName::ALL
+        .into_iter()
+        .filter(|step| !works_in(*step, settings))
+        .collect()
 }
 
 fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
@@ -92,6 +121,10 @@ fn expected(rates: &Rates, step: StepName, duration_s: f64) -> f64 {
         StepName::TextTrack => 0.25,
         StepName::TextTranslate => 0.2,
         StepName::TextReview | StepName::TextTypeset => 0.01,
+        StepName::TextMask => 0.05,
+        StepName::TextInpaint => 0.1,
+        StepName::TextCompose => 0.02,
+        StepName::LocalizedVideo => 0.25,
         _ => 0.0,
     };
     rates.per_step.get(&step).copied().unwrap_or(initial) * duration_s
@@ -105,7 +138,7 @@ pub(crate) fn estimate(progress: &JobProgress, rates: &Rates, now: Instant) -> O
     for row in progress
         .steps
         .iter()
-        .filter(|r| r.stale && r.step != StepName::ShotScan)
+        .filter(|r| r.stale && r.step != StepName::ShotScan && !progress.idle.contains(&r.step))
     {
         let expected = expected(rates, row.step, duration);
         total += expected;

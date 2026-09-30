@@ -31,6 +31,8 @@ video ─▶ 1 probe+decode ─▶ 2 separate ─▶ 3 vad+chunks ─▶ 4 asr �
                                                         │ UNSURE → re-decode → 6
                                                         ▼
                         output ◀─ qc ◀─ visual text ◀─ cues ◀─ align
+                          │
+                          └─▶ localized video (with the video's writing replaced)
 ```
 
 ## Steps and processes
@@ -63,9 +65,18 @@ and peak memory in the job report.
 | text_track | on-screen text | worker, `tbd-subtitles` (CPU, no decoding) | `visual/text_track.json` |
 | text_translate | on-screen text | worker, `tbd-subtitles-llm` (`claude` children first; mistral.rs for the rest) | `visual/text_translate.json`, translation cache |
 | text_review | on-screen text | job runner | `visual/text_review.json` |
-| text_typeset | on-screen text | worker, `tbd-subtitles` (CPU) | `visual/text_typeset.json`, `visual/events.ass` |
+| text_mask | on-screen text | worker, `tbd-subtitles` (CPU; FFmpeg region crops) | `visual/text_mask.json`, `visual/masks/` |
+| text_inpaint | on-screen text | worker, `tbd-subtitles` (ONNX Runtime) | `visual/text_inpaint.json`, `visual/plates/` |
+| text_compose | on-screen text | worker, `tbd-subtitles` (CPU) | `visual/text_compose.json`, `visual/patches/` |
+| text_typeset | on-screen text | worker, `tbd-subtitles` (CPU) | `visual/text_typeset.json`, `visual/events.ass`, `visual/events_localized.ass` |
 | qc | 10 | job runner | `qc.json` |
-| output | 11 | job runner | `<video base name>.srt` (or `.vtt`, `.ass`), `output.json` |
+| output | 11 | job runner | `<video base name>.srt` (or `.vtt`, `.ass`), `<video base name>.localized.ass`, `output.json` |
+| localized_video | localized video | worker, `tbd-subtitles` (FFmpeg decoder and NVENC encoder) | `<video base name>.localized.mkv`, `visual/localized_video.json` |
+
+The 28 steps run in this order. The four replacement steps (`text_mask`, `text_inpaint`,
+`text_compose`, `localized_video`) do work only when the job's
+[localized video](/documentation/glossary.md#localized-video) setting is on; otherwise they, like
+the other on-screen text steps with translation off, write empty outputs and load nothing.
 
 - **Resume:** a step is skipped when the job record holds its fingerprint and its files exist.
   The fingerprint hashes the step's name and code revision, the settings it reads, the video's
@@ -77,7 +88,8 @@ and peak memory in the job report.
   finished steps stay valid, so the next run resumes after them.
 - **GPU lock:** a GPU worker first takes an exclusive lock on `gpu.lock` in the app data folder,
   so a command-line run and the window never load models onto the card together; the kernel
-  frees the lock when its holder dies.
+  frees the lock when its holder dies. `text_inpaint` and `localized_video` (for NVENC) hold it
+  too.
 - **Binaries:** ONNX Runtime, ggml and candle never share a process. `tbd-subtitles` hosts the
   ONNX Runtime, FFmpeg and `claude` workers; `tbd-subtitles-ggml`, built beside it with the
   `crispasr` feature, hosts Whisper. `tbd-subtitles-llm`, built with `mistralrs`, hosts the local
@@ -273,7 +285,39 @@ and one row per step with its time, load, processing, peak RAM, peak child RAM a
   identical one is left alone. When the format changes, the job's file of the old format moves to
   `backup/`, so one subtitle file stays beside the video. `output.json` records the path, the
   backup and the moved file.
-- The job report stays in the work directory; the GUI shows it.
+- With the localized video on, the step also writes `<video base name>.localized.ass`: the same
+  dialogue and sound cues with only the on-screen English not drawn into the video, backed up
+  the same way; `output.json` records it as `localized`.
+- The job report stays in the work directory; the GUI shows it. With the localized video
+  written, `report.md` adds a Localized video section: occurrences replaced, fallbacks, the path
+  and the encoder.
+
+## Replacement and the localized video
+
+With on-screen translation and the localized video both on (the default for new jobs), three
+steps between `text_review` and `text_typeset` prepare every translated occurrence for drawing
+into the picture, and a last step after `output` writes the video:
+
+- `text_mask` separates the writing's strokes from their background on the keyframe, measures
+  their colour and thickness, follows moving writing frame by frame and cuts the span into
+  background [plates](/documentation/glossary.md#plate), decoding only the regions around the
+  writing.
+- `text_inpaint` fills each plate's [stroke mask](/documentation/glossary.md#stroke-mask) with
+  LaMa on ONNX Runtime.
+- `text_compose` letters the English onto each filled plate in Noto Sans, fitted to the original
+  area and style, and writes one [patch](/documentation/glossary.md#patch) per plate.
+- `text_typeset` then writes, beside the usual events, the events of every occurrence not drawn
+  in, which the output step puts into `<video base name>.localized.ass`.
+- `localized_video` decodes every frame, blends the patches over the frames they cover and
+  re-encodes the video with `hevc_nvenc` (libx264 when NVENC cannot run), its peak rate capped
+  near the source's, into `<video base name>.localized.mkv` with the source's audio, chapters and
+  metadata and no subtitle stream.
+
+An occurrence that cannot be separated, followed or lettered legibly keeps its English in the
+localized subtitle file with the warning `Not replaced in the video: <reason>`. A
+variable-frame-rate video fails the last step; a `.localized.mkv` the job did not write is never
+overwritten. Algorithms, files and bounds:
+[video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md).
 
 ## Fix It
 
@@ -297,4 +341,6 @@ review step and the steps after it run. Details: [Fix It](/documentation/feature
 - [System overview](/documentation/architecture/system_overview.md) — processes, crates, work directory.
 - [Rust ML stack](/documentation/research/rust_ml_stack.md) — crates and model files per stage.
 - [Subtitle style rules](/documentation/architecture/subtitle_style_rules.md) — layout and timing rules.
+- [Video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md) — the
+  replacement steps and the localized video in detail.
 - [Speech recognition landscape](/documentation/research/speech_recognition_landscape.md) — why these engines.

@@ -11,6 +11,7 @@ pub mod geometry;
 mod glyphs;
 pub mod read;
 pub mod reference;
+pub mod replace;
 pub mod review;
 pub mod track;
 pub mod translate;

@@ -19,7 +19,7 @@ apps/tbd_subtitles/src/core/
 ├── portal.rs           the desktop's chooser, opening a file, showing it in the file manager, notices
 ├── service_menu.rs     the Dolphin service menu "Generate subtitles", written for the running AppImage
 ├── single_instance.rs  one window per session: the instance lock, and later starts' hand-offs
-├── steps.rs            the six stages the window shows, and each step's plain title
+├── steps.rs            the nine stages the window shows, and each step's plain title
 ├── tests/              unit tests for URIs, formats, stages, scheme, toasts, logging, instance, service menu
 ├── toast.rs            `Toast`, `Toasts` and `ToastKind`: short messages at the bottom, with a button
 └── ui/                 the palette, fonts and theme, and the widgets features draw: buttons to toasts
@@ -71,10 +71,10 @@ time left loosely (`about 4 min`, `under 2 min`, `a few seconds`), a video's len
 (`1:02:03` from an hour on), a line's time to the tenth of a second (`16:33.4`), places
 in line (`2nd`) and counts with their noun (`2 corrections`).
 
-`steps` groups the eighteen pipeline steps into the six stages the window shows, from "Read the
-video" to "Write the subtitles", each with its title and what it does while running ("Settling
-the words"), and gives every step a plain title ("Listen with Whisper") in place of its file
-name; `stage_of` finds a step's stage.
+`steps` groups the twenty-eight pipeline steps into the nine stages the window shows, from
+"Read the video" to "Write the localized video", each with its title and what it does while
+running ("Settling the words"), and gives every step a plain title ("Listen with Whisper") in
+place of its file name; `stage_of` finds a step's stage.
 
 `toast` holds the toasts shown now, oldest first: each has a kind (Success, Info, Working or
 Error), its text, an optional button with what it does, and the time it goes away (4.2 s unless

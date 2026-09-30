@@ -46,7 +46,7 @@ list and the line editor side by side.
 │  > Dressrosa 12           │ 25:59 video · finished in 4 min 37 s                          │
 │    Hearing the speech     │ ┌───────────────────────────────────────────────────────────┐ │
 │ UP NEXT                 2 │ │ the selected job's cards, in a column at most 800 px wide │ │
-│  o Dressrosa 13           │ │  running:  progress card over eight stage groups         │ │
+│  o Dressrosa 13           │ │  running:  progress card over nine stage groups          │ │
 │    Waiting · next in line │ │  waiting:  place in line, Run Next, Remove from List      │ │
 │  o Dressrosa 14           │ │  failed or cancelled: what happened, Try Again            │ │
 │ DONE                    1 │ │  finished: Overview (file card, lines card, Details,      │ │
@@ -59,7 +59,7 @@ list and the line editor side by side.
 ```
 
 - **Toolbar** (52 px): Add Videos… and Add Folder… open the desktop's chooser (files, or a folder
-  for its videos without subtitles); asked again while one is open, a toast says "A file chooser
+  for its videos without subtitles, never a `*.localized.mkv` the app wrote); asked again while one is open, a toast says "A file chooser
   is already open." The queue's one button is Start Queue, Pause After This
   Video or Resume Queue; a disabled Start Queue says why beside it ("Download the models first",
   "Nothing is waiting"). It counts full runs only. The log button (a terminal window) opens the
@@ -90,11 +90,12 @@ list and the line editor side by side.
   Check Lines keeps its count of lines to check, or a green check once none is left.
 - **Job cards:** a running job's card says what its [stage](/documentation/glossary.md#stage)
   does ("Settling the words"), the [step](/documentation/glossary.md#step) at work ("Now: Language
-  model settles the words · step 9 of 24"), a bar of the share done, the time left ("about 4 min
-  left", "Working out the time left…" until the length is known) and the time so far. Under it
-  eight groups: Read the video, Separate the voices, Hear the speech, Settle the words, Time the
-  words, Lay out the subtitles, Translate on-screen text and Write the subtitles. Each shows its
-  time and state; the running group opens to its steps. "Show all 24 steps" opens every group.
+  model settles the words · step 9 of 28"), a bar of the share done, the time left ("about 4 min
+  left", "Working out the time left…" until the length is known; steps the job's settings leave
+  idle add none) and the time so far. Under it nine groups: Read the video, Separate the voices,
+  Hear the speech, Settle the words, Time the words, Lay out the subtitles, Translate on-screen
+  text, Write the subtitles and Write the localized video. Each shows its time and state; the
+  running group opens to its steps. "Show all 28 steps" opens every group.
   A waiting job's card gives its place, when it starts, its path, Run Next and Remove from List. A
   failed job's card names the stage and step in plain words ("Failed at Hear the speech", "Listen
   with Whisper stopped with an error."), the raw message, the finished steps kept and when Try
@@ -121,8 +122,13 @@ list and the line editor side by side.
   heard, timing offset, speech and voice with no subtitle, words timed by the aligner, and
   "Corrections you made", the owner's alone, not Claude's) and Step times (each stage and step with
   its time, peak RAM and peak VRAM, and Open Full Report), both folded away at first.
-  On-screen text adds detected, translated, nearby and unresolved counts, visual processing time,
-  combined ASS output and a Check Text action; warnings remain visible after the job finishes.
+  On-screen text adds detected, translated, nearby and unresolved counts ("· 8 replaced in the
+  video" once the replacement steps ran), visual processing time, combined ASS output and a Check
+  Text action; warnings remain visible after the job finishes. While a job's localized video is on
+  disk, a card under the file card says "Localized video saved next to the original" ("The
+  Japanese writing is replaced in English where it could be; the rest is in its own subtitle file.
+  The original video is unchanged."), with the video's and its subtitle file's paths (whole on
+  hover) and Open in Player, Show in Folder and Copy Path for the video.
 - **Check Lines** (a finished job):
 
   ```text
@@ -170,6 +176,14 @@ list and the line editor side by side.
   Original/English comparison rendered from the actual ASS by FFmpeg. Play, scrub and frame-step;
   Save & regenerate ASS, Undo or Retry selected text. Saves survive navigation and update their
   owning video through the existing correction queue without replacing another open session.
+  For a job with the [localized video](/documentation/glossary.md#localized-video), a Subtitles |
+  Localized video control over the right picture switches it between the source with its ASS
+  and the localized video with its own subtitle file (the default, kept across reloads); until the
+  video is written it shows the occurrence's replaced keyframe plate, captioned "Localized video
+  not written yet". Show erase mask, beside the original picture's title, tints the keyframe's
+  [stroke mask](/documentation/glossary.md#stroke-mask) over the original; a line under the time
+  says "Replaced in the video" (green) or `Not replaced in the video: <reason>` (orange), and the
+  Replace treatment reads "Replace in the video".
 - **Settings window:** a second native window, centred over the main one when it opens, in six
   tabs. General: the models folder and the work folder with their sizes, the subtitle format, the
   glossary with its count of names. Engines: vocal separation, the second speech engine, the
@@ -178,8 +192,10 @@ list and the line editor side by side.
   `claude` calls Fix It makes at once across every video it fixes; the rest wait their turn, videos
   started first going first) and the switch Fix It after each job (off by default: Fix It starts on
   each video when its job finishes, if it has lines to fix), the shot cut score. On-screen Text:
-  enable translation, local-first policy, Claude fallback, reference-folder path and model status
-  with download controls. Enabled visual translation produces ASS. Models: each model
+  enable translation, Replace text in the video (on by default, off to clicks while translation is
+  off; `<name>.localized.mkv` and `<name>.localized.ass` beside the original), local-first policy,
+  Claude fallback, reference-folder path and model status with download controls. Enabled visual
+  translation produces ASS. Models: each model
   and runtime library with its size and state, Download Missing or Stop. This Computer: the GPU with
   its driver and free VRAM, the CUDA libraries, FFmpeg and its clip sound, ffprobe, `claude`, the
   Whisper worker; a missing CUDA runtime links to Models. Automation: the watch folders, with Add
@@ -278,7 +294,8 @@ every language-model call with what was sent and what came back.
   second correction run of a video waits while its first runs, even with a lane free.
 - The queue runs on while the window is minimized. A later launch of the app raises this window
   and queues its videos; a watch folder or Dolphin's entry queues and starts; a job that ends
-  while the window is away gives a notification ([automation](/documentation/features/automation.md)).
+  while the window is away gives a notification, naming the localized video when it saved one
+  ([automation](/documentation/features/automation.md)).
 
 ### Overview to Check Lines
 
@@ -409,7 +426,8 @@ nothing.
   window reads `job.json` and the step records for progress and the time left, `qc.json`,
   `output.json`, `report.md` and `fix.json` for the Overview, and `sheet.json`, `adjudicated.json`, the
   re-decodes, `probe.json` and `audio/vocals_16k.f32` for Check Lines. Check Text reads the visual
-  documents/crops and exported ASS, and writes locked `visual/corrections.json`. Line review writes
+  documents/crops and exported ASS (and `visual/text_compose.json`, `visual/localized_video.json`,
+  the masks and previews for the localized video), and writes locked `visual/corrections.json`. Line review writes
   `review.json`, the corrections the review step reads, under its lock `review.json.lock`, which
   Fix It takes too; Fix It also writes `fix.json` and, while it runs, `fix/calls/`. Each finished
   row's verdict and lines to check are read from `qc.json` and `review.json` when the window opens
@@ -453,48 +471,26 @@ nothing.
 ## Open work
 
 - M2 and [M3](/documentation/roadmap.md#m3--automation) are complete. [M4](/documentation/roadmap.md#m4--japanese-on-screen-text)
-  still requires annotated pilots, resource benchmarks, full GUI/playback checks and owner acceptance.
+  still requires annotated pilots, resource benchmarks, full GUI/playback checks and owner acceptance;
+  [M5](/documentation/roadmap.md#m5--in-place-on-screen-text) its playback checks and the owner's acceptance.
 
 ## Decisions
 
-- eframe over iced or Slint, and clips through FFmpeg
-  ([clips play through FFmpeg](/documentation/decisions/desktop_gui.md#2026-09-26--clips-play-through-ffmpeg-not-libmpv)).
-- The desktop portal for choosers and for opening a video
-  ([the desktop portal](/documentation/decisions/desktop_gui.md#2026-09-26--the-desktop-portal-chooses-files-and-opens-videos)).
-- A review step times the owner's corrections
-  ([review step](/documentation/decisions/desktop_gui.md#2026-09-26--the-owners-corrections-are-timed-by-a-review-step)).
-- Models live in the settings' models folder and download from Settings
-  ([models folder](/documentation/decisions/desktop_gui.md#2026-09-26--models-live-in-the-settings-models-folder-and-download-from-the-settings-page)).
-- A job passes the quality check on five rules
-  ([five rules](/documentation/decisions/desktop_gui.md#2026-09-26--a-job-passes-the-quality-check-on-five-rules)).
-- One GPU worker at a time on the machine
-  ([one GPU worker](/documentation/decisions/desktop_gui.md#2026-09-26--one-gpu-worker-at-a-time-on-the-machine)).
-- The owner chooses SRT, WebVTT or ASS; enabled on-screen translation selects combined ASS
-  ([subtitle format](/documentation/decisions/desktop_gui.md#2026-09-26--the-owner-chooses-srt-webvtt-or-ass)).
-- The desktop's colour scheme, Adwaita Sans, Phosphor icons and X11
-  ([the window's look](/documentation/decisions/desktop_gui.md#2026-09-28--the-window-follows-the-desktops-colour-scheme-in-adwaita-sans-under-x11)).
-- A job keeps its own settings once it has started
-  ([a job keeps its settings](/documentation/decisions/desktop_gui.md#2026-09-28--a-job-keeps-its-own-settings-once-it-has-started)).
-- Settings in their own window
-  ([Settings window](/documentation/decisions/desktop_gui.md#2026-09-28--settings-open-in-a-window-of-their-own)).
-- Correction runs on their video's row
-  ([one row per video](/documentation/decisions/desktop_gui.md#2026-09-28--correction-runs-show-in-their-videos-row)).
-- Try Again resumes after the kept steps and starts at once
-  ([Try Again](/documentation/decisions/desktop_gui.md#2026-09-28--try-again-resumes-after-the-kept-steps-and-starts-at-once-when-nothing-runs)),
-  and reruns adjudication for a failed language-model call
-  ([a failed call is retried](/documentation/decisions/desktop_gui.md#2026-09-28--a-failed-language-model-call-is-retried-by-running-adjudication-again)).
-- Settings apply as they change, with no Save
-  ([settings apply as they change](/documentation/decisions/desktop_gui.md#2026-09-28--settings-apply-as-they-change)).
-- Fix It fixes the flagged lines in three passes, each change kept by the owner or undone
-  ([Fix It](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-a-stronger-model-fixes-the-flagged-lines-in-three-passes)),
-  and shows its result in a Result card when the subtitles are updated
-  ([Fix It finishes visibly](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-finishes-visibly));
-  it runs on many videos at once under one cap on Claude calls, with Fix All and Fix It after
-  each job
-  ([Fix It on many videos](/documentation/decisions/batch.md#2026-09-28--fix-it-runs-on-many-videos-at-once-under-one-cap-on-claude-calls)).
-- A log window shows everything the app does, from one `tracing` buffer
-  ([log window](/documentation/decisions/desktop_gui.md#2026-09-28--a-log-window-shows-everything-the-app-does)).
-- Model calls show whole in the log window, never in the log file
-  ([model calls](/documentation/decisions/desktop_gui.md#2026-09-28--model-calls-show-in-the-log-window-never-in-the-log-file)).
-- One window per session, work while minimized, and job-end notifications
-  ([automation decisions](/documentation/decisions/automation.md)).
+- eframe over iced or Slint, and clips through FFmpeg ([clips play through FFmpeg](/documentation/decisions/desktop_gui.md#2026-09-26--clips-play-through-ffmpeg-not-libmpv)).
+- The desktop portal for choosers and for opening a video ([the desktop portal](/documentation/decisions/desktop_gui.md#2026-09-26--the-desktop-portal-chooses-files-and-opens-videos)).
+- A review step times the owner's corrections ([review step](/documentation/decisions/desktop_gui.md#2026-09-26--the-owners-corrections-are-timed-by-a-review-step)).
+- Models live in the settings' models folder and download from Settings ([models folder](/documentation/decisions/desktop_gui.md#2026-09-26--models-live-in-the-settings-models-folder-and-download-from-the-settings-page)).
+- A job passes the quality check on five rules ([five rules](/documentation/decisions/desktop_gui.md#2026-09-26--a-job-passes-the-quality-check-on-five-rules)).
+- One GPU worker at a time on the machine ([one GPU worker](/documentation/decisions/desktop_gui.md#2026-09-26--one-gpu-worker-at-a-time-on-the-machine)).
+- The owner chooses SRT, WebVTT or ASS; enabled on-screen translation selects combined ASS ([subtitle format](/documentation/decisions/desktop_gui.md#2026-09-26--the-owner-chooses-srt-webvtt-or-ass)).
+- The desktop's colour scheme, Adwaita Sans, Phosphor icons and X11 ([the window's look](/documentation/decisions/desktop_gui.md#2026-09-28--the-window-follows-the-desktops-colour-scheme-in-adwaita-sans-under-x11)).
+- A job keeps its own settings once it has started ([a job keeps its settings](/documentation/decisions/desktop_gui.md#2026-09-28--a-job-keeps-its-own-settings-once-it-has-started)).
+- Settings in their own window ([Settings window](/documentation/decisions/desktop_gui.md#2026-09-28--settings-open-in-a-window-of-their-own)).
+- Correction runs on their video's row ([one row per video](/documentation/decisions/desktop_gui.md#2026-09-28--correction-runs-show-in-their-videos-row)).
+- Try Again resumes after the kept steps and starts at once ([Try Again](/documentation/decisions/desktop_gui.md#2026-09-28--try-again-resumes-after-the-kept-steps-and-starts-at-once-when-nothing-runs)), and reruns adjudication for a failed language-model call ([a failed call is retried](/documentation/decisions/desktop_gui.md#2026-09-28--a-failed-language-model-call-is-retried-by-running-adjudication-again)).
+- Settings apply as they change, with no Save ([settings apply as they change](/documentation/decisions/desktop_gui.md#2026-09-28--settings-apply-as-they-change)).
+- Fix It fixes the flagged lines in three passes, each change kept by the owner or undone ([Fix It](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-a-stronger-model-fixes-the-flagged-lines-in-three-passes)), and shows its result in a Result card when the subtitles are updated ([Fix It finishes visibly](/documentation/decisions/desktop_gui.md#2026-09-28--fix-it-finishes-visibly)); it runs on many videos at once under one cap on Claude calls, with Fix All and Fix It after each job ([Fix It on many videos](/documentation/decisions/batch.md#2026-09-28--fix-it-runs-on-many-videos-at-once-under-one-cap-on-claude-calls)).
+- A log window shows everything the app does, from one `tracing` buffer ([log window](/documentation/decisions/desktop_gui.md#2026-09-28--a-log-window-shows-everything-the-app-does)).
+- Model calls show whole in the log window, never in the log file ([model calls](/documentation/decisions/desktop_gui.md#2026-09-28--model-calls-show-in-the-log-window-never-in-the-log-file)).
+- One window per session, work while minimized, and job-end notifications ([automation decisions](/documentation/decisions/automation.md)).
+- On-screen writing is replaced in a localized video beside the source, on by default ([localized video](/documentation/decisions/stack_and_pipeline.md#2026-09-30--writing-is-replaced-in-a-localized-video-re-encoded-beside-the-source)).

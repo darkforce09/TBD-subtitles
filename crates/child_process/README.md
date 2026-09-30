@@ -16,14 +16,14 @@ crates/child_process/
 ## How it works
 
 A caller builds a `Run` with `Run::new(program)` and the builder methods `arg`, `args`, `cwd`,
-`env`, `env_remove`, `timeout`, `cancel_on` and `stdin`, then finishes it with one of four calls:
+`env`, `env_remove`, `timeout`, `cancel_on`, and `stdin` or `stdin_piped`, then finishes it with one of four calls:
 
 | Call | Pipes | Answer |
 |---|---|---|
 | `output` | stdout and stderr on two pipes | `Output`: `code`, `stdout`, `stderr`, `duration` |
 | `merged_output` | both streams on one shared pipe, as a shell's `2>&1` | `Merged`: `code`, `text`, `duration` |
 | `status` | as `output` | the raw exit code alone |
-| `spawn` | stdout handed to the caller as a stream, stderr drained on a thread | `Running`: `pid`, `take_stdout`, `kill`, `wait` → `Finished`: `code`, `stderr`, `duration` |
+| `spawn` | stdout handed to the caller as a stream, and stdin too when piped; stderr drained on a thread | `Running`: `pid`, `take_stdout`, `take_stdin`, `kill`, `has_exited`, `wait` → `Finished`: `code`, `stderr`, `duration` |
 
 Every call either returns the child's real exit code, never folded to 0 or 1, or a `RunError`
 saying why there is none: `ProgramAbsent` (the program is on no `PATH` entry), `Failed` (spawning,
@@ -31,7 +31,7 @@ waiting or piping broke), `Signalled` (the child died on a signal, which is neve
 `128+n` code), `Timeout` (the deadline passed and the child's process group was killed) or
 `Cancelled` (the flag given to `cancel_on` was set and the group was killed; only `spawn` watches
 it). A `Running` child has a watchdog thread that kills its group at the deadline or on the cancel
-flag even while the caller is blocked reading its stdout, and a handle dropped without `wait` kills its group too, so an
+flag even while the caller is blocked reading its stdout or writing its piped stdin, and a handle dropped without `wait` kills its group too, so an
 abandoned FFmpeg stream never keeps running.
 
 Every child is also logged as `tracing` events under the `child_process` target: its start with

@@ -17,8 +17,10 @@
 mod alignment;
 mod layout;
 mod llm;
+mod localized;
 mod media;
 mod onscreen;
+mod replace;
 mod review;
 mod sounds;
 mod speech;
@@ -133,7 +135,11 @@ pub fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<TaskRepo
         | StepName::TextReview
         | StepName::TextTypeset => onscreen::run(step, job, progress),
         StepName::Qc => layout::qc(job),
+        StepName::TextMask | StepName::TextInpaint | StepName::TextCompose => {
+            replace::run(step, job, progress)
+        }
         StepName::Output => layout::output(job),
+        StepName::LocalizedVideo => localized::run(job, progress),
     };
     result.map_err(|e| PipelineError::new(format!("step {step}"), e))
 }

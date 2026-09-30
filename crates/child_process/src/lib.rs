@@ -111,7 +111,19 @@ pub struct Run {
     env_removes: Vec<String>,
     timeout: Option<Duration>,
     cancel: Option<Arc<AtomicBool>>,
-    stdin: Option<String>,
+    stdin: Stdin,
+}
+
+/// What the child reads on stdin.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Stdin {
+    /// `/dev/null`: a child that reads stdin sees EOF at once.
+    Null,
+    /// A body written once, after which the pipe closes.
+    Body(String),
+    /// A pipe the caller writes through [`Running::take_stdin`]; only [`Run::spawn`] hands it
+    /// out, and the collecting runs close it at once.
+    Piped,
 }
 
 impl Run {
@@ -124,7 +136,7 @@ impl Run {
             env_removes: Vec::new(),
             timeout: None,
             cancel: None,
-            stdin: None,
+            stdin: Stdin::Null,
         }
     }
 
@@ -171,8 +183,17 @@ impl Run {
         self
     }
 
+    /// Write `body` to the child's stdin once and close it. Replaces [`Run::stdin_piped`].
     pub fn stdin(mut self, body: impl Into<String>) -> Run {
-        self.stdin = Some(body.into());
+        self.stdin = Stdin::Body(body.into());
+        self
+    }
+
+    /// Leave the child's stdin open for the caller to stream through [`Running::take_stdin`].
+    /// Replaces [`Run::stdin`]; the collecting runs (`output`, `merged_output`, `status`) close
+    /// the pipe at once, so their child sees EOF.
+    pub fn stdin_piped(mut self) -> Run {
+        self.stdin = Stdin::Piped;
         self
     }
 

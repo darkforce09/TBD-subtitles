@@ -21,7 +21,11 @@ apps/tbd_subtitles/src/job_report/services/
 `job.json` (the steps' measures), `qc.json`, `output.json` (the subtitle file, else the path the
 settings give), `review.json` (no corrections while it does not exist) and `fix.json` (Fix It's
 record, none while it does not exist), then counts the lines and problems through `line_counts`
-and what Fix It did through `fix_result`. A Fix It record counts only while it belongs to the
+and what Fix It did through `fix_result`. For a job whose settings write a localized video it
+also reads `visual/localized_video.json` and, before that step ran, `visual/text_compose.json`:
+how many occurrences were drawn into the video, and the localized video and its subtitle file
+(`output.json`'s `localized`) while they are on disk; a missing or broken record of these is
+absent, never an error. A Fix It record counts only while it belongs to the
 job's re-adjudication as it stands (`FixRecord::is_current`, against `job.json`); a record of an
 earlier one counts for nothing. `report_loading::summary` reads `qc.json`, `review.json` and
 `fix.json` (with `job.json` when there is one), for a sidebar row. `line_counts::line_counts`

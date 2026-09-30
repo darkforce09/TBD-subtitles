@@ -32,6 +32,7 @@ impl Fixture {
         let work = WorkDir::new(root.join("work").join(work_dir::job_id(&video)));
         let mut settings = JobSettings::with_glossary(Vec::new());
         settings.onscreen_text = TextSettings::new_job();
+        settings.onscreen_text.localized_video = false;
         write(
             &work.job_json(),
             &JobRecord {
@@ -77,6 +78,7 @@ impl Fixture {
                         frame_rate_num: 24,
                         frame_rate_den: 1,
                         start_time_s: 0.0,
+                        ..Default::default()
                     }),
                     audio: vec![track.clone()],
                 },
@@ -466,6 +468,136 @@ fn preview_controls_scrub_and_step_source_frames_without_blocking_navigation() {
     );
 }
 
+/// Turn the fixture's localized video on, with `board` drawn in (its plate and mask on disk) and
+/// the rest left out; `board` asks to be replaced.
+fn localize(fixture: &Fixture) {
+    use job_model::onscreen::{PixelRect, Plate, ReplaceStatus, ReplacedText, ReplacementDocument};
+    let mut record: JobRecord = read(&fixture.work.job_json());
+    record.settings.onscreen_text.localized_video = true;
+    write(&fixture.work.job_json(), &record);
+    let mut document: TextDocument = read(&fixture.work.text(StepName::TextTypeset));
+    document.occurrences[0].presentation.treatment = TextTreatment::Replace;
+    write(&fixture.work.text(StepName::TextTypeset), &document);
+    let folder = fixture.work.root().join("visual/patches/board");
+    fs::create_dir_all(&folder).expect("patch folder");
+    image::RgbImage::from_pixel(750, 160, image::Rgb([240, 240, 240]))
+        .save(folder.join("preview.png"))
+        .expect("preview");
+    image::GrayImage::from_pixel(750, 160, image::Luma([255]))
+        .save(folder.join("mask.png"))
+        .expect("mask");
+    let text = |id: &str, status: ReplaceStatus| ReplacedText {
+        id: id.into(),
+        first_frame: 240,
+        last_frame: 287,
+        status,
+        style: None,
+        container: None,
+        plates: Vec::new(),
+        preview: None,
+    };
+    let mut board = text("board", ReplaceStatus::Baked);
+    board.preview = Some(PathBuf::from("visual/patches/board/preview.png"));
+    board.plates.push(Plate {
+        first_frame: 240,
+        last_frame: 287,
+        rect: PixelRect {
+            x: 150,
+            y: 100,
+            width: 750,
+            height: 160,
+        },
+        shift: [0.0, 0.0],
+        scale: 1.0,
+        source: PathBuf::from("visual/patches/board/preview.png"),
+        mask: PathBuf::from("visual/patches/board/mask.png"),
+        plate: None,
+        patch: None,
+    });
+    let composed = ReplacementDocument {
+        width: 1920,
+        height: 1080,
+        frame_count: 720,
+        texts: vec![
+            board,
+            text(
+                "title",
+                ReplaceStatus::Fallback("the card is too busy".into()),
+            ),
+        ],
+    };
+    write(&fixture.work.text(StepName::TextCompose), &composed);
+}
+
+#[test]
+fn a_localized_job_previews_the_localized_video_its_mask_and_whether_text_was_replaced() {
+    let fixture = Fixture::new("localized");
+    localize(&fixture);
+    let mut harness = fixture.harness(false);
+    open_text(&mut harness);
+    wait(&mut harness, |app| {
+        let session = app.text.session.as_ref();
+        session
+            .and_then(|session| session.localized.as_ref())
+            .is_some_and(|localized| localized.pictures.is_some())
+    });
+    let (text, _) = render(harness.state());
+    for expected in [
+        "Original",
+        "Show erase mask",
+        "Subtitles",
+        "Localized video",
+        "Localized video not written yet",
+        "Replaced in the video",
+        "Replace in the video",
+    ] {
+        assert!(text.contains(expected), "missing {expected}: {text}");
+    }
+    assert!(!text.contains("English subtitles"), "{text}");
+    harness.get_by_label("Show erase mask").click();
+    harness.run_steps(2);
+    let localized = |harness: &Harness<'_, TbdSubtitlesApp>| {
+        let session = harness.state().text.session.as_ref().expect("session");
+        session.localized.clone().expect("localized")
+    };
+    assert!(localized(&harness).show_mask);
+    harness.get_by_label("Subtitles").click();
+    harness.run_steps(2);
+    assert_eq!(
+        localized(&harness).mode,
+        crate::text_review::models::PreviewMode::Subtitles
+    );
+    let (text, _) = render(harness.state());
+    assert!(!text.contains("Localized video not written yet"), "{text}");
+    // The title is not flagged, so the list hides it; select it as its row would.
+    harness
+        .state_mut()
+        .apply_text(crate::text_review::models::Event::Select(1));
+    harness.run_steps(2);
+    let (text, _) = render(harness.state());
+    assert!(
+        text.contains("Not replaced in the video: the card is too busy"),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_job_without_a_localized_video_keeps_the_subtitles_preview_alone() {
+    let fixture = Fixture::new("not-localized");
+    let mut harness = fixture.harness(false);
+    open_text(&mut harness);
+    let (text, _) = render(harness.state());
+    assert!(text.contains("English subtitles"), "{text}");
+    for absent in [
+        "Show erase mask",
+        "Localized video",
+        "in the video",
+        "Replace in the video",
+    ] {
+        assert!(!text.contains(absent), "{absent} in {text}");
+    }
+}
+
 #[test]
 #[ignore = "renders visual-review screenshots through a host GPU; set TBD_SNAPSHOTS"]
 fn visual_review_snapshots() {
@@ -701,6 +833,8 @@ fn install_preview_pilot(fixture: &mut Fixture, source: &WorkDir, video: &Path, 
     fixture.video = video.into();
     fixture.work = WorkDir::new(fixture.root.join("work").join(work_dir::job_id(video)));
     job.video = video.to_string_lossy().into_owned();
+    // The comparison under test is the source against its exported ASS.
+    job.settings.onscreen_text.localized_video = false;
     write(&fixture.work.job_json(), &job);
     write(&fixture.work.probe(), &probe);
     let mut copied_bytes = 0;
@@ -808,7 +942,8 @@ fn wait_real_comparison(
 }
 
 fn assert_preview_pixels(pair: &crate::text_review::models::Comparison, translated: bool) {
-    for picture in [&pair.original, &pair.rendered] {
+    let rendered = pair.rendered.as_ref().expect("the subtitles picture");
+    for picture in [&pair.original, rendered] {
         assert!(picture.width > 0 && picture.height > 0);
         assert!(picture.width <= 720 && picture.height <= 720);
         assert_eq!(
@@ -822,14 +957,14 @@ fn assert_preview_pixels(pair: &crate::text_review::models::Comparison, translat
     }
     assert_eq!(
         (pair.original.width, pair.original.height),
-        (pair.rendered.width, pair.rendered.height)
+        (rendered.width, rendered.height)
     );
     if translated {
         let changed = pair
             .original
             .rgb
             .iter()
-            .zip(&pair.rendered.rgb)
+            .zip(&rendered.rgb)
             .filter(|(left, right)| left.abs_diff(**right) > 8)
             .count();
         assert!(

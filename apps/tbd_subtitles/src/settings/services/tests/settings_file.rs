@@ -91,6 +91,42 @@ fn a_missing_table_key_keeps_the_others_default() {
 }
 
 #[test]
+fn a_file_from_before_the_localized_video_replaces_text_in_the_video() {
+    let settings = parse(
+        "[onscreen_text]\nenabled = true\nclaude_fallback = false\n\
+         reference_folder = \"/refs\"\n",
+    )
+    .expect("parse");
+    let text = &settings.onscreen_text;
+    assert!(text.localized_video, "a missing key means on");
+    assert!(text.enabled && !text.claude_fallback);
+    assert_eq!(text.reference_folder, Some(PathBuf::from("/refs")));
+    assert!(parse("").expect("parse").onscreen_text.localized_video);
+    let off = parse("[onscreen_text]\nlocalized_video = false\n").expect("parse");
+    assert!(
+        !off.onscreen_text.localized_video,
+        "a saved false stays off"
+    );
+    let on = parse("[onscreen_text]\nlocalized_video = true\n").expect("parse");
+    assert!(on.onscreen_text.localized_video);
+    assert!(parse("[onscreen_text]\nlocalized_video = \"yes\"\n").is_err());
+}
+
+#[test]
+fn a_saved_choice_to_leave_the_video_alone_loads_back_off() {
+    let dir = scratch("localized-off");
+    let path = dir.join("tbd-subtitles").join("settings.toml");
+    let mut settings = AppSettings::default();
+    settings.onscreen_text.localized_video = false;
+    save(&path, &settings).expect("save");
+    assert_eq!(load(&path).expect("load"), settings);
+    settings.onscreen_text.localized_video = true;
+    save(&path, &settings).expect("save");
+    assert_eq!(load(&path).expect("load"), settings);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn an_unknown_key_is_an_error_naming_it() {
     let error = parse("cut_scor = 30\n").expect_err("unknown");
     assert!(error.contains("cut_scor"), "{error}");

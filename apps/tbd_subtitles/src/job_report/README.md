@@ -15,7 +15,7 @@ apps/tbd_subtitles/src/job_report/
 ├── mod.rs     the module tree
 ├── models/    `JobReport`, `LineGroup`, `Problem`, `Remedy`, `FixResult`, `LineCounts`, `RowSummary`
 ├── services/  a job's files read into a `JobReport` or `RowSummary`; its counts; Fix It's result, thread
-└── ui/        the Overview: the file card with Fix It's result, the lines card, Details and Step times
+└── ui/        the Overview: the file card with Fix It's result, the localized video, the lines card, Details and Step times
 ```
 
 ## How it works

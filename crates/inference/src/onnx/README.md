@@ -10,6 +10,7 @@ ONNX Runtime itself is Microsoft's CUDA 13 build, loaded at run time from the ru
 ```text
 crates/inference/src/onnx/
 ├── ced/           CED-base: 527 AudioSet class probabilities per audio window
+├── lama/          LaMa: 512 × 512 pictures with erased strokes filled from their surroundings
 ├── mod.rs         the module list and the re-exports of `Device` and `OnnxError`
 ├── parakeet_ctc/  Parakeet-CTC-0.6B: CTC log-probabilities and BPE tokens for forced alignment
 ├── parakeet_tdt/  Parakeet-TDT-0.6B-v2 through parakeet-rs: words with times from 16 kHz chunks

@@ -2,11 +2,12 @@
 
 A local desktop app, written in Rust, that makes subtitles for your videos: every spoken line and
 the important sounds (SDH), timed to the word and laid out like professional subtitles. Drop in a
-video, get a `.srt` or `.ass` file beside it that VLC loads automatically. Later: translated
-subtitles for Japanese text shown on screen.
+video, get a `.srt` or `.ass` file beside it that VLC loads automatically. Japanese text shown on
+screen is translated into the `.ass` file and, by default, replaced in English in a localized copy
+of the video, `<name>.localized.mkv`, with its own `<name>.localized.ass`.
 
-**Status:** scaffold. The workspace, the desktop window, every crate and module folder with its
-README, and the repository checks exist; the subtitle pipeline is built next (see the
+**Status:** the subtitle pipeline, the desktop window and automation are done (M0 to M3);
+on-screen translation (M4) and the localized video (M5) are built and under validation (see the
 [roadmap](/documentation/roadmap.md)).
 
 ## Layout
@@ -35,7 +36,7 @@ the host, the GPU and opening the window.
 ## Documentation
 
 - [Vision and goals](/documentation/vision_and_goals.md) — what the app must do, and how fast.
-- [Roadmap](/documentation/roadmap.md) — milestones M0 to M4 and their checklists.
+- [Roadmap](/documentation/roadmap.md) — milestones M0 to M5 and their checklists.
 - [Pipeline](/documentation/architecture/pipeline.md) — from video to finished subtitle file.
 - [Decisions](/documentation/decisions/) — what is settled and why.
 - [Continue in Claude Code](/documentation/runbooks/continue_in_claude_code.md) — the prompt that

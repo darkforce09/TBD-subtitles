@@ -1,5 +1,5 @@
 //! The desktop notice for a full run that has just ended: its subtitles are ready, with the
-//! quality check's verdict, or it failed, and where.
+//! quality check's verdict and the localized video it saved, or it failed, and where.
 //!
 //! **Role:** word the title and body of the notice for a job that finished or failed.
 //!
@@ -34,7 +34,7 @@ pub(crate) fn ended_notice(item: &QueueItem) -> Option<Notice> {
     match &item.state {
         JobState::Finished(result) => Some(Notice {
             title: format!("Subtitles ready: {name}"),
-            body: quality_check(result),
+            body: capped(&finished_body(result)),
         }),
         JobState::Failed(failure) => {
             let body = match failure.step {
@@ -53,20 +53,35 @@ pub(crate) fn ended_notice(item: &QueueItem) -> Option<Notice> {
     }
 }
 
+/// The quality check's verdict, then the localized video's name when the job wrote one.
+fn finished_body(result: &JobResult) -> String {
+    let verdict = quality_check(result);
+    match result
+        .localized
+        .as_deref()
+        .and_then(|path| path.file_name())
+    {
+        Some(name) => format!(
+            "{verdict} Localized video saved: {}.",
+            name.to_string_lossy()
+        ),
+        None => verdict,
+    }
+}
+
 /// "The quality check passed.", or "Quality check: 2 layout rule(s) broken; 12 lines to check."
 fn quality_check(result: &JobResult) -> String {
     if result.failures.is_empty() {
         return "The quality check passed.".to_string();
     }
     let problems = result.failures.join(", ");
-    let body = match result.findings {
+    match result.findings {
         0 => format!("Quality check: {problems}."),
         n => format!(
             "Quality check: {problems}; {} to check.",
             format::plural(n, "line")
         ),
-    };
-    capped(&body)
+    }
 }
 
 /// `text` cut to `BODY_LIMIT` characters, its last one "…" when cut.

@@ -17,6 +17,8 @@ use std::time::Duration;
 
 use job_model::StepName;
 use job_model::job::{JobSettings, OutputFormat};
+use job_model::onscreen::LocalizedVideoRecord;
+use job_model::outputs::OutputRecord;
 use serde_json::{Value, json};
 
 use crate::work_dir::WorkDir;
@@ -69,6 +71,8 @@ pub fn uses_gpu(step: StepName) -> bool {
             | StepName::TextDetect
             | StepName::TextRead
             | StepName::TextTranslate
+            | StepName::TextInpaint
+            | StepName::LocalizedVideo
     )
 }
 
@@ -84,6 +88,7 @@ pub fn loads_onnx_runtime(step: StepName) -> bool {
             | StepName::Review
             | StepName::TextDetect
             | StepName::TextRead
+            | StepName::TextInpaint
     )
 }
 
@@ -129,7 +134,10 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
         TextTrack => &[ProbeDecode, ShotScan, TextRead],
         TextTranslate => &[TextTrack, Cues],
         TextReview => &[TextTranslate],
-        TextTypeset => &[TextReview],
+        TextMask => &[ProbeDecode, TextReview],
+        TextInpaint => &[TextMask],
+        TextCompose => &[TextReview, TextInpaint],
+        TextTypeset => &[TextReview, TextCompose],
         Qc => &[
             ProbeDecode,
             Vad,
@@ -143,6 +151,7 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
             TextTypeset,
         ],
         Output => &[Cues, TextTypeset],
+        LocalizedVideo => &[ProbeDecode, TextCompose, Output],
     }
 }
 
@@ -157,8 +166,8 @@ const REVISIONS: &[(StepName, u32)] = &[
     (StepName::Cues, 3),
     // Findings include tracked text alongside the spoken lines and their corrections.
     (StepName::Qc, 5),
-    // ASS output combines dialogue and tracked English text.
-    (StepName::Output, 2),
+    // ASS output combines dialogue and tracked English text; a localized video gets its own file.
+    (StepName::Output, 3),
     // Sampled screening with bisected boundaries and one keyframe per occurrence.
     (StepName::TextDetect, 4),
     (StepName::TextRead, 3),
@@ -167,7 +176,8 @@ const REVISIONS: &[(StepName, u32)] = &[
     // Claude reads every keyframe first; the local model answers what it leaves.
     (StepName::TextTranslate, 7),
     (StepName::TextReview, 2),
-    (StepName::TextTypeset, 2),
+    // Typesetting also writes the events of the localized video's subtitle file.
+    (StepName::TextTypeset, 3),
 ];
 
 /// The revision of a step's code; a change makes every earlier output of the step stale.
@@ -190,15 +200,28 @@ pub fn settings(step: StepName, settings: &JobSettings) -> Value {
             "llm_model": settings.llm_model,
         }),
         Cues => json!({ "cut_score": settings.cut_score }),
-        TextDetect | TextRead | TextTrack | TextReview | TextTypeset => {
+        TextDetect | TextRead | TextTrack | TextReview => {
             json!({ "enabled": settings.onscreen_text.enabled })
         }
+        TextMask | TextInpaint | TextCompose | TextTypeset | LocalizedVideo => json!({
+            "enabled": settings.onscreen_text.enabled,
+            "localized_video": settings.onscreen_text.localized_video,
+        }),
+        // Named fields keep the localized-video switch out of the translation fingerprint.
         TextTranslate => json!({
             "glossary": settings.glossary,
             "llm_model": settings.llm_model,
-            "onscreen_text": settings.onscreen_text,
+            "onscreen_text": {
+                "enabled": settings.onscreen_text.enabled,
+                "claude_fallback": settings.onscreen_text.claude_fallback,
+                "reference_folder": settings.onscreen_text.reference_folder,
+            },
         }),
-        Output => json!({ "output_format": settings.effective_output_format() }),
+        Output => json!({
+            "output_format": settings.effective_output_format(),
+            "localized_video": settings.onscreen_text.enabled
+                && settings.onscreen_text.localized_video,
+        }),
         _ => Value::Null,
     }
 }
@@ -211,7 +234,11 @@ pub fn timeout(step: StepName) -> Duration {
         StepName::TextDetect
         | StepName::TextRead
         | StepName::TextTrack
-        | StepName::TextTranslate => 360,
+        | StepName::TextTranslate
+        | StepName::TextMask
+        | StepName::TextInpaint
+        | StepName::TextCompose
+        | StepName::LocalizedVideo => 360,
         _ => 60,
     };
     Duration::from_secs(minutes * 60)
@@ -238,12 +265,14 @@ pub fn outputs(step: StepName, work: &WorkDir, video: &Path, format: OutputForma
         Review => vec![work.reviewed()],
         Cues => vec![work.cues(), work.dropped_sounds()],
         TextDetect | TextRead | TextTrack | TextTranslate | TextReview => vec![work.text(step)],
-        TextTypeset => vec![work.text(step), work.text_ass()],
+        TextMask | TextInpaint | TextCompose => vec![work.text(step)],
+        TextTypeset => vec![work.text(step), work.text_ass(), work.text_ass_localized()],
         Qc => vec![work.qc()],
         Output => vec![
             work.output_record(),
             stages::output::subtitle_path(video, format),
         ],
+        LocalizedVideo => vec![work.text(step)],
     }
 }
 
@@ -256,8 +285,19 @@ pub fn artifacts_valid(step: StepName, work: &WorkDir, video: &Path, format: Out
     {
         return false;
     }
-    if step != StepName::TextDetect {
-        return true;
+    match step {
+        StepName::TextDetect => {}
+        StepName::Output => {
+            return recorded_file_present::<OutputRecord>(&work.output_record(), |r| {
+                r.localized.clone()
+            });
+        }
+        StepName::LocalizedVideo => {
+            return recorded_file_present::<LocalizedVideoRecord>(&work.text(step), |r| {
+                r.path.clone()
+            });
+        }
+        _ => return true,
     }
     // Deserialize only crop paths, skipping large geometry arrays without retaining them.
     #[derive(serde::Deserialize)]
@@ -299,6 +339,20 @@ pub fn artifacts_valid(step: StepName, work: &WorkDir, video: &Path, format: Out
                 .as_ref()
                 .is_none_or(|keyframe| present(&keyframe.image))
     })
+}
+
+/// Whether the file a step's record names, if it names one, still exists.
+fn recorded_file_present<T: serde::de::DeserializeOwned>(
+    record: &Path,
+    named: impl Fn(&T) -> Option<String>,
+) -> bool {
+    let Ok(text) = std::fs::read_to_string(record) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<T>(&text) else {
+        return false;
+    };
+    named(&value).is_none_or(|path| Path::new(&path).is_file())
 }
 
 #[cfg(test)]

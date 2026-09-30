@@ -1,15 +1,16 @@
 # Media input
 
 The `media_io` crate: everything the pipeline reads from a video file, which is the probe result,
-the audio as 32-bit float PCM and the [shot-change](/documentation/glossary.md#shot-change) times,
-through FFmpeg and ffprobe run as child processes, with no libav linked.
+the audio as 32-bit float PCM, the [shot-change](/documentation/glossary.md#shot-change) times and
+the video frames, and the one video it writes, the localized video, through FFmpeg and ffprobe run
+as child processes, with no libav linked.
 
 ## Contents
 
 ```text
 crates/media_io/
 ├── Cargo.toml  the `media_io` library package: `child_process`, `job_model`, and serde for ffprobe JSON
-└── src/        the ffprobe probe, the PCM audio stream, the shot-change scan and the RGB frames
+└── src/        the ffprobe probe, the PCM audio stream, the shot-change scan, the frames, the encode
 ```
 
 ## How it works
@@ -17,8 +18,9 @@ crates/media_io/
 The crate is split by what it reads from the video: `probe` is for ffprobe's JSON and the choice
 of the English audio track, `pcm_stream` for FFmpeg decoding the audio through a pipe in
 fixed-size chunks, `shot_changes` for FFmpeg's `scdet` scan of a small scaled copy of the
-video, and `video_frames` for RGB frames paired with presentation times read from the packet
-table before decoding. The crate header places every FFmpeg and ffprobe run behind `child_process`, whose drain
+video, `video_frames` for frames paired with presentation times read from the packet table
+before decoding (scaled RGB, native raw frames, stills and region crops), and `encode` for FFmpeg
+encoding raw frames from a pipe into Matroska with the source's audio copied. The crate header places every FFmpeg and ffprobe run behind `child_process`, whose drain
 threads keep FFmpeg's stderr from blocking the audio pipe, and returns `job_model` types. `src/README.md` describes each module.
 
 ## Getting started
@@ -27,7 +29,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p media_io   # the library
-cargo test -p media_io    # 45 unit tests, 2 ignored; many run FFmpeg on generated audio and video
+cargo test -p media_io    # 74 unit tests, 8 ignored (need FFmpeg); many run FFmpeg on generated media
 ```
 
 The app runs FFmpeg 8.1 on the host; inside the development container, run anything that calls
@@ -39,8 +41,8 @@ None: the crate reads no setting.
 
 ## Public surface
 
-- The library `media_io`: `Programs`, `MediaError`, and the public modules `pcm_stream`,
-  `preview`, `probe`, `shot_changes` and `video_frames`.
+- The library `media_io`: `Programs`, `MediaError`, and the public modules `encode`,
+  `pcm_stream`, `preview`, `probe`, `shot_changes` and `video_frames`.
 - No binary.
 
 ## Boundaries

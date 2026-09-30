@@ -40,7 +40,7 @@ works while the app is open; the app starts at login only if the owner starts it
 2. It runs the AppImage as `process --enqueue` with the chosen videos. When the app is open, the
    videos join its queue and the queue starts. When it is not, the app opens its window
    minimized, with the videos queued and the queue started. A chosen folder brings its videos
-   without subtitles, subfolders included. The window shows "Added N videos to the queue."
+   without subtitles, subfolders included, never a `*.localized.mkv`. The window shows "Added N videos to the queue."
 
 The entry is a KDE service menu that the app writes itself. Each time the app starts from its
 AppImage as the first instance, it writes `~/.local/share/kio/servicemenus/tbd-subtitles.desktop`
@@ -86,6 +86,7 @@ opens, so "Open With" in the file manager offers the app.
 3. A video is queued once two scans in a row see the same size and time, so about 15 to 30
    seconds after its download ends, when all of these hold:
    - it has no subtitle file beside it;
+   - it is not a `<name>.localized.mkv`, the localized copy a job writes beside its source;
    - no partial download sits beside it (the same name with `.part`, `.crdownload` or `.!qB`);
    - it is not empty;
    - the app never queued it before, from any source.
@@ -123,6 +124,7 @@ notification says so and the taskbar entry flashes:
 |---|---|---|
 | passes the quality check | Subtitles ready: Dressrosa 12 | The quality check passed. |
 | needs attention | Subtitles ready: Dressrosa 12 | Quality check: <its problems>; 12 lines to check. |
+| wrote a localized video | Subtitles ready: Dressrosa 12 | The verdict above, then "Localized video saved: [Muhn Pace] Dressrosa 12.localized.mkv." |
 | failed | Dressrosa 12 failed | At <the step>: <the error message> |
 
 A correction run or a cancelled job gives none. The notifications share one id, so a newer one

@@ -77,6 +77,7 @@ fn ended_rows_say_how_they_ended() {
         failures: vec!["reading speed".into()],
         findings: 3,
         wall_s: 60.0,
+        localized: None,
     });
     q.items[4].state = JobState::Failed(Failure {
         step: None,
@@ -121,6 +122,7 @@ fn finished_rows_give_their_verdict_and_lines_to_check_from_their_files() {
         failures: Vec::new(),
         findings: 3,
         wall_s: 60.0,
+        localized: None,
     });
     let summary = |problems, flagged, to_check| RowSummary {
         problems,

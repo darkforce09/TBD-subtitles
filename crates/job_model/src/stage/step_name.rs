@@ -66,17 +66,25 @@ pub enum StepName {
     TextTranslate,
     /// Apply the owner's corrections to on-screen text.
     TextReview,
+    /// Measure the strokes of replaceable writing and the background runs behind it.
+    TextMask,
+    /// Fill the erased strokes from the surrounding picture.
+    TextInpaint,
+    /// Draw the English lettering onto the filled background.
+    TextCompose,
     /// Lay out tracked English translations as ASS events.
     TextTypeset,
     /// Check the cues and write the report.
     Qc,
     /// Write the subtitle file beside the video.
     Output,
+    /// Write the video with its writing replaced in English beside the source.
+    LocalizedVideo,
 }
 
 impl StepName {
     /// Every step, in the order the job runner runs them.
-    pub const ALL: [StepName; 24] = [
+    pub const ALL: [StepName; 28] = [
         StepName::ProbeDecode,
         StepName::ShotScan,
         StepName::Separation,
@@ -98,9 +106,13 @@ impl StepName {
         StepName::TextTrack,
         StepName::TextTranslate,
         StepName::TextReview,
+        StepName::TextMask,
+        StepName::TextInpaint,
+        StepName::TextCompose,
         StepName::TextTypeset,
         StepName::Qc,
         StepName::Output,
+        StepName::LocalizedVideo,
     ];
 
     /// The name on the command line, in file names and in JSON.
@@ -127,9 +139,13 @@ impl StepName {
             StepName::TextTrack => "text_track",
             StepName::TextTranslate => "text_translate",
             StepName::TextReview => "text_review",
+            StepName::TextMask => "text_mask",
+            StepName::TextInpaint => "text_inpaint",
+            StepName::TextCompose => "text_compose",
             StepName::TextTypeset => "text_typeset",
             StepName::Qc => "qc",
             StepName::Output => "output",
+            StepName::LocalizedVideo => "localized_video",
         }
     }
 
@@ -154,9 +170,13 @@ impl StepName {
             | StepName::TextTrack
             | StepName::TextTranslate
             | StepName::TextReview
+            | StepName::TextMask
+            | StepName::TextInpaint
+            | StepName::TextCompose
             | StepName::TextTypeset => StageName::OnscreenText,
             StepName::Qc => StageName::Qc,
             StepName::Output => StageName::Output,
+            StepName::LocalizedVideo => StageName::LocalizedVideo,
         }
     }
 }

@@ -6,9 +6,10 @@ Visible writing, tracked geometry, English translations and owner corrections sh
 
 ```text
 crates/job_model/src/onscreen/
+├── localize.rs  replacement contracts: stroke masks, plates, patches and the localized video record
 ├── mod.rs       geometry, observations, translations, corrections and summary counts
 ├── settings.rs  new-job and saved-job defaults
-└── tests/       correction validation and compatibility defaults
+└── tests/       correction validation, compatibility defaults and replacement invariants
 ```
 
 ## How it works

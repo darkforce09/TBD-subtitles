@@ -1,5 +1,6 @@
 //! Output: the subtitle file written beside the video, with the same base name, and any file it
-//! replaces backed up into the job's work directory.
+//! replaces backed up into the job's work directory; with a localized video, its own subtitle
+//! file beside it as well.
 //!
 //! **Role:** the last step; the only code that writes outside the work directory.
 //!
@@ -57,40 +58,76 @@ pub fn install(
         ));
     }
     let earlier = earlier.filter(|e| is_other_format(video, &path, e) && e.exists());
+    let (backup, unchanged) = replace_file(&path, text, backup_dir, stamp)?;
+    Ok(Installed {
+        path,
+        backup,
+        unchanged,
+        retired: earlier
+            .map(|old| retire(old, backup_dir, stamp))
+            .transpose()?,
+    })
+}
+
+/// `<folder>/<base name>.localized.mkv`: the video with its writing replaced in English.
+pub fn localized_video_path(video: &Path) -> PathBuf {
+    video.with_extension("localized.mkv")
+}
+
+/// `<folder>/<base name>.localized.ass`: the subtitle file players load with the localized video.
+pub fn localized_subtitle_path(video: &Path) -> PathBuf {
+    video.with_extension("localized.ass")
+}
+
+/// Write `text` as the localized video's subtitle file, backing up a different existing file.
+pub fn install_localized_subtitles(
+    video: &Path,
+    text: &str,
+    backup_dir: &Path,
+    stamp: &str,
+) -> io::Result<Installed> {
+    let path = localized_subtitle_path(video);
+    if path == video {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "the video itself is named .localized.ass",
+        ));
+    }
+    let (backup, unchanged) = replace_file(&path, text, backup_dir, stamp)?;
+    Ok(Installed {
+        path,
+        backup,
+        unchanged,
+        retired: None,
+    })
+}
+
+/// Install `text` at `path` through a part file, leaving an identical file as it is and backing
+/// up a different one; returns the backup and whether the file was unchanged.
+fn replace_file(
+    path: &Path,
+    text: &str,
+    backup_dir: &Path,
+    stamp: &str,
+) -> io::Result<(Option<PathBuf>, bool)> {
     let mut backup = None;
-    match fs::read(&path) {
-        Ok(existing) if existing == text.as_bytes() => {
-            return Ok(Installed {
-                path,
-                backup: None,
-                unchanged: true,
-                retired: earlier
-                    .map(|old| retire(old, backup_dir, stamp))
-                    .transpose()?,
-            });
-        }
+    match fs::read(path) {
+        Ok(existing) if existing == text.as_bytes() => return Ok((None, true)),
         Ok(_) => {
             fs::create_dir_all(backup_dir)?;
-            let target = backup_dir.join(format!("{}.{stamp}", file_name(&path)));
-            fs::copy(&path, &target)?;
+            let target = backup_dir.join(format!("{}.{stamp}", file_name(path)));
+            fs::copy(path, &target)?;
             backup = Some(target);
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(e),
     }
-    let mut part = path.clone().into_os_string();
+    let mut part = path.to_path_buf().into_os_string();
     part.push(".part");
     let part = PathBuf::from(part);
     fs::write(&part, text)?;
-    fs::rename(&part, &path)?;
-    Ok(Installed {
-        path,
-        backup,
-        unchanged: false,
-        retired: earlier
-            .map(|old| retire(old, backup_dir, stamp))
-            .transpose()?,
-    })
+    fs::rename(&part, path)?;
+    Ok((backup, false))
 }
 
 /// Whether `earlier` is the video's subtitle file in a format other than the one at `path`.

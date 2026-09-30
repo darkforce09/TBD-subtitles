@@ -2,7 +2,8 @@
 //!
 //! **Role:** [`Run::spawn`] starts a child whose stdout the caller reads itself (FFmpeg's PCM
 //! pipe, a worker's progress) while stderr is drained on its own thread, and hands back a
-//! [`Running`] handle with the child's pid, its stdout, a kill switch and a reaping wait.
+//! [`Running`] handle with the child's pid, its stdout, a piped stdin the caller streams into
+//! (FFmpeg's raw video input), a kill switch and a reaping wait.
 //!
 //! **Position:** called by `media_io` for FFmpeg streams and by the job runner and the stack
 //! spike tool for worker processes; uses `runner.rs` to build and spawn the command and
@@ -10,7 +11,7 @@
 //!
 //! **Signals and state:** one watchdog thread per child with a deadline or a cancel flag; it kills
 //! the process group when the deadline passes or the flag is set, even while the caller is blocked
-//! reading stdout.
+//! reading stdout or blocked writing stdin (the write then fails with a broken pipe).
 //!
 //! **Invariants:** a dropped handle that was never waited on kills its process group, so an
 //! abandoned stream never leaves FFmpeg running; a deadline reports [`RunError::Timeout`], a
@@ -19,7 +20,7 @@
 //! it through `PR_SET_PDEATHSIG`.
 
 use std::os::unix::process::ExitStatusExt;
-use std::process::{Child, ChildStdout, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
@@ -28,7 +29,7 @@ use std::time::{Duration, Instant};
 use crate::runner::{feed_stdin, spawn};
 use crate::stream::start_stderr_drain;
 use crate::trace::Tag;
-use crate::{Run, RunError};
+use crate::{Run, RunError, Stdin};
 
 /// How often the watchdog looks at the clock.
 const WATCH: Duration = Duration::from_millis(50);
@@ -64,7 +65,9 @@ impl Run {
         let mut child = spawn(&mut cmd, &self.program, &label)?;
         let pgid = child.id() as i32;
         let tag = Tag::started(&self, child.id());
-        feed_stdin(&mut child, self.stdin.as_deref());
+        if self.stdin != Stdin::Piped {
+            feed_stdin(&mut child, &self.stdin);
+        }
         let stderr = child
             .stderr
             .take()
@@ -111,6 +114,12 @@ impl Running {
         self.child.stdout.take()
     }
 
+    /// The child's stdin when the run was [`Run::stdin_piped`]; `None` otherwise and after the
+    /// first call. Dropping it closes the pipe, so the child sees EOF.
+    pub fn take_stdin(&mut self) -> Option<ChildStdin> {
+        self.child.stdin.take()
+    }
+
     /// Kill the child's whole process group now.
     pub fn kill(&mut self) {
         kill_group(self.pgid);
@@ -124,7 +133,8 @@ impl Running {
     /// Reap the child and collect its stderr.
     ///
     /// Stdout is closed first if the caller still holds it unread, so a child blocked writing to a
-    /// full pipe cannot keep the wait from returning.
+    /// full pipe cannot keep the wait from returning; an untaken piped stdin is closed too, so a
+    /// child reading it sees EOF. A caller that took the stdin drops it before waiting.
     pub fn wait(mut self) -> Result<Finished, RunError> {
         let finished = self.reap();
         match &finished {
@@ -135,6 +145,7 @@ impl Running {
     }
 
     fn reap(&mut self) -> Result<Finished, RunError> {
+        drop(self.child.stdin.take());
         drop(self.child.stdout.take());
         let status = self.child.wait().map_err(|e| RunError::Failed {
             program: self.label.clone(),

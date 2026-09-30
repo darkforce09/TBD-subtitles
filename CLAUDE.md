@@ -10,11 +10,13 @@ visible Japanese into tracked English ASS events alongside dialogue and sound cu
 is the Muhn Pace Dressrosa English dub in
 `/run/media/system/Main_storage/Media/one_pace/` (41 episodes; no dub subtitles exist anywhere).
 
-**Current state:** milestones M0, M0.5, M1, M2 and M3 are done; M4 is implemented and under
-validation, not accepted. `tbd-subtitles process <video>` runs 24 resumable steps, with workers in
-`tbd-subtitles`, `tbd-subtitles-ggml` and `tbd-subtitles-llm`. New jobs enable on-screen translation
-and write one ASS file containing dialogue, sound cues and tracked text, plus `report.md` and each
-step's time and memory. Jobs with visual processing disabled retain their selected subtitle
+**Current state:** milestones M0, M0.5, M1, M2 and M3 are done; M4 and M5 are implemented and
+under validation, not accepted. `tbd-subtitles process <video>` runs 28 resumable steps, with
+workers in `tbd-subtitles`, `tbd-subtitles-ggml` and `tbd-subtitles-llm`. New jobs enable
+on-screen translation and write one ASS file containing dialogue, sound cues and tracked text,
+plus, with the localized video on (the default), `<video>.localized.mkv` with the Japanese
+replaced in English and its `<video>.localized.ass`, and `report.md` with each step's time and
+memory. Jobs with visual processing disabled retain their selected subtitle
 format. The completed M1 audio baseline includes the accepted Dressrosa 11
 pilot ([pilot run](/documentation/research/pilot_dressrosa_11.md)) and the 128.9-minute video
 processed in 19.2 minutes ([120-minute test](/documentation/research/long_video_120min.md)); those
@@ -53,6 +55,17 @@ builds and passes the host startup smoke check. The owner accepts missed faint t
 detections and writing shorter than the half-second sample step that no sample or cut lands on. See
 [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md) and the
 [roadmap](/documentation/roadmap.md).
+
+M5 replaces the writing in the picture itself: `text_mask`, `text_inpaint` and `text_compose`
+between review and typesetting separate each translated occurrence's strokes, fill them with
+LaMa (ONNX Runtime, in its own worker under the GPU lock) and letter the English in Noto Sans
+through tiny-skia; `localized_video` after the output re-encodes every frame with `hevc_nvenc`
+(libx264 fallback), peak rate capped at 1.25× the source's, audio copied, no subtitle stream.
+Writing that cannot be replaced cleanly stays in the localized ASS with its reason. Dressrosa 11:
+4.9 minutes added, 707 MB against 647 MB, 15 of 21 candidates replaced, the Rebecca name card
+among them ([measurement](/documentation/research/localized_video_dressrosa_11.md)). VLC/mpv
+playback, the AppImage rebuild and owner acceptance remain; do not call M5 complete. See
+the [video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md).
 
 ## 1. Project laws
 
@@ -116,8 +129,10 @@ TBD-subtitles/
 │   └── tbd_subtitles_llm/  the mistral.rs worker binary: local on-screen translation
 ├── crates/                layers, lowest first:
 │   ├── job_model/         0  stage names and the serde contracts between stages
-│   ├── child_process/     0  external programs with deadlines, group kills, drained pipes
-│   ├── media_io/          1  ffprobe, FFmpeg PCM and timestamped RGB streaming, shot changes
+│   ├── child_process/     0  external programs with deadlines, group kills, drained pipes,
+│   │                         streamed stdin
+│   ├── media_io/          1  ffprobe, FFmpeg PCM and timestamped RGB streaming, region crops,
+│   │                         shot changes, the localized-video encode
 │   ├── subtitle_formats/  1  cue model, SRT/VTT/ASS writers, import
 │   ├── inference/         1  onnx, ggml, candle, llm backends, model store, CUDA runtime
 │   ├── stages/            2  one module folder per pipeline stage

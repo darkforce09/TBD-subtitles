@@ -1,23 +1,30 @@
-//! Which files are videos the app can take: by extension, not still downloading, and without a
-//! subtitle file beside them, directly in a folder or anywhere under it.
+//! Which files are videos the app can take: by extension, not still downloading, not a localized
+//! copy the app wrote, and without a subtitle file beside them, directly in a folder or anywhere
+//! under it; and the localized copy a job wrote.
 //!
 //! **Role:** tell a video from any other file, find the subtitle file beside a video, notice a
-//! download still in progress by its part file, and list the videos in a folder (its direct
-//! children) or under it (every subfolder down to `MAX_DEPTH`).
+//! download still in progress by its part file, list the videos in a folder (its direct
+//! children) or under it (every subfolder down to `MAX_DEPTH`), and find the localized video a
+//! job's work directory records.
 //!
 //! **Position:** called by `queue_editing` when a folder is added, by `watch_scan` for each watch
-//! folder, and by the queue's row menu for a video's subtitle file.
+//! folder, by the queue's row menu for a video's subtitle file, and by the job runner and the
+//! application when a job ends, for its localized video.
 //!
-//! **Signals and state:** reads folder listings and file metadata; writes nothing.
+//! **Signals and state:** reads folder listings, file metadata and a job's
+//! `visual/localized_video.json`; writes nothing.
 //!
 //! **Invariants:** a video that already has a subtitle file in any format the app writes is never
-//! listed; the walk under a folder never enters a hidden folder or a symlinked folder, never lists
+//! listed, nor is a `<name>.localized.mkv` the app writes beside a source; the walk under a folder never enters a hidden folder or a symlinked folder, never lists
 //! an empty file or a video with a part file beside it, stops `MAX_DEPTH` folders down, and
 //! returns its videos sorted.
 
 use std::path::{Path, PathBuf};
 
+use job_model::StepName;
 use job_model::job::OutputFormat;
+use job_model::onscreen::LocalizedVideoRecord;
+use pipeline::work_dir::WorkDir;
 
 /// File extensions the queue takes as videos.
 pub(crate) const VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "m4v", "mov", "avi", "webm", "ts"];
@@ -48,6 +55,22 @@ pub(crate) fn has_partial_sibling(video: &Path) -> bool {
     })
 }
 
+/// Whether `path` is named like the localized copy the app writes beside a source video,
+/// `<name>.localized.mkv`, in any case.
+pub(crate) fn is_localized_copy(path: &Path) -> bool {
+    path.file_name()
+        .map(|name| name.to_string_lossy().to_ascii_lowercase())
+        .is_some_and(|name| name.ends_with(".localized.mkv"))
+}
+
+/// The localized video the job in `work_dir` recorded, while the file is there.
+pub(crate) fn localized_video(work_dir: &Path) -> Option<PathBuf> {
+    let record = WorkDir::new(work_dir).text(StepName::LocalizedVideo);
+    let text = std::fs::read_to_string(record).ok()?;
+    let record: LocalizedVideoRecord = serde_json::from_str(&text).ok()?;
+    record.path.map(PathBuf::from).filter(|path| path.is_file())
+}
+
 /// The subtitle file beside `video`, in any format the app writes.
 pub(crate) fn subtitle_file(video: &Path) -> Option<PathBuf> {
     OutputFormat::ALL
@@ -64,7 +87,12 @@ pub(crate) fn videos_in_folder(folder: &Path) -> Vec<PathBuf> {
     let mut videos: Vec<PathBuf> = entries
         .filter_map(Result::ok)
         .map(|entry| entry.path())
-        .filter(|path| path.is_file() && is_video(path) && subtitle_file(path).is_none())
+        .filter(|path| {
+            path.is_file()
+                && is_video(path)
+                && !is_localized_copy(path)
+                && subtitle_file(path).is_none()
+        })
         .collect();
     videos.sort();
     videos
@@ -110,6 +138,7 @@ fn walk(folder: &Path, depth: usize, videos: &mut Vec<PathBuf>) {
         if metadata.is_file()
             && metadata.len() > 0
             && is_video(&path)
+            && !is_localized_copy(&path)
             && !has_partial_sibling(&path)
             && subtitle_file(&path).is_none()
         {

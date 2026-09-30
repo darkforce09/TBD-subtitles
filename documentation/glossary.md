@@ -118,6 +118,21 @@ still that Claude sees with the crops. See: [Japanese on-screen text](/documenta
 
 One speech engine's transcript of a stretch of audio.
 
+### Localized video
+
+A copy of the source video, `<video>.localized.mkv` beside it, in which on-screen Japanese that
+could be replaced cleanly is erased and redrawn in English, re-encoded with the source's audio and
+no subtitle stream; its own subtitle file, `<video>.localized.ass`, carries the dialogue, sound
+cues and every on-screen English line not drawn into the picture. The source video is never
+changed.
+
+In code: `StepName::LocalizedVideo`, `stages::localize::render` in `crates/stages/src/localize/mod.rs`,
+`localized_video_path` and `localized_subtitle_path` in `crates/stages/src/output/mod.rs`, and
+`TextSettings::localized_video` in `crates/job_model/src/onscreen/settings.rs`.
+
+See: [Plate](#plate), [Patch](#patch), [Stroke mask](#stroke-mask),
+[video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md)
+
 ### Muhn Pace
 
 A fan re-edit of One Pace that uses the English dub audio.
@@ -135,6 +150,29 @@ Opening and ending theme songs.
 
 Speech that the backbone engine missed but at least two other engines heard; recovered as a new
 utterance.
+
+### Patch
+
+The RGBA picture the localized video blends over one plate's frames: the English lettering over
+the inpainted background, opaque where the Japanese strokes were erased or the new letters are
+drawn and clear elsewhere.
+
+In code: `Plate::patch` in `crates/job_model/src/onscreen/localize.rs`, written by
+`crates/stages/src/onscreen_text/replace/compose/` under `visual/patches/`.
+
+See: [Plate](#plate), [Localized video](#localized-video)
+
+### Plate
+
+A rectangle of the picture around one occurrence of on-screen writing, held over a run of
+consecutive frames whose background does not change, with the writing's placement in that run.
+Its source pixels are erased under the stroke mask and filled by inpainting; a moving or changing
+background gives the occurrence several plates.
+
+In code: `Plate` in `crates/job_model/src/onscreen/localize.rs`; files under `visual/masks/`
+and `visual/plates/`.
+
+See: [Stroke mask](#stroke-mask), [Patch](#patch)
 
 ### Proxy frame
 
@@ -185,6 +223,17 @@ See: [pipeline](/documentation/architecture/pipeline.md#steps-and-processes)
 ### Stem
 
 One part of a separated mix: the vocal stem (voices) and the background stem (music and effects).
+
+### Stroke mask
+
+The erase mask of one occurrence of on-screen writing: 255 on the pixels of its strokes (and
+outline), grown by a few pixels over their anti-aliased edges, and 0 on the background that is
+kept. Only masked pixels are filled by inpainting; it is not the detector's box.
+
+In code: `Plate::mask` in `crates/job_model/src/onscreen/localize.rs`, made by
+`crates/stages/src/onscreen_text/replace/mask/segment.rs`.
+
+See: [Plate](#plate)
 
 ### TDT
 

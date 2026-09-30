@@ -45,11 +45,13 @@ pub enum StageName {
     Qc,
     /// Write the subtitle file beside the video.
     Output,
+    /// Write the video with its writing replaced in English beside the source.
+    LocalizedVideo,
 }
 
 impl StageName {
     /// Every stage, in the order the job runner runs them.
-    pub const ALL: [StageName; 12] = [
+    pub const ALL: [StageName; 13] = [
         StageName::ProbeDecode,
         StageName::Separation,
         StageName::Vad,
@@ -62,6 +64,7 @@ impl StageName {
         StageName::OnscreenText,
         StageName::Qc,
         StageName::Output,
+        StageName::LocalizedVideo,
     ];
 
     /// The name on the command line, in file names and in JSON.
@@ -79,6 +82,7 @@ impl StageName {
             StageName::OnscreenText => "onscreen_text",
             StageName::Qc => "qc",
             StageName::Output => "output",
+            StageName::LocalizedVideo => "localized_video",
         }
     }
 
@@ -93,6 +97,7 @@ impl StageName {
                 | StageName::Alignment
                 | StageName::SoundEvents
                 | StageName::OnscreenText
+                | StageName::LocalizedVideo
         )
     }
 }

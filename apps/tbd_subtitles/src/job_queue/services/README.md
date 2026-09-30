@@ -2,7 +2,7 @@
 
 The queue logic, with no rendering code: editing the queue, the sidebar's rows and their status
 lines, the detail pane's words for the selected job, the threads that run its jobs, following
-their progress, a job's six stages, the time left, the queue kept across windows, the videos in
+their progress, a job's nine stages, the time left, the queue kept across windows, the videos in
 a folder, the watch folders' scans, every video ever queued, and the notice when a job ends.
 
 ## Contents
@@ -24,7 +24,7 @@ apps/tbd_subtitles/src/job_queue/services/
 ├── status_text.rs        a row's status line, the detail pane's line, when a job starts
 ├── tests/                unit tests for each file here
 ├── time_left.rs          step rates from earlier jobs or the pilot, and a job's time left
-├── video_files.rs        what is a video, its subtitle file, part files, videos in or under a folder
+├── video_files.rs        what is a video, its subtitle file, part files, videos in or under a folder, a job's localized video
 └── watch_scan.rs         one scan of the watch folders: videos whose size and time stopped changing
 ```
 
@@ -78,13 +78,13 @@ job tried again now would: at once when its lane is idle (for a correction run, 
 run) and its video runs nothing else, next
 while the queue runs (a correction run always), else first in line waiting for Start Queue, and
 never before the models are on disk. `stage_progress::running` turns a running job's step states
-into the six stages of `core::steps`, each with its steps' lines: kept (skipped, or not stale),
+into the nine stages of `core::steps`, each with its steps' lines: kept (skipped, or not stale),
 to run, running (its share done from the step's progress, and the seconds since it started), done
 (its measured seconds) or failed; a stage is failed when a step failed, running when a step runs
 or some are done while others wait (between two of its steps), kept when all are kept, done when
 none waits (the sum of its steps' seconds), else to run. `stage_progress::failed` gives a failed
 job's stages: the steps before the failed one kept, it failed, the rest to run; `step_number`
-numbers a step from 1 of 18.
+numbers a step from 1 of 28.
 The shot scan runs in the background until the cues join it: while it runs its line says so, and
 neither it nor a shot scan still to start holds "Read the video" open, which is done once the
 video's details are read. A failed job's stages come from its `Failure`'s finished steps: those
@@ -105,8 +105,12 @@ per tenth, and a failure as an error, never naming the video or step in the word
 window shows above them. A worker's model call (`Progress::ModelCall`) is not sent to the window's
 queue: `progress_log::emit_call` logs it as the exchange event the log window keeps.
 `time_left::from_history` reads every job's `job.json` and `probe.json` in the work folder for
-each step's mean seconds per second of video, over the pilot's rates; `estimate` sums the steps
-still to run, leaving out the shot scan that runs beside them. `queue_store` keeps each job's
+each step's mean seconds per second of video, over the pilot's rates, leaving out the steps each
+job's settings left idle; `estimate` sums the steps still to run, leaving out the shot scan that
+runs beside them and the steps the job's settings leave idle (`idle_steps`, set on the job's
+progress when it starts: the on-screen text steps while translation is off, and the stroke masks,
+inpainting, lettering and localized video while the localized video is off, which only record
+that they are off). The line for a job's end names its localized video when it wrote one. `queue_store` keeps each job's
 video, kind and coarse state, whether it keeps its own settings, the steps it runs again, its
 corrections, and where it failed with the steps it had finished (each with its seconds, or still
 valid); each of those fields has a default, so a file written before it existed still loads, a
@@ -118,8 +122,11 @@ of them it kept, done in a time not known, and then keeps as many as it lists.
 `video_files::is_video` knows a video by its extension (`VIDEO_EXTENSIONS`, any case), and
 `has_partial_sibling` by a downloader's part file beside it ("<file name>.part", ".crdownload" or
 ".!qB"). `videos_under` walks a folder and its subfolders down to `MAX_DEPTH` (16) folders below
-it, sorted, leaving out hidden entries, symlinked folders, empty files, videos still downloading
-and videos with a subtitle file; a folder it cannot read is skipped with a debug line.
+it, sorted, leaving out hidden entries, symlinked folders, empty files, videos still downloading,
+videos with a subtitle file and the app's own localized copies (`is_localized_copy`:
+"<name>.localized.mkv"); a folder it cannot read is skipped with a debug line.
+`localized_video` reads a job's `visual/localized_video.json` for the localized video it wrote,
+while the file is there.
 `watch_scan::step` folds one scan's videos, each with its `Sample` (size and modification time),
 into a `WatchScan`: a video whose sample equals the one the scan before saw has stopped changing
 and is reported, and never again by the same `WatchScan`, even after it vanishes and comes back;
@@ -136,7 +143,8 @@ twice, even one that failed or was removed; `load` reads `queued_videos.json` in
 folder (`default_path`), a missing or broken file an empty history, and `save` writes it through a
 part file. `job_notice::ended_notice` words the desktop notice for a full run that has just ended:
 "Subtitles ready: <video>" with "The quality check passed." or "Quality check: <problems>; 12
-lines to check.", or "<video> failed" with "At <step title>: <message>", cut to 200 characters;
+lines to check.", then "Localized video saved: <file>." when the job wrote one, or "<video>
+failed" with "At <step title>: <message>", cut to 200 characters;
 a correction run, or a job waiting, running, cancelled or finished in an earlier window, gives
 none.
 
@@ -165,16 +173,16 @@ none.
     `pause_and_resume_stay_reachable_while_a_model_is_missing`,
     `a_video_is_not_put_back_while_another_run_of_it_waits`, `ended_jobs_stand_newest_first` in
     `tests/queue_editing.rs`);
-  - a job has six stages whose steps are every step in order, a stage before the running one is
+  - a job has nine stages whose steps are every step in order, a stage before the running one is
     done in the sum of its steps, a step this run does not do is kept, a stage between two of its
     steps still runs, a failed step fails its stage, a failed job's list keeps exactly the steps
-    it counts, and the shot scan never holds its stage open (`a_running_job_has_six_stages_whose_steps_are_every_step_in_order`,
+    it counts, and the shot scan never holds its stage open (`a_running_job_has_nine_stages_whose_steps_are_every_step_in_order`,
     `stages_before_the_running_one_are_done_in_the_sum_of_their_steps`,
     `steps_this_run_does_not_do_are_kept_and_never_to_run`,
     `a_stage_between_two_of_its_steps_is_still_running`, `a_failed_step_fails_its_stage`,
     `a_failed_job_lists_exactly_the_steps_it_kept`,
     `the_shot_scan_runs_in_the_background_and_never_holds_its_stage_open`,
-    `steps_are_numbered_from_one_of_eighteen` in `tests/stage_progress.rs`);
+    `steps_are_numbered_from_one_of_twenty_eight` in `tests/stage_progress.rs`);
   - every job is on one row, a correction run on its video's (`correction_runs_fold_into_their_videos_row`,
     `a_failed_or_lone_correction_run_keeps_its_own_row` in `tests/sidebar_rows.rs`), and a place in
     line past the first shows only while the queue runs

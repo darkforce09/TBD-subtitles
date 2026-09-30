@@ -311,3 +311,20 @@ fn only_the_models_folder_and_the_engines_make_the_models_list_stale() {
     assert_eq!(stale(&before, &fix), Stale::default());
     assert_eq!(changed_field(&before, &fix), Some(Field::FixModel));
 }
+
+#[test]
+fn replacing_text_in_the_video_makes_the_models_list_stale() {
+    let mut before = AppSettings::default();
+    before.onscreen_text.enabled = true;
+    before.onscreen_text.localized_video = false;
+    let mut after = before.clone();
+    after.onscreen_text.localized_video = true;
+    let models = Stale {
+        models: true,
+        models_size: false,
+        work_size: false,
+    };
+    assert_eq!(stale(&before, &after), models, "LaMa and the fonts join");
+    assert_eq!(stale(&after, &before), models, "and leave again");
+    assert_eq!(changed_field(&before, &after), Some(Field::OnscreenText));
+}

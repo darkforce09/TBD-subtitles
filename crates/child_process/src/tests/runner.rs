@@ -154,6 +154,27 @@ fn stdin_is_delivered() {
 }
 
 #[test]
+fn a_collecting_run_closes_a_piped_stdin() {
+    let out = Run::new("cat")
+        .stdin_piped()
+        .timeout(Duration::from_secs(10))
+        .output()
+        .unwrap();
+    assert_eq!((out.code, out.stdout.as_str()), (0, ""));
+}
+
+#[test]
+fn the_last_stdin_choice_wins() {
+    let out = Run::new("cat")
+        .stdin_piped()
+        .stdin("body")
+        .timeout(Duration::from_secs(10))
+        .output()
+        .unwrap();
+    assert_eq!(out.stdout, "body");
+}
+
+#[test]
 fn env_and_cwd_apply() {
     let out = Run::new("sh")
         .arg("-c")
