@@ -98,7 +98,7 @@ pub struct StepMeasure {
     pub notes: BTreeMap<String, String>,
 }
 
-/// What a worker process writes about itself when its step finishes.
+/// What a worker process sends the runner about itself when its step finishes.
 #[derive(
     Debug,
     Clone,

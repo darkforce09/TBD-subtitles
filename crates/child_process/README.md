@@ -23,7 +23,7 @@ A caller builds a `Run` with `Run::new(program)` and the builder methods `arg`, 
 | `output` | stdout and stderr on two pipes | `Output`: `code`, `stdout`, `stderr`, `duration` |
 | `merged_output` | both streams on one shared pipe, as a shell's `2>&1` | `Merged`: `code`, `text`, `duration` |
 | `status` | as `output` | the raw exit code alone |
-| `spawn` | stdout handed to the caller as a stream, and stdin too when piped; stderr drained on a thread | `Running`: `pid`, `take_stdout`, `take_stdin`, `kill`, `has_exited`, `wait` → `Finished`: `code`, `stderr`, `duration` |
+| `spawn` | stdout handed to the caller as a stream, and stdin too when piped; stderr drained on a thread | `Running`: `pid`, `take_stdout`, `take_stdin`, `kill`, `has_exited`, `wait` → `Finished`: `code`, `stderr`, `duration`, or `kill_and_wait` → the stderr alone |
 
 Every call either returns the child's real exit code, never folded to 0 or 1, or a `RunError`
 saying why there is none: `ProgramAbsent` (the program is on no `PATH` entry), `Failed` (spawning,
@@ -54,7 +54,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p child_process   # the library alone
-cargo test -p child_process    # 31 unit tests; they run sh, cat, sleep and seq, about 3 s
+cargo test -p child_process    # 40 unit tests; they run sh, cat, sleep and seq, about 3 s
 ```
 
 The tests need a Unix shell on the `PATH`. The group-kill test sleeps 2.5 s after its timeout to

@@ -1,18 +1,16 @@
-//! Worker diagnostics and model exchanges on the pipeline's existing streams.
+//! Worker diagnostics on stderr and model exchanges through the worker channel.
 //!
-//! **Role:** log diagnostics to stderr and send full model calls through stdout.
+//! **Role:** log diagnostics to stderr and send full model calls to the job runner as
+//! `ModelCall` frames.
 //!
 //! **Position:** initialized by the local-model worker before pipeline dispatch.
 //!
 //! **Signals and state:** reads `RUST_LOG`; installs one global tracing subscriber.
 //!
-//! **Invariants:** exchanges never reach stderr; stdout holds only one complete
-//! `model-call` line per exchange, alongside the pipeline's progress protocol.
-
-use std::io::Write as _;
+//! **Invariants:** exchanges never reach stderr; each exchange is one `ModelCall` frame beside the
+//! pipeline's progress frames.
 
 use inference::llm::call_log::EXCHANGE_TARGET;
-use job_model::model_call::WORKER_LINE_PREFIX;
 use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
 use tracing_subscriber::filter::filter_fn;
@@ -34,22 +32,20 @@ pub(crate) fn initialise() {
     tracing_subscriber::registry()
         .with(stderr)
         .with(
-            WorkerStdoutLayer
+            WorkerChannelLayer
                 .with_filter(filter_fn(|metadata| metadata.target() == EXCHANGE_TARGET)),
         )
         .init();
 }
 
-struct WorkerStdoutLayer;
+struct WorkerChannelLayer;
 
-impl<S: Subscriber> Layer<S> for WorkerStdoutLayer {
+impl<S: Subscriber> Layer<S> for WorkerChannelLayer {
     fn on_event(&self, event: &Event<'_>, _context: Context<'_, S>) {
         let mut exchange = Exchange(None);
         event.record(&mut exchange);
         if let Some(json) = exchange.0 {
-            let mut out = std::io::stdout().lock();
-            let _ = writeln!(out, "{WORKER_LINE_PREFIX}{json}");
-            let _ = out.flush();
+            worker_channel::worker::model_call(&json);
         }
     }
 }

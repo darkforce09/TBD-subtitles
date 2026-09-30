@@ -78,6 +78,12 @@ impl Tag {
         }
     }
 
+    /// Log a child its caller killed and reaped for a reason of its own.
+    pub(crate) fn stopped(&self) {
+        let _in = self.span.enter();
+        tracing::debug!(target: "child_process", "{self} killed by its caller");
+    }
+
     /// Log a child killed because its handle was dropped before it was waited on.
     pub(crate) fn abandoned(&self) {
         let _in = self.span.enter();

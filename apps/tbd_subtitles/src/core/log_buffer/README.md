@@ -8,11 +8,11 @@ take to reach it.
 
 ```text
 apps/tbd_subtitles/src/core/log_buffer/
-├── layer.rs          `ConsoleLayer`: each event a line or a kept call, with its video and step
-├── mod.rs            `LogBuffer`, `LogLine`, `KeptCall`, `Fresh`, `CAPACITY` and `CALL_CAPACITY`
-├── tests/            unit tests of the rings, the layer's context and routing, and the worker line
-├── worker_line.rs    a worker's own `tracing` line read back into its level, target, text and call
-└── worker_stdout.rs  `WorkerStdoutLayer`: a worker's model calls written to its stdout
+├── layer.rs           `ConsoleLayer`: each event a line or a kept call, with its video and step
+├── mod.rs             `LogBuffer`, `LogLine`, `KeptCall`, `Fresh`, `CAPACITY` and `CALL_CAPACITY`
+├── tests/             unit tests of the rings, the layer's context and routing, and the worker line
+├── worker_channel.rs  `WorkerChannelLayer`: a worker's model calls sent to the runner as frames
+└── worker_line.rs     a worker's own `tracing` line read back into its level, target, text and call
 ```
 
 ## How it works
@@ -32,14 +32,16 @@ line that is a worker's own `tracing` line (`tbd-subtitles[4242] 2026-…Z  INFO
 text call=4242-3`) is read back (`worker_line`), so it shows with the worker's level and source
 and links to its call.
 
-A worker process has no window: `WorkerStdoutLayer` writes each `model_exchange` event to its
-stdout as one `model-call <json>` line, which the job runner reads beside the `progress` lines and
-logs again in the app, under the job's and the step's spans.
+A worker process has no window: `WorkerChannelLayer` sends each `model_exchange` event's JSON to
+the job runner as one `ModelCall` frame of the worker channel (`worker_channel::worker`), which
+the runner reads beside the progress frames and logs again in the app, under the job's and the
+step's spans.
 
 ## Boundaries
 
 - Depends on: `tracing`, `tracing-subscriber` (the registry and `LookupSpan`), `serde_json`,
-  `job_model::model_call` and `inference::llm::call_log::EXCHANGE_TARGET`.
+  `job_model::model_call`, `worker_channel::worker` and
+  `inference::llm::call_log::EXCHANGE_TARGET`.
 - Used by: `crate::core::logging`, which installs the layers; `crate::application`, whose
   environment holds the buffer; `crate::log_console`, which reads `LogLine` and `KeptCall`.
 - Rules: a model call is never a line and an event's own context wins over its spans'

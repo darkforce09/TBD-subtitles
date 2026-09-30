@@ -218,3 +218,41 @@ fn a_cancel_flag_kills_a_child_while_the_caller_writes() {
     );
     assert!(started.elapsed() < Duration::from_secs(10));
 }
+
+#[test]
+fn a_child_killed_by_its_caller_leaves_its_stderr() {
+    let started = Instant::now();
+    let mut running = Run::new("sh")
+        .arg("-c")
+        .arg("echo before >&2; echo ready; sleep 30")
+        .spawn()
+        .unwrap();
+    let mut first = [0u8; 6];
+    running
+        .take_stdout()
+        .unwrap()
+        .read_exact(&mut first)
+        .unwrap();
+    assert_eq!(&first, b"ready\n");
+    let stderr = running.kill_and_wait().unwrap();
+    assert_eq!(stderr, "before\n");
+    assert!(started.elapsed() < Duration::from_secs(10));
+}
+
+#[test]
+fn a_cancelled_child_stays_cancelled_when_its_caller_kills_it() {
+    let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let mut running = Run::new("sh")
+        .arg("-c")
+        .arg("sleep 30")
+        .cancel_on(flag)
+        .spawn()
+        .unwrap();
+    let mut sink = Vec::new();
+    let _ = running.take_stdout().unwrap().read_to_end(&mut sink);
+    let result = running.kill_and_wait();
+    assert!(
+        matches!(result, Err(RunError::Cancelled { .. })),
+        "{result:?}"
+    );
+}

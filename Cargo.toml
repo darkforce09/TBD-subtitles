@@ -14,6 +14,7 @@ members = [
     "crates/pipeline",
     "crates/stages",
     "crates/subtitle_formats",
+    "crates/worker_channel",
     "tools/appimage_builder",
     "tools/redb_process_probe",
     "tools/repo_gates",

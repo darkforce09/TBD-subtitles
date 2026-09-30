@@ -1,28 +1,25 @@
 //! Worker processes: `<binary> worker <step> <job dir>`, one at a time for GPU steps, with the
-//! CUDA runtime's environment, its progress lines and model calls forwarded, its stderr kept, and its time, peak
-//! RAM and peak VRAM read back.
+//! CUDA runtime's environment, its progress frames and model calls forwarded, its stderr kept,
+//! and its time, peak RAM and peak VRAM read back.
 //!
-//! **Role:** find the app binaries, start a step's worker, and turn what it reports into the
-//! step's measure.
+//! **Role:** find the app binaries, start a step's worker, read its frames, and turn what it
+//! reports into the step's measure.
 //!
 //! **Position:** called by `runner` for every step placed in a worker; uses `child_process` to
-//! run it and `measure::gpu_monitor` to sample its VRAM.
+//! run it, `frames` to read its stdout and `measure::gpu_monitor` to sample its VRAM.
 //!
-//! **Signals and state:** spawns the worker; writes `logs/<step>.log`; reads
-//! `steps/<step>.worker.json`.
+//! **Signals and state:** spawns the worker; reads its stdout as frames; writes `logs/<step>.log`.
 //!
-//! **Invariants:** a worker that exits non-zero, or leaves no measure file, is a failed step with
-//! the end of its stderr in the error; an old measure file is removed before the worker starts,
-//! so it is never read as the new one's.
+//! **Invariants:** a worker that exits non-zero, breaks the frame protocol, or exits 0 without its
+//! `Measure` and `Done` is a failed step with the end of its stderr in the error; a worker that
+//! breaks the protocol is killed at once.
 
-use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 use child_process::Run;
 use job_model::StepName;
-use job_model::job::{StepMeasure, WorkerMeasure};
-use job_model::model_call::{ModelExchange, WORKER_LINE_PREFIX};
+use job_model::job::StepMeasure;
 
 use crate::cancel::CancelToken;
 use crate::error::{Context, PipelineError, Result};
@@ -31,6 +28,7 @@ use crate::measure::gpu_monitor;
 use crate::progress::{Progress, ProgressSink};
 use crate::work_dir::{self, WorkDir};
 
+mod frames;
 pub mod gpu_lock;
 
 /// Lines of a failed worker's stderr quoted in the error.
@@ -82,8 +80,6 @@ pub fn run_worker(
             format!("{} is missing from the app's own folder", binary.display()),
         ));
     }
-    let measure_file = work.worker_measure(step);
-    let _ = fs::remove_file(&measure_file);
     let mut run = Run::new(binary)
         .arg("worker")
         .arg(step.as_str())
@@ -122,14 +118,32 @@ pub fn run_worker(
     let monitor = baseline
         .as_ref()
         .map(|b| gpu_monitor::Monitor::start(worker.pid(), b.used_mib));
-    if let Some(stdout) = worker.take_stdout() {
-        for line in BufReader::new(stdout)
-            .lines()
-            .map_while(std::result::Result::ok)
-        {
-            progress(parse_line(step, &line));
+    let read = match worker.take_stdout() {
+        Some(stdout) => frames::read_frames(step, &mut BufReader::new(stdout), progress),
+        None => Err("the worker's stdout is not a pipe".to_string()),
+    };
+    let report = match read {
+        Ok(report) => report,
+        Err(broken) => {
+            let stopped = worker.kill_and_wait();
+            let _ = monitor.and_then(gpu_monitor::Monitor::finish);
+            let stderr = match stopped {
+                Err(child_process::RunError::Cancelled { .. }) => {
+                    return Err(PipelineError::cancelled(context));
+                }
+                other => other.context(context.clone())?,
+            };
+            work_dir::write_text(&work.log(step), &stderr)?;
+            return Err(PipelineError::new(
+                context,
+                format!(
+                    "{broken}; the worker was stopped (log {}):\n{}",
+                    work.log(step).display(),
+                    tail(&stderr)
+                ),
+            ));
         }
-    }
+    };
     let finished = worker.wait();
     let peaks = monitor.and_then(gpu_monitor::Monitor::finish);
     let finished = match finished {
@@ -140,20 +154,37 @@ pub fn run_worker(
     };
     work_dir::write_text(&work.log(step), &finished.stderr)?;
     tracing::debug!("step {step} worker log: {}", work.log(step).display());
-    if finished.code != 0 {
-        let tail: Vec<&str> = finished.stderr.lines().rev().take(STDERR_TAIL).collect();
-        let tail: Vec<&str> = tail.into_iter().rev().collect();
-        return Err(PipelineError::new(
-            context,
-            format!(
-                "the worker exited {} (log {}):\n{}",
-                finished.code,
-                work.log(step).display(),
-                tail.join("\n")
-            ),
-        ));
-    }
-    let reported: WorkerMeasure = work_dir::read_json(&measure_file)?;
+    let log = work.log(step);
+    let failed = report
+        .failed
+        .as_ref()
+        .map(|message| format!("{message}\n"))
+        .unwrap_or_default();
+    let ending = if finished.code != 0 {
+        format!("the worker exited {}", finished.code)
+    } else {
+        match (&report.measure, report.done) {
+            (Some(_), true) => String::new(),
+            (None, true) => "the worker exited 0 without sending its measure".to_string(),
+            (Some(_), false) => "the worker exited 0 without sending its end".to_string(),
+            (None, false) => {
+                "the worker exited 0 without sending its measure or its end".to_string()
+            }
+        }
+    };
+    let reported = match report.measure {
+        Some(measure) if ending.is_empty() => measure,
+        _ => {
+            return Err(PipelineError::new(
+                context,
+                format!(
+                    "{failed}{ending} (log {}):\n{}",
+                    log.display(),
+                    tail(&finished.stderr)
+                ),
+            ));
+        }
+    };
     let mut notes = reported.notes;
     if let Some(p) = &peaks {
         notes.insert(
@@ -227,35 +258,10 @@ fn local_llm_library_path(binary: &Path) -> Result<String> {
     ))
 }
 
-/// A worker's stdout line as a progress event: `progress <done> <total>` an advance, `model-call
-/// <json>` a language-model call, anything else a message.
-pub fn parse_line(step: StepName, line: &str) -> Progress {
-    if line.starts_with(WORKER_LINE_PREFIX) {
-        return match ModelExchange::from_worker_line(line) {
-            Some(call) => Progress::ModelCall {
-                step,
-                call: Box::new(call),
-            },
-            None => Progress::StepMessage {
-                step,
-                text: format!("a model call that could not be read ({} bytes)", line.len()),
-            },
-        };
-    }
-    let mut parts = line.split_whitespace();
-    if parts.next() == Some("progress")
-        && let (Some(Ok(done)), Some(Ok(total)), None) = (
-            parts.next().map(str::parse),
-            parts.next().map(str::parse),
-            parts.next(),
-        )
-    {
-        return Progress::StepAdvanced { step, done, total };
-    }
-    Progress::StepMessage {
-        step,
-        text: line.to_string(),
-    }
+/// The last [`STDERR_TAIL`] lines of a worker's stderr.
+fn tail(stderr: &str) -> String {
+    let tail: Vec<&str> = stderr.lines().rev().take(STDERR_TAIL).collect();
+    tail.into_iter().rev().collect::<Vec<_>>().join("\n")
 }
 
 #[cfg(test)]

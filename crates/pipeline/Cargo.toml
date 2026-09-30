@@ -20,6 +20,8 @@ stages = { path = "../stages" }
 child_process = { path = "../child_process" }
 # Step names, the job record and the contract types.
 job_model = { path = "../job_model" }
+# The frames a worker sends the runner: progress, model calls, its measure, its end or failure.
+worker_channel = { path = "../worker_channel" }
 # The model backends the worker steps load, the model folder and the CUDA runtime locator.
 inference = { path = "../inference" }
 # ffprobe, FFmpeg and the audio files the steps read.
@@ -29,6 +31,9 @@ subtitle_formats = { path = "../subtitle_formats" }
 # Every step's output and `job.json` are JSON.
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 serde_json = "1"
+# The worker's measure crosses the worker channel as an rkyv archive. The format is named in full,
+# exactly as in `job_model`, so no feature unification can change it.
+rkyv = { version = "0.8.18", features = ["unaligned", "little_endian", "pointer_width_32"] }
 # Step fingerprints and the job id.
 sha2 = { version = "0.11", default-features = false }
 # Peak memory of this process and its children (getrusage), and whether a lock's pid lives.

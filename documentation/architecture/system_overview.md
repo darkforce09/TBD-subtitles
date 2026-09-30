@@ -56,8 +56,11 @@ packaged host checks and owner acceptance remain in progress
 - **process** — headless run for one or more files; used by the Dolphin entry and watch folders
   ([automation](/documentation/features/automation.md)).
 - **worker `<step>`** — one step in its own process: it loads its model once, processes the whole
-  job, writes its output and its own measure (`steps/<step>.worker.json`), and exits. This frees
-  VRAM and keeps native libraries apart. ONNX models run in `tbd-subtitles`, Whisper in
+  job, writes its output, sends its progress, model calls, own measure and end or failure to the
+  runner as binary frames on a private copy of its stdout pipe
+  ([worker channel](/crates/worker_channel/)), and exits; descriptor 1 points at stderr, so
+  whatever a native library prints lands in the step log. This frees VRAM and keeps native
+  libraries apart. ONNX models run in `tbd-subtitles`, Whisper in
   `tbd-subtitles-ggml`, and mistral.rs in `tbd-subtitles-llm`; the three binaries sit together.
   A worker dies with the process that started it (`PR_SET_PDEATHSIG`).
 - **FFmpeg/ffprobe** — the media programs. Audio is decoded to a pipe (`-f f32le pipe:1`) and read
@@ -144,7 +147,7 @@ work/<job id>/            <video file stem as a slug>-<8 hex of its path>
 ├── qc.json               the quality check
 ├── output.json           where the subtitle file (and the localized one) went and what it replaced
 ├── report.md             QC results, flagged lines with timestamps, step timings and memory
-├── steps/, logs/         each worker's own measure and its stderr
+├── logs/                 each worker's stderr
 ├── backup/               subtitle files the output step replaced, the localized one included
 └── claude-cwd/           the empty folder `claude -p` runs in
 ```

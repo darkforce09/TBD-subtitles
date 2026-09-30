@@ -21,7 +21,7 @@ crates/pipeline/src/
 ├── runner/    `run_job`: one video through every step, in order, with resume and the shot scan
 ├── tasks/     the body of every step, shared by the runner and the `worker` subcommands
 ├── work_dir/  the path of every job file, the job id, the default root and complete JSON writes
-└── workers/   starting a step's worker binary, forwarding its progress and reading its measure
+└── workers/   starting a step's worker binary, reading its frames, forwarding its progress
 ```
 
 ## How it works
@@ -43,9 +43,9 @@ a step reads, where it runs, whether it needs the GPU, which settings it depends
 may run and which files it leaves. `resume` hashes that into a fingerprint and holds the
 `job.lock`. `work_dir` names every path and writes JSON through a part file, so a file that exists
 is complete. `tasks` holds the body of each step; a worker binary calls `tasks::worker_main`,
-which prints `progress <done> <total>` lines and writes `steps/<step>.worker.json`, and
-`workers` turns those into progress events and a `StepMeasure`, adding the VRAM that
-`measure::gpu_monitor` sampled. `report` renders `report.md` after every run. Every fallible call
+which sends `Progress`, `ModelCall`, `Measure` and `Done` (or `Failed`) frames of the worker
+channel (`crates/worker_channel/`) on its stdout, and `workers` turns those into progress events
+and a `StepMeasure`, adding the VRAM that `measure::gpu_monitor` sampled. `report` renders `report.md` after every run. Every fallible call
 returns `PipelineError`.
 
 `fix_it` works beside the runner, on a finished job: it reads the job's outputs, runs
@@ -72,7 +72,7 @@ makes only the review step and the steps after it run.
 ## Boundaries
 
 - Depends on: `stages`, `inference`, `media_io`, `subtitle_formats`, `child_process`,
-  `job_model`, `serde_json`, `sha2`, `libc` and `nvml-wrapper`.
+  `job_model`, `worker_channel`, `serde_json`, `rkyv`, `sha2`, `libc` and `nvml-wrapper`.
 - Used by: `apps/tbd_subtitles/src/cli/`, `apps/tbd_subtitles_ggml/src/main.rs` and
   `tools/stack_spike/src/measure/`.
 - Rules:

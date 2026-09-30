@@ -261,8 +261,8 @@ every language-model call with what was sent and what came back.
   time, video and step, model and seconds; a failed one in red. The open call shows its model,
   id, seconds, tokens and cost, and why it failed; then **Answer** (open at first), **Message**,
   **System prompt** and **Schema**, each foldable with its size and Copy, the text whole. Copy in
-  the bar copies the whole call. Calls made in a worker reach the window through the worker's
-  stdout; Fix It's are made in the window itself.
+  the bar copies the whole call. Calls made in a worker reach the window as frames of the worker
+  channel on the worker's stdout; Fix It's are made in the window itself.
 - **Controls:** the levels show that level and the more severe (Debug shows everything; Errors
   and Warnings count theirs); the writers show one kind or everyone; the search keeps the lines
   whose text, source, video or step holds it, and the calls whose model, purpose, video or step

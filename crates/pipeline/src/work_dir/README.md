@@ -21,7 +21,7 @@ files under `audio/`, `shots.json`, `vad.json`, `asr/<engine>.json`, `sheet.json
 `adjudication/redecode_<engine>.json`, `adjudicated.json`, `sound_cues.json`, `aligned.json`,
 `review.json` and its lock `review.json.lock`, `reviewed.json`, Fix It's `fix.json` and
 `fix/calls/`, `cues.json` and `cues_dropped_sounds.json`, `qc.json`, `report.md`, `output.json`, the empty
-`claude-cwd/`, `backup/`, `logs/<step>.log` and `steps/<step>.worker.json`. `job_id` is the video's
+`claude-cwd/`, `backup/` and `logs/<step>.log`. `job_id` is the video's
 file stem as a lowercase slug plus the first 8 hex digits of the SHA-256 of its full path.
 `default_root` is `work/` in the app's data folder, and `gpu_lock_path` is `gpu.lock` beside it. `write_text` creates the folder, writes
 `<name>.part` and renames it over `<name>`.

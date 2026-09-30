@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn a_call_goes_through_a_worker_line_unchanged() {
+fn a_call_goes_through_its_json_unchanged() {
     let call = ModelExchange {
         id: "42-3".into(),
         model: "sonnet".into(),
@@ -16,14 +16,15 @@ fn a_call_goes_through_a_worker_line_unchanged() {
         cost_usd: Some(0.01),
         seconds: 1.5,
     };
-    let line = call.worker_line().unwrap();
-    assert!(line.starts_with("model-call {"));
-    assert!(!line.contains('\n'), "one line, whatever the prompt holds");
-    assert_eq!(ModelExchange::from_worker_line(&line), Some(call));
+    let json = serde_json::to_vec(&call).unwrap();
+    assert_eq!(
+        serde_json::from_slice::<ModelExchange>(&json).unwrap(),
+        call
+    );
 }
 
 #[test]
-fn any_other_line_carries_no_call() {
-    assert_eq!(ModelExchange::from_worker_line("progress 1 2"), None);
-    assert_eq!(ModelExchange::from_worker_line("model-call {broken"), None);
+fn json_that_is_not_a_whole_call_is_no_call() {
+    assert!(serde_json::from_slice::<ModelExchange>(b"{broken").is_err());
+    assert!(serde_json::from_slice::<ModelExchange>(b"[1, 2]").is_err());
 }

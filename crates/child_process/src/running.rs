@@ -3,7 +3,8 @@
 //! **Role:** [`Run::spawn`] starts a child whose stdout the caller reads itself (FFmpeg's PCM
 //! pipe, a worker's progress) while stderr is drained on its own thread, and hands back a
 //! [`Running`] handle with the child's pid, its stdout, a piped stdin the caller streams into
-//! (FFmpeg's raw video input), a kill switch and a reaping wait.
+//! (FFmpeg's raw video input), a kill switch, a reaping wait, and a kill-and-reap that keeps the
+//! child's stderr for a caller that stops it on purpose.
 //!
 //! **Position:** called by `media_io` for FFmpeg streams and by the job runner and the stack
 //! spike tool for worker processes; uses `runner.rs` to build and spawn the command and
@@ -20,7 +21,7 @@
 //! it through `PR_SET_PDEATHSIG`.
 
 use std::os::unix::process::ExitStatusExt;
-use std::process::{Child, ChildStdin, ChildStdout, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, ExitStatus, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
@@ -144,7 +145,23 @@ impl Running {
         finished
     }
 
-    fn reap(&mut self) -> Result<Finished, RunError> {
+    /// Kill the child's whole process group, reap it and hand back its stderr, for a caller that
+    /// stops the child for a reason of its own and wants its log rather than its end. A deadline
+    /// or cancel flag that killed the child first still answers `Timeout` or `Cancelled`.
+    pub fn kill_and_wait(mut self) -> Result<String, RunError> {
+        kill_group(self.pgid);
+        let reaped = self
+            .reap_raw()
+            .and_then(|(_, stderr)| self.watchdog_verdict().map(|()| stderr));
+        match &reaped {
+            Ok(_) => self.tag.stopped(),
+            Err(error) => self.tag.failed(error),
+        }
+        reaped
+    }
+
+    /// Close the pipes, wait for the child and join the stderr drain.
+    fn reap_raw(&mut self) -> Result<(ExitStatus, String), RunError> {
         drop(self.child.stdin.take());
         drop(self.child.stdout.take());
         let status = self.child.wait().map_err(|e| RunError::Failed {
@@ -158,7 +175,11 @@ impl Running {
             .take()
             .and_then(|h| h.join().ok())
             .unwrap_or_default();
-        let status = status?;
+        Ok((status?, stderr))
+    }
+
+    /// `Cancelled` or `Timeout` when the watchdog killed the child.
+    fn watchdog_verdict(&self) -> Result<(), RunError> {
         if self.cancelled.load(Ordering::SeqCst) {
             return Err(RunError::Cancelled {
                 program: self.label.clone(),
@@ -170,6 +191,12 @@ impl Running {
                 secs: self.limit.map(|l| l.as_secs()).unwrap_or(0),
             });
         }
+        Ok(())
+    }
+
+    fn reap(&mut self) -> Result<Finished, RunError> {
+        let (status, stderr) = self.reap_raw()?;
+        self.watchdog_verdict()?;
         if let Some(signal) = status.signal() {
             return Err(RunError::Signalled {
                 program: self.label.clone(),

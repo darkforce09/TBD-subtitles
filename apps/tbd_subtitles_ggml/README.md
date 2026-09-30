@@ -22,10 +22,11 @@ The job runner in `crates/pipeline/` finds this binary beside its own
 `tbd-subtitles-ggml worker <step> <job dir>`, with the CUDA runtime's `LD_LIBRARY_PATH` added.
 `src/main.rs` parses the step, accepting only the steps `pipeline::graph::placement` gives to
 `Binary::Ggml` (`asr_whisper`, the second speech engine, and `redecode_whisper`, its re-decode of
-unsure utterances), then hands it to `pipeline::tasks::worker_main`, which loads the job, runs
-the step, writes its output and its measure file into the job's
-[work directory](/documentation/glossary.md#work-directory), and prints `progress <done> <total>`
-lines on stdout for the runner to forward.
+unsure utterances), then hands it to `pipeline::tasks::worker_main`, which installs the worker
+channel before ggml loads (descriptor 1 then points at stderr, so whisper.cpp's prints reach the
+step log), loads the job, runs the step, writes its output into the job's
+[work directory](/documentation/glossary.md#work-directory), and sends its progress, measure and
+end or failure as frames on stdout for the runner to read.
 
 ```text
 tbd-subtitles (job runner) ──▶ tbd-subtitles-ggml worker <step> <job dir>

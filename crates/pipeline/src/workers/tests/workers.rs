@@ -1,29 +1,6 @@
 use super::*;
 
 #[test]
-fn progress_lines_become_advances_and_anything_else_a_message() {
-    assert_eq!(
-        parse_line(StepName::AsrParakeet, "progress 3 80"),
-        Progress::StepAdvanced {
-            step: StepName::AsrParakeet,
-            done: 3,
-            total: 80
-        }
-    );
-    assert_eq!(
-        parse_line(StepName::AsrParakeet, "progress 3 80 extra"),
-        Progress::StepMessage {
-            step: StepName::AsrParakeet,
-            text: "progress 3 80 extra".into()
-        }
-    );
-    assert!(matches!(
-        parse_line(StepName::Vad, "loading"),
-        Progress::StepMessage { .. }
-    ));
-}
-
-#[test]
 fn a_missing_binary_fails_naming_it() {
     let work = WorkDir::new(std::env::temp_dir());
     let error = run_worker(
@@ -37,29 +14,4 @@ fn a_missing_binary_fails_naming_it() {
     )
     .expect_err("missing");
     assert!(error.message.contains("is missing"), "{error}");
-}
-
-#[test]
-fn a_model_call_line_becomes_a_model_call_and_a_broken_one_a_short_message() {
-    let call = ModelExchange {
-        id: "9-1".into(),
-        model: "sonnet".into(),
-        system: "rules\nmore rules".into(),
-        ..ModelExchange::default()
-    };
-    let line = call.worker_line().unwrap();
-    assert_eq!(
-        parse_line(StepName::Adjudicate, &line),
-        Progress::ModelCall {
-            step: StepName::Adjudicate,
-            call: Box::new(call)
-        }
-    );
-    assert_eq!(
-        parse_line(StepName::Adjudicate, "model-call {\"id\": "),
-        Progress::StepMessage {
-            step: StepName::Adjudicate,
-            text: "a model call that could not be read (18 bytes)".into()
-        }
-    );
 }

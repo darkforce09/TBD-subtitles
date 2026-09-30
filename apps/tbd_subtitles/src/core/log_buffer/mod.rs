@@ -4,7 +4,7 @@
 //! **Role:** [`LogBuffer`] holds the newest [`CAPACITY`] lines and the newest [`CALL_CAPACITY`]
 //! model calls of this process, each with the video and step it belongs to; `layer` turns each
 //! `tracing` event into one of them; `worker_line` reads a worker's own log line back;
-//! `worker_stdout` sends a worker's model calls to the job runner.
+//! `worker_channel` sends a worker's model calls to the job runner.
 //!
 //! **Position:** installed by `logging::initialise`; read by the log window through the
 //! application's environment.
@@ -16,11 +16,11 @@
 //! once a ring is full; a poisoned lock never stops logging; a call is never a line.
 
 mod layer;
+mod worker_channel;
 mod worker_line;
-mod worker_stdout;
 
 pub(crate) use layer::ConsoleLayer;
-pub(crate) use worker_stdout::WorkerStdoutLayer;
+pub(crate) use worker_channel::WorkerChannelLayer;
 
 use std::collections::VecDeque;
 use std::sync::{Mutex, MutexGuard};

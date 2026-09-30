@@ -26,8 +26,8 @@ application to apply after the frame. The lines come from the process's log buff
 the application's own lines, each job's steps (`job_queue::services::progress_log`), Fix It's
 passes, what the pipeline decides, each `claude` call's summary, and every external program's
 start, stderr lines and end (`crates/child_process/`), each with the video and step it belongs to;
-and it keeps every model call whole (`crates/inference/src/llm/call_log/`), a worker's through its
-stdout. While the window is open the application copies the lines and calls logged since its last
+and it keeps every model call whole (`crates/inference/src/llm/call_log/`), a worker's through a
+`ModelCall` frame of the worker channel on its stdout. While the window is open the application copies the lines and calls logged since its last
 read into `models::console::LogConsole` each frame, so none is lost while it is closed; the
 buffer and the console keep the newest 20,000 lines and 500 calls, and the log file keeps every
 line, never a call's prompt or answer.

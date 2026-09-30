@@ -2,7 +2,7 @@
 //! killed job never leaves half a file.
 //!
 //! **Role:** name every path of a job (`job.json`, `audio/`, `asr/`, `adjudication/`, `logs/`,
-//! `steps/`, the outputs) in one place, and read and write the JSON files.
+//! the outputs) in one place, and read and write the JSON files.
 //!
 //! **Position:** used by every other module of the crate and by the worker tasks.
 //!
@@ -165,10 +165,6 @@ impl WorkDir {
     /// A worker's stderr.
     pub fn log(&self, step: StepName) -> PathBuf {
         self.at(&format!("logs/{step}.log"))
-    }
-    /// What a worker reports about itself.
-    pub fn worker_measure(&self, step: StepName) -> PathBuf {
-        self.at(&format!("steps/{step}.worker.json"))
     }
 }
 

@@ -19,6 +19,7 @@ pub(crate) const PRODUCT_LAYERS: &[(&str, u8)] = &[
     ("job_model", 0),
     ("child_process", 0),
     ("app_icon", 0),
+    ("worker_channel", 0),
     ("media_io", 1),
     ("subtitle_formats", 1),
     ("inference", 1),

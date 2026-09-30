@@ -17,6 +17,8 @@ path = "src/main.rs"
 pipeline = { path = "../../crates/pipeline" }
 # Step names and job settings for the `process` and `worker` subcommands.
 job_model = { path = "../../crates/job_model" }
+# A worker's model calls go to the job runner as frames of the worker channel.
+worker_channel = { path = "../../crates/worker_channel" }
 # The model store and the CUDA runtime, for the models view and the machine check.
 inference = { path = "../../crates/inference" }
 # The FFmpeg command lines that play a line's clip in the review.

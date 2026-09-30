@@ -1,0 +1,14 @@
+# The frames a step's worker process and the job runner exchange on pipes: the frame codec, the
+# addresses of the values a step reads and writes, and the worker's side of the channel.
+[package]
+name = "worker_channel"
+description = "Framed binary messages between the job runner and its worker processes"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+
+[dependencies]
+# dup2 over descriptor 1 as a safe call: a worker points its stdout at stderr once it has kept a
+# private copy of the frame pipe, so what a native library prints never enters the frame stream.
+rustix = { version = "1", default-features = false, features = ["std", "stdio"] }

@@ -12,7 +12,7 @@ apps/tbd_subtitles_llm/
 
 ## How it works
 
-The pipeline starts `tbd-subtitles-llm worker text_translate <job-dir>` while holding its GPU lock. The worker loads one local model, writes resumable visual translations, reports time and memory, then exits.
+The pipeline starts `tbd-subtitles-llm worker text_translate <job-dir>` while holding its GPU lock. `src/logging.rs` sends diagnostics to stderr and each model call's JSON to the runner as a `ModelCall` frame of the worker channel (`WorkerChannelLayer`). `pipeline::tasks::worker_main` installs the channel before mistral.rs loads, so descriptor 1 then points at stderr; the worker loads one local model, writes resumable visual translations, sends its progress, time and memory as frames, then exits.
 
 ## Getting started
 
@@ -24,11 +24,12 @@ The job record selects models, glossary and Claude fallback. The worker uses the
 
 ## Public surface
 
-- `worker <step> <job-dir>` uses the standard pipeline worker protocol.
+- `worker <step> <job-dir>` speaks the worker channel (`crates/worker_channel/`) on stdout.
 
 ## Boundaries
 
-- Depends on: `pipeline`, `job_model` and `clap`.
+- Depends on: `pipeline`, `job_model`, `inference` (the model-call target), `worker_channel`,
+  `tracing`, `tracing-subscriber` and `clap`.
 - Used by: the pipeline runner and AppImage packager.
 - Rules: this worker never initializes ONNX Runtime or ggml.
 

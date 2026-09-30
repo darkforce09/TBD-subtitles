@@ -1,18 +1,20 @@
 //! The body of every step: read its inputs from the work directory, call the stage, write its
 //! output. The same code runs inside the job runner (CPU steps) and inside a worker process.
 //!
-//! **Role:** dispatch a step to its task, time it, and, in a worker, report the step's load
-//! time, processing time and peak memory to `steps/<step>.worker.json` and its progress as
-//! `progress <done> <total>` lines on stdout.
+//! **Role:** dispatch a step to its task, time it, and, in a worker, send the runner the step's
+//! progress, its load time, processing time and peak memory, and its end or its failure as frames
+//! of the worker channel.
 //!
 //! **Position:** called by `runner` (in process) and by the `worker` subcommand of both app
 //! binaries; each task module calls `stages` and the backends.
 //!
-//! **Signals and state:** reads `job.json` and the step's inputs; writes the step's outputs.
+//! **Signals and state:** reads `job.json` and the step's inputs; writes the step's outputs; a
+//! worker installs the worker channel, which points its descriptor 1 at stderr.
 //!
 //! **Invariants:** a task writes its outputs completely or not at all (part files, renamed); a
 //! Whisper step runs only in a binary built with the `crispasr` feature, and nothing else needs
-//! it.
+//! it; a worker installs its channel before anything else, so no native library prints into the
+//! frame stream, and it ends with `Measure` then `Done`, or with `Failed`.
 
 mod alignment;
 mod layout;
@@ -29,7 +31,6 @@ mod verify;
 pub(crate) use review::corrected_lines;
 
 use std::collections::BTreeMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -162,9 +163,26 @@ pub fn in_process(step: StepName, job: &Job, progress: StepProgress) -> Result<S
     })
 }
 
-/// The `worker <step> <job dir>` subcommand of the binary `binary`: run the step, print its
-/// progress, and write its measure file.
+/// The `worker <step> <job dir>` subcommand of the binary `binary`: install the worker channel,
+/// run the step, and send its progress and measure, then its end; any error is sent as a
+/// `Failed` frame and returned.
 pub fn worker_main(step: StepName, job_dir: &Path, binary: Binary) -> Result<()> {
+    worker_channel::worker::install().map_err(|error| {
+        PipelineError::new(
+            format!("worker {step}"),
+            format!("cannot open the worker channel: {error}"),
+        )
+    })?;
+    let result = run_in_worker(step, job_dir, binary);
+    if let Err(error) = &result {
+        worker_channel::worker::failed(&error.to_string());
+    }
+    result
+}
+
+/// The worker's step, from the placement check to its `Done` frame.
+fn run_in_worker(step: StepName, job_dir: &Path, binary: Binary) -> Result<()> {
+    let context = format!("worker {step}");
     let wanted = match graph::placement(step) {
         Placement::Worker(b) => b,
         Placement::InProcess => Binary::Main,
@@ -176,17 +194,15 @@ pub fn worker_main(step: StepName, job_dir: &Path, binary: Binary) -> Result<()>
             Binary::LocalLlm => "tbd-subtitles-llm",
         };
         return Err(PipelineError::new(
-            format!("worker {step}"),
+            context,
             format!("the step runs in `{name}`"),
         ));
     }
     let job = Job::load(job_dir)?;
-    let print = |done: usize, total: usize| {
-        let mut out = std::io::stdout().lock();
-        let _ = writeln!(out, "progress {done} {total}");
-        let _ = out.flush();
+    let send = |done: usize, total: usize| {
+        worker_channel::worker::progress(done as u64, total as u64);
     };
-    let report = run(step, &job, &print)?;
+    let report = run(step, &job, &send)?;
     let measure = WorkerMeasure {
         load_s: report.load_s,
         process_s: report.process_s,
@@ -194,5 +210,14 @@ pub fn worker_main(step: StepName, job_dir: &Path, binary: Binary) -> Result<()>
         peak_child_ram_mib: memory::peak_child_ram_mib().unwrap_or(0.0),
         notes: report.notes,
     };
-    work_dir::write_json(&job.work.worker_measure(step), &measure)
+    let archive = rkyv::to_bytes::<rkyv::rancor::Error>(&measure).map_err(|error| {
+        PipelineError::new(&context, format!("cannot archive the measure: {error}"))
+    })?;
+    if !worker_channel::worker::measure(&archive) || !worker_channel::worker::done() {
+        return Err(PipelineError::new(
+            context,
+            "the runner's end of the worker channel is closed",
+        ));
+    }
+    Ok(())
 }

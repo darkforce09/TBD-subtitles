@@ -135,7 +135,7 @@ a job is opened, files no record names are removed.
 | Table | Key | Value |
 |---|---|---|
 | `meta` | `"job_record"`, `"layout"` | the job record (video, settings, models); the layout version of every table |
-| `step_records` | step name (`probe_decode` … `localized_video`) | revision, fingerprint of its inputs, finished time, measures (today `job.json` steps and `steps/<step>.worker.json`) |
+| `step_records` | step name (`probe_decode` … `localized_video`) | revision, fingerprint of its inputs, finished time, measures (today `job.json` steps and the worker's `Measure` frame) |
 | `outputs` | step name, plus an engine or pass where a step writes several (`asr_parakeet`, `redecode_whisper`) | the step's output document (today `probe.json`, `vad.json`, `visual/text_review.json` …) |
 | `corrections` | `"lines"`, `"text"` | the owner's corrections (today `review.json`, `visual/corrections.json`) |
 | `frames` | (occurrence id, frame number) | quad, follow score and shift, mask as run-length rows, plate id |
@@ -203,8 +203,8 @@ and reruns Dressrosa 11 and 28 with identical `.ass` and `.localized.ass` files 
    - `text_mask`, `text_inpaint`, `text_compose`, `text_verify`, `text_typeset`,
      `localized_video`.
    The window's readers (Overview, Check Lines, Check Text, report) move with the step they read.
-4. **Resume and reruns in the store.** `step_records` replace `job.json` steps and
-   `steps/*.worker.json`; `--rerun` becomes the one-transaction clear above; orphan cleanup on
+4. **Resume and reruns in the store.** `step_records` replace `job.json` steps and hold the
+   worker's `Measure`; `--rerun` becomes the one-transaction clear above; orphan cleanup on
    open.
 5. **Per-frame tables.** `frames` and `readings` filled by `text_mask`, `text_verify` and
    following; the erase mask becomes per frame where the writing moves or its background

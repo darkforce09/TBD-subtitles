@@ -140,6 +140,7 @@ TBD-subtitles/
 │   ├── job_model/         0  stage names and the serde and rkyv contracts between stages
 │   ├── child_process/     0  external programs with deadlines, group kills, drained pipes,
 │   │                         streamed stdin
+│   ├── worker_channel/    0  the frames workers and the runner exchange on pipes
 │   ├── media_io/          1  ffprobe, FFmpeg PCM and timestamped RGB streaming, region crops,
 │   │                         shot changes, the localized-video encode
 │   ├── subtitle_formats/  1  cue model, SRT/VTT/ASS writers, import

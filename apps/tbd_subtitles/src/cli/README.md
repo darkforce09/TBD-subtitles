@@ -130,8 +130,9 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
 
 - Synopsis: `tbd-subtitles worker <STEP> <JOB_DIR>`.
 - Does: runs `<STEP>` over the job in `<JOB_DIR>` in this process through
-  `pipeline::tasks::worker_main`, writing the step's output and its measure file to the work
-  directory and `progress <done> <total>` lines to stdout. Every step is accepted but
+  `pipeline::tasks::worker_main`, writing the step's output to the work directory and sending
+  its progress, model calls, measure and end or failure to the job runner as frames of the worker
+  channel on stdout; anything else printed to stdout goes to stderr. Every step is accepted but
   `asr_whisper` and `redecode_whisper`, which are refused as belonging to `tbd-subtitles-ggml`.
 - Exit codes: 0 the step finished; 1 the job cannot be loaded or the step failed; 2 on a usage
   error, including a Whisper step or a name that is no step.

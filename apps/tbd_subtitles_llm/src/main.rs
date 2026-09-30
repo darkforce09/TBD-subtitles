@@ -2,7 +2,8 @@
 //!
 //! **Role:** run text translation with the local GGUF model.
 //! **Position:** worker executable started by the shared pipeline runner.
-//! **Signals and state:** job files and measured progress on stdout.
+//! **Signals and state:** job files; progress, model calls, the measure and the end or failure as
+//! frames of the worker channel on stdout.
 //! **Invariants:** this worker never initializes ONNX Runtime or ggml.
 
 mod logging;

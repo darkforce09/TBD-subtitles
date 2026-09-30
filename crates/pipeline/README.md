@@ -24,7 +24,7 @@ tbd-subtitles process <video>
         ├─ graph      inputs, placement, GPU flag, settings, timeout and outputs of each step
         ├─ in process ──▶ tasks::in_process ──▶ stages
         ├─ worker     ──▶ workers::run_worker ──▶ `<binary> worker <step> <job dir>`
-        │                                          └─▶ tasks::worker_main ──▶ stages, inference
+        │                   ▲ frames on stdout      └─▶ tasks::worker_main ──▶ stages, inference
         ├─ measure    peak RAM of this process and its children; peak VRAM per worker through NVML
         ├─ progress   events to the caller's sink
         └─ report     report.md from qc.json and the job record
@@ -38,8 +38,10 @@ activity, the diff sheet, cue building, the quality check and the output) or in 
 shot scan runs on a scoped thread beside the other steps and is joined before the first step that
 reads it. After every step `job.json` records its fingerprint, finish time and measure, so a
 killed job resumes from the last finished step. The step's code lives in `tasks`, which both
-binaries share, so the same body runs in the runner or in a worker. `src/README.md` describes each
-module.
+binaries share, so the same body runs in the runner or in a worker. A worker reports to the runner
+only in frames of the worker channel (`crates/worker_channel/`) on its stdout: its progress, its
+model calls, its measure and its end or failure; its stderr is the step's log. `src/README.md`
+describes each module.
 
 ## Getting started
 
@@ -47,7 +49,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p pipeline   # the library, with stages, inference and the crates beneath it
-cargo test -p pipeline    # 12 unit tests: the graph, resume, the work directory, worker lines
+cargo test -p pipeline    # 66 unit tests: the graph, resume, the work directory, worker frames
 ```
 
 A whole job runs through the app: build both binaries and run
@@ -89,8 +91,8 @@ passes in `JobOptions`, recorded in the job's `job.json` (`crates/job_model/src/
 
 ## Boundaries
 
-- Depends on: `stages`, `inference`, `media_io`, `subtitle_formats`, `child_process` and
-  `job_model`; `serde`, `serde_json`, `sha2`, `libc` (`getrusage`), `nvml-wrapper` and `tracing`
+- Depends on: `stages`, `inference`, `media_io`, `subtitle_formats`, `child_process`,
+  `job_model` and `worker_channel`; `serde`, `serde_json`, `rkyv` (the worker's measure), `sha2`, `libc` (`getrusage`), `nvml-wrapper` and `tracing`
   (debug lines on reruns, placement, the CUDA runtime, the GPU lock and the report); at run time
   the app's two binaries as workers, and through them FFmpeg and the `claude` CLI.
 - Used by: `apps/tbd_subtitles/` (the `process` and `worker` subcommands),

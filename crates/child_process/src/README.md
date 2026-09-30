@@ -65,6 +65,9 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..) | .stdin_piped()
   once by `take_stdin`, for FFmpeg's raw video input; a kill makes a blocked write fail with a
   broken pipe, and the caller drops the stdin to send EOF. `wait` closes an unread stdout and an
   untaken stdin before reaping, and dropping a `Running` that was never waited on kills its group.
+  `kill_and_wait` kills the group, reaps the child and hands back its stderr, for the job runner
+  when a worker breaks the frame protocol; a watchdog kill that came first still answers
+  `Timeout` or `Cancelled`.
 - `trace.rs` names each child `program[pid]` and logs under the `child_process` target: its start
   with its command line at debug (an argument over 160 bytes or on several lines, such as a
   prompt or a schema, stands as its size), each stderr line at debug (split at carriage returns,
@@ -86,7 +89,8 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..) | .stdin_piped()
   repository gates.
 - `Output`, `Merged` and `RunError`: the answers, re-exported by the same file; `media_io` wraps
   `RunError` in its own error.
-- `Running` (with `pid`, `take_stdout`, `take_stdin`, `kill`, `has_exited`, `wait`) and
+- `Running` (with `pid`, `take_stdout`, `take_stdin`, `kill`, `has_exited`, `wait`,
+  `kill_and_wait`) and
   `Finished`: the streamed child and its result, for the FFmpeg PCM stream in
   `crates/media_io/src/pcm_stream/mod.rs`, the video encoder in `crates/media_io/src/encode/` and the worker processes in
   `crates/pipeline/src/workers/mod.rs` and `tools/stack_spike/src/measure/mod.rs`.

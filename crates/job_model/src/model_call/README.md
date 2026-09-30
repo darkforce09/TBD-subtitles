@@ -7,25 +7,26 @@ schema sent, the answer that came back or why there was none, the tokens, the co
 
 ```text
 crates/job_model/src/model_call/
-├── mod.rs  `ModelExchange` and the worker's stdout line that carries it (`model-call <json>`)
-└── tests/  unit tests of the line's round trip, of lines that carry no call and of the rkyv archive
+├── mod.rs  `ModelExchange`, whose JSON crosses from a worker to the app in one `ModelCall` frame
+└── tests/  unit tests of the JSON round trip, of JSON that is no call and of the rkyv archive
 ```
 
 ## How it works
 
 `inference::llm::claude_cli` fills a `ModelExchange` for every call it makes and emits it as a
-`tracing` event. A worker process writes each one to its stdout as a single line,
-`model-call <json>` (`worker_line`); the job runner reads that line back
-(`from_worker_line`) beside the `progress` lines it already reads, and the app keeps the newest
-calls in memory for its log window. JSON escapes the newlines of a prompt, so a call is always one
-line.
+`tracing` event. A worker process sends each one's serde JSON to the job runner as one
+`ModelCall` frame of the worker channel (`crates/worker_channel/`); the runner parses the frame's
+bytes back into a `ModelExchange` beside the progress frames it reads, and the app keeps the newest
+calls in memory for its log window. The JSON field names are the contract between the app and its
+workers, which are always built together.
 
 ## Boundaries
 
-- Depends on: `serde` and `serde_json`.
-- Used by: `crates/inference/src/llm/claude_cli/`, `crates/pipeline/src/workers/` and
+- Depends on: `serde` (the JSON contract) and `rkyv` (the archive); `serde_json` in the tests.
+- Used by: `crates/inference/src/llm/claude_cli/`, `crates/pipeline/src/workers/frames.rs` and
   `crates/pipeline/src/progress/`, and the app's log buffer
   (`apps/tbd_subtitles/src/core/log_buffer/`).
 - Rules: a call is never written to a job's work directory or a log file (the module header); a
-  line that is not a whole call is no call (`any_other_line_carries_no_call` in
-  `tests/model_call.rs`).
+  frame whose JSON is not a whole call is no call (`json_that_is_not_a_whole_call_is_no_call` in
+  `tests/model_call.rs`, and `an_unreadable_model_call_is_a_short_message` in
+  `crates/pipeline/src/workers/tests/frames.rs`).

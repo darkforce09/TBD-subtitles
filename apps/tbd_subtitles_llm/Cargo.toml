@@ -18,6 +18,8 @@ mistralrs = ["pipeline/mistralrs"]
 pipeline = { path = "../../crates/pipeline" }
 job_model = { path = "../../crates/job_model" }
 inference = { path = "../../crates/inference" }
+# Model calls go to the job runner as frames of the worker channel.
+worker_channel = { path = "../../crates/worker_channel" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "fmt", "env-filter"] }
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }

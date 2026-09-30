@@ -5968,12 +5968,14 @@ dependencies = [
  "libc",
  "media_io",
  "nvml-wrapper",
+ "rkyv",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "stages",
  "subtitle_formats",
  "tracing",
+ "worker_channel",
 ]
 
 [[package]]
@@ -8240,6 +8242,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "winit",
+ "worker_channel",
 ]
 
 [[package]]
@@ -8263,6 +8266,7 @@ dependencies = [
  "pipeline",
  "tracing",
  "tracing-subscriber",
+ "worker_channel",
 ]
 
 [[package]]
@@ -10210,6 +10214,13 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "worker_channel"
+version = "0.1.0"
+dependencies = [
+ "rustix 1.1.5",
+]
 
 [[package]]
 name = "wrapcenum-derive"

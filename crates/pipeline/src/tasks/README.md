@@ -34,9 +34,13 @@ worker ──▶ worker_main(step) ┘                                  | alignm
 A `Job` is the work directory and its record; `Job::load` reads `job.json`, so a worker needs only
 the job's folder. `Job::models` is the models folder the record names, else the default. `run` sends each step to its task, which returns a `TaskReport` of load time,
 processing time and notes. `in_process` resets this process's peak RAM, runs the task and returns
-its `StepMeasure`. `worker_main` refuses a step placed in the other binary, prints each advance as
-a `progress <done> <total>` line on stdout, and writes the load time, processing time, peak RAM,
-peak child RAM and notes to `steps/<step>.worker.json`, which `crate::workers` reads. The language
+its `StepMeasure`. `worker_main` first installs the worker channel (`worker_channel::worker`),
+which keeps a private copy of the stdout pipe for frames and points descriptor 1 at stderr before
+any native library loads. It then refuses a step placed in the other binary, sends each advance as
+a `Progress` frame, and at the end sends the load time, processing time, peak RAM, peak child RAM
+and notes as an rkyv archive of `WorkerMeasure` in a `Measure` frame, then `Done`; any error,
+the placement check's included, goes out as a `Failed` frame with its text before it is returned.
+`crate::workers` reads the frames. The language
 model steps share one factory of `ClaudeCli` backends, each running in the job's empty
 `claude-cwd/`. The Whisper steps load a model only with the `crispasr` feature; without it they
 fail and name `tbd-subtitles-ggml`. The output task writes the job's format (SRT, WebVTT or ASS),
@@ -61,10 +65,11 @@ in batches.
 
 - Depends on: `stages` (every stage module), `inference` (the ONNX models, CrispASR Whisper, the
   `claude` CLI backend and the model store), `media_io`, `subtitle_formats` (the cue track and the
-  subtitle writers), `job_model`, `crate::graph`, `crate::measure::memory` and `crate::work_dir`.
+  subtitle writers), `job_model`, `worker_channel` (the worker's frames), `rkyv` (the measure's
+  archive), `crate::graph`, `crate::measure::memory` and `crate::work_dir`.
 - Used by: `crate::runner` (`in_process`); the `worker` subcommands in
-  `apps/tbd_subtitles/src/cli/worker_command.rs` and `apps/tbd_subtitles_ggml/src/main.rs`
-  (`worker_main`).
+  `apps/tbd_subtitles/src/cli/worker_command.rs`, `apps/tbd_subtitles_ggml/src/main.rs` and
+  `apps/tbd_subtitles_llm/src/main.rs` (`worker_main`).
 - Rules:
   - a task writes its outputs completely or not at all, through `work_dir`'s part files;
   - the subtitle files beside the video are the only files written outside the work directory,
@@ -76,7 +81,9 @@ in batches.
   - a Fix It change the owner has not checked is checked again for words no engine heard
     (`owner_lines_are_settled_and_fix_it_lines_are_checked_again` in `tests/layout.rs`);
   - a binary without `crispasr` refuses a Whisper step instead of skipping it (`speech.rs`);
-  - a worker runs only the steps `graph::placement` gives its binary (`mod.rs`).
+  - a worker runs only the steps `graph::placement` gives its binary (`mod.rs`);
+  - a worker installs its channel before anything else and ends with `Measure` then `Done`, or
+    with `Failed` (`worker_main` in `mod.rs`).
 
 ## Related documentation
 

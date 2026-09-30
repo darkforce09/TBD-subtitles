@@ -11,7 +11,7 @@ crates/job_model/src/
 ├── onscreen/   typed visual observations, translations, corrections and presentation
 ├── job/         the job record kept in `job.json`: video, settings, finished steps and their measures
 ├── lib.rs       the crate root: the module list and the `StageName` and `StepName` re-exports
-├── model_call/  one language-model call for the app's log window, and the worker line carrying it
+├── model_call/  one language-model call for the app's log window, whose JSON a worker sends it
 ├── outputs/     the typed output of each step, one JSON file per step in the work directory
 ├── report/      the quality check's result: every check, its findings and the summary counts
 ├── stage/       every stage and every step in run order, with the names they carry
@@ -43,7 +43,7 @@ UTF-8 strings.
   and the stack spike tools.
 - `report`: `QcCheck`, `QcFinding`, `QcSummary` and `QcReport`, for `crates/stages/src/qc/` and
   `crates/pipeline/`.
-- `model_call`: `ModelExchange` and `WORKER_LINE_PREFIX`, for `crates/inference/src/llm/`,
+- `model_call`: `ModelExchange`, for `crates/inference/src/llm/`,
   `crates/pipeline/` and the app's log window.
 
 ## Boundaries

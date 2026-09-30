@@ -11,7 +11,7 @@ It sits below every other product crate and depends on no workspace crate.
 
 ```text
 crates/job_model/
-├── Cargo.toml  the `job_model` library package: `serde` with derive, `serde_json`, `rkyv`
+├── Cargo.toml  the `job_model` library package: `serde` with derive, `rkyv`, `serde_json` in tests
 └── src/        the stage and step names, the job record, the step outputs and the report
 ```
 
@@ -69,7 +69,7 @@ crate reads.
 
 ## Boundaries
 
-- Depends on: `serde` 1 with `std` and `derive`; `serde_json` 1 (a model call's worker line);
+- Depends on: `serde` 1 with `std` and `derive`; `serde_json` 1 in the tests only (JSON round trips);
   `rkyv` 0.8.18 with `unaligned`, `little_endian` and `pointer_width_32` (the job database's
   binary records). No workspace crate.
 - Used by:

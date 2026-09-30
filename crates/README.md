@@ -16,7 +16,8 @@ crates/
 ├── media_io/          FFmpeg and ffprobe as child processes: probe, PCM streaming, shot changes
 ├── pipeline/          the job runner: stage order, resume, worker processes, progress events
 ├── stages/            one module folder per pipeline stage, from probing the video to the subtitle file
-└── subtitle_formats/  the cue model, the SRT, WebVTT and ASS writers, and subtitle import
+├── subtitle_formats/  the cue model, the SRT, WebVTT and ASS writers, and subtitle import
+└── worker_channel/    the frames a worker and the job runner exchange on pipes, and the worker's side
 ```
 
 ## How it works
@@ -28,12 +29,13 @@ The crates form layers, and a crate depends only on crates of a strictly lower l
 | 0 | `job_model` | none (`serde` only) |
 | 0 | `child_process` | none (`libc` only) |
 | 0 | `app_icon` | none (the standard library only) |
+| 0 | `worker_channel` | none (`rustix` only) |
 | 1 | `media_io` | `child_process`, `job_model` |
 | 1 | `inference` | `child_process`, `job_model` |
 | 1 | `subtitle_formats` | `job_model` |
 | 2 | `stages` | `media_io`, `inference`, `subtitle_formats`, `job_model` |
-| 3 | `pipeline` | `stages`, `child_process`, `job_model` |
-| 4 | `tbd_subtitles` (the app) | `pipeline`, `job_model` |
+| 3 | `pipeline` | `stages`, `child_process`, `job_model`, `worker_channel` |
+| 4 | `tbd_subtitles` (the app) | `pipeline`, `job_model`, `worker_channel` |
 
 The layers follow the flow of a job, which the stage code, not written yet, fills in: the app
 hands a job to `pipeline`, which walks the stages in the order `job_model::StageName::ALL` gives. A CPU stage runs

@@ -31,9 +31,9 @@ apps/tbd_subtitles/src/core/
 installs a `tracing` subscriber writing to stderr without target names and with colour only when
 stderr is a terminal, filtered by `RUST_LOG`, or `info` when that is unset or invalid. A worker
 process writes its stderr at `DETAIL` instead (debug lines from this workspace's crates, info from
-every other), with each line's target, which the job runner reads line by line; it writes each
-model call to its stdout (`log_buffer::WorkerStdoutLayer`). For the window two more outputs take
-`DETAIL`: the log file at `logging::window_log_path`, without colour and with each line's target
+every other), with each line's target, which the job runner reads line by line; it sends each
+model call to the job runner as a frame of the worker channel (`log_buffer::WorkerChannelLayer`).
+For the window two more outputs take `DETAIL`: the log file at `logging::window_log_path`, without colour and with each line's target
 (`$XDG_STATE_HOME/tbd-subtitles/tbd-subtitles.log`, else `~/.local/state/…`, emptied at each
 start, because a desktop launcher such as Gear Lever drops stderr), and the log window's buffer
 (`logging::console`). A log file that cannot be opened leaves stderr alone; `RUST_LOG`, when set,

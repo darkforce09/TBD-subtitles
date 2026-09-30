@@ -13,7 +13,8 @@
 //! **Invariants:** a launcher that drops stderr (Gear Lever) still leaves the window's log on
 //! disk; a log file that cannot be opened leaves stderr alone, never stops the app; `RUST_LOG`,
 //! when set, filters every output; a model call's exchange (its prompt and answer) never reaches
-//! stderr or the log file: the window keeps it in memory, and a worker sends it on its stdout.
+//! stderr or the log file: the window keeps it in memory, and a worker sends it through the worker
+//! channel.
 
 use std::fs::{self, File};
 use std::io::IsTerminal;
@@ -26,7 +27,7 @@ use tracing_subscriber::{EnvFilter, Layer as _, fmt};
 
 use inference::llm::call_log::EXCHANGE_TARGET;
 
-use super::log_buffer::{ConsoleLayer, LogBuffer, WorkerStdoutLayer};
+use super::log_buffer::{ConsoleLayer, LogBuffer, WorkerChannelLayer};
 
 /// What the log file, the log window and a worker's stderr show: debug lines from this
 /// workspace, info from everything else (egui, winit, the GL driver).
@@ -63,7 +64,7 @@ pub(crate) fn initialise(run: LogRun) {
             .init(),
         LogRun::Worker => tracing_subscriber::registry()
             .with(stderr.with_filter(text_filter(DETAIL)))
-            .with(WorkerStdoutLayer.with_filter(exchanges_only()))
+            .with(WorkerChannelLayer.with_filter(exchanges_only()))
             .init(),
         LogRun::Window => {
             let file = window_log_path().and_then(|path| open_or_report(&path));
