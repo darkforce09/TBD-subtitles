@@ -127,6 +127,7 @@ fn replacement(frame_count: u64) -> ReplacementDocument {
             container: None,
             plates: vec![plate],
             preview: None,
+            lettering_quad: None,
         }],
     }
 }

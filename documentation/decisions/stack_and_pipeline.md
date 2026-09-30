@@ -423,55 +423,6 @@ revisions 3, 2 and 7.
 
 **Supersedes:** none.
 
-### 2026-09-29 — The detector screens four proxies per call under a 3 GB arena
-
-**Context:** The first Dressrosa 11 run of the sampled scan screened a batch of four 640-wide
-proxies and then failed on the next call: ONNX Runtime's CUDA arena, capped at 2 GB, had 203 MB
-left when `Conv.130` of the server PP-OCRv5 detector asked for 642 MB for a batch of eight. The
-server detector keeps roughly 450 MB of activations per proxy, so eight per call cannot fit in
-2 GB, and the previous entry's "eight samples per predictor call" was never measured.
-
-**Decision:** The screening batch is four proxies, and every bisection probe call is split to
-four as well; the OCR worker's CUDA arena limit is 3 GB, which with the CUDA context, the
-detector's 88 MB of weights and the bounded convolution workspace stays under the 5.5 GB worker
-budget. The pending samples and their gaps shrink accordingly to four samples.
-
-**Consequences:** One screening call holds at most about 1.8 GB of activations, with headroom
-for the full-resolution keyframe pass at 960×544. Throughput is measured on the same episode
-with this batch size rather than assumed from the larger one.
-
-**Supersedes:** the batch size named in the previous entry; the rest of it stands.
-
-### 2026-09-29 — The mobile PP-OCRv5 detector screens proxies; the server detector confirms keyframes
-
-**Context:** With four proxies per call, the server PP-OCRv5 detector screened Dressrosa 11 at
-about 85 frames of video per second: the GPU sat at 88 % while FFmpeg used less than one core,
-so the detector, not decoding, bounded the scan at roughly nine minutes for 44,489 frames
-against the six-minute budget for 50,000. The brief's 7–10 ms per proxy assumed a lighter
-network than the 88 MB server export.
-
-**Decision:** Screening and bisection probes run the mobile PP-OCRv5 detector,
-`pp-ocrv5_mobile_det.onnx` from the same pinned oar-ocr release (4.8 MB), at the 0.3 box score;
-the server detector keeps the keyframe pass at 0.5, so every occurrence's geometry, crop and
-surface colour still come from the stronger model. The same run showed 2,379 occurrences, most
-of them one animation drawing long, because the detector's box jitters around static writing and
-the anchor signature was cropped at each frame's own box: a 49-pixel and a 75-pixel box of the
-same credits line never matched. Every comparison now crops the current proxy at the region's
-fixed anchor box, and the scan drops writing shorter than 0.15 s (one drawing on animation held
-on twos or threes), wider than half the frame, or unconfirmed by the server detector on its
-keyframe. Both exports are downloaded, never converted,
-and the detection step's fingerprint covers both files. Tracking accepts a surface as static when
-every sampled box keeps its centre within a fifth of the keyframe box height and half its overlap,
-since the detector's box grows and shrinks around unmoved writing by tens of pixels; a two-pixel
-corner tolerance flagged 136 of 143 occurrences on this episode.
-
-**Consequences:** Presence screening trades some recall on faint or tiny writing for speed,
-inside the misses the owner already accepts, and a sign shown for fewer than four frames at
-24 fps counts as noise; the synthetic scenario's brief sign lasts four frames for that reason. The pp-ocrv5 model folder gains
-one file, which Settings offers to download.
-
-**Supersedes:** none.
-
 ### 2026-09-30 — Writing is replaced in a localized video, re-encoded beside the source
 
 **Context:** ASS cannot erase pixels, so over artwork the English sat beside the Japanese. The
@@ -498,3 +449,52 @@ the downloads.
 
 **Supersedes:** none; no entry recorded the ASS-only end state. The 2026-09-29 sampled-screening
 entry still holds for the ASS file, whose moving signs keep nearby placement.
+
+### 2026-09-30 — The localized subtitle file carries dialogue only, moved above lettered English
+
+**Context:** In Dressrosa 28 the localized subtitle file labelled writing that was not drawn into
+the video in black boxes at the top of the picture, next to the English that was, and dialogue
+at the bottom covered name cards lettered in English. The owner: "getting rid of the black text
+would be better, so we don't have two sets of subtitles."
+
+**Decision:** `<video>.localized.ass` holds the dialogue and sound cues only. While English
+lettered into the localized video would sit under a line's bottom box, that line moves to the
+top (`\an8`), unless the top would cover more. `<video>.ass` keeps its on-screen text events and
+its placement.
+
+**Consequences:** Writing that cannot be replaced stays Japanese in the localized video, with no
+translation; Check Text still shows `Not replaced in the video: <reason>` from
+`text_compose.json`. The localized decision above no longer sends such writing to the subtitle
+file.
+
+**Supersedes:** the part of the 2026-09-30 localized video entry that keeps on-screen English
+not drawn in within `<video>.localized.ass`.
+
+### 2026-09-30 — A local OCR read-back approves each lettered replacement
+
+**Context:** Nothing looked at the finished picture before it went into the localized video: the
+mask, fill and lettering rules each judge pixels of one keyframe. In Dressrosa 28 the inpainting
+residue rule rejected 幹部塔 and スクラップ場 at 12:55 while the same signs baked cleanly at 2:38,
+and leftover furigana and doubled lettering reached the video unnoticed. With 500 episodes to
+run, the gate must cost no API call. The owner chose an OCR round-trip now and a local vision
+model perhaps later.
+
+**Decision:** A step `text_verify` runs after `text_compose` in a `tbd-subtitles` ONNX Runtime
+worker under the GPU lock. For up to 8 sampled frames of each baked occurrence (its ends, middle,
+plate starts and the edges of overlapping replacements) it blends every active patch over the
+decoded source region exactly as the localized video does, and PP-OCRv5 (server detector,
+recognizer alone) reads it back. A reading of 2 or more kana or kanji at 0.5 confidence where the
+writing or its furigana was, or letters over the lettering less than 0.6 similar to the English
+(1 − edit distance ÷ longer length), sends the occurrence back to Japanese. The inpainting
+residue rule keeps its one wider fill but no longer rejects. `visual/text_verify.json` carries the
+final statuses and every reading; the localized video, the output, the report and Check Text read
+it.
+
+**Consequences:** Dressrosa 28: 20 of 25 baked replacements approved in 39 s (four with leftover
+furigana, one whose English OCR cannot read); rerun end to end, composition bakes 28 and the step
+approves 22 in 48 s with 1.5 GB RAM and 1.8 GB VRAM. Dressrosa 11: 15 of 15 in 22 s. The job has
+29 steps. Ghost outlines of erased strokes that OCR does not read as text still pass; a local
+vision model would be the next gate.
+
+**Supersedes:** the inpainting fallback "Japanese strokes remain after erasing" of the 2026-09-30
+localized video entry.

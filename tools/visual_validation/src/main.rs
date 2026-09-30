@@ -6,8 +6,10 @@
 //! **Invariants:** missing readable occurrences fail; uncertain tracks require explicit fallback.
 
 mod evaluate;
+mod mask_probe;
 mod pilot;
 mod scenarios;
+mod verify_probe;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -54,6 +56,38 @@ enum Command {
     },
     /// Print compact occurrence readings, translations, confidence and review flags.
     Inspect { document: PathBuf },
+    /// Print the stroke-mask figures of occurrences in a finished job (CPU only).
+    MaskProbe {
+        /// The job's work directory.
+        work: PathBuf,
+        /// Occurrence ids to diagnose.
+        ids: Vec<String>,
+        /// A furigana box `left,top,right,bottom` in place of the occurrences' own; repeatable.
+        #[arg(long = "ruby", value_parser = mask_probe::parse_box)]
+        ruby: Vec<Quad>,
+        /// Where keyframe plates, tinted masks and a rerun's files are written.
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Rerun extraction over every occurrence and compare verdicts with the job's.
+        #[arg(long)]
+        all: bool,
+    },
+    /// Print how much lettering colour each filled plate of a finished job still shows.
+    ResidueProbe {
+        /// The job's work directory.
+        work: PathBuf,
+    },
+    /// Print what the read-back check reads from each finished replacement of a job (run on the
+    /// host: PP-OCRv5 on CUDA).
+    VerifyProbe {
+        /// The job's work directory.
+        work: PathBuf,
+        /// Occurrence ids to check; every baked one when none are given.
+        ids: Vec<String>,
+        /// Where each finished region read is saved as a PNG.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// Extract a bounded pilot clip, preserving the input video.
     Clip {
         video: PathBuf,
@@ -110,6 +144,21 @@ fn main() -> Result<()> {
             output,
         } => evaluate::run(&actual, &annotations, &output)?,
         Command::Inspect { document } => inspect(&document)?,
+        Command::MaskProbe {
+            work,
+            ids,
+            ruby,
+            out,
+            all,
+        } => mask_probe::run(&mask_probe::Request {
+            work,
+            ids,
+            ruby,
+            out,
+            all,
+        })?,
+        Command::ResidueProbe { work } => mask_probe::residue(&work)?,
+        Command::VerifyProbe { work, ids, out } => verify_probe::run(&work, &ids, out.as_deref())?,
         Command::Clip {
             video,
             output,
@@ -200,6 +249,7 @@ fn recognize(path: &std::path::Path, output: &std::path::Path) -> Result<()> {
         document.occurrences.push(TextOccurrence {
             source_fingerprint: None,
             keyframe: None,
+            ruby: Vec::new(),
             id: format!("text-{index:04}"),
             start_s: 0.0,
             end_s: 1.0,

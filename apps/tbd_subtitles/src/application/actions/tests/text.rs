@@ -84,6 +84,7 @@ impl Fixture {
             reviewed: false,
             rendered: Some(true),
             keyframe: None,
+            ruby: Vec::new(),
         };
         Session {
             work: self.root.join(format!("work-{index}")),
@@ -787,6 +788,7 @@ fn localized_review(fixture: &Fixture) -> crate::text_review::models::LocalizedR
                 status: ReplaceStatus::Baked,
                 preview: Some(plate),
                 mask: None,
+                check: None,
             },
         )]
         .into(),

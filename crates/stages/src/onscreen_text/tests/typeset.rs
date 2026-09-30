@@ -45,6 +45,7 @@ fn occurrence() -> TextOccurrence {
         reviewed: false,
         rendered: None,
         keyframe: None,
+        ruby: Vec::new(),
     }
 }
 

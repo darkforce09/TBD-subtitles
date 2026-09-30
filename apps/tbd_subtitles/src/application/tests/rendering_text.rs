@@ -258,6 +258,7 @@ fn occurrence(id: &str, japanese: &str, english: Option<&str>) -> TextOccurrence
         reviewed: false,
         rendered: Some(true),
         keyframe: None,
+        ruby: Vec::new(),
     }
 }
 
@@ -495,6 +496,7 @@ fn localize(fixture: &Fixture) {
         container: None,
         plates: Vec::new(),
         preview: None,
+        lettering_quad: None,
     };
     let mut board = text("board", ReplaceStatus::Baked);
     board.preview = Some(PathBuf::from("visual/patches/board/preview.png"));

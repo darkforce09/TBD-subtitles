@@ -14,6 +14,7 @@ pub mod compose;
 pub mod inpaint;
 pub mod mask;
 pub mod source;
+pub mod verify;
 
 use image::RgbImage;
 use job_model::onscreen::PixelRect;
@@ -35,3 +36,15 @@ pub trait RegionSource {
         visit: &mut dyn FnMut(u64, RgbImage) -> TextResult<()>,
     ) -> TextResult<()>;
 }
+
+/// Whether the occurrence is writing Claude found on a keyframe that the local detector missed:
+/// its id ends in `-c` and a number, and its one quad is Claude's loose box.
+pub fn found_by_claude(id: &str) -> bool {
+    id.rsplit_once("-c").is_some_and(|(stem, number)| {
+        !stem.is_empty() && !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit())
+    })
+}
+
+#[cfg(test)]
+#[path = "tests/claude_ids.rs"]
+mod claude_ids;

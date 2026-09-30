@@ -72,6 +72,7 @@ fn a_running_job_has_nine_stages_whose_steps_are_every_step_in_order() {
         StepName::TextMask,
         StepName::TextInpaint,
         StepName::TextCompose,
+        StepName::TextVerify,
         StepName::TextTypeset,
         StepName::Qc,
         StepName::Output,
@@ -260,20 +261,21 @@ fn the_shot_scan_runs_in_the_background_and_never_holds_its_stage_open() {
 }
 
 #[test]
-fn steps_are_numbered_from_one_of_twenty_eight() {
-    assert_eq!(StepName::ALL.len(), 28);
+fn steps_are_numbered_from_one_of_twenty_nine() {
+    assert_eq!(StepName::ALL.len(), 29);
     assert_eq!(step_number(StepName::ProbeDecode), 1);
     assert_eq!(step_number(StepName::Adjudicate), 9);
     assert_eq!(step_number(StepName::TextDetect), 17);
     assert_eq!(step_number(StepName::TextMask), 22);
-    assert_eq!(step_number(StepName::TextTypeset), 25);
-    assert_eq!(step_number(StepName::Qc), 26);
-    assert_eq!(step_number(StepName::Output), 27);
-    assert_eq!(step_number(StepName::LocalizedVideo), 28);
+    assert_eq!(step_number(StepName::TextVerify), 25);
+    assert_eq!(step_number(StepName::TextTypeset), 26);
+    assert_eq!(step_number(StepName::Qc), 27);
+    assert_eq!(step_number(StepName::Output), 28);
+    assert_eq!(step_number(StepName::LocalizedVideo), 29);
 }
 
 #[test]
-fn the_visual_stage_reports_nine_steps_and_their_measured_progress() {
+fn the_visual_stage_reports_ten_steps_and_their_measured_progress() {
     let now = Instant::now();
     let mut progress = JobProgress::new(now);
     for (step, wall_s) in [
@@ -309,13 +311,14 @@ fn the_visual_stage_reports_nine_steps_and_their_measured_progress() {
             StepName::TextMask,
             StepName::TextInpaint,
             StepName::TextCompose,
+            StepName::TextVerify,
             StepName::TextTypeset,
         ]
     );
     assert_eq!(
         rows[6].state,
         StageState::Running {
-            share: 3.5 / 9.0,
+            share: 3.5 / 10.0,
             seconds: 100.0,
         }
     );
@@ -340,6 +343,7 @@ fn the_visual_stage_reports_nine_steps_and_their_measured_progress() {
         (StepName::TextMask, 3.0),
         (StepName::TextInpaint, 10.0),
         (StepName::TextCompose, 2.0),
+        (StepName::TextVerify, 0.0),
         (StepName::TextTypeset, 5.0),
     ] {
         progress.row_mut(step).expect("visual step").state = StepState::Done { wall_s };
@@ -365,6 +369,7 @@ fn disabled_visual_steps_are_kept_without_measured_time() {
         StepName::TextMask,
         StepName::TextInpaint,
         StepName::TextCompose,
+        StepName::TextVerify,
         StepName::TextTypeset,
         StepName::LocalizedVideo,
     ] {
@@ -372,7 +377,7 @@ fn disabled_visual_steps_are_kept_without_measured_time() {
     }
     let rows = running(&progress, now);
     assert_eq!(rows[6].state, StageState::Kept);
-    assert_eq!(rows[6].steps.len(), 9);
+    assert_eq!(rows[6].steps.len(), 10);
     assert!(
         rows[6]
             .steps

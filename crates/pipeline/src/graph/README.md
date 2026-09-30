@@ -49,6 +49,9 @@ descendants while preserving valid audio stages.
   - only the settings a step reads reach its fingerprint
     (`only_the_settings_a_step_reads_reach_its_fingerprint`);
   - alignment and review read both transcripts (`alignment_and_review_read_both_transcripts`);
+  - the output reads the composition, for the localized subtitle file's placement; the visual
+    review reads the shots; typesetting reads the review alone and leaves no localized events
+    (`the_output_reads_the_composition_and_the_text_review_reads_the_shots`);
   - a change to what a step writes raises its revision (the module header;
     `changed_steps_carry_their_revision_and_the_rest_are_at_one`).
 

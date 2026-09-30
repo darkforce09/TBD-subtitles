@@ -1,5 +1,6 @@
+use super::super::fixtures::segment_line as segment;
 use super::super::fixtures::{Background, Glyphs, OUTLINE, iou, plate_of, rect_quad};
-use super::{UNSEPARATED, dilation_radius, in_ring, segment};
+use super::{UNSEPARATED, dilation_radius, in_ring};
 
 #[test]
 fn dilation_grows_with_the_line_height() {

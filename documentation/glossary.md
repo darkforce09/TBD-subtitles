@@ -122,9 +122,9 @@ One speech engine's transcript of a stretch of audio.
 
 A copy of the source video, `<video>.localized.mkv` beside it, in which on-screen Japanese that
 could be replaced cleanly is erased and redrawn in English, re-encoded with the source's audio and
-no subtitle stream; its own subtitle file, `<video>.localized.ass`, carries the dialogue, sound
-cues and every on-screen English line not drawn into the picture. The source video is never
-changed.
+no subtitle stream; its own subtitle file, `<video>.localized.ass`, carries the dialogue and sound
+cues alone, each moved to the top while English drawn into the picture sits under it. Writing
+that could not be replaced stays Japanese. The source video is never changed.
 
 In code: `StepName::LocalizedVideo`, `stages::localize::render` in `crates/stages/src/localize/mod.rs`,
 `localized_video_path` and `localized_subtitle_path` in `crates/stages/src/output/mod.rs`, and

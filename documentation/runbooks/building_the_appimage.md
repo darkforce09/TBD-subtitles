@@ -82,7 +82,7 @@ runtime and FFmpeg archives.
 distrobox-host-exec env -u LD_LIBRARY_PATH dist/TBD-subtitles-x86_64.AppImage process "/run/media/system/Main_storage/Media/one_pace/[Muhn Pace] Dressrosa 11.mp4" --work-root /tmp/appimage-verify
 ```
 
-**Expected:** all 28 steps run (the Whisper steps on the GPU, through the bundled `ggml` worker
+**Expected:** all 29 steps run (the Whisper steps on the GPU, through the bundled `ggml` worker
 and its bundled `libcrispasr.so.1`), ending with the subtitle file written beside a copy of the
 video and `report.md` in `/tmp/appimage-verify`. Comparing it to the [Dressrosa 11
 pilot](/documentation/research/pilot_dressrosa_11.md) subtitle file shows the same dialogue lines.

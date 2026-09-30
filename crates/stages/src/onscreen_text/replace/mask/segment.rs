@@ -1,24 +1,33 @@
 //! Stroke segmentation of one occurrence's keyframe.
 //!
 //! **Role:** separate the writing's ink from its background inside the analysis window and turn
-//! it into the dilated erase mask of the plate rectangle, with the measured lettering style.
+//! it into the dilated erase mask of the plate rectangle, with the measured lettering style and,
+//! for a loose Claude box, the lettering area refitted to the ink.
 //! **Position:** after the keyframe plate is decoded, before plates are followed and collected.
-//! **Signals and state:** pure functions of one RGB crop; nothing is kept between occurrences.
+//! **Signals and state:** pure functions of one RGB crop; every partition's figures go to the
+//! caller's [`Trace`]; nothing is kept between occurrences.
 //! **Invariants:** ink pieces are single-colour and either clear of the analysis window's
-//! border or strokes followed across the plate by at most half a line and never to the plate's
-//! border; furigana are added only for outlined lettering; a panel the writing sits on is never
-//! erased; implausible coverage, writing the box cuts off and ink without a glyph-sized piece
-//! fall back instead of guessing.
+//! border, inside a furigana quad, or strokes followed across the plate by at most half a line
+//! and never to the plate's border; frames around the writing and, for a loose box, pieces
+//! mostly outside it are never ink; furigana without quads are added only for outlined
+//! lettering; a panel the writing sits on is never erased; the outlined reading along the ring
+//! is tried only for detector boxes after the others; implausible coverage, writing the box cuts
+//! off, ink without a glyph-sized piece and ink-coloured strokes the mask leaves fall back
+//! instead of guessing.
+
+use std::collections::HashSet;
 
 use image::{GrayImage, Luma, RgbImage};
-use imageproc::distance_transform::Norm;
-use imageproc::morphology::dilate_mut;
-use imageproc::region_labelling::{Connectivity, connected_components};
-use job_model::onscreen::{LetteringStyle, PixelRect, Point, Quad};
+use job_model::onscreen::{LetteringStyle, Point, Quad};
 
 use super::cluster::{self, Clusters, Lab};
+use super::complete;
 use super::ink::{self, Selection};
+use super::panel;
+use super::pieces::{apart, cut_pieces, frames, kept_ink, largest_piece, ruby_ink};
+use super::probe::{Judgement, Reading, Trace};
 use super::reach;
+use super::select::Areas;
 use super::style;
 use crate::onscreen_text::geometry;
 
@@ -29,6 +38,10 @@ pub(super) const RING: u32 = 3;
 /// Least and most share of the quad that ink may cover.
 const MIN_COVERAGE: f64 = 0.01;
 const MAX_COVERAGE: f64 = 0.55;
+/// Most share of the quad a fill and outline wrapping each other may cover when read as dense
+/// outlined lettering, which covers more than [`MAX_COVERAGE`]: bold lettering with a heavy
+/// outline fills a box drawn tight around it.
+const MAX_OUTLINED_COVERAGE: f64 = 0.8;
 /// Most share of the ink inside the quad that may belong to pieces the window border cuts and
 /// that cannot be followed to their end: beyond it the box holds only part of the writing.
 const MAX_CUT_SHARE: f64 = 0.2;
@@ -50,12 +63,20 @@ const MIN_STROKE_REACH_PX: f64 = 8.0;
 const MIN_DILATION_PX: f64 = 2.0;
 const DILATION_SHARE: f64 = 0.06;
 
+/// The guards a partition can fail, as the trace names them.
+const NO_INK: &str = "no colour reads as ink";
+const IMPLAUSIBLE_COVERAGE: &str = "ink covers too little or too much of the quad";
+const CUT_OFF: &str = "the box cuts the writing off";
+const NO_GLYPH: &str = "no piece is glyph-sized";
+
 /// The erase mask of the plate rectangle and the style of the writing it erases.
 #[derive(Debug, Clone)]
 pub(super) struct Segmentation {
     /// Plate-sized, 255 where strokes are erased.
     pub mask: GrayImage,
     pub style: LetteringStyle,
+    /// For a loose Claude box, the ink's bounds in frame pixels: where the English goes.
+    pub lettering: Option<Quad>,
 }
 
 /// The analysis window's pixels grouped into colour clusters, with the chosen ink.
@@ -75,11 +96,11 @@ pub(super) struct Window<'a> {
 struct Choice<'a> {
     clusters: &'a Clusters,
     selection: Selection,
-    /// Window ink: pieces clear of the border and strokes followed past it.
+    /// Window ink: pieces clear of the border, furigana and strokes followed past it.
     ink: Vec<bool>,
     /// Plate pixels of strokes the window clips.
     clipped: Vec<(u32, u32)>,
-    /// Ink pixels inside the quad, kept or followed past the border.
+    /// Ink pixels inside the quad and furigana, kept or followed past the border.
     covered: usize,
 }
 
@@ -88,25 +109,35 @@ struct Frame<'a> {
     plate: &'a RgbImage,
     /// Offset of the window in the plate and its size.
     placement: reach::Placement,
-    /// Per window pixel, whether it lies inside the quad.
+    /// Per window pixel, whether it lies inside the line's quad.
+    line: Vec<bool>,
+    /// Per window pixel, whether it lies inside a furigana quad.
+    ruby: Vec<bool>,
+    /// Per window pixel, whether it lies inside the line's quad or a furigana quad.
     inside: Vec<bool>,
     least: usize,
     line_height: f64,
+    /// The quad is a loose box: ink pieces that never enter it are picture beside the writing.
+    loose: bool,
 }
 
-/// Segment the writing in `window` of the keyframe `plate` crop taken at `plate_rect`.
+/// Segment the writing in the analysis window of the keyframe `plate` crop taken at
+/// `areas.plate`, recording every partition's figures in `trace`.
 ///
 /// Every partition of two to five colours is read as lettering over the ring's background, and
-/// [`best`] picks among those that pass the guards. When none does, the partitions are read as
-/// writing printed on a panel filling the box.
+/// [`best`] picks among those that pass the guards. When none does, or the choice holds no fill
+/// and outline wrapping each other, the cleanly separated outlined ones are read again as dense
+/// lettering that covers more of the quad than plain lettering may, and a passing one is chosen
+/// instead. Without a choice the partitions are then read as writing printed on a panel filling
+/// the box, and then, for a detector box, as outlined lettering whose colours also run along the
+/// ring.
 pub(super) fn segment(
     plate: &RgbImage,
-    plate_rect: PixelRect,
-    window: PixelRect,
-    quad: Quad,
-    line_height: f64,
+    areas: &Areas,
+    trace: &mut Trace,
 ) -> Result<Segmentation, &'static str> {
-    let (ox, oy) = (window.x - plate_rect.x, window.y - plate_rect.y);
+    let window = areas.analysis;
+    let (ox, oy) = (window.x - areas.plate.x, window.y - areas.plate.y);
     let (w, h) = (window.width, window.height);
     if w <= 2 * RING + 1 || h <= 2 * RING + 1 {
         return Err(UNSEPARATED);
@@ -114,24 +145,56 @@ pub(super) fn segment(
     let crop = image::imageops::crop_imm(plate, ox, oy, w, h).to_image();
     let lab: Vec<Lab> = crop.pixels().map(|p| cluster::lab(p.0)).collect();
     let partitions = cluster::partitions(&lab);
-    let radius = dilation_radius(line_height);
+    let radius = dilation_radius(areas.line_height);
+    let line = in_quads(window, std::slice::from_ref(&areas.quad));
+    let ruby = in_quads(window, &areas.ruby);
     let frame = Frame {
         plate,
         placement: (ox, oy, w, h),
-        inside: in_quad(window, quad),
+        inside: line.iter().zip(&ruby).map(|(l, r)| *l || *r).collect(),
+        line,
+        ruby,
         least: MIN_COMPONENT_PX.max((MIN_COMPONENT_SHARE * f64::from(w * h)).ceil() as usize),
-        line_height,
+        line_height: areas.line_height,
+        loose: areas.refit,
     };
-    let chosen = best(partitions.iter().filter_map(|clusters| {
-        ink::lettering(clusters, w, h, &frame.inside, radius)
-            .and_then(|s| judge(&frame, clusters, s))
-    }))
-    .or_else(|| {
-        best(partitions.iter().filter_map(|clusters| {
-            ink::panel(clusters, w, h, &frame.inside).and_then(|s| judge(&frame, clusters, s))
-        }))
-    })
-    .ok_or(UNSEPARATED)?;
+    let mut chosen = None;
+    let readings: &[Reading] = if areas.refit {
+        &[Reading::Lettering, Reading::DenseOutlined, Reading::Panel]
+    } else {
+        &[
+            Reading::Lettering,
+            Reading::DenseOutlined,
+            Reading::Panel,
+            Reading::OutlinedOverRing,
+        ]
+    };
+    for &reading in readings {
+        let settled = chosen.as_ref().is_some_and(|(_, c): &(usize, Choice)| {
+            reading != Reading::DenseOutlined || c.selection.outlined
+        });
+        if settled {
+            break;
+        }
+        let mut choices = Vec::new();
+        for clusters in &partitions {
+            let selection = match reading {
+                Reading::Lettering => ink::lettering(clusters, w, h, &frame.line, radius),
+                Reading::DenseOutlined => ink::lettering(clusters, w, h, &frame.line, radius)
+                    .filter(|s| s.outlined && s.score >= ink::MIN_INK_SEPARATION),
+                Reading::Panel => panel::panel(clusters, w, h, &frame.line),
+                Reading::OutlinedOverRing => {
+                    ink::outlined_over_ring(clusters, w, h, &frame.line, radius)
+                }
+            };
+            choices.extend(judge(&frame, clusters, selection, reading, trace));
+        }
+        if let Some(found) = best(choices) {
+            chosen = Some(found);
+        }
+    }
+    let (index, chosen) = chosen.ok_or(UNSEPARATED)?;
+    trace.partitions[index].chosen = true;
     let view = Window {
         pixels: &crop,
         lab: &lab,
@@ -140,18 +203,18 @@ pub(super) fn segment(
         core: &chosen.selection.core,
         ink: &chosen.ink,
     };
-    let style = style::measure(&view, line_height);
+    let style = style::measure(&view, areas.line_height);
     let furigana = match style::roles(&view) {
-        (fill, Some(outline)) if chosen.selection.panel.is_none() => reach::furigana(
+        (fill, Some(outline)) if areas.ruby.is_empty() => reach::furigana(
             plate,
             chosen.clusters,
             (fill, outline),
             frame.placement,
-            line_height,
+            areas.line_height,
         ),
         _ => Vec::new(),
     };
-    let mut mask = GrayImage::new(plate_rect.width, plate_rect.height);
+    let mut mask = GrayImage::new(areas.plate.width, areas.plate.height);
     for (i, _) in chosen.ink.iter().enumerate().filter(|(_, ink)| **ink) {
         let (x, y) = ((i as u32) % w, (i as u32) / w);
         mask.put_pixel(ox + x, oy + y, Luma([255]));
@@ -159,8 +222,17 @@ pub(super) fn segment(
     for &(x, y) in chosen.clipped.iter().chain(&furigana) {
         mask.put_pixel(x, y, Luma([255]));
     }
-    dilate_mut(&mut mask, Norm::L2, radius);
-    Ok(Segmentation { mask, style })
+    let ink_colours = complete::InkColours {
+        clusters: chosen.clusters,
+        ink: &chosen.selection.ink,
+        style: &style,
+    };
+    let completed = complete::complete(plate, mask, areas, &ink_colours, radius, trace)?;
+    Ok(Segmentation {
+        mask: completed.mask,
+        lettering: completed.lettering,
+        style,
+    })
 }
 
 /// Pixels of the window's outer border ring.
@@ -177,29 +249,46 @@ pub(super) fn dilation_radius(line_height: f64) -> u8 {
 
 /// Of the choices whose split is nearly as clean as the cleanest, the one whose ink covers most
 /// of the quad; the first on ties. A cleaner split keeps picture colours out of the ink, and more
-/// coverage keeps the writing's own edges in it.
-fn best<'a>(choices: impl Iterator<Item = Choice<'a>>) -> Option<Choice<'a>> {
-    let choices: Vec<Choice<'a>> = choices.collect();
+/// coverage keeps the writing's own edges in it. Choices carry their trace index.
+fn best<'a>(choices: Vec<(usize, Choice<'a>)>) -> Option<(usize, Choice<'a>)> {
     let cleanest = choices
         .iter()
-        .map(|c| c.selection.score)
+        .map(|(_, c)| c.selection.score)
         .fold(f32::NEG_INFINITY, f32::max);
     choices
         .into_iter()
-        .filter(|c| c.selection.score >= CLEAN_ENOUGH * cleanest)
-        .fold(None, |best: Option<Choice<'a>>, next| match best {
-            Some(b) if b.covered >= next.covered => Some(b),
+        .filter(|(_, c)| c.selection.score >= CLEAN_ENOUGH * cleanest)
+        .fold(None, |best: Option<(usize, Choice<'a>)>, next| match best {
+            Some(b) if b.1.covered >= next.1.covered => Some(b),
             _ => Some(next),
         })
 }
 
-/// The selection's kept ink and clipped strokes, when they cover a plausible share of the quad,
-/// the box does not cut most of the writing off and one piece is glyph-sized.
+/// The selection's kept ink, furigana and clipped strokes, when they cover a plausible share of
+/// the quad, the box does not cut most of the writing off and one piece is glyph-sized. The
+/// figures go to `trace`; a passing choice carries its trace index.
 fn judge<'a>(
     frame: &Frame<'_>,
     clusters: &'a Clusters,
-    selection: Selection,
-) -> Option<Choice<'a>> {
+    selection: Option<Selection>,
+    reading: Reading,
+    trace: &mut Trace,
+) -> Option<(usize, Choice<'a>)> {
+    let index = trace.partitions.len();
+    let mut judgement = Judgement {
+        reading,
+        colours: clusters.centres.len(),
+        separation: None,
+        coverage: 0.0,
+        cut_share: 0.0,
+        largest_piece: 0,
+        failure: Some(NO_INK),
+        chosen: false,
+    };
+    let Some(selection) = selection else {
+        trace.partitions.push(judgement);
+        return None;
+    };
     let (ox, oy, w, h) = frame.placement;
     let eligible: Vec<u8> = clusters
         .labels
@@ -207,8 +296,14 @@ fn judge<'a>(
         .zip(&selection.pixels)
         .map(|(&l, &p)| if p { l + 1 } else { 0 })
         .collect();
-    let kept = kept_ink(&eligible, w, h, frame.least);
-    let clipped = reach::clipped_strokes(
+    let mut ink = kept_ink(&eligible, w, h, frame.least);
+    for (i, r) in ruby_ink(&eligible, &frame.ruby, w, h, frame.least)
+        .into_iter()
+        .enumerate()
+    {
+        ink[i] |= r;
+    }
+    let mut clipped = reach::clipped_strokes(
         frame.plate,
         clusters,
         &selection.ink,
@@ -216,14 +311,28 @@ fn judge<'a>(
         MIN_STROKE_REACH_PX.max(STROKE_REACH_SHARE * frame.line_height),
         frame.least,
     );
-    let mut ink = kept;
     for &(x, y) in &clipped {
         let (wx, wy) = (x.wrapping_sub(ox), y.wrapping_sub(oy));
         if wx < w && wy < h {
             ink[(wy * w + wx) as usize] = true;
         }
     }
-    let quad = frame.inside.iter().filter(|&&i| i).count();
+    for (i, unwrapped) in selection.unwrapped.iter().enumerate() {
+        ink[i] &= !unwrapped;
+    }
+    for (i, border) in frames(&ink, w, h, frame.line_height)
+        .into_iter()
+        .enumerate()
+    {
+        ink[i] &= !border;
+    }
+    if frame.loose {
+        for (i, beside) in apart(&ink, &frame.line, w, h).into_iter().enumerate() {
+            ink[i] &= !beside;
+        }
+    }
+    clipped = still_attached(&clipped, &ink, frame.placement);
+    let quad = frame.line.iter().filter(|&&i| i).count();
     let covered = count_inside(&ink, &frame.inside);
     let depth = (2 * RING).max((CUT_DEPTH_SHARE * frame.line_height).round() as u32);
     let on_panel = |i: usize| {
@@ -232,24 +341,88 @@ fn judge<'a>(
             .panel
             .is_none_or(|(l, t, r, b)| x >= l && x < r && y >= t && y < b)
     };
-    let cut = cut_pieces(&eligible, &ink, (w, h), frame.least, depth)
+    let cuts = cut_pieces(&eligible, &ink, (w, h), frame.least, depth);
+    let cut = cuts
         .iter()
         .zip(&frame.inside)
         .enumerate()
         .filter(|(i, (c, q))| **c && **q && on_panel(*i))
         .count();
-    let share = covered as f64 / quad.max(1) as f64;
-    let plausible = quad > 0
-        && (MIN_COVERAGE..=MAX_COVERAGE).contains(&share)
-        && cut as f64 <= MAX_CUT_SHARE * (cut + covered) as f64
-        && f64::from(largest_piece(&ink, w, h)) >= MIN_GLYPH_SHARE * frame.line_height;
-    plausible.then_some(Choice {
-        clusters,
-        selection,
-        ink,
-        clipped,
-        covered,
-    })
+    judgement.separation = Some(selection.score);
+    judgement.coverage = count_inside(&ink, &frame.line) as f64 / quad.max(1) as f64;
+    judgement.cut_share = cut as f64 / (cut + covered).max(1) as f64;
+    judgement.largest_piece = largest_piece(&ink, w, h);
+    let plausible = if reading == Reading::DenseOutlined {
+        judgement.coverage > MAX_COVERAGE && judgement.coverage <= MAX_OUTLINED_COVERAGE
+    } else {
+        (MIN_COVERAGE..=MAX_COVERAGE).contains(&judgement.coverage)
+    };
+    judgement.failure = if quad == 0 || !plausible {
+        Some(IMPLAUSIBLE_COVERAGE)
+    } else if cut as f64 > MAX_CUT_SHARE * (cut + covered) as f64 {
+        Some(CUT_OFF)
+    } else if f64::from(judgement.largest_piece) < MIN_GLYPH_SHARE * frame.line_height {
+        Some(NO_GLYPH)
+    } else {
+        None
+    };
+    let passed = judgement.failure.is_none();
+    trace.partitions.push(judgement);
+    passed.then_some((
+        index,
+        Choice {
+            clusters,
+            selection,
+            ink,
+            clipped,
+            covered,
+        },
+    ))
+}
+
+/// The clipped stroke pixels (plate coordinates) still joined to window `ink`: those inside the
+/// window that are ink, and those outside 8-connected to them through clipped pixels.
+fn still_attached(
+    clipped: &[(u32, u32)],
+    ink: &[bool],
+    (ox, oy, w, h): reach::Placement,
+) -> Vec<(u32, u32)> {
+    let inside = |(x, y): (u32, u32)| {
+        let (wx, wy) = (x.wrapping_sub(ox), y.wrapping_sub(oy));
+        (wx < w && wy < h).then(|| (wy * w + wx) as usize)
+    };
+    let offered: HashSet<(u32, u32)> = clipped.iter().copied().collect();
+    let mut kept: HashSet<(u32, u32)> = clipped
+        .iter()
+        .copied()
+        .filter(|&p| inside(p).is_some_and(|i| ink[i]))
+        .collect();
+    let mut queue: Vec<(u32, u32)> = kept.iter().copied().collect();
+    while let Some((x, y)) = queue.pop() {
+        for (dx, dy) in [
+            (-1i64, -1i64),
+            (0, -1),
+            (1, -1),
+            (-1, 0),
+            (1, 0),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
+        ] {
+            let (nx, ny) = (i64::from(x) + dx, i64::from(y) + dy);
+            let Ok(next) = u32::try_from(nx).and_then(|nx| Ok((nx, u32::try_from(ny)?))) else {
+                continue;
+            };
+            if offered.contains(&next) && inside(next).is_none() && kept.insert(next) {
+                queue.push(next);
+            }
+        }
+    }
+    clipped
+        .iter()
+        .copied()
+        .filter(|p| kept.contains(p))
+        .collect()
 }
 
 fn count_inside(pixels: &[bool], inside: &[bool]) -> usize {
@@ -260,88 +433,16 @@ fn count_inside(pixels: &[bool], inside: &[bool]) -> usize {
         .count()
 }
 
-/// Pixels of single-colour ink pieces (`colours`: cluster plus one, zero for none) of at least
-/// `least` pixels that the window border cuts and that reach `depth` pixels into the window,
-/// other than the ink already followed past the border. Pieces the box edge only grazes are
-/// picture around the writing.
-fn cut_pieces(
-    colours: &[u8],
-    ink: &[bool],
-    (w, h): (u32, u32),
-    least: usize,
-    depth: u32,
-) -> Vec<bool> {
-    let (sizes, touches, components) = pieces(colours, w, h);
-    let mut deep = vec![false; sizes.len()];
-    for (i, &id) in components.iter().enumerate() {
-        let (x, y) = ((i as u32) % w, (i as u32) / w);
-        deep[id] |= x.min(y).min(w - 1 - x).min(h - 1 - y) >= depth;
-    }
-    components
-        .iter()
-        .zip(ink)
-        .map(|(&id, &followed)| {
-            id != 0 && touches[id] && deep[id] && sizes[id] >= least && !followed
-        })
-        .collect()
-}
-
-/// The longest bounding-box side of any 8-connected piece of `pixels`.
-fn largest_piece(pixels: &[bool], w: u32, h: u32) -> u32 {
-    let codes: Vec<u8> = pixels.iter().map(|&p| u8::from(p)).collect();
-    let (sizes, _, components) = pieces(&codes, w, h);
-    let mut bounds = vec![(u32::MAX, u32::MAX, 0u32, 0u32); sizes.len()];
-    for (i, &id) in components.iter().enumerate().filter(|(_, id)| **id != 0) {
-        let (x, y) = ((i as u32) % w, (i as u32) / w);
-        let b = &mut bounds[id];
-        *b = (b.0.min(x), b.1.min(y), b.2.max(x + 1), b.3.max(y + 1));
-    }
-    bounds
-        .iter()
-        .skip(1)
-        .map(|&(l, t, r, b)| r.saturating_sub(l).max(b.saturating_sub(t)))
-        .max()
-        .unwrap_or(0)
-}
-
-/// 8-connected pieces of equal non-zero `codes`: each piece's size and whether it touches the
-/// window border, indexed by piece id, and every pixel's piece id (0 for none).
-fn pieces(codes: &[u8], w: u32, h: u32) -> (Vec<usize>, Vec<bool>, Vec<usize>) {
-    let image = GrayImage::from_fn(w, h, |x, y| Luma([codes[(y * w + x) as usize]]));
-    let components = connected_components(&image, Connectivity::Eight, Luma([0u8]));
-    let count = components.pixels().map(|p| p.0[0]).max().unwrap_or(0) as usize;
-    let mut sizes = vec![0usize; count + 1];
-    let mut touches = vec![false; count + 1];
-    let ids: Vec<usize> = components.pixels().map(|p| p.0[0] as usize).collect();
-    for (i, &id) in ids.iter().enumerate() {
-        let (x, y) = ((i as u32) % w, (i as u32) / w);
-        sizes[id] += 1;
-        touches[id] |= x == 0 || y == 0 || x + 1 == w || y + 1 == h;
-    }
-    (sizes, touches, ids)
-}
-
-/// Pixels of single-colour ink pieces (`colours`: cluster plus one, zero for none) of at least
-/// `least` pixels clear of the window border.
-fn kept_ink(colours: &[u8], w: u32, h: u32, least: usize) -> Vec<bool> {
-    let (sizes, touches, ids) = pieces(colours, w, h);
-    ids.iter()
-        .map(|&id| id != 0 && sizes[id] >= least && !touches[id])
-        .collect()
-}
-
-/// Per window pixel, whether its centre lies inside the quad.
-fn in_quad(window: PixelRect, quad: Quad) -> Vec<bool> {
+/// Per pixel of `window`, whether its centre lies inside any of `quads`.
+fn in_quads(window: job_model::onscreen::PixelRect, quads: &[Quad]) -> Vec<bool> {
     (0..window.height)
         .flat_map(|y| (0..window.width).map(move |x| (x, y)))
         .map(|(x, y)| {
-            geometry::contains(
-                quad,
-                Point {
-                    x: f64::from(window.x + x) + 0.5,
-                    y: f64::from(window.y + y) + 0.5,
-                },
-            )
+            let centre = Point {
+                x: f64::from(window.x + x) + 0.5,
+                y: f64::from(window.y + y) + 0.5,
+            };
+            quads.iter().any(|&quad| geometry::contains(quad, centre))
         })
         .collect()
 }

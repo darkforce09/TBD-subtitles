@@ -8,13 +8,15 @@
 //! `latin-fonts` model folder; patches and previews under `visual/patches/<id>/`.
 //! **Invariants:** only `Pending` occurrences change; each ends `Baked` with a patch on every
 //! plate or `Fallback` with a reason and no patches; members of one container keep their
-//! original size ratio; output is deterministic.
+//! original size ratio; no two occurrences on screen together are lettered over one sign;
+//! output is deterministic.
 
 mod bake;
 mod colours;
 mod containers;
 mod font;
 mod layout;
+mod overlap;
 mod patch;
 mod render;
 mod warp;
@@ -28,8 +30,11 @@ use job_model::onscreen::{
 };
 
 use self::containers::Member;
+pub(crate) use self::containers::{keyframe_frame, plate_at, plate_quad};
 use self::font::{FontMetrics, LetteringFont};
 use self::layout::{Area, Layout};
+use self::overlap::{COVERED, Claim};
+use super::found_by_claude;
 use crate::onscreen_text::TextResult;
 
 /// The smallest cap height, in pixels of a 1080-line frame, that stays readable.
@@ -76,6 +81,27 @@ pub fn compose(
             }
         }
     }
+    let claims: Vec<Claim> = prepared
+        .iter()
+        .map(|ready| Claim {
+            first_frame: ready.member.first_frame,
+            last_frame: ready.member.last_frame,
+            quad: ready.quad,
+            found_by_claude: found_by_claude(&document.texts[ready.index].id),
+        })
+        .collect();
+    let covered = overlap::covered(&claims);
+    let mut kept = Vec::with_capacity(prepared.len());
+    for (ready, covered) in prepared.into_iter().zip(covered) {
+        if covered {
+            bake::fall_back(root, &mut document.texts[ready.index], COVERED.to_string())?;
+            done += 1;
+            progress(done, total);
+        } else {
+            kept.push(ready);
+        }
+    }
+    let prepared = kept;
     let members: Vec<Member> = prepared.iter().map(|ready| ready.member).collect();
     for group in containers::group(&members) {
         if group.len() > 1 {
@@ -107,7 +133,8 @@ pub(crate) struct Prepared {
     pub index: usize,
     pub english: String,
     pub style: LetteringStyle,
-    /// The writing's quad at the keyframe, in source pixels.
+    /// Where the English goes at the keyframe, in source pixels: the refitted lettering area of a
+    /// loose box, else the tracked quad.
     pub quad: Quad,
     pub area: Area,
     /// The frame index of the keyframe.
@@ -139,9 +166,10 @@ fn prepare(
     if item.plates.is_empty() {
         return Err("The writing has no background plates".to_string());
     }
-    let quad = containers::keyframe_frame(occurrence)
+    let tracked = containers::keyframe_frame(occurrence)
         .map(|frame| frame.quad)
         .ok_or("The writing has no tracked position at its keyframe")?;
+    let quad = item.lettering_quad.filter(|q| q.valid()).unwrap_or(tracked);
     Ok(Prepared {
         index: 0,
         area: containers::rectified(quad),

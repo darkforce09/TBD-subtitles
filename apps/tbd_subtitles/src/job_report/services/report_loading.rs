@@ -1,7 +1,7 @@
 //! A finished job's report read from its work directory: `job.json`, `qc.json`, `output.json`,
 //! the owner's `review.json`, Fix It's `fix.json`, and for a localized video
-//! `visual/localized_video.json` and `visual/text_compose.json`; and the summary its sidebar row
-//! shows.
+//! `visual/localized_video.json` and `visual/text_verify.json` (`visual/text_compose.json` in a job
+//! from before the read-back check); and the summary its sidebar row shows.
 //!
 //! **Role:** find the video's work directory as the pipeline names it, read its files, and count
 //! its problems and lines worth a listen through `line_counts`, and what Fix It did through
@@ -103,9 +103,9 @@ pub(crate) fn summary(video: &Path, work_root: &Path) -> Result<RowSummary, Stri
 }
 
 /// What the localized video left, when the job in `work_dir` writes one: the occurrences drawn
-/// into it once its steps ran (from its record, else from the composed replacements), and its
-/// video and subtitle file while they are there. A missing or broken record counts as not
-/// written.
+/// into it once its steps ran (from its record, else from the replacements the read-back check
+/// approved, else from the composed ones), and its video and subtitle file while they are there.
+/// A missing or broken record counts as not written.
 fn localized(
     work_dir: &Path,
     record: &JobRecord,
@@ -123,9 +123,10 @@ fn localized(
         Some(written) if record.steps.contains_key(&StepName::LocalizedVideo) => {
             Some(written.replaced)
         }
-        _ => read::<ReplacementDocument>(&work.text(StepName::TextCompose))
-            .ok()
-            .filter(|_| record.steps.contains_key(&StepName::TextCompose))
+        _ => [StepName::TextVerify, StepName::TextCompose]
+            .into_iter()
+            .filter(|step| record.steps.contains_key(step))
+            .find_map(|step| read::<ReplacementDocument>(&work.text(step)).ok())
             .map(|document| document.baked().count()),
     };
     let present = |path: Option<String>| path.map(PathBuf::from).filter(|path| path.is_file());

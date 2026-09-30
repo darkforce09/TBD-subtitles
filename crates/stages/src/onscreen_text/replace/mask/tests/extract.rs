@@ -414,3 +414,86 @@ fn a_rerun_clears_stale_mask_folders() {
     assert!(result.texts.is_empty());
     assert!(!stale.exists());
 }
+
+#[test]
+fn a_loose_claude_box_is_widened_and_its_lettering_refitted_to_the_ink() {
+    let root = job_dir("claude-box");
+    let glyphs = Glyphs::row(200, 160, 2);
+    let (l, t, r, b) = glyphs.bounds();
+    // Claude's box: shifted down and cutting through the last character.
+    let loose = super::fixtures::rect_quad(
+        l as f64 - 6.0,
+        t as f64 + 6.0,
+        r as f64 - 12.0,
+        b as f64 + 10.0,
+    );
+    let paint = glyphs.clone();
+    let mut source = Scripted::new(3, SIZE, move |_, x, y| {
+        paint.paint(x, y, Background::Flat.at(x, y))
+    });
+    let text = document(vec![
+        still_occurrence("sign-c1", loose, 0, 2),
+        still_occurrence("sign", glyphs.quad(4.0), 0, 2),
+    ]);
+    let result = run(&text, &mut source, &root);
+    let claude = &result.texts[0];
+    assert_eq!(claude.status, ReplaceStatus::Pending);
+    let (ql, qt, qr, qb) = claude.lettering_quad.expect("a refitted area").bounds();
+    for (got, want) in [(ql, l), (qt, t), (qr, r), (qb, b)] {
+        assert!((got - want as f64).abs() <= 1.0, "{got} against {want}");
+    }
+    let mask = read_mask(&root, &claude.plates[0].mask);
+    let rect = claude.plates[0].rect;
+    let at = |x: i64, y: i64| {
+        mask.get_pixel(
+            (x - i64::from(rect.x)) as u32,
+            (y - i64::from(rect.y)) as u32,
+        )
+        .0[0]
+    };
+    assert_eq!(
+        at(r - 8, t + 3),
+        255,
+        "the character the box cuts off is erased"
+    );
+    assert_eq!(result.texts[1].status, ReplaceStatus::Pending);
+    assert_eq!(result.texts[1].lettering_quad, None);
+}
+
+#[test]
+fn a_still_sign_whose_boxes_jitter_and_that_a_streak_crosses_stays_still() {
+    let root = job_dir("jitter");
+    let glyphs = Glyphs::row(200, 160, 2);
+    let paint = glyphs.clone();
+    let mut source = Scripted::new(24, SIZE, move |index, x, y| {
+        let streak = (index == 3 || index == 5) && (x + 2 * y) % 23 < 3;
+        if streak && (190..360).contains(&x) && (150..200).contains(&y) {
+            return [250, 250, 250];
+        }
+        paint.paint(x, y, Background::Flat.at(x, y))
+    });
+    let (l, t, r, b) = glyphs.quad(4.0).bounds();
+    let clipped = super::fixtures::rect_quad(l + 38.0, t - 2.0, r + 1.0, b);
+    let samples: Vec<(f64, f64, Quad)> = (0..24u64)
+        .step_by(4)
+        .map(|f| {
+            let quad = if f == 8 { glyphs.quad(4.0) } else { clipped };
+            (f as f64 / FPS, (f + 4) as f64 / FPS, quad)
+        })
+        .collect();
+    let item = occurrence("j", &samples, 10.5 / FPS);
+    let result = run(&document(vec![item]), &mut source, &root);
+    let text = &result.texts[0];
+    assert_eq!(text.status, ReplaceStatus::Pending);
+    assert!(
+        text.plates
+            .iter()
+            .all(|p| p.shift == [0.0, 0.0] && p.scale == 1.0 && p.mask.ends_with("mask.png")),
+        "{:?}",
+        text.plates
+    );
+    assert!(
+        text.plates.len() >= 2,
+        "the streak starts plates of its own"
+    );
+}

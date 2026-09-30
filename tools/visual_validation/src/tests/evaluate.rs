@@ -108,6 +108,7 @@ fn actual(expected: &Expected) -> TextOccurrence {
         reviewed: false,
         rendered: Some(true),
         keyframe: None,
+        ruby: Vec::new(),
     }
 }
 

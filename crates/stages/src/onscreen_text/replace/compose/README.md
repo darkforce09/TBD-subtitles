@@ -15,6 +15,7 @@ crates/stages/src/onscreen_text/replace/compose/
 ├── font.rs        the Noto Sans variable font: metrics per width and weight, glyph paths
 ├── layout.rs      line breaking, size and width-axis fitting, line placement, shared scale
 ├── mod.rs         the compose entry point: preparation, containers, fitting and fallbacks
+├── overlap.rs     one replacement per sign: which of two occurrences covering one sign is kept
 ├── patch.rs       feathered masks, lettering over the plate, the preview and atomic PNG writes
 ├── render.rs      supersampled tiny-skia rasterizing with outline under fill and soft outlines
 ├── warp.rs        inverse-homography bilinear warp of the canvas onto a plate
@@ -25,9 +26,16 @@ crates/stages/src/onscreen_text/replace/compose/
 
 `compose` opens `NotoSans.ttf` from the `latin-fonts` model folder; a missing or unreadable font
 is an error. Each `Pending` occurrence takes its English from the reviewed text document and its
-keyframe quad from the tracked frame whose interval holds the keyframe time (else the nearest).
+keyframe quad from the tracked frame whose interval holds the keyframe time (else the nearest);
+a loose Claude box letters in the `lettering_quad` the mask step refitted to its ink instead.
 Missing English, an unmeasured style, no plates, no tracked position or a character the font
 cannot draw make it fall back with a reason.
+
+Of the occurrences left, two on screen together whose lettering areas overlap by an intersection
+over union of at least 0.3, or where one covers at least half of the other, are one sign lettered
+twice. The one kept is the detector's before Claude's (an id ending in `-c` and a number), then
+the longer on screen, then the larger, then the earlier in the document; the other falls back as
+"Another replacement covers this writing", so no two patches are ever drawn over one sign.
 
 Occurrences on screen together whose keyframe quads, each grown by one original line height,
 touch form one container (union-find in document order); every member records the first

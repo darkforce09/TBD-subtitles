@@ -40,6 +40,7 @@ fn text(id: &str, status: ReplaceStatus, plates: Vec<Plate>) -> ReplacedText {
         container: None,
         plates,
         preview: None,
+        lettering_quad: None,
     }
 }
 

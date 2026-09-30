@@ -91,3 +91,34 @@ fn the_bit_depth_follows_the_frame_format() {
     assert_eq!(Conversion::of(&hd, PixelFormat::Yuv420p).bits, 8);
     assert_eq!(Conversion::of(&hd, PixelFormat::Yuv420p10le).bits, 10);
 }
+
+#[test]
+fn rgb_inverts_the_conversion_in_every_matrix_range_and_depth() {
+    for matrix in [Matrix::Bt709, Matrix::Bt601, Matrix::Bt2020] {
+        for range in [Range::Limited, Range::Full] {
+            for bits in [8, 10] {
+                let conversion = Conversion {
+                    matrix,
+                    range,
+                    bits,
+                };
+                for rgb in [
+                    [0, 0, 0],
+                    [255, 255, 255],
+                    [255, 0, 0],
+                    [0, 255, 0],
+                    [0, 0, 255],
+                    [200, 120, 40],
+                ] {
+                    let back = conversion.rgb(conversion.samples(rgb));
+                    for (a, b) in back.iter().zip(rgb) {
+                        assert!(
+                            a.abs_diff(b) <= 2,
+                            "{matrix:?} {range:?} {bits}: {rgb:?} came back {back:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

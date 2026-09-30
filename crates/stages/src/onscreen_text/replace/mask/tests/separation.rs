@@ -11,7 +11,9 @@ use super::super::cluster::{distance, lab};
 use super::super::fixtures::{
     Card, FILL, Glyphs, OUTLINE, busy, iou, layered, plate_of, rect_quad,
 };
-use super::{Segmentation, UNSEPARATED, dilation_radius, segment};
+use super::super::fixtures::{segment_line as segment, segment_with_ruby};
+use super::super::{Reading, Trace};
+use super::{Segmentation, UNSEPARATED, dilation_radius};
 
 /// The name card of the fixtures: a translucent panel over the busy picture.
 const CARD: Card = Card {
@@ -208,4 +210,124 @@ fn a_picture_filling_the_box_is_not_writing() {
         segment(&image, plate, window, quad, 140.0).err(),
         Some(UNSEPARATED)
     );
+}
+
+/// A title line whose detector box clips the furigana above it and the next line's furigana
+/// below it: rows of small outlined readings straddling both edges of the box.
+fn clipped_title() -> (Glyphs, Glyphs, Glyphs) {
+    let line = Glyphs::row(200, 170, 3);
+    let readings = |top: i64| {
+        let pairs: Vec<Glyphs> = (0..4)
+            .map(|c| Glyphs::small_row(202 + 38 * c, top, 2, 2))
+            .collect();
+        Glyphs {
+            strokes: pairs.iter().flat_map(|g| g.strokes.clone()).collect(),
+            outline: 2,
+        }
+    };
+    (line, readings(150), readings(208))
+}
+
+#[test]
+fn a_title_card_whose_box_clips_its_furigana_reads_as_lettering_once_they_are_folded_in() {
+    let (line, above, below) = clipped_title();
+    let paint = |x, y| layered(&[&line, &above, &below], x, y, CARD.over(x, y, busy(x, y)));
+    let quad = line.quad(4.0);
+    let (image, plate, _) = plate_of(quad, &paint);
+    let height = 44.0;
+    let lettering_passes = |trace: &Trace| {
+        trace
+            .partitions
+            .iter()
+            .any(|j| j.reading == Reading::Lettering && j.failure.is_none())
+    };
+
+    let mut plain = Trace::default();
+    let _ = segment_with_ruby(&image, plate, quad, &[], height, &mut plain);
+    assert!(
+        !lettering_passes(&plain),
+        "the clipped furigana put the outline on the ring: {:?}",
+        plain.partitions
+    );
+
+    let (l, t, r, b) = above.bounds();
+    let ruby = rect_quad(
+        l as f64 - 1.0,
+        t as f64 - 1.0,
+        r as f64 + 1.0,
+        b as f64 + 1.0,
+    );
+    let mut folded = Trace::default();
+    let result = segment_with_ruby(&image, plate, quad, &[ruby], height, &mut folded)
+        .expect("separated with the furigana folded in");
+    assert!(lettering_passes(&folded), "{:?}", folded.partitions);
+    let radius = dilation_radius(height);
+    let drawn = |x, y| line.at(x, y).is_some() || above.at(x, y).is_some();
+    let score = iou(&result.mask, &truth(plate, radius, &drawn));
+    assert!(score >= 0.8, "mask IoU {score}");
+    for c in 0..8u32 {
+        let x = 202 + 38 * (c / 2) + 14 * (c % 2) + 5;
+        assert!(masked(&result, plate, x, 152), "furigana {c} is erased");
+    }
+    let kept = precision(&result.mask, plate, radius + 2, &drawn);
+    assert!(
+        kept >= 0.9,
+        "the card and the next line's readings stay: {kept}"
+    );
+}
+
+/// Four bold hollow squares, 40 × 40 with 6-pixel strokes and a 3-pixel outline, 50 apart.
+fn bold_squares(left: i64, top: i64) -> Glyphs {
+    let mut strokes = Vec::new();
+    for c in 0..4 {
+        let (l, t) = (left + 50 * c, top);
+        strokes.extend([
+            (l, t, l + 40, t + 6),
+            (l, t + 34, l + 40, t + 40),
+            (l, t, l + 6, t + 40),
+            (l + 34, t, l + 40, t + 40),
+        ]);
+    }
+    Glyphs {
+        strokes,
+        outline: 3,
+    }
+}
+
+/// The outline alone passes as plain lettering, but the fill and outline together cover more of
+/// the tight box than plain lettering may: the dense reading erases and measures both.
+#[test]
+fn bold_outlined_lettering_filling_a_tight_box_reads_as_dense_lettering() {
+    let line = bold_squares(150, 150);
+    let quad = line.quad(1.0);
+    let sky = [110, 170, 225];
+    let (image, plate, _) = plate_of(quad, &|x, y| layered(&[&line], x, y, sky));
+    let height = 48.0;
+    let mut trace = Trace::default();
+    let result = segment_with_ruby(&image, plate, quad, &[], height, &mut trace).expect("dense");
+    let chosen = trace.partitions.iter().find(|j| j.chosen).expect("chosen");
+    assert_eq!(
+        chosen.reading,
+        Reading::DenseOutlined,
+        "{:?}",
+        trace.partitions
+    );
+    assert!(chosen.coverage > 0.55, "{chosen:?}");
+    assert!(
+        trace
+            .partitions
+            .iter()
+            .any(|j| j.reading == Reading::Lettering && j.failure.is_none())
+    );
+    let radius = dilation_radius(height);
+    let drawn = |x, y| line.at(x, y).is_some();
+    let score = iou(&result.mask, &truth(plate, radius, &drawn));
+    assert!(score >= 0.8, "mask IoU {score}");
+    assert!(
+        delta_e(result.style.fill_rgb, FILL) <= 10.0,
+        "{:?}",
+        result.style
+    );
+    let outline = result.style.outline_rgb.expect("an outline");
+    assert!(delta_e(outline, OUTLINE) <= 10.0, "{:?}", result.style);
 }

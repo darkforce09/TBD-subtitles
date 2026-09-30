@@ -68,13 +68,14 @@ and peak memory in the job report.
 | text_mask | on-screen text | worker, `tbd-subtitles` (CPU; FFmpeg region crops) | `visual/text_mask.json`, `visual/masks/` |
 | text_inpaint | on-screen text | worker, `tbd-subtitles` (ONNX Runtime) | `visual/text_inpaint.json`, `visual/plates/` |
 | text_compose | on-screen text | worker, `tbd-subtitles` (CPU) | `visual/text_compose.json`, `visual/patches/` |
-| text_typeset | on-screen text | worker, `tbd-subtitles` (CPU) | `visual/text_typeset.json`, `visual/events.ass`, `visual/events_localized.ass` |
+| text_verify | on-screen text | worker, `tbd-subtitles` (ONNX Runtime; FFmpeg region crops) | `visual/text_verify.json` |
+| text_typeset | on-screen text | worker, `tbd-subtitles` (CPU) | `visual/text_typeset.json`, `visual/events.ass` |
 | qc | 10 | job runner | `qc.json` |
 | output | 11 | job runner | `<video base name>.srt` (or `.vtt`, `.ass`), `<video base name>.localized.ass`, `output.json` |
 | localized_video | localized video | worker, `tbd-subtitles` (FFmpeg decoder and NVENC encoder) | `<video base name>.localized.mkv`, `visual/localized_video.json` |
 
-The 28 steps run in this order. The four replacement steps (`text_mask`, `text_inpaint`,
-`text_compose`, `localized_video`) do work only when the job's
+The 29 steps run in this order. The five replacement steps (`text_mask`, `text_inpaint`,
+`text_compose`, `text_verify`, `localized_video`) do work only when the job's
 [localized video](/documentation/glossary.md#localized-video) setting is on; otherwise they, like
 the other on-screen text steps with translation off, write empty outputs and load nothing.
 
@@ -286,17 +287,22 @@ and one row per step with its time, load, processing, peak RAM, peak child RAM a
   `backup/`, so one subtitle file stays beside the video. `output.json` records the path, the
   backup and the moved file.
 - With the localized video on, the step also writes `<video base name>.localized.ass`: the same
-  dialogue and sound cues with only the on-screen English not drawn into the video, backed up
-  the same way; `output.json` records it as `localized`.
+  dialogue and sound cues and no on-screen text at all, backed up the same way; `output.json`
+  records it as `localized`. The step reads `visual/text_verify.json` and
+  `visual/text_typeset.json` for it: each sampled frame of each occurrence drawn into the video,
+  on the ASS canvas and grown by 12 pixels, is writing a cue keeps clear of, and a cue whose box
+  at the bottom meets that writing while both are on screen starts with `{\an8}` and shows at
+  the top ([subtitle style rules](/documentation/architecture/subtitle_style_rules.md#on-screen-text-and-the-localized-video)).
+  A missing `visual/text_verify.json` fails the step.
 - The job report stays in the work directory; the GUI shows it. With the localized video
-  written, `report.md` adds a Localized video section: occurrences replaced, fallbacks, the path
-  and the encoder.
+  written, `report.md` adds a Localized video section: occurrences replaced, occurrences left in
+  Japanese, the path and the encoder.
 
 ## Replacement and the localized video
 
-With on-screen translation and the localized video both on (the default for new jobs), three
+With on-screen translation and the localized video both on (the default for new jobs), four
 steps between `text_review` and `text_typeset` prepare every translated occurrence for drawing
-into the picture, and a last step after `output` writes the video:
+into the picture and approve it, and a last step after `output` writes the video:
 
 - `text_mask` separates the writing's strokes from their background on the keyframe, measures
   their colour and thickness, follows moving writing frame by frame and cuts the span into
@@ -306,16 +312,21 @@ into the picture, and a last step after `output` writes the video:
   LaMa on ONNX Runtime.
 - `text_compose` letters the English onto each filled plate in Noto Sans, fitted to the original
   area and style, and writes one [patch](/documentation/glossary.md#patch) per plate.
-- `text_typeset` then writes, beside the usual events, the events of every occurrence not drawn
-  in, which the output step puts into `<video base name>.localized.ass`.
+- `text_verify` rebuilds a few frames of each lettered occurrence as the localized video will
+  show them and reads them back with PP-OCRv5 on the GPU; an occurrence whose finished picture
+  still shows Japanese, or whose English does not read back, stays Japanese.
+- `text_typeset` writes the usual events for `<video base name>.ass` alone; the localized
+  subtitle file has no on-screen events, and the output step moves its cues clear of the
+  English drawn in.
 - `localized_video` decodes every frame, blends the patches over the frames they cover and
   re-encodes the video with `hevc_nvenc` (libx264 when NVENC cannot run), its peak rate capped
   near the source's, into `<video base name>.localized.mkv` with the source's audio, chapters and
   metadata and no subtitle stream.
 
-An occurrence that cannot be separated, followed or lettered legibly keeps its English in the
-localized subtitle file with the warning `Not replaced in the video: <reason>`. A
-variable-frame-rate video fails the last step; a `.localized.mkv` the job did not write is never
+An occurrence that cannot be separated, followed or lettered legibly, or that fails the read-back
+check, stays Japanese in the localized video; `visual/text_verify.json` keeps the reason, which
+Check Text shows as `Not replaced in the video: <reason>`. A variable-frame-rate video fails the
+last step; a `.localized.mkv` the job did not write is never
 overwritten. Algorithms, files and bounds:
 [video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md).
 

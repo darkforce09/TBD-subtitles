@@ -18,6 +18,7 @@ fn occurrence(id: &str, text: &str, quad: Quad) -> TextOccurrence {
     TextOccurrence {
         source_fingerprint: None,
         keyframe: None,
+        ruby: Vec::new(),
         id: id.into(),
         start_s: 1.0,
         end_s: 2.0,
@@ -55,9 +56,6 @@ fn occurrence(id: &str, text: &str, quad: Quad) -> TextOccurrence {
 fn title() -> TextOccurrence {
     occurrence("title", "運命の再会", rectangle(365.0, 226.0, 912.0, 335.0))
 }
-fn ruby() -> TextOccurrence {
-    occurrence("ruby", "うん", rectangle(381.0, 181.0, 466.0, 230.0))
-}
 fn document(occurrences: Vec<TextOccurrence>) -> TextDocument {
     TextDocument {
         review_warnings: Vec::new(),
@@ -68,171 +66,6 @@ fn document(occurrences: Vec<TextOccurrence>) -> TextDocument {
         decoded_frames: 24,
         occurrences,
     }
-}
-
-#[test]
-fn title_ruby_becomes_evidence_without_changing_its_base_line() {
-    let base = title();
-    let parent_frames = base.frames.clone();
-    let mut input = document(vec![ruby(), base]);
-    group_furigana(&mut input);
-    assert_eq!(input.occurrences.len(), 1);
-    let parent = &input.occurrences[0];
-    assert_eq!(parent.japanese, "運命の再会");
-    assert_eq!(parent.frames, parent_frames);
-    assert_eq!(parent.confidence, 0.98);
-    assert_eq!(
-        parent.crops,
-        vec![
-            PathBuf::from("crops/title.png"),
-            PathBuf::from("crops/ruby.png")
-        ]
-    );
-    assert!(parent.provenance.reason.contains("Furigana evidence ruby"));
-    assert!(parent.provenance.reason.contains("うん"));
-    assert!(parent.warnings.is_empty());
-    group_furigana(&mut input);
-    assert_eq!(input.occurrences[0].crops.len(), 2);
-}
-
-#[test]
-fn namecard_ruby_can_be_uncertain_without_replacing_confident_kanji() {
-    let base = occurrence(
-        "name-title",
-        "コリーダコロシアム専属剣闘士",
-        rectangle(411.0, 676.0, 1241.0, 739.0),
-    );
-    let mut ruby = occurrence(
-        "name-ruby",
-        "せんでくけんどうし",
-        rectangle(940.0, 647.0, 1224.0, 676.0),
-    );
-    ruby.confidence = 0.79;
-    ruby.warnings
-        .push("The local readers could not agree on a confident reading.".into());
-    let mut input = document(vec![base, ruby]);
-    group_furigana(&mut input);
-    assert_eq!(input.occurrences.len(), 1);
-    assert_eq!(
-        input.occurrences[0].japanese,
-        "コリーダコロシアム専属剣闘士"
-    );
-    assert!(
-        input.occurrences[0]
-            .provenance
-            .reason
-            .contains("0.79 confidence")
-    );
-    assert!(input.occurrences[0].warnings.is_empty());
-}
-
-#[test]
-fn separate_furigana_fragments_merge_into_one_base_without_dropping_other_lines() {
-    let mut second = ruby();
-    second.id = "ruby2".into();
-    second.japanese = "めい".into();
-    second.crops = vec![PathBuf::from("crops/ruby2.png")];
-    for frame in &mut second.frames {
-        frame.quad = rectangle(492.0, 184.0, 573.0, 228.0);
-    }
-    let independent = occurrence(
-        "subtitle",
-        "ハイエナのベラミー",
-        rectangle(190.0, 380.0, 1100.0, 490.0),
-    );
-    let mut input = document(vec![title(), ruby(), second, independent]);
-    group_furigana(&mut input);
-    assert_eq!(input.occurrences.len(), 2);
-    assert_eq!(input.occurrences[0].crops.len(), 3);
-    assert_eq!(input.occurrences[1].id, "subtitle");
-}
-
-#[test]
-fn similarly_positioned_text_is_not_grouped_without_kana_and_kanji_evidence() {
-    for (reading, parent) in [
-        ("SOP", "運命の再会"),
-        ("再会", "運命の再会"),
-        ("...", "運命の再会"),
-        ("うん", "ベラミー"),
-    ] {
-        let mut child = ruby();
-        child.japanese = reading.into();
-        let mut base = title();
-        base.japanese = parent.into();
-        let mut input = document(vec![child, base]);
-        group_furigana(&mut input);
-        assert_eq!(input.occurrences.len(), 2, "{reading}/{parent}");
-    }
-}
-
-#[test]
-fn independent_small_labels_away_from_the_base_or_outside_its_timing_survive() {
-    for quad in [
-        rectangle(381.0, 120.0, 466.0, 169.0),
-        rectangle(920.0, 181.0, 1005.0, 230.0),
-        rectangle(381.0, 340.0, 466.0, 389.0),
-    ] {
-        let mut child = ruby();
-        for frame in &mut child.frames {
-            frame.quad = quad;
-        }
-        let mut input = document(vec![title(), child]);
-        group_furigana(&mut input);
-        assert_eq!(input.occurrences.len(), 2);
-    }
-    let mut child = ruby();
-    child.start_s = 2.0;
-    child.end_s = 2.5;
-    child.frames.remove(0);
-    child.frames[0].time_s = 2.0;
-    child.frames[0].end_s = 2.5;
-    let mut input = document(vec![title(), child]);
-    group_furigana(&mut input);
-    assert_eq!(input.occurrences.len(), 2);
-}
-
-#[test]
-fn ruby_may_start_later_and_finish_earlier_with_all_frames_contained() {
-    let mut base = title();
-    base.end_s = 2.5;
-    base.frames.push(TextFrame {
-        time_s: 2.0,
-        end_s: 2.5,
-        ..base.frames[1].clone()
-    });
-    let mut child = ruby();
-    child.start_s = 1.5;
-    child.frames.remove(0);
-    let mut input = document(vec![base, child]);
-    group_furigana(&mut input);
-    assert_eq!(input.occurrences.len(), 1);
-    assert_eq!(
-        (input.occurrences[0].start_s, input.occurrences[0].end_s),
-        (1.0, 2.5)
-    );
-    assert!(
-        input.occurrences[0]
-            .provenance
-            .reason
-            .contains("Furigana evidence ruby")
-    );
-}
-
-#[test]
-fn contained_ruby_uses_contemporary_geometry_and_rejects_parent_gaps() {
-    let mut base = title();
-    base.frames[0].quad = rectangle(1.0, 20.0, 540.0, 129.0);
-    let mut child = ruby();
-    child.start_s = 1.5;
-    child.frames.remove(0);
-    let mut input = document(vec![base, child]);
-    group_furigana(&mut input);
-    assert_eq!(input.occurrences.len(), 1);
-    let mut base = title();
-    base.frames[0].end_s = 1.4;
-    let mut input = document(vec![base, ruby()]);
-    group_furigana(&mut input);
-    assert_eq!(input.occurrences.len(), 2);
 }
 
 fn timed(mut item: TextOccurrence, start: f64, count: usize, frame_s: f64) -> TextOccurrence {
@@ -313,6 +146,53 @@ fn one_frame_gap_can_join_but_larger_gaps_and_known_cuts_cannot() {
     }
 }
 
+/// Frames between timestamps rounded to microseconds, as the detector records them.
+fn rounded(mut item: TextOccurrence, times: &[f64]) -> TextOccurrence {
+    let frame = item.frames[0].clone();
+    item.frames = times
+        .windows(2)
+        .map(|pair| TextFrame {
+            time_s: pair[0],
+            end_s: pair[1],
+            ..frame.clone()
+        })
+        .collect();
+    item.start_s = times[0];
+    item.end_s = times[times.len() - 1];
+    item
+}
+
+#[test]
+fn a_one_frame_gap_between_rounded_timestamps_still_joins_and_leaves_no_hole() {
+    // A sign in Dressrosa 28: one sighting ends at 157.708333, the next starts at 157.75, and
+    // the shortest rounded frame of the episode, at 256 s, sets the frame duration.
+    let first = rounded(title(), &[157.625, 157.666667, 157.708333]);
+    let mut second = rounded(title(), &[157.75, 157.791667, 157.833333]);
+    second.id = "second".into();
+    let mut later = rounded(
+        occurrence("later", "別の看板", rectangle(10.0, 10.0, 200.0, 60.0)),
+        &[256.041667, 256.083333],
+    );
+    later.crops.clear();
+    let frame_s = 256.083333 - 256.041667;
+    assert!(
+        second.start_s - first.end_s > frame_s + 1e-6,
+        "the gap exceeds one frame by rounding alone"
+    );
+    let mut input = document(vec![first, second, later]);
+    consolidate_readings(&mut input, &ShotChanges::default());
+    assert_eq!(input.occurrences.len(), 2);
+    let item = &input.occurrences[0];
+    assert_eq!((item.start_s, item.end_s), (157.625, 157.833333));
+    assert_eq!(item.frames.len(), 4);
+    assert!(
+        item.frames
+            .windows(2)
+            .all(|pair| pair[1].time_s == pair[0].end_s),
+        "the missing frame is covered by the previous sighting"
+    );
+}
+
 #[test]
 fn different_readings_regions_unknowns_and_overlapping_instances_stay_separate() {
     for variant in 0..5 {
@@ -391,7 +271,7 @@ fn fragmented_namecard_consolidates_before_contained_ruby_grouping() {
     );
     let mut input = document(vec![base, name, continuation, ruby, final_ruby]);
     consolidate_readings(&mut input, &ShotChanges::default());
-    group_furigana(&mut input);
+    furigana::group_furigana(&mut input);
     assert_eq!(input.occurrences.len(), 2);
     assert_eq!(input.occurrences[0].crops.len(), 3);
     assert_eq!(input.occurrences[1].frames.len(), 8);
@@ -409,7 +289,7 @@ fn annotated_namecard_pilot_has_two_base_lines_without_losing_unknowns() {
         .map(|item| item.id.clone())
         .collect();
     consolidate_readings(&mut input, &ShotChanges::default());
-    group_furigana(&mut input);
+    furigana::group_furigana(&mut input);
     for item in &input.occurrences {
         println!(
             "{} {:.6}..{:.6} {:?}, {} frames, {} crops",
@@ -439,35 +319,6 @@ fn annotated_namecard_pilot_has_two_base_lines_without_losing_unknowns() {
             .map(|item| item.id.clone())
             .collect::<Vec<_>>()
     );
-}
-
-#[test]
-fn moving_apart_mid_scene_or_ambiguous_overlapping_bases_prevent_grouping() {
-    let mut child = ruby();
-    child.frames[1].quad = rectangle(1000.0, 181.0, 1085.0, 230.0);
-    let mut input = document(vec![title(), child]);
-    group_furigana(&mut input);
-    assert_eq!(input.occurrences.len(), 2);
-    let mut other = title();
-    other.id = "ambiguous-base".into();
-    let mut input = document(vec![title(), other, ruby()]);
-    group_furigana(&mut input);
-    assert_eq!(input.occurrences.len(), 3);
-}
-
-#[test]
-fn vertical_signs_and_tall_single_kana_regions_remain_independent() {
-    let base = occurrence("vertical", "運命", rectangle(380.0, 226.0, 480.0, 600.0));
-    let mut input = document(vec![base, ruby()]);
-    group_furigana(&mut input);
-    assert_eq!(input.occurrences.len(), 2);
-    let mut child = ruby();
-    for frame in &mut child.frames {
-        frame.quad = rectangle(400.0, 150.0, 430.0, 224.0);
-    }
-    let mut input = document(vec![title(), child]);
-    group_furigana(&mut input);
-    assert_eq!(input.occurrences.len(), 2);
 }
 
 #[test]

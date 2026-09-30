@@ -95,6 +95,7 @@ pub(super) fn start_occurrence(document: &mut TextDocument, time: f64, confidenc
         reviewed: false,
         rendered: None,
         keyframe: None,
+        ruby: Vec::new(),
     });
     index
 }

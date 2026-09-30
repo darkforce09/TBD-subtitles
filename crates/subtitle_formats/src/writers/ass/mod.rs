@@ -2,10 +2,11 @@
 //! `H:MM:SS.cc` times.
 //!
 //! **Role:** write a cue track as an ASS script that players such as VLC show like the SRT file:
-//! white text with a black outline at the bottom centre, `\N` between lines, `{\i1}` italics.
+//! white text with a black outline at the bottom centre, `\N` between lines, `{\i1}` italics; for
+//! a localized video, a cue that would cover English lettered into the picture moves to the top.
 //!
-//! **Position:** called by the output step when the owner's output format is ASS; uses
-//! `crate::cue`.
+//! **Position:** called by the output step when the owner's output format is ASS and for the
+//! localized video's subtitle file; uses `crate::cue` and `placement`.
 //!
 //! **Signals and state:** none; returns the file as a string.
 //!
@@ -13,15 +14,26 @@
 //! block, and a backslash before `n`, `N` or `h` is kept apart from the letter by a word joiner
 //! (U+2060) so it is not read as a line break or a hard space.
 
+mod placement;
+
+pub use placement::Obstacle;
+use placement::{Band, band};
+
 use crate::cue::{CueTrack, FrameRate};
 
-/// The script's canvas; font size and margins are in its pixels.
-const PLAY_RES: (u32, u32) = (1920, 1080);
+/// The script's canvas; font size, margins and obstacles are in its pixels.
+pub const PLAY_RES: (u32, u32) = (1920, 1080);
 
 /// The whole file: `[Script Info]`, `[V4+ Styles]` with the `Default` style, and `[Events]` with
 /// one `Dialogue` line per cue; LF line ends, UTF-8. Times are the cue frames rounded to the
 /// nearest centisecond.
 pub fn write(track: &CueTrack) -> String {
+    write_with(track, &[])
+}
+
+/// The file `write` gives, with each cue that would cover one of `obstacles` at the bottom moved
+/// to the top by a leading `{\an8}`, when the top box meets less of the writing.
+pub fn write_with(track: &CueTrack, obstacles: &[Obstacle]) -> String {
     let mut out = format!(
         "[Script Info]\n\
          ScriptType: v4.00+\n\
@@ -54,8 +66,12 @@ pub fn write(track: &CueTrack) -> String {
                 }
             })
             .collect();
+        let moved = match band(cue, track.frame_rate, obstacles) {
+            Band::Bottom => "",
+            Band::Top => "{\\an8}",
+        };
         out.push_str(&format!(
-            "Dialogue: 0,{},{},Default,,0,0,0,,{}\n",
+            "Dialogue: 0,{},{},Default,,0,0,0,,{moved}{}\n",
             timestamp(track.frame_rate, cue.start),
             timestamp(track.frame_rate, cue.end),
             text.join("\\N")

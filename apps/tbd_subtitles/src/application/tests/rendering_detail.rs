@@ -46,8 +46,8 @@ fn a_running_job_shows_its_stage_its_step_and_its_stages() {
         "Dressrosa 16",
         "Cancel",
         "Settling the words",
-        "Now: Language model settles the words · step 9 of 28",
-        "Show all 28 steps",
+        "Now: Language model settles the words · step 9 of 29",
+        "Show all 29 steps",
         "9 stages",
         "Separate the voices",
         "1 min 00 s",
@@ -120,7 +120,7 @@ fn a_running_job_works_out_its_time_left_until_its_length_is_known() {
     let after = Instant::now();
     for expected in [
         "Reading the video",
-        "Now: Read the video's details · step 1 of 28",
+        "Now: Read the video's details · step 1 of 29",
         "Working out the time left…",
     ] {
         assert!(text.contains(expected), "{expected} not in {text}");
@@ -183,7 +183,7 @@ fn a_job_that_failed_before_its_first_step_shows_no_stages() {
     ] {
         assert!(text.contains(expected), "{expected} not in {text}");
     }
-    assert!(!text.contains("Show all 28 steps"), "{text}");
+    assert!(!text.contains("Show all 29 steps"), "{text}");
 }
 
 #[test]

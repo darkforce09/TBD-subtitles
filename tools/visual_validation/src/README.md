@@ -6,16 +6,18 @@ Commands and fail-closed evaluation for local visual pilots.
 
 ```text
 tools/visual_validation/src/
-├── evaluate.rs  coverage, timing and geometry verdicts
-├── main.rs      fetch, still recognition, clip and evaluation commands
-├── pilot.rs     measured six-stage pilots using production workers and resume
-├── scenarios.rs  synthetic Japanese credits, lyric, vertical and brief-text source fixtures
-└── tests/       evaluator regression cases
+├── evaluate.rs      coverage, timing and geometry verdicts
+├── main.rs          fetch, still recognition, clip, evaluation and probe commands
+├── mask_probe.rs    stroke-mask and residue diagnostics on a finished job, and a whole-step rerun
+├── pilot.rs         measured six-stage pilots using production workers and resume
+├── scenarios.rs     synthetic Japanese credits, lyric, vertical and brief-text source fixtures
+├── verify_probe.rs  the read-back check over a finished job, every frame's readings printed
+└── tests/           evaluator regression cases
 ```
 
 ## How it works
 
-Commands use production backends and write explicit outputs. Evaluation matches independent annotations to distinct observed occurrences and checks timing and geometry at source resolution.
+Commands use production backends and write explicit outputs. Evaluation matches independent annotations to distinct observed occurrences and checks timing and geometry at source resolution. The mask and residue probes call the production `replace::mask::diagnose`, `replace::mask::extract` and `replace::inpaint::residue_share` on a finished job's files and source video, on the CPU, and write only under the folder they are given. The verify probe runs the production `replace::verify::verify` with PP-OCRv5 on the GPU over the same files and writes only the regions it read, under `--out`.
 
 ## Boundaries
 

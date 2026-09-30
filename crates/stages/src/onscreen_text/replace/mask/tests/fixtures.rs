@@ -218,6 +218,55 @@ pub(crate) fn plate_of(
     (image, plate_rect, window)
 }
 
+/// Segment one line without furigana inside a detector box: `window` is the analysis window.
+pub(crate) fn segment_line(
+    image: &RgbImage,
+    plate: PixelRect,
+    window: PixelRect,
+    quad: Quad,
+    line_height: f64,
+) -> Result<super::segment::Segmentation, &'static str> {
+    let areas = super::select::Areas {
+        quad,
+        ruby: Vec::new(),
+        window,
+        analysis: window,
+        plate,
+        line_height,
+        refit: false,
+    };
+    super::segment::segment(image, &areas, &mut super::Trace::default())
+}
+
+/// Segment one line inside a detector box with furigana boxes `ruby` folded in: the analysis
+/// window takes in the furigana as extraction's does.
+pub(crate) fn segment_with_ruby(
+    image: &RgbImage,
+    plate: PixelRect,
+    quad: Quad,
+    ruby: &[Quad],
+    line_height: f64,
+    trace: &mut super::Trace,
+) -> Result<super::segment::Segmentation, &'static str> {
+    use super::select;
+    let bounds = ruby.iter().fold(quad.bounds(), |(l, t, r, b), q| {
+        let (ql, qt, qr, qb) = q.bounds();
+        (l.min(ql), t.min(qt), r.max(qr), b.max(qb))
+    });
+    let union = rect_quad(bounds.0, bounds.1, bounds.2, bounds.3);
+    let margin = f64::from(select::ANALYSIS_MARGIN);
+    let areas = select::Areas {
+        quad,
+        ruby: ruby.to_vec(),
+        window: select::around(quad, margin, 640, 360).expect("window"),
+        analysis: select::around(union, margin, 640, 360).expect("analysis"),
+        plate,
+        line_height,
+        refit: false,
+    };
+    super::segment::segment(image, &areas, trace)
+}
+
 /// The first of `layers` drawn at a pixel over `background`: fill before outline.
 pub(crate) fn layered(layers: &[&Glyphs], x: u32, y: u32, background: [u8; 3]) -> [u8; 3] {
     let hits: Vec<Ink> = layers.iter().filter_map(|g| g.at(x, y)).collect();
@@ -329,6 +378,7 @@ impl Background {
 /// A translated, displayable occurrence with one observed frame per `(time_s, end_s, quad)`.
 pub(crate) fn occurrence(id: &str, frames: &[(f64, f64, Quad)], key_time_s: f64) -> TextOccurrence {
     TextOccurrence {
+        ruby: Vec::new(),
         id: id.into(),
         start_s: frames.first().map_or(0.0, |f| f.0),
         end_s: frames.last().map_or(0.0, |f| f.1),

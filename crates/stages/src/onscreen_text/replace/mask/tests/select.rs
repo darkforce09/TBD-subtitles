@@ -1,6 +1,7 @@
 use job_model::onscreen::{PixelRect, Point, Quad, TextFrame};
 
-use super::{around, context_margin, frame_at, is_static, keyframe_quad, line_height, span};
+use super::{areas, around, context_margin, frame_at, is_static, keyframe_quad, line_height, span};
+use crate::onscreen_text::replace::mask::fixtures::still_occurrence;
 
 const FPS: f64 = 24.0;
 
@@ -120,6 +121,43 @@ fn rectangles_grow_by_their_margin_and_stay_in_the_frame() {
         (0, 0, 100, 70)
     );
     assert_eq!(around(quad(700.0, 10.0, 720.0, 20.0), 4.0, 640, 360), None);
+}
+
+#[test]
+fn furigana_widen_the_analysis_window_and_the_plate_but_not_the_line() {
+    let line = quad(100.0, 100.0, 300.0, 140.0);
+    let mut text = still_occurrence("title", line, 0, 1);
+    text.ruby = vec![quad(150.0, 84.0, 190.0, 98.0)];
+    let found = areas(&text, line, 640, 360).expect("areas");
+    assert_eq!(found.quad, line);
+    assert!(!found.refit);
+    assert_eq!((found.window.y, found.window.bottom()), (96, 144));
+    assert_eq!((found.analysis.y, found.analysis.bottom()), (80, 144));
+    assert_eq!((found.analysis.x, found.analysis.right()), (96, 304));
+    assert_eq!(found.plate.y, 84 - 32);
+    assert_eq!(found.line_height, 40.0);
+    assert_eq!(found.unpadded(), None);
+}
+
+#[test]
+fn a_claude_box_is_padded_by_a_third_of_its_height() {
+    let loose = quad(100.0, 100.0, 300.0, 140.0);
+    let text = still_occurrence("title-c2", loose, 0, 1);
+    let found = areas(&text, loose, 640, 360).expect("areas");
+    assert!(found.refit);
+    assert_eq!((found.window.x, found.window.y), (96, 96));
+    assert_eq!((found.analysis.x, found.analysis.y), (82, 82));
+    assert_eq!(
+        (found.analysis.right(), found.analysis.bottom()),
+        (318, 158)
+    );
+    assert_eq!(
+        (found.plate.x, found.plate.y),
+        (100 - 32 - 14, 100 - 32 - 14)
+    );
+    let unpadded = found.unpadded().expect("unpadded areas");
+    assert_eq!(unpadded.analysis, found.window);
+    assert_eq!(unpadded.plate, found.plate);
 }
 
 #[test]

@@ -95,6 +95,7 @@ pub(crate) fn works_in(step: StepName, settings: &JobSettings) -> bool {
         StepName::TextMask
         | StepName::TextInpaint
         | StepName::TextCompose
+        | StepName::TextVerify
         | StepName::LocalizedVideo => text.enabled && text.localized_video,
         step if step.stage() == StageName::OnscreenText => text.enabled,
         _ => true,
@@ -124,6 +125,7 @@ fn expected(rates: &Rates, step: StepName, duration_s: f64) -> f64 {
         StepName::TextMask => 0.05,
         StepName::TextInpaint => 0.1,
         StepName::TextCompose => 0.02,
+        StepName::TextVerify => 0.01,
         StepName::LocalizedVideo => 0.25,
         _ => 0.0,
     };

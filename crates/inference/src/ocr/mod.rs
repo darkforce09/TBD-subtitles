@@ -153,7 +153,9 @@ impl OcrReader {
         })
     }
 
-    pub fn read(&mut self, image: &RgbImage) -> Result<(String, f64), OcrError> {
+    /// The PP-OCRv5 reading alone, with its confidence: Japanese and Latin script alike, never
+    /// the Japanese-only second reader.
+    pub fn read_primary(&mut self, image: &RgbImage) -> Result<(String, f64), OcrError> {
         check_image(image)?;
         let result = self.predictor.predict(vec![image.clone()])?;
         let text = result
@@ -172,6 +174,11 @@ impl OcrReader {
             0.0
         };
         tracing::debug!(model = "PP-OCRv5 reader", text, confidence, "OCR reading");
+        Ok((text, confidence))
+    }
+
+    pub fn read(&mut self, image: &RgbImage) -> Result<(String, f64), OcrError> {
+        let (text, confidence) = self.read_primary(image)?;
         let vertical = f64::from(image.height()) > f64::from(image.width()) * 1.2;
         if !vertical && !text.is_empty() && confidence >= 0.88 {
             return Ok((text, confidence));

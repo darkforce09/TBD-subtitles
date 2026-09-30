@@ -21,6 +21,9 @@ pub(super) const ANALYSIS_MARGIN: u32 = 4;
 const MIN_CONTEXT: f64 = 32.0;
 /// Inpainting context around the quad as a share of its shorter side.
 const CONTEXT_SHARE: f64 = 0.75;
+/// Share of a Claude box's height added on every side before segmentation: Claude's boxes cut
+/// through signs and captions they only roughly enclose.
+pub(super) const CLAUDE_PAD_SHARE: f64 = 0.35;
 
 /// Whether the occurrence's English is shown and could be drawn into the picture.
 pub(super) fn candidate(text: &TextOccurrence) -> bool {
@@ -99,9 +102,76 @@ pub(super) fn is_static(frames: &[TextFrame], key: Quad) -> bool {
     })
 }
 
+/// The rectangles measured around one occurrence's keyframe quad.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct Areas {
+    /// The line's quad at the keyframe: where the English is lettered.
+    pub quad: Quad,
+    /// Furigana folded into the line, erased with it.
+    pub ruby: Vec<Quad>,
+    /// The line's quad plus [`ANALYSIS_MARGIN`]: the tracking template and placement centre.
+    pub window: PixelRect,
+    /// The pixels segmentation examines: the window grown over the furigana and, for a loose
+    /// Claude box, by [`CLAUDE_PAD_SHARE`] of its height.
+    pub analysis: PixelRect,
+    /// The keyframe plate: the analysis window plus the inpainting context.
+    pub plate: PixelRect,
+    pub line_height: f64,
+    /// Whether the lettering area is refitted to the ink found: the quad is a loose box.
+    pub refit: bool,
+}
+
+impl Areas {
+    /// The same areas analysed within the window alone, for a padded loose box whose padding
+    /// took in neighbouring writing or frames; `None` when nothing was padded.
+    pub(super) fn unpadded(&self) -> Option<Areas> {
+        (self.refit && self.analysis != self.window).then(|| Areas {
+            analysis: self.window,
+            ..self.clone()
+        })
+    }
+}
+
+/// The rectangles of an occurrence whose keyframe quad is `quad` in a `width` × `height` frame;
+/// `None` when a rectangle would be empty.
+pub(super) fn areas(text: &TextOccurrence, quad: Quad, width: u32, height: u32) -> Option<Areas> {
+    let refit = super::super::found_by_claude(&text.id);
+    let ruby: Vec<Quad> = text.ruby.iter().copied().filter(|q| q.valid()).collect();
+    let bounds = ruby.iter().fold(quad.bounds(), |(l, t, r, b), q| {
+        let (ql, qt, qr, qb) = q.bounds();
+        (l.min(ql), t.min(qt), r.max(qr), b.max(qb))
+    });
+    let (_, top, _, bottom) = quad.bounds();
+    let pad = if refit {
+        CLAUDE_PAD_SHARE * (bottom - top)
+    } else {
+        0.0
+    };
+    let analysis_margin = f64::from(ANALYSIS_MARGIN) + pad;
+    Some(Areas {
+        window: around(quad, f64::from(ANALYSIS_MARGIN), width, height)?,
+        analysis: around_bounds(bounds, analysis_margin, width, height)?,
+        plate: around_bounds(bounds, context_margin(quad) + pad, width, height)?,
+        line_height: line_height(quad, &text.japanese),
+        quad,
+        ruby,
+        refit,
+    })
+}
+
 /// The whole pixels the quad touches, expanded by `margin` and clipped to the frame.
 pub(super) fn around(quad: Quad, margin: f64, width: u32, height: u32) -> Option<PixelRect> {
-    let (l, t, r, b) = quad.bounds();
+    around_bounds(quad.bounds(), margin, width, height)
+}
+
+/// The whole pixels of `(left, top, right, bottom)`, expanded by `margin` and clipped to the
+/// frame.
+fn around_bounds(
+    (l, t, r, b): (f64, f64, f64, f64),
+    margin: f64,
+    width: u32,
+    height: u32,
+) -> Option<PixelRect> {
     let left = (l - margin).floor().max(0.0);
     let top = (t - margin).floor().max(0.0);
     let right = (r + margin).ceil().min(f64::from(width));

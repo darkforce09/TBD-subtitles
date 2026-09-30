@@ -72,6 +72,8 @@ pub enum StepName {
     TextInpaint,
     /// Draw the English lettering onto the filled background.
     TextCompose,
+    /// Read the finished picture back with a local OCR and approve each lettered replacement.
+    TextVerify,
     /// Lay out tracked English translations as ASS events.
     TextTypeset,
     /// Check the cues and write the report.
@@ -84,7 +86,7 @@ pub enum StepName {
 
 impl StepName {
     /// Every step, in the order the job runner runs them.
-    pub const ALL: [StepName; 28] = [
+    pub const ALL: [StepName; 29] = [
         StepName::ProbeDecode,
         StepName::ShotScan,
         StepName::Separation,
@@ -109,6 +111,7 @@ impl StepName {
         StepName::TextMask,
         StepName::TextInpaint,
         StepName::TextCompose,
+        StepName::TextVerify,
         StepName::TextTypeset,
         StepName::Qc,
         StepName::Output,
@@ -142,6 +145,7 @@ impl StepName {
             StepName::TextMask => "text_mask",
             StepName::TextInpaint => "text_inpaint",
             StepName::TextCompose => "text_compose",
+            StepName::TextVerify => "text_verify",
             StepName::TextTypeset => "text_typeset",
             StepName::Qc => "qc",
             StepName::Output => "output",
@@ -173,6 +177,7 @@ impl StepName {
             | StepName::TextMask
             | StepName::TextInpaint
             | StepName::TextCompose
+            | StepName::TextVerify
             | StepName::TextTypeset => StageName::OnscreenText,
             StepName::Qc => StageName::Qc,
             StepName::Output => StageName::Output,

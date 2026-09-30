@@ -114,6 +114,28 @@ impl Conversion {
     pub fn samples(self, rgb: [u8; 3]) -> [u16; 3] {
         self.yuv(rgb).map(|value| value.round() as u16)
     }
+
+    /// The 8-bit R′G′B′ colour of (Y, Cb, Cr) sample values: the inverse of [`Conversion::yuv`],
+    /// rounded and clamped to 0–255.
+    pub fn rgb(self, samples: [u16; 3]) -> [u8; 3] {
+        let (kr, kb) = self.matrix.weights();
+        let [luma, cb, cr] = samples.map(f64::from);
+        let max = f64::from(self.max_sample());
+        let scale = f64::from(1u32 << (self.bits - 8));
+        let middle = f64::from(1u32 << (self.bits - 1));
+        let (y, pb, pr) = match self.range {
+            Range::Limited => (
+                (luma / scale - 16.0) / 219.0,
+                (cb - middle) / scale / 224.0,
+                (cr - middle) / scale / 224.0,
+            ),
+            Range::Full => (luma / max, (cb - middle) / max, (cr - middle) / max),
+        };
+        let r = y + 2.0 * (1.0 - kr) * pr;
+        let b = y + 2.0 * (1.0 - kb) * pb;
+        let g = (y - kr * r - kb * b) / (1.0 - kr - kb);
+        [r, g, b].map(|value| (value * 255.0).round().clamp(0.0, 255.0) as u8)
+    }
 }
 
 #[cfg(test)]

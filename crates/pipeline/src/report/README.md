@@ -17,9 +17,9 @@ crates/pipeline/src/report/
 adds the on-screen text section from `visual/text_typeset.json`: the counts, the visual processing
 time, the review warnings and every occurrence with a warning or no English. When the
 localized-video step ran without recording itself disabled, a `Localized video` subsection
-follows: the occurrences replaced in the video (from `visual/localized_video.json`), the fallbacks
-left to the localized subtitles (from `visual/text_compose.json`), the localized video's path and
-the encoder that wrote it.
+follows: the occurrences replaced in the video (from `visual/localized_video.json`), the
+occurrences left in Japanese (from `visual/text_verify.json`, after the read-back check), the
+localized video's path and the encoder that wrote it.
 
 ## Boundaries
 

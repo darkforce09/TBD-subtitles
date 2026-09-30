@@ -2,14 +2,15 @@
 //!
 //! **Role:** find where the keyframe's writing sits in each frame of its span by zero-mean
 //! normalized cross-correlation, searched around the position interpolated from the sampled
-//! quads.
+//! quads, and tell writing whose sampled quads only jitter from writing that moves.
 //! **Position:** used by background runs for writing whose sampled quads move; decodes the
 //! span's search region once.
 //! **Signals and state:** the keyframe template at five scales, full size and coarse; one
-//! placement per frame of the span.
+//! match per frame of the span.
 //! **Invariants:** a placement is an integer shift of the keyframe window centre and one of the
 //! fixed scales; the search never leaves the given radius around the prediction; a frame
-//! matched below the least correlation loses the whole occurrence.
+//! matched below the least correlation loses the whole occurrence unless the frames matched
+//! above it all hold the keyframe placement, which makes the writing still.
 
 use image::RgbImage;
 use image::imageops::{self, FilterType};
@@ -27,7 +28,12 @@ pub(super) const SCALES: [f64; 5] = [0.9, 0.95, 1.0, 1.05, 1.1];
 /// The index of scale 1.0 in [`SCALES`].
 const UNIT_SCALE: usize = 2;
 /// Least correlation of a followed frame.
-const MIN_SCORE: f32 = 0.8;
+pub(super) const MIN_SCORE: f32 = 0.8;
+/// Least share of the span's frames followed at the keyframe placement for writing the search
+/// loses in the others to count as still.
+const LEAST_STILL_SHARE: f64 = 0.9;
+/// Least correlation of a lost frame of still writing: the writing is disturbed there, not gone.
+const LEAST_DISTURBED_SCORE: f32 = 0.6;
 /// Search radius: this share of the quad's shorter side plus [`RADIUS_PX`].
 const RADIUS_SHARE: f64 = 0.5;
 const RADIUS_PX: f64 = 16.0;
@@ -58,12 +64,64 @@ impl Placement {
     }
 }
 
+/// One frame's best placement and its correlation; `None` without a candidate position.
+pub(super) type Match = Option<(Placement, f32)>;
+
+/// Where the writing sits through its span.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum Path {
+    /// The writing never leaves the keyframe placement: frames the search loses are disturbed
+    /// by the picture (a flash, a streak crossing the sign), not moved.
+    Still,
+    /// One placement per frame of the span.
+    Moving(Vec<Placement>),
+}
+
 /// Follow the writing through every frame of `span`, decoding its search region once.
 pub(super) fn follow(
     source: &mut dyn RegionSource,
     tracker: &Tracker,
     span: (u64, u64),
-) -> TextResult<Outcome<Vec<Placement>>> {
+) -> TextResult<Outcome<Path>> {
+    Ok(locate_span(source, tracker, span)?.and_then(|found| path(&found)))
+}
+
+/// The path the per-frame matches describe: every frame followed moves the writing along its
+/// placements; otherwise the writing is still when every followed frame sits at the keyframe
+/// placement, at least [`LEAST_STILL_SHARE`] of the frames are followed and the others still
+/// match somewhere by [`LEAST_DISTURBED_SCORE`].
+pub(super) fn path(found: &[Match]) -> Outcome<Path> {
+    let followed: Option<Vec<Placement>> = found
+        .iter()
+        .map(|f| f.filter(|(_, score)| *score >= MIN_SCORE).map(|(p, _)| p))
+        .collect();
+    if let Some(placements) = followed {
+        return Ok(Path::Moving(placements));
+    }
+    let kept = found
+        .iter()
+        .flatten()
+        .filter(|(_, score)| *score >= MIN_SCORE)
+        .count();
+    let still = found.iter().all(|f| match f {
+        Some((placement, score)) if *score >= MIN_SCORE => *placement == Placement::KEY,
+        Some((_, score)) => *score >= LEAST_DISTURBED_SCORE,
+        None => false,
+    });
+    if still && kept as f64 >= LEAST_STILL_SHARE * found.len() as f64 {
+        Ok(Path::Still)
+    } else {
+        Err(UNFOLLOWED)
+    }
+}
+
+/// Each frame of `span`'s best placement and its correlation, from one decode of the search
+/// region; `None` for a frame without a candidate position.
+pub(super) fn locate_span(
+    source: &mut dyn RegionSource,
+    tracker: &Tracker,
+    span: (u64, u64),
+) -> TextResult<Outcome<Vec<Match>>> {
     let frame = source.frame_size();
     let timeline = source.timeline();
     let mut times = Vec::new();
@@ -81,33 +139,24 @@ pub(super) fn follow(
     let Some(union) = union else {
         return Ok(Err(UNFOLLOWED));
     };
-    let mut placements = Vec::with_capacity(times.len());
-    let mut lost = false;
+    let mut found = Vec::with_capacity(times.len());
     source.frames(union, span.0, span.1, &mut |index, image| {
         check_size(&image, union)?;
         let Some(&time_s) = times.get(index.wrapping_sub(span.0) as usize) else {
             return Err(format!("frame {index} is outside the requested span").into());
         };
-        if !lost {
-            match tracker.locate(&image, (union.x, union.y), time_s) {
-                Some((placement, score)) if score >= MIN_SCORE => placements.push(placement),
-                _ => lost = true,
-            }
-        }
+        found.push(tracker.locate(&image, (union.x, union.y), time_s));
         Ok(())
     })?;
-    if lost {
-        return Ok(Err(UNFOLLOWED));
-    }
-    if placements.len() != times.len() {
+    if found.len() != times.len() {
         return Err(format!(
             "the decoder returned {} of {} frames",
-            placements.len(),
+            found.len(),
             times.len()
         )
         .into());
     }
-    Ok(Ok(placements))
+    Ok(Ok(found))
 }
 
 /// The keyframe writing and the sampled path it is searched along.
@@ -371,3 +420,7 @@ fn interpolate(path: &[(f64, Point)], time_s: f64) -> Option<Point> {
         (None, None) => None,
     }
 }
+
+#[cfg(test)]
+#[path = "tests/follow.rs"]
+mod tests;

@@ -11,7 +11,7 @@ is the Muhn Pace Dressrosa English dub in
 `/run/media/system/Main_storage/Media/one_pace/` (41 episodes; no dub subtitles exist anywhere).
 
 **Current state:** milestones M0, M0.5, M1, M2 and M3 are done; M4 and M5 are implemented and
-under validation, not accepted. `tbd-subtitles process <video>` runs 28 resumable steps, with
+under validation, not accepted. `tbd-subtitles process <video>` runs 29 resumable steps, with
 workers in `tbd-subtitles`, `tbd-subtitles-ggml` and `tbd-subtitles-llm`. New jobs enable
 on-screen translation and write one ASS file containing dialogue, sound cues and tracked text,
 plus, with the localized video on (the default), `<video>.localized.mkv` with the Japanese
@@ -59,12 +59,18 @@ detections and writing shorter than the half-second sample step that no sample o
 M5 replaces the writing in the picture itself: `text_mask`, `text_inpaint` and `text_compose`
 between review and typesetting separate each translated occurrence's strokes, fill them with
 LaMa (ONNX Runtime, in its own worker under the GPU lock) and letter the English in Noto Sans
-through tiny-skia; `localized_video` after the output re-encodes every frame with `hevc_nvenc`
-(libx264 fallback), peak rate capped at 1.25× the source's, audio copied, no subtitle stream.
-Writing that cannot be replaced cleanly stays in the localized ASS with its reason. Dressrosa 11:
+through tiny-skia; `text_verify` rebuilds sampled finished frames and has the local PP-OCRv5 read
+them back, keeping only replacements with no Japanese left and English that reads back;
+`localized_video` after the output re-encodes every frame with `hevc_nvenc` (libx264 fallback),
+peak rate capped at 1.25× the source's, audio copied, no subtitle stream.
+Writing that cannot be replaced cleanly stays Japanese, its reason shown in Check Text; the
+localized ASS holds only dialogue and sound cues, moved to the top over lettered English. Dressrosa 11:
 4.9 minutes added, 707 MB against 647 MB, 15 of 21 candidates replaced, the Rebecca name card
-among them ([measurement](/documentation/research/localized_video_dressrosa_11.md)). VLC/mpv
-playback, the AppImage rebuild and owner acceptance remain; do not call M5 complete. See
+among them ([measurement](/documentation/research/localized_video_dressrosa_11.md)). After the
+owner's Dressrosa 28 review, one sign is one occurrence with its furigana, and Dressrosa 28 has 25
+approved replacements; the 海 wall regressed and other issues are open
+([polish record](/documentation/research/localized_video_polish_dressrosa_28.md)). VLC/mpv
+playback and owner acceptance remain; do not call M5 complete. See
 the [video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md).
 
 ## 1. Project laws

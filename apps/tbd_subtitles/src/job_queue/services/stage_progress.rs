@@ -1,4 +1,4 @@
-//! A job's twenty-eight steps as the nine stages the window shows, each with where it stands.
+//! A job's twenty-nine steps as the nine stages the window shows, each with where it stands.
 //!
 //! **Role:** turn the step states of a running job, or the steps a failed job had finished, into
 //! one row per stage: kept from an earlier run, still to run, running (its share done and seconds
@@ -109,7 +109,7 @@ pub(crate) fn failed(failure: &Failure) -> Vec<StageRow> {
     })
 }
 
-/// The number of `step` among all steps, from 1: "step 9 of 28".
+/// The number of `step` among all steps, from 1: "step 9 of 29".
 pub(crate) fn step_number(step: StepName) -> usize {
     StepName::ALL
         .iter()

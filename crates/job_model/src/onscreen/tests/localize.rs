@@ -33,6 +33,7 @@ fn document(plates: Vec<Plate>) -> ReplacementDocument {
             container: None,
             plates,
             preview: None,
+            lettering_quad: None,
         }],
     }
 }

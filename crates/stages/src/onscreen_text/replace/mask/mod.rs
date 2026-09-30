@@ -10,11 +10,15 @@
 //! back with a reason while decode and file errors fail the step; the document validates.
 
 mod cluster;
+mod complete;
 mod correlation;
 mod files;
 mod follow;
 mod ink;
+mod panel;
+mod pieces;
 mod plates;
+mod probe;
 mod reach;
 mod segment;
 mod select;
@@ -24,14 +28,26 @@ use std::path::Path;
 
 use image::RgbImage;
 use job_model::onscreen::{
-    LetteringStyle, PixelRect, Plate, Point, ReplaceStatus, ReplacedText, ReplacementDocument,
-    TextDocument, TextOccurrence,
+    LetteringStyle, PixelRect, Plate, Point, Quad, ReplaceStatus, ReplacedText,
+    ReplacementDocument, TextDocument, TextOccurrence,
 };
 
 use super::RegionSource;
 use crate::onscreen_text::TextResult;
 use files::{Folder, Names};
 use plates::KeyPlate;
+pub use probe::{
+    Completeness, Diagnosis, Followed, Following, Judgement, Reading, Trace, diagnose,
+};
+use select::Areas;
+
+/// The lettering colour tolerance shared by completion and the residual check after inpainting.
+pub(crate) use complete::INK_DELTA_E;
+
+/// CIE76 ΔE between two sRGB colours.
+pub(crate) fn delta_e(a: [u8; 3], b: [u8; 3]) -> f32 {
+    cluster::distance(cluster::lab(a), cluster::lab(b))
+}
 
 /// A per-occurrence verdict: the value, or why the occurrence stays in the subtitle file.
 type Outcome<T> = Result<T, &'static str>;
@@ -100,6 +116,7 @@ fn replace(
         container: None,
         plates: Vec::new(),
         preview: None,
+        lettering_quad: None,
     };
     let reason = if span.is_none() {
         Some(NO_FRAMES)
@@ -113,13 +130,39 @@ fn replace(
         return Ok(item);
     }
     match measure(occurrence, source, (first, last), root, names)? {
-        Ok((style, plates)) => {
-            item.style = Some(style);
-            item.plates = plates;
+        Ok(measured) => {
+            item.style = Some(measured.style);
+            item.plates = measured.plates;
+            item.lettering_quad = measured.lettering_quad;
         }
         Err(reason) => item.status = ReplaceStatus::Fallback(reason.to_string()),
     }
     Ok(item)
+}
+
+/// What the keyframe and the span's plates yield for a separable occurrence.
+struct Measured {
+    style: LetteringStyle,
+    plates: Vec<Plate>,
+    lettering_quad: Option<Quad>,
+}
+
+/// The keyframe index inside `span` and the rectangles measured around its quad.
+fn locate(
+    occurrence: &TextOccurrence,
+    source: &dyn RegionSource,
+    span: (u64, u64),
+) -> Outcome<(u64, Areas)> {
+    let (width, height) = source.frame_size();
+    let keyframe = occurrence.keyframe.as_ref().ok_or(NO_POSITION)?;
+    let key_index = select::frame_at(source.timeline(), keyframe.time_s)
+        .unwrap_or(span.0)
+        .clamp(span.0, span.1);
+    let quad = select::keyframe_quad(&occurrence.frames, keyframe.time_s)
+        .filter(|q| q.valid())
+        .ok_or(NO_POSITION)?;
+    let areas = select::areas(occurrence, quad, width, height).ok_or(NO_POSITION)?;
+    Ok((key_index, areas))
 }
 
 /// Segment the keyframe and collect the span's plates.
@@ -129,48 +172,24 @@ fn measure(
     span: (u64, u64),
     root: &Path,
     names: &mut Names,
-) -> TextResult<Outcome<(LetteringStyle, Vec<Plate>)>> {
-    let (width, height) = source.frame_size();
-    let Some(keyframe) = occurrence.keyframe.as_ref() else {
-        return Ok(Err(NO_POSITION));
+) -> TextResult<Outcome<Measured>> {
+    let (key_index, areas) = match locate(occurrence, source, span) {
+        Ok(found) => found,
+        Err(reason) => return Ok(Err(reason)),
     };
-    let key_index = select::frame_at(source.timeline(), keyframe.time_s)
-        .unwrap_or(span.0)
-        .clamp(span.0, span.1);
-    let Some(quad) =
-        select::keyframe_quad(&occurrence.frames, keyframe.time_s).filter(|q| q.valid())
-    else {
-        return Ok(Err(NO_POSITION));
-    };
-    let margin = select::context_margin(quad);
-    let window = select::around(quad, f64::from(select::ANALYSIS_MARGIN), width, height);
-    let plate_rect = select::around(quad, margin, width, height);
-    let (Some(window), Some(plate_rect)) = (window, plate_rect) else {
-        return Ok(Err(NO_POSITION));
-    };
-    let key_crop = decode_one(source, plate_rect, key_index)?;
-    let line_height = select::line_height(quad, &occurrence.japanese);
-    let segmentation = match segment::segment(&key_crop, plate_rect, window, quad, line_height) {
+    let key_crop = decode_one(source, areas.plate, key_index)?;
+    let segmentation = match separate(&key_crop, &areas, &mut Trace::default()) {
         Ok(segmentation) => segmentation,
         Err(reason) => return Ok(Err(reason)),
     };
-    let tracker = if select::is_static(&occurrence.frames, quad) {
-        None
-    } else {
-        match follow::Tracker::new(
-            &key_crop,
-            plate_rect,
-            window,
-            &occurrence.frames,
-            keyframe.time_s,
-            select::shorter_side(quad),
-        ) {
-            Some(tracker) => Some(tracker),
-            None => return Ok(Err(follow::UNFOLLOWED)),
-        }
+    let tracker = match tracker(occurrence, &key_crop, &areas) {
+        None => None,
+        Some(Ok(tracker)) => Some(tracker),
+        Some(Err(reason)) => return Ok(Err(reason)),
     };
+    let window = areas.window;
     let key = KeyPlate {
-        rect: plate_rect,
+        rect: areas.plate,
         mask: segmentation.mask,
         centre: Point {
             x: f64::from(window.x) + f64::from(window.width) / 2.0,
@@ -183,12 +202,53 @@ fn measure(
         Some(tracker) => plates::moving(source, tracker, key, span, &folder)?,
     };
     match outcome {
-        Ok(plates) => Ok(Ok((segmentation.style, plates))),
+        Ok(plates) => Ok(Ok(Measured {
+            style: segmentation.style,
+            plates,
+            lettering_quad: segmentation.lettering,
+        })),
         Err(reason) => {
             folder.remove()?;
             Ok(Err(reason))
         }
     }
+}
+
+/// The tracker that follows moving writing from the keyframe plate `key_crop`; `None` for
+/// static writing, and an error when the writing has no contrast to follow.
+fn tracker(
+    occurrence: &TextOccurrence,
+    key_crop: &RgbImage,
+    areas: &Areas,
+) -> Option<Outcome<follow::Tracker>> {
+    if select::is_static(&occurrence.frames, areas.quad) {
+        return None;
+    }
+    let key_time_s = occurrence.keyframe.as_ref().map_or(0.0, |k| k.time_s);
+    Some(
+        follow::Tracker::new(
+            key_crop,
+            areas.plate,
+            areas.window,
+            &occurrence.frames,
+            key_time_s,
+            select::shorter_side(areas.quad),
+        )
+        .ok_or(follow::UNFOLLOWED),
+    )
+}
+
+/// Segment the keyframe plate `crop`; a padded loose box that does not separate is tried again
+/// within its unpadded window.
+fn separate(
+    crop: &RgbImage,
+    areas: &Areas,
+    trace: &mut Trace,
+) -> Result<segment::Segmentation, &'static str> {
+    segment::segment(crop, areas, trace).or_else(|reason| match areas.unpadded() {
+        Some(unpadded) => segment::segment(crop, &unpadded, trace),
+        None => Err(reason),
+    })
 }
 
 /// Fail when the source hands back a region of another size than requested.

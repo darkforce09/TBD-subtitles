@@ -12,10 +12,9 @@ use crate::error::{Context, PipelineError, Result};
 use crate::work_dir;
 use inference::ocr::{OcrDetector, OcrReader, TextDetection};
 use job_model::StepName;
-use job_model::onscreen::{ReplaceStatus, ReplacementDocument, TextCorrections, TextDocument};
+use job_model::onscreen::{TextCorrections, TextDocument};
 use job_model::outputs::ShotChanges;
 use stages::onscreen_text;
-use std::collections::HashSet;
 use std::time::Instant;
 
 pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<TaskReport> {
@@ -25,7 +24,6 @@ pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<T
         work_dir::write_json(&job.work.text(step), &TextDocument::default())?;
         if step == StepName::TextTypeset {
             work_dir::write_text(&job.work.text_ass(), "")?;
-            work_dir::write_text(&job.work.text_ass_localized(), "")?;
         }
         report.note("disabled", true);
         return Ok(report);
@@ -98,14 +96,14 @@ pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<T
         StepName::TextTranslate => translate(job, &mut document, progress, &mut report)?,
         StepName::TextReview => {
             onscreen_text::review::apply(&mut document, &corrections(job)?, probe.probe.duration_s)
-                .context("apply visual corrections")?
+                .context("apply visual corrections")?;
+            let shots: ShotChanges = work_dir::read_json(&job.work.shots())?;
+            onscreen_text::unify::unify(&mut document, &shots);
         }
         StepName::TextTypeset => {
             let events = onscreen_text::typeset::events(&mut document)
                 .context("typeset visible translations")?;
             work_dir::write_text(&job.work.text_ass(), &events)?;
-            let localized = localized_events(job, &mut document)?;
-            work_dir::write_text(&job.work.text_ass_localized(), &localized)?;
         }
         _ => return Err(PipelineError::new("visual step", "unexpected task")),
     }
@@ -118,32 +116,6 @@ pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<T
     report.note("flagged", summary.flagged);
     work_dir::write_json(&job.work.text(step), &document)?;
     Ok(report)
-}
-
-/// The events of the localized video's subtitle file: every occurrence not drawn into the video.
-/// Occurrences left out of the video gain a warning naming the reason.
-fn localized_events(job: &Job, document: &mut TextDocument) -> Result<String> {
-    if !super::replace::localized(job) {
-        return Ok(String::new());
-    }
-    let replacement: ReplacementDocument =
-        work_dir::read_json(&job.work.text(StepName::TextCompose))?;
-    let baked: HashSet<&str> = replacement.baked().map(|text| text.id.as_str()).collect();
-    let mut remaining = document.clone();
-    remaining
-        .occurrences
-        .retain(|item| !baked.contains(item.id.as_str()));
-    let events = onscreen_text::typeset::events(&mut remaining)
-        .context("typeset the localized video's remaining text")?;
-    for text in &replacement.texts {
-        if let ReplaceStatus::Fallback(reason) = &text.status
-            && let Some(item) = document.occurrences.iter_mut().find(|o| o.id == text.id)
-        {
-            item.warnings
-                .push(format!("Not replaced in the video: {reason}"));
-        }
-    }
-    Ok(events)
 }
 
 fn corrections(job: &Job) -> Result<TextCorrections> {

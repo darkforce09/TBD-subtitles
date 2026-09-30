@@ -274,8 +274,8 @@ everything onto disk (the frame asks for a redraw when it goes).
     list to it; an edit waits while Check Lines is closed; and the keys save, keep, play and move
     through the lines, but not while typing (`tests/rendering_review.rs`);
   - a running job shows its length and time so far, Cancel (or "Stopping…"), what its stage does,
-    "step 9 of 28", the time left (or that it is being worked out) and its stages with "Show all
-    28 steps"; a waiting job its place and when it starts; a job that failed before its first step
+    "step 9 of 29", the time left (or that it is being worked out) and its stages with "Show all
+    29 steps"; a waiting job its place and when it starts; a job that failed before its first step
     no stages; and the hint shows while no job is selected
     (`a_running_job_shows_its_stage_its_step_and_its_stages`,
     `a_running_job_works_out_its_time_left_until_its_length_is_known`,

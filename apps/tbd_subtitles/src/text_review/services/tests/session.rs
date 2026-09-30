@@ -134,6 +134,7 @@ fn occurrence(id: &str) -> TextOccurrence {
         reviewed: false,
         rendered: Some(true),
         keyframe: None,
+        ruby: Vec::new(),
     }
 }
 
@@ -425,6 +426,7 @@ fn a_localized_job_loads_each_replacement_and_the_selected_one_s_pictures() {
         container: None,
         plates,
         preview: None,
+        lettering_quad: None,
     };
     let mut board = text(
         "board",

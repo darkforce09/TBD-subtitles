@@ -37,8 +37,8 @@ pub(super) fn localized_card_ui(
             ui,
             (icons::FILM_STRIP, p.good_icon),
             "Localized video saved next to the original",
-            "The Japanese writing is replaced in English where it could be; the rest is in its \
-             own subtitle file. The original video is unchanged.",
+            "The Japanese writing is replaced in English where it could be; its subtitle file \
+             holds the dialogue and sound cues. The original video is unchanged.",
             |_| {},
         );
         for path in std::iter::once(video).chain(subtitles) {

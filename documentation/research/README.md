@@ -11,6 +11,7 @@ episode.
 ```text
 documentation/research/
 ├── localized_video_dressrosa_11.md  frozen record, 2026-09-30: writing replaced in a localized video on one episode
+├── localized_video_polish_dressrosa_28.md  frozen record, 2026-09-30: the owner's review, one replacement per sign, read-back approval, open issues
 ├── long_video_120min.md             frozen record, 2026-09-26: a 128.9-minute video, time and memory
 ├── pilot_dressrosa_11.md            frozen record, 2026-09-26: the first end-to-end run, its fixes, resume
 ├── rust_ml_stack.md                 frozen record, 2026-09-25: Rust crates and model files per capability

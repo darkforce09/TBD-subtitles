@@ -362,7 +362,7 @@ fn a_failed_job_records_its_step_and_the_steps_it_kept() {
         "The 2 finished steps are kept. Try Again continues after them. It starts at once.",
         "Try Again",
         "Show in Folder",
-        "Show all 28 steps",
+        "Show all 29 steps",
         "9 stages",
         "Translate on-screen text",
         "already done",

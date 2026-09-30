@@ -8,9 +8,10 @@ the pipeline) and records the filled plate for composition.
 
 ```text
 crates/stages/src/onscreen_text/replace/inpaint/
-├── fill.rs  one plate through the model: working size, mirrored padding, tiles and the feathered blend
-├── mod.rs   the `Inpaint` trait, the step over the document, plate files and the bounded cache
-└── tests/   size regimes, padding and tile geometry, blending, skips, cache reuse and failures
+├── fill.rs     one plate through the model: working size, mirrored padding, tiles, feathered blend
+├── mod.rs      the `Inpaint` trait, the step over the document, plate files and the bounded cache
+├── residue.rs  lettering the fill still shows under the mask, and the wider retry mask
+└── tests/      size regimes, padding and tiles, blending, skips, cache reuse, residue and failures
 ```
 
 ## How it works
@@ -33,6 +34,19 @@ onto the source: fully on masked pixels, and by the share of masked pixels in ea
 around the others, so the fill fades out over one pixel and everything further away is the source
 byte for byte.
 
+Every filled plate of an occurrence with a measured lettering style is checked for residue: a
+masked pixel still looks like the lettering when it lies within ΔE 12 of the measured fill colour
+and more than ΔE 20 from the median of the filled plate around it (a 9 × 9 grid spanning a
+quarter of a line on each side, at least 4 pixels), in a blob that survives an opening by an
+eighth of the stroke thickness, so thin joints and cracks the fill continues do not count. When
+more than 3 % of the mask's pixels do, the plate is filled once more with the mask grown by a
+tenth of a line; that mask is written as `<plate index>-mask.png` beside the plate and becomes
+the plate's mask, so the patch covers it too. The wider fill stands even when it is still above
+3 %: whether the finished replacement is clean is decided by the
+[read-back check](/crates/stages/src/onscreen_text/replace/verify/), which reads the finished
+picture, not by a pixel rule on one plate. `residue_share` is public for the `visual_validation`
+tool's `residue-probe`.
+
 Plates go to `visual/plates/<occurrence id>/<plate index>.png`, written under a temporary name and
 moved into place; the id keeps ASCII letters, digits, `-` and `_`, and colliding names get a
 numbered suffix. Plates whose source and mask files are byte-identical to an earlier plate's in
@@ -42,7 +56,8 @@ first. One plate is decoded at a time.
 ## Boundaries
 
 - Depends on: `image` for PNG and resizing, `job_model::onscreen` replacement contracts.
-- Used by: `pipeline::tasks::replace`, which supplies LaMa through `inference::onnx::lama`.
+- Used by: `pipeline::tasks::replace`, which supplies LaMa through `inference::onnx::lama`;
+  `residue_share` by the `visual_validation` tool's `residue-probe`.
 - Rules: occurrences not `Pending` stay untouched; pixels further than one pixel from a mask keep
   their source bytes (`every_size_regime_fills_the_mask_and_keeps_the_rest`); a missing or
   mis-sized file and a model error fail the step.

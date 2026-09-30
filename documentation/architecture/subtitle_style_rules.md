@@ -88,6 +88,23 @@ wrote moves to the job's `backup/` folder.
   Sign subtitles (milestone M4) add a sign style positioned near the on-screen text (`\pos`, or
   `{\an8}` for the top).
 
+## On-screen text and the localized video
+
+Netflix moves a subtitle up when it would cover on-screen text. The localized video's subtitle
+file, `<video>.localized.ass`, follows that rule; `<video>.ass` and the other formats do not
+change.
+
+- `<video>.localized.ass` holds the dialogue and sound cues alone, in the same `Default` style,
+  and no on-screen text events: the English is drawn into the localized video, and writing that
+  could not be replaced stays Japanese in the picture, never as a second set of subtitles.
+- While English lettered into the localized video sits in the bottom band, a cue shown at the
+  same time moves to the top (`{\an8}`, 54 pixels below the top edge). The cue's box is
+  estimated in the `Default` style: 80 pixels a line on the 1920 × 1080 canvas, about 33 pixels a
+  character, centred and at most 1680 pixels wide; the lettered writing counts with 12 pixels
+  around it, frame sample by frame sample.
+- When writing sits in both bands, the cue takes the band where its box covers less of it; the
+  bottom on a tie.
+
 ## Sources
 
 - [Netflix English (USA) Timed Text Style Guide](https://partnerhelp.netflixstudios.com/hc/en-us/articles/217350977-English-USA-Timed-Text-Style-Guide)

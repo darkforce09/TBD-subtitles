@@ -11,7 +11,7 @@ crates/pipeline/src/tasks/
 ├── onscreen.rs   the visual steps from detection to typesetting and their isolated model workers
 ├── alignment.rs  forced alignment: Parakeet-CTC and CTC Viterbi over the vocal stem, block by block
 ├── layout.rs     cue building at the frame rate, the quality check, the subtitle file beside the video
-├── localized.rs  the localized video: composed patches blended over every frame and encoded
+├── localized.rs  the localized video: approved patches blended over every frame and encoded
 ├── llm.rs        adjudication and re-adjudication through `claude -p`, several processes at once
 ├── media.rs      probe and decode, the shot scan, and vocal separation with the chosen separator
 ├── mod.rs        `Job`, `TaskReport`, the dispatcher `run`, and `in_process` and `worker_main`
@@ -19,7 +19,8 @@ crates/pipeline/src/tasks/
 ├── review.rs     the corrections timed again, each alone, on the CPU; other lines kept
 ├── sounds.rs     sound events with CED over both stems, and the sound cues the language model picks
 ├── speech.rs     voice activity and chunk plan, Parakeet and Whisper, the diff sheet, re-decodes
-└── tests/        unit tests for the review task and the quality check's corrections
+├── verify.rs     the read-back check: PP-OCRv5 in its ONNX Runtime worker approves each lettering
+└── tests/        unit tests for review, the check's corrections, the localized subtitles and video
 ```
 
 ## How it works
@@ -40,7 +41,14 @@ model steps share one factory of `ClaudeCli` backends, each running in the job's
 `claude-cwd/`. The Whisper steps load a model only with the `crispasr` feature; without it they
 fail and name `tbd-subtitles-ggml`. The output task writes the job's format (SRT, WebVTT or ASS),
 moves the file of another format it wrote last time into `backup/`, and records both in
-`output.json` (`OutputRecord`). The quality check settles the findings of every corrected line;
+`output.json` (`OutputRecord`). With the localized video on, it also writes
+`<video>.localized.ass`: the dialogue and sound cues alone, no on-screen events, with each cue that
+would cover English lettered into the video (every sampled frame of each baked occurrence, from
+`visual/text_verify.json` and `visual/text_typeset.json`, on the ASS canvas and grown by 12
+pixels) moved to the top by `subtitle_formats::writers::ass::write_with`. The read-back check
+opens PP-OCRv5 only when composition baked something, reads each baked occurrence back through
+`stages::onscreen_text::replace::verify` and writes `visual/text_verify.json`, which the output and
+the localized video read. The quality check settles the findings of every corrected line;
 a Fix It change the owner has not checked has its words held again against every hypothesis, the
 re-decodes included, and the summary counts the owner's lines and Fix It's apart. The alignment
 and review tasks read both engines' transcripts (Whisper's when it is there) for
@@ -59,8 +67,11 @@ in batches.
   (`worker_main`).
 - Rules:
   - a task writes its outputs completely or not at all, through `work_dir`'s part files;
-  - the subtitle file beside the video is the only file written outside the work directory, and a
-    replaced one is kept in the job's `backup/` (`layout.rs`);
+  - the subtitle files beside the video are the only files written outside the work directory,
+    and a replaced one is kept in the job's `backup/` (`layout.rs`);
+  - the localized subtitle file carries no on-screen events and moves a cue over lettered English
+    to the top (`the_localized_subtitles_carry_dialogue_alone_moved_above_lettered_writing` in
+    `tests/layout.rs`);
   - the video is only read, and audio is streamed, never held whole (`media.rs`);
   - a Fix It change the owner has not checked is checked again for words no engine heard
     (`owner_lines_are_settled_and_fix_it_lines_are_checked_again` in `tests/layout.rs`);

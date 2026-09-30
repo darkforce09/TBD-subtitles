@@ -35,6 +35,7 @@ fn occurrence(start_s: f64, end_s: f64, frames: Vec<TextFrame>) -> TextOccurrenc
         rendered: None,
         source_fingerprint: None,
         keyframe: None,
+        ruby: Vec::new(),
     }
 }
 
@@ -145,6 +146,7 @@ fn the_keyframe_index_follows_its_time() {
         container: None,
         plates: vec![plate(100, 149), plate(150, 199)],
         preview: None,
+        lettering_quad: None,
     };
     assert_eq!(keyframe_index(&text, &occurrence), 150);
     assert_eq!(plate_at(&text.plates, 150), Some(1));

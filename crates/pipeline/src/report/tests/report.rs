@@ -15,6 +15,7 @@ fn replaced(id: &str, status: ReplaceStatus) -> ReplacedText {
         container: None,
         plates: Vec::new(),
         preview: None,
+        lettering_quad: None,
     }
 }
 
@@ -72,7 +73,7 @@ fn the_localized_video_lines_count_replacements_and_fallbacks_and_name_the_file(
         localized_lines(&composed, &video),
         "\n### Localized video\n\n\
          - Occurrences replaced in the video: 2\n\
-         - Fallbacks to the localized subtitles: 3\n\
+         - Occurrences left in Japanese: 3\n\
          - Localized video: /videos/a.localized.mkv\n\
          - Encoder: hevc_nvenc\n"
     );

@@ -1,7 +1,8 @@
 //! Visible Japanese translation: Claude reads whole keyframes first, the local model the rest.
 //!
 //! **Role:** translate visible Japanese with nearby dialogue and glossary context, then apply
-//! verified reference wording, review warnings and reading consolidation.
+//! verified reference wording, review warnings, reading consolidation, and the joining of
+//! occurrences that show one sign with their furigana folded in.
 //! **Position:** visual stage logic invoked by the isolated local-model worker; its private
 //! modules build the keyframe requests and send them through the Claude CLI.
 //! **Signals and state:** per-request JSON caches under `visual/translations`; the local model
@@ -15,6 +16,7 @@ mod keyframe_requests;
 #[path = "vision.rs"]
 mod vision;
 
+use super::unify::{TRANSLATION_NEEDS_REVIEW, unify};
 use super::{TextResult, read, reference};
 use inference::llm::{LanguageModel, claude_cli::ClaudeCli};
 use job_model::onscreen::{TextCorrections, TextDocument, TextOccurrence, TextSettings};
@@ -152,12 +154,12 @@ fn run(
         if item.confidence < 0.85 || item.english.is_none() {
             let reason = reason.as_deref().unwrap_or_default();
             item.warnings
-                .push(format!("Translation needs review: {reason}"));
+                .push(format!("{TRANSLATION_NEEDS_REVIEW} {reason}"));
         }
     }
     let cuts = read::load_cuts(input.root)?;
     read::consolidate_readings(document, &cuts);
-    read::group_furigana(document);
+    unify(document, &cuts);
     progress(total, total);
     Ok(())
 }

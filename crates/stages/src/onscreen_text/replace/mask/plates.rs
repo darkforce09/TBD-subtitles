@@ -17,7 +17,7 @@ use image::{GrayImage, Luma, RgbImage};
 use job_model::onscreen::{PixelRect, Plate, Point};
 
 use super::files::Folder;
-use super::follow::{self, Placement, Tracker, UNFOLLOWED};
+use super::follow::{self, Path, Placement, Tracker, UNFOLLOWED};
 use super::select::{bounding, clamp};
 use super::{Outcome, RegionSource, check_size};
 use crate::onscreen_text::TextResult;
@@ -57,7 +57,7 @@ pub(super) fn still(
 }
 
 /// Follow moving writing through its span, then collect its runs from one decode of the
-/// region its plates sweep.
+/// region its plates sweep; writing the search finds still is collected as [`still`] writing.
 pub(super) fn moving(
     source: &mut dyn RegionSource,
     tracker: &Tracker,
@@ -66,7 +66,8 @@ pub(super) fn moving(
     folder: &Folder,
 ) -> TextResult<Outcome<Vec<Plate>>> {
     let placements = match follow::follow(source, tracker, span)? {
-        Ok(placements) => placements,
+        Ok(Path::Moving(placements)) => placements,
+        Ok(Path::Still) => return still(source, key, span, folder),
         Err(reason) => return Ok(Err(reason)),
     };
     let frame = source.frame_size();

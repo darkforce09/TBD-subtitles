@@ -9,6 +9,7 @@ use super::*;
 
 fn occurrence(id: &str, start_s: f64, end_s: f64, keyframe_s: Option<f64>) -> TextOccurrence {
     TextOccurrence {
+        ruby: Vec::new(),
         source_fingerprint: None,
         id: id.into(),
         start_s,
@@ -59,6 +60,7 @@ fn replaced(id: &str, status: ReplaceStatus, plates: Vec<Plate>) -> ReplacedText
         container: None,
         plates,
         preview: Some(PathBuf::from(format!("visual/patches/{id}/preview.png"))),
+        lettering_quad: None,
     }
 }
 
@@ -123,6 +125,7 @@ fn the_status_says_replaced_or_why_not() {
         status,
         preview: None,
         mask: None,
+        check: None,
     };
     assert_eq!(
         status_line(Some(&with(ReplaceStatus::Baked))),
@@ -167,7 +170,28 @@ fn replacements_take_the_keyframe_plate_s_mask_and_keep_paths_inside_the_job() {
             escaping,
         ],
     };
-    let found = replacements(root, &composed, &document);
+    let verified = VerifiedReplacements {
+        document: composed,
+        checks: vec![TextCheck {
+            id: "a".into(),
+            readings: vec![VerifyReading {
+                frame: 250,
+                english_read: "Palace".into(),
+                similarity: 1.0,
+                passed: true,
+                ..VerifyReading::default()
+            }],
+        }],
+    };
+    let found = replacements(root, &verified, &document);
+    assert_eq!(
+        found["a"].check.as_deref(),
+        Some("Checked: English reads back as “Palace”")
+    );
+    assert_eq!(
+        found["b"].check, None,
+        "a fallback before the check was not checked"
+    );
     let a = &found["a"];
     assert_eq!(a.status, ReplaceStatus::Baked);
     assert_eq!(
@@ -246,7 +270,38 @@ fn missing_records_are_not_written_yet_and_written_ones_name_their_files() {
     let review = load(&work, &record, &output, &document).expect("review");
     assert_eq!(review.video, Some(mkv));
     assert_eq!(review.subtitles, Some(ass));
-    assert_eq!(review.replacements["a"].status, ReplaceStatus::Baked);
+    assert_eq!(
+        review.replacements["a"].status,
+        ReplaceStatus::Baked,
+        "a job from before the read-back check shows its composition"
+    );
+    assert_eq!(review.replacements["a"].check, None);
+    let mut checked = composed.clone();
+    checked.texts[0].status =
+        ReplaceStatus::Fallback("The finished picture still shows Japanese".into());
+    let verified = VerifiedReplacements {
+        document: checked,
+        checks: vec![TextCheck {
+            id: "a".into(),
+            readings: vec![VerifyReading {
+                frame: 3,
+                japanese_found: "王宮".into(),
+                english_read: "Palace 王宮".into(),
+                ..VerifyReading::default()
+            }],
+        }],
+    };
+    work_dir::write_json(&work.text(StepName::TextVerify), &verified).expect("verify");
+    let review = load(&work, &record, &output, &document).expect("review");
+    let a = &review.replacements["a"];
+    assert_eq!(
+        status_line(Some(a)),
+        "Not replaced in the video: The finished picture still shows Japanese"
+    );
+    assert_eq!(
+        a.check.as_deref(),
+        Some("Checked: Japanese still reads “王宮”")
+    );
     let _ = fs::remove_dir_all(root);
 }
 
@@ -274,6 +329,7 @@ fn pictures_decode_the_plate_and_mask_within_bounds() {
             rect,
             path: mask_path,
         }),
+        check: None,
     };
     let pictures = pictures("a", &replacement);
     assert_eq!(pictures.id, "a");
@@ -292,6 +348,7 @@ fn pictures_decode_the_plate_and_mask_within_bounds() {
         status: ReplaceStatus::Pending,
         preview: Some(root.join("missing.png")),
         mask: None,
+        check: None,
     };
     let none = super::pictures("b", &gone);
     assert!(none.preview.is_none() && none.mask.is_none());

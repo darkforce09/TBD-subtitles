@@ -10,10 +10,11 @@ chapters and metadata.
 ```text
 crates/stages/src/localize/
 ├── blend.rs    patches as frame samples, and the alpha blend over 8-bit and 10-bit 4:2:0 frames
-├── colour.rs   RGB to Y′CbCr in the stream's matrix, range and bit depth
+├── colour.rs   RGB to Y′CbCr in the stream's matrix, range and bit depth, and back
 ├── mod.rs      `render`: the decoder, the patch loop and the encoder; `frame_format`; the error
 ├── patches.rs  the frame-by-frame patch schedule, the byte-bounded patch cache and patch loading
-└── tests/      colour values, blend maths, schedule and cache, and the FFmpeg end-to-end renders
+├── still.rs    one region of one frame with its patches blended, back in RGB, for the read-back check
+└── tests/      colour values, blend maths, schedule and cache, stills, and the FFmpeg renders
 ```
 
 ## How it works
@@ -40,6 +41,11 @@ chroma per 2×2 block with the block's summed alpha, counting pixels outside the
 a patch at any position and of any size covers each chroma sample by its share. Integer rounding
 keeps a clear pixel's bytes identical and writes an opaque pixel's value exactly.
 
+`still::finished_region` shows one region of one frame as the video will: the region, on even
+pixels so its chroma blocks are the frame's, goes to 8-bit 4:2:0 samples in the stream's
+conversion, each patch part inside it is converted and blended by `blend` exactly as the render
+does, and `Conversion::rgb` turns the samples back into R′G′B′. The read-back check reads it.
+
 Progress is reported every 240 frames and at the end. The decoder and the encoder must both handle
 exactly one frame per timeline entry; a cancel flag stops the loop and kills the encoder.
 
@@ -50,7 +56,8 @@ exactly one frame per timeline entry; a cancel flag stops the loop and kills the
   `is_constant_frame_rate`), `job_model::onscreen` (`ReplacementDocument`, `PixelRect`) and `image`
   for the patch PNGs.
 - Used by: `crates/pipeline/src/tasks/localized.rs`, which chooses the output path, guards an
-  existing file and renames the finished part file into place.
+  existing file and renames the finished part file into place; the read-back check
+  (`onscreen_text::replace::verify`) uses the schedule and `still`.
 - Rules: the source is only read; one frame and the active patches are held at a time, with the
   cache bounded by `CACHE_BYTES`; a variable frame rate is refused rather than drifting out of sync.
 

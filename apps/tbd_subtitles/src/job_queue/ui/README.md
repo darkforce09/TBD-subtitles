@@ -17,7 +17,7 @@ apps/tbd_subtitles/src/job_queue/ui/
 ├── row_menu.rs       a row's right-click menu, by the row's state
 ├── sidebar.rs        the sections Now, Up Next and Done with their headings and Fix All, or the empty hint
 ├── sidebar_row.rs    one row: status mark, name, status line, bar, ✕ on hover, drag and drop
-├── stage_list.rs     the nine stages with their marks and times, "Show all 28 steps", step lines
+├── stage_list.rs     the nine stages with their marks and times, "Show all 29 steps", step lines
 └── toolbar.rs        Add Videos…, Add Folder…, the queue button with its reason, the log button, gear
 ```
 
@@ -62,11 +62,11 @@ are on disk.") and that it drags in the sidebar, its path on the recessed well, 
 the first in line) and the red Remove from List; a waiting correction run says it starts as soon
 as the video is free, with Remove from List only. A running job gets `progress_card` over
 `stage_list`: the progress card writes what its stage is doing in 17 px semibold ("Settling the
-words"), the step at work ("Now: Language model settles the words · step 9 of 28"; between two
+words"), the step at work ("Now: Language model settles the words · step 9 of 29"; between two
 steps the last one started, never the shot scan), a 6 px bar of
 the share done, and the time left ("about 4 min left", or "Working out the time left…" until the
 video's length is known) beside the time so far ("10 min 00 s so far"). The stage list is a card
-with "Show all 28 steps" on top (Hide the 28 steps once open, "9 stages" on the right; one per job,
+with "Show all 29 steps" on top (Hide the 29 steps once open, "9 stages" on the right; one per job,
 in egui's memory), then a row per stage from `stage_progress`: a check with its time or "already
 done", a ring filled to its share with the time "so far", a red cross with "failed", or a grey
 empty ring and a grey title for a stage to come. A running or failed stage shows its steps, or

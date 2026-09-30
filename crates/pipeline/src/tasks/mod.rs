@@ -24,6 +24,7 @@ mod replace;
 mod review;
 mod sounds;
 mod speech;
+mod verify;
 
 pub(crate) use review::corrected_lines;
 
@@ -138,6 +139,7 @@ pub fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<TaskRepo
         StepName::TextMask | StepName::TextInpaint | StepName::TextCompose => {
             replace::run(step, job, progress)
         }
+        StepName::TextVerify => verify::run(job, progress),
         StepName::Output => layout::output(job),
         StepName::LocalizedVideo => localized::run(job, progress),
     };

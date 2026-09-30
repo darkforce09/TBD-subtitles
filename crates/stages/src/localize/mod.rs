@@ -14,6 +14,7 @@
 pub mod blend;
 pub mod colour;
 pub mod patches;
+pub mod still;
 
 use std::fmt;
 use std::path::Path;

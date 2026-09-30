@@ -5,7 +5,7 @@
 //! video was written, its replacements, fallbacks, path and encoder.
 //! **Position:** called by the runner at the end of every job; reads what the steps wrote.
 //! **Signals and state:** reads `qc.json`, the dropped sounds, `visual/text_typeset.json`,
-//! `visual/text_compose.json` and `visual/localized_video.json`; writes `report.md`.
+//! `visual/text_verify.json` and `visual/localized_video.json`; writes `report.md`.
 //! **Invariants:** the localized-video lines appear only when that step ran without recording
 //! itself disabled; the report is written whole through a part file.
 
@@ -53,11 +53,11 @@ pub fn write(work: &WorkDir, record: &JobRecord) -> Result<QcReport> {
             ));
         }
         if localized_video_ran(record) {
-            let composed: ReplacementDocument =
-                work_dir::read_json(&work.text(StepName::TextCompose))?;
+            let replacements: ReplacementDocument =
+                work_dir::read_json(&work.text(StepName::TextVerify))?;
             let video: LocalizedVideoRecord =
                 work_dir::read_json(&work.text(StepName::LocalizedVideo))?;
-            text.push_str(&localized_lines(&composed, &video));
+            text.push_str(&localized_lines(&replacements, &video));
         }
     }
     work_dir::write_text(&work.report(), &text)?;
@@ -72,16 +72,16 @@ fn localized_video_ran(record: &JobRecord) -> bool {
         .is_some_and(|step| !step.measure.notes.contains_key("disabled"))
 }
 
-/// The report's localized-video lines: what was replaced in the picture, what fell back to the
-/// localized subtitles, and the file and encoder written.
-fn localized_lines(composed: &ReplacementDocument, video: &LocalizedVideoRecord) -> String {
-    let fallbacks = composed
+/// The report's localized-video lines: what was replaced in the picture, what was left in
+/// Japanese, and the file and encoder written.
+fn localized_lines(replacements: &ReplacementDocument, video: &LocalizedVideoRecord) -> String {
+    let fallbacks = replacements
         .texts
         .iter()
         .filter(|text| matches!(text.status, ReplaceStatus::Fallback(_)))
         .count();
     format!(
-        "\n### Localized video\n\n- Occurrences replaced in the video: {}\n- Fallbacks to the localized subtitles: {}\n- Localized video: {}\n- Encoder: {}\n",
+        "\n### Localized video\n\n- Occurrences replaced in the video: {}\n- Occurrences left in Japanese: {}\n- Localized video: {}\n- Encoder: {}\n",
         video.replaced,
         fallbacks,
         video.path.as_deref().unwrap_or("none"),

@@ -95,7 +95,7 @@ list and the line editor side by side.
   idle add none) and the time so far. Under it nine groups: Read the video, Separate the voices,
   Hear the speech, Settle the words, Time the words, Lay out the subtitles, Translate on-screen
   text, Write the subtitles and Write the localized video. Each shows its time and state; the
-  running group opens to its steps. "Show all 28 steps" opens every group.
+  running group opens to its steps. "Show all 29 steps" opens every group.
   A waiting job's card gives its place, when it starts, its path, Run Next and Remove from List. A
   failed job's card names the stage and step in plain words ("Failed at Hear the speech", "Listen
   with Whisper stopped with an error."), the raw message, the finished steps kept and when Try
@@ -126,8 +126,8 @@ list and the line editor side by side.
   video" once the replacement steps ran), visual processing time, combined ASS output and a Check
   Text action; warnings remain visible after the job finishes. While a job's localized video is on
   disk, a card under the file card says "Localized video saved next to the original" ("The
-  Japanese writing is replaced in English where it could be; the rest is in its own subtitle file.
-  The original video is unchanged."), with the video's and its subtitle file's paths (whole on
+  Japanese writing is replaced in English where it could be; its subtitle file holds the dialogue
+  and sound cues. The original video is unchanged."), with the video's and its subtitle file's paths (whole on
   hover) and Open in Player, Show in Folder and Copy Path for the video.
 - **Check Lines** (a finished job):
 
@@ -182,8 +182,9 @@ list and the line editor side by side.
   video is written it shows the occurrence's replaced keyframe plate, captioned "Localized video
   not written yet". Show erase mask, beside the original picture's title, tints the keyframe's
   [stroke mask](/documentation/glossary.md#stroke-mask) over the original; a line under the time
-  says "Replaced in the video" (green) or `Not replaced in the video: <reason>` (orange), and the
-  Replace treatment reads "Replace in the video".
+  says "Replaced in the video" (green) or `Not replaced in the video: <reason>` (orange), with what
+  the read-back check read under it in grey (`Checked: English reads back as “…”`, or `Checked:
+  Japanese still reads “…”`), and the Replace treatment reads "Replace in the video".
 - **Settings window:** a second native window, centred over the main one when it opens, in six
   tabs. General: the models folder and the work folder with their sizes, the subtitle format, the
   glossary with its count of names. Engines: vocal separation, the second speech engine, the
@@ -426,7 +427,8 @@ nothing.
   window reads `job.json` and the step records for progress and the time left, `qc.json`,
   `output.json`, `report.md` and `fix.json` for the Overview, and `sheet.json`, `adjudicated.json`, the
   re-decodes, `probe.json` and `audio/vocals_16k.f32` for Check Lines. Check Text reads the visual
-  documents/crops and exported ASS (and `visual/text_compose.json`, `visual/localized_video.json`,
+  documents/crops and exported ASS (and `visual/text_verify.json`, else `visual/text_compose.json` in a
+  job from before the read-back check, `visual/localized_video.json`,
   the masks and previews for the localized video), and writes locked `visual/corrections.json`. Line review writes
   `review.json`, the corrections the review step reads, under its lock `review.json.lock`, which
   Fix It takes too; Fix It also writes `fix.json` and, while it runs, `fix/calls/`. Each finished

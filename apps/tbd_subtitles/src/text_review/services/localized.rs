@@ -1,10 +1,11 @@
 //! A job's localized video as Check Text shows it: its files, each occurrence's replacement, the
 //! selected occurrence's pictures, and the words and geometry the preview draws them with.
 //!
-//! **Role:** read `visual/localized_video.json`, `visual/text_compose.json` and the localized
-//! subtitle file named in `output.json`; find each occurrence's keyframe plate as composition
-//! chose it; decode its replaced plate and erase mask at a bounded size; say whether it was
-//! replaced; place a plate's rectangle on the picture.
+//! **Role:** read `visual/localized_video.json`, `visual/text_verify.json` (else, in a job from
+//! before the read-back check, `visual/text_compose.json`) and the localized subtitle file named
+//! in `output.json`; find each occurrence's keyframe plate as composition chose it; decode its
+//! replaced plate and erase mask at a bounded size; say whether it was replaced and what the
+//! read-back check read; place a plate's rectangle on the picture.
 //! **Position:** called by `session::load` and by application actions off the window thread; the
 //! pure helpers are also read by the preview.
 //! **Signals and state:** reads job files and PNGs; writes nothing.
@@ -19,7 +20,7 @@ use job_model::StepName;
 use job_model::job::JobRecord;
 use job_model::onscreen::{
     LocalizedVideoRecord, PixelRect, Plate, ReplaceStatus, ReplacedText, ReplacementDocument,
-    TextDocument, TextOccurrence,
+    TextCheck, TextDocument, TextOccurrence, VerifiedReplacements, VerifyReading,
 };
 use job_model::outputs::OutputRecord;
 use pipeline::work_dir::{self, WorkDir};
@@ -53,10 +54,9 @@ pub(crate) fn load(
         .as_ref()
         .map(PathBuf::from)
         .filter(|path| path.is_file());
-    let replacements =
-        work_dir::read_json::<ReplacementDocument>(&work.text(StepName::TextCompose))
-            .map(|composed| replacements(work.root(), &composed, document))
-            .unwrap_or_default();
+    let replacements = checked_replacements(work)
+        .map(|verified| replacements(work.root(), &verified, document))
+        .unwrap_or_default();
     Some(LocalizedReview {
         mode: default_mode(),
         video,
@@ -73,13 +73,30 @@ pub(crate) fn default_mode() -> PreviewMode {
     PreviewMode::Localized
 }
 
-/// Each composed occurrence's replacement by id, with its keyframe plate's erase mask.
+/// The replacements as the read-back check left them, else, in a job from before the check, as
+/// composition left them, without checks.
+pub(crate) fn checked_replacements(work: &WorkDir) -> Option<VerifiedReplacements> {
+    work_dir::read_json::<VerifiedReplacements>(&work.text(StepName::TextVerify))
+        .ok()
+        .or_else(|| {
+            work_dir::read_json::<ReplacementDocument>(&work.text(StepName::TextCompose))
+                .ok()
+                .map(|document| VerifiedReplacements {
+                    document,
+                    checks: Vec::new(),
+                })
+        })
+}
+
+/// Each occurrence's replacement by id, with its keyframe plate's erase mask and what the
+/// read-back check read.
 pub(crate) fn replacements(
     root: &Path,
-    composed: &ReplacementDocument,
+    verified: &VerifiedReplacements,
     document: &TextDocument,
 ) -> BTreeMap<String, Replacement> {
-    composed
+    verified
+        .document
         .texts
         .iter()
         .map(|text| {
@@ -95,6 +112,10 @@ pub(crate) fn replacements(
                 status: text.status.clone(),
                 preview: text.preview.as_deref().and_then(|path| inside(root, path)),
                 mask,
+                check: verified
+                    .check(&text.id)
+                    .and_then(TextCheck::telling)
+                    .map(check_line),
             };
             (text.id.clone(), replacement)
         })
@@ -163,6 +184,17 @@ pub(crate) fn status_line(replacement: Option<&Replacement>) -> String {
         Some(ReplaceStatus::Pending) | None => {
             "Not replaced in the video: its replacement has not been made yet".into()
         }
+    }
+}
+
+/// What the read-back check read from the frame that says most about a replacement.
+pub(crate) fn check_line(reading: &VerifyReading) -> String {
+    if !reading.japanese_found.is_empty() {
+        format!("Checked: Japanese still reads “{}”", reading.japanese_found)
+    } else if reading.english_read.is_empty() {
+        "Checked: no English reads back".into()
+    } else {
+        format!("Checked: English reads back as “{}”", reading.english_read)
     }
 }
 

@@ -5,7 +5,7 @@
 //! **Signals and state:** crop files and one local OCR reader.
 //! **Invariants:** a confident non-Japanese reading is excluded; uncertain readings stay flagged.
 
-use super::TextResult;
+use super::{TextResult, furigana};
 use inference::ocr::OcrReader;
 use job_model::onscreen::{Quad, TextCorrections, TextDocument, TextOccurrence, TextTreatment};
 use job_model::outputs::ShotChanges;
@@ -17,6 +17,9 @@ use std::{
 };
 
 const READING_CACHE_REVISION: u32 = 2;
+/// Extra fraction of the shortest frame allowed between adjacent readings, so millisecond-rounded
+/// timestamps of a one-frame gap still count as one frame.
+const HALF_FRAME_SLACK: f64 = 0.5;
 
 #[derive(Serialize, Deserialize)]
 struct CachedReading {
@@ -86,7 +89,7 @@ pub fn read(
     });
     let cuts = load_cuts(root)?;
     consolidate_readings(document, &cuts);
-    group_furigana(document);
+    furigana::group_furigana(document);
     Ok(())
 }
 
@@ -132,28 +135,33 @@ pub(super) fn consolidate_readings(document: &mut TextDocument, cuts: &ShotChang
         .filter(|duration| duration.is_finite() && *duration > 0.0)
         .reduce(f64::min)
         .unwrap_or(0.0);
+    let max_gap_s = frame_s * (1.0 + HALF_FRAME_SLACK) + 1e-6;
     let mut active: HashMap<String, Vec<usize>> = HashMap::new();
     let mut valid = Vec::new();
     let mut remaining = items.into_iter();
     while let Some(item) = remaining.next() {
         let item_valid = observed_bounds(&item);
         let candidates = active.entry(item.japanese.clone()).or_default();
-        candidates
-            .retain(|&index| document.occurrences[index].end_s + frame_s + 1e-6 >= item.start_s);
+        candidates.retain(|&index| document.occurrences[index].end_s + max_gap_s >= item.start_s);
         let mut matches = candidates.iter().copied().filter(|&index| {
             valid[index]
                 && item_valid
-                && adjacent_reading(&document.occurrences[index], &item, frame_s, cuts)
+                && adjacent_reading(&document.occurrences[index], &item, max_gap_s, cuts)
                 && !remaining
                     .as_slice()
                     .iter()
                     .take_while(|other| {
-                        other.start_s <= document.occurrences[index].end_s + frame_s + 1e-6
+                        other.start_s <= document.occurrences[index].end_s + max_gap_s
                     })
                     .any(|other| {
                         other.start_s < item.end_s
                             && other.end_s > item.start_s
-                            && adjacent_reading(&document.occurrences[index], other, frame_s, cuts)
+                            && adjacent_reading(
+                                &document.occurrences[index],
+                                other,
+                                max_gap_s,
+                                cuts,
+                            )
                     })
                 && !document
                     .occurrences
@@ -187,6 +195,10 @@ pub(super) fn consolidate_readings(document: &mut TextDocument, cuts: &ShotChang
                 base.presentation.treatment = TextTreatment::Nearby;
             }
             base.source_fingerprint = None;
+            // The frame missing between two sightings shows the same writing: no hole remains.
+            if let Some(last) = base.frames.last_mut() {
+                last.end_s = last.end_s.max(item.start_s);
+            }
             base.frames.extend(item.frames);
             for crop in item.crops {
                 if !base.crops.contains(&crop) {
@@ -209,7 +221,7 @@ pub(super) fn consolidate_readings(document: &mut TextDocument, cuts: &ShotChang
 fn adjacent_reading(
     a: &TextOccurrence,
     b: &TextOccurrence,
-    frame_s: f64,
+    max_gap_s: f64,
     cuts: &ShotChanges,
 ) -> bool {
     let (Some(last), Some(first)) = (a.frames.last(), b.frames.first()) else {
@@ -228,7 +240,7 @@ fn adjacent_reading(
         && valid_confidence(b.confidence)
         && (a.english.is_none() || (a.confidence >= 0.85) == (b.confidence >= 0.85))
         && gap >= -1e-6
-        && gap <= frame_s + 1e-6
+        && gap <= max_gap_s
         && (a.end_s - last.end_s).abs() <= 1e-6
         && (b.start_s - first.time_s).abs() <= 1e-6
         && !cuts
@@ -254,14 +266,14 @@ fn matching_region(a: Quad, b: Quad) -> bool {
             .all(|(a, b)| (a.x - b.x).hypot(a.y - b.y) <= side * 0.45)
 }
 
-fn append_reason(item: &mut TextOccurrence, reason: &str) {
+pub(super) fn append_reason(item: &mut TextOccurrence, reason: &str) {
     if !item.provenance.reason.is_empty() {
         item.provenance.reason.push(' ');
     }
     item.provenance.reason.push_str(reason);
 }
 
-fn observed_bounds(item: &TextOccurrence) -> bool {
+pub(super) fn observed_bounds(item: &TextOccurrence) -> bool {
     item.start_s.is_finite()
         && item.end_s.is_finite()
         && item.end_s > item.start_s
@@ -283,175 +295,6 @@ fn observed_bounds(item: &TextOccurrence) -> bool {
             .frames
             .windows(2)
             .all(|pair| pair[1].time_s >= pair[0].end_s - 1e-6)
-}
-
-/// Ruby remains visual evidence of its base line, never a second independent translation.
-pub(super) fn group_furigana(document: &mut TextDocument) {
-    let mut groups = Vec::new();
-    for (child_index, child) in document.occurrences.iter().enumerate() {
-        if !kana_only(&child.japanese) || child.confidence < 0.6 || child.reviewed {
-            continue;
-        }
-        let mut candidate = None;
-        let mut ambiguous = false;
-        for (parent_index, parent) in document.occurrences.iter().enumerate() {
-            if child_index == parent_index || !parent.japanese.chars().any(kanji) {
-                continue;
-            }
-            if !parent.reviewed
-                && ruby_pair(child, parent)
-                && ruby_english_is_covered(child, parent)
-            {
-                if candidate.is_some() {
-                    ambiguous = true;
-                    break;
-                }
-                candidate = Some(parent_index);
-            }
-        }
-        if !ambiguous && let Some(parent) = candidate {
-            groups.push((child_index, parent));
-        }
-    }
-    let mut removed = vec![false; document.occurrences.len()];
-    for (child, parent) in groups {
-        let ruby = &document.occurrences[child];
-        let crops = ruby.crops.clone();
-        let translated_warnings = ruby
-            .english
-            .as_ref()
-            .map(|_| ruby.warnings.clone())
-            .unwrap_or_default();
-        let reason = format!(
-            "Furigana evidence {}: {:?} ({:.2} confidence; {}; reference {:?}; English {:?}); base reading and geometry retained. {}",
-            ruby.id,
-            ruby.japanese,
-            ruby.confidence,
-            ruby.provenance.backend,
-            ruby.provenance.reference,
-            ruby.english,
-            ruby.provenance.reason
-        );
-        let base = &mut document.occurrences[parent];
-        for crop in crops {
-            if !base.crops.contains(&crop) {
-                base.crops.push(crop);
-            }
-        }
-        for warning in translated_warnings {
-            if !base.warnings.contains(&warning) {
-                base.warnings.push(warning);
-            }
-        }
-        base.source_fingerprint = None;
-        append_reason(base, reason.trim());
-        removed[child] = true;
-    }
-    let mut index = 0;
-    document.occurrences.retain(|_| {
-        let keep = !removed[index];
-        index += 1;
-        keep
-    });
-}
-
-fn ruby_english_is_covered(child: &TextOccurrence, parent: &TextOccurrence) -> bool {
-    let words = |text: &str| {
-        text.split(|c: char| !c.is_alphanumeric())
-            .filter(|word| !word.is_empty())
-            .map(str::to_lowercase)
-            .collect::<Vec<_>>()
-    };
-    let Some(english) = &child.english else {
-        return true;
-    };
-    let child_words = words(english);
-    if child_words.is_empty() {
-        return true;
-    }
-    parent.english.as_deref().is_some_and(|english| {
-        words(english)
-            .windows(child_words.len())
-            .any(|phrase| phrase == child_words)
-    })
-}
-
-fn kana_only(text: &str) -> bool {
-    let mut has_letter = false;
-    text.chars().all(|c| {
-        let kana =
-            matches!(c,'\u{3041}'..='\u{3096}'|'\u{30a1}'..='\u{30fa}'|'\u{ff66}'..='\u{ff9d}');
-        has_letter |= kana;
-        kana || c.is_whitespace()
-            || matches!(c, 'ー' | '\u{3099}' | '\u{309a}' | '\u{ff9e}' | '\u{ff9f}')
-    }) && has_letter
-}
-
-fn kanji(c: char) -> bool {
-    matches!(c,'\u{3400}'..='\u{9fff}'|'\u{f900}'..='\u{faff}')
-}
-
-fn ruby_pair(child: &TextOccurrence, parent: &TextOccurrence) -> bool {
-    if !observed_bounds(child)
-        || !observed_bounds(parent)
-        || child.start_s < parent.start_s - 1e-6
-        || child.end_s > parent.end_s + 1e-6
-        || parent
-            .frames
-            .windows(2)
-            .any(|pair| (pair[1].time_s - pair[0].end_s).abs() > 1e-6)
-    {
-        return false;
-    }
-    let mut parent_index = 0;
-    for frame in &child.frames {
-        if !frame.time_s.is_finite() || !frame.end_s.is_finite() || frame.end_s <= frame.time_s {
-            return false;
-        }
-        while parent_index < parent.frames.len()
-            && parent.frames[parent_index].end_s <= frame.time_s + 1e-6
-        {
-            parent_index += 1;
-        }
-        let Some(base) = parent.frames.get(parent_index) else {
-            return false;
-        };
-        if base.time_s > frame.time_s + 1e-6
-            || base.end_s < frame.end_s - 1e-6
-            || !ruby_position(
-                frame.quad,
-                base.quad,
-                child.japanese.trim().chars().count() == 1,
-            )
-        {
-            return false;
-        }
-    }
-    true
-}
-
-fn ruby_position(child: Quad, parent: Quad, single_kana: bool) -> bool {
-    if !child.valid() || !parent.valid() {
-        return false;
-    }
-    let (cl, ct, cr, cb) = child.bounds();
-    let (pl, pt, pr, pb) = parent.bounds();
-    let (cw, ch, pw, ph) = (cr - cl, cb - ct, pr - pl, pb - pt);
-    let horizontal = |quad: Quad, height: f64| {
-        (quad.0[1].y - quad.0[0].y).abs() < height * 0.25
-            && (quad.0[2].y - quad.0[3].y).abs() < height * 0.25
-    };
-    horizontal(child, ch)
-        && horizontal(parent, ph)
-        && cw >= ch * if single_kana { 0.8 } else { 1.3 }
-        && pw >= ph * 1.5
-        && (0.18..=0.55).contains(&(ch / ph))
-        && cw <= pw * 0.65
-        && cl >= pl - ph * 0.08
-        && cr <= pr + ph * 0.08
-        && (ct + cb) / 2.0 < pt
-        && cb >= pt - ph * 0.35
-        && cb <= pt + ph * 0.12
 }
 
 pub fn japanese(text: &str) -> bool {

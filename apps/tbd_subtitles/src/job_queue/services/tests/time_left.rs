@@ -28,7 +28,7 @@ fn a_new_job_has_the_pilot_audio_time_and_initial_visual_time_left() {
     p.duration_s = Some(PILOT_VIDEO_S);
     let (left, share) = estimate(&p, &pilot_rates(), now).expect("estimate");
     let pilot: f64 = PILOT.iter().map(|(_, s)| s).sum();
-    let initial_visual = PILOT_VIDEO_S * 1.24;
+    let initial_visual = PILOT_VIDEO_S * 1.25;
     assert!(
         (left - pilot - initial_visual).abs() < 0.01,
         "{left} vs audio {pilot} and visual {initial_visual}"
@@ -48,6 +48,7 @@ fn every_visual_step_has_a_positive_estimate_without_measured_history() {
         (StepName::TextMask, 50.0),
         (StepName::TextInpaint, 100.0),
         (StepName::TextCompose, 20.0),
+        (StepName::TextVerify, 10.0),
         (StepName::TextTypeset, 10.0),
         (StepName::LocalizedVideo, 250.0),
     ] {
@@ -82,6 +83,7 @@ fn disabled_visual_steps_add_no_time_even_with_measured_history() {
         StepName::TextMask,
         StepName::TextInpaint,
         StepName::TextCompose,
+        StepName::TextVerify,
         StepName::TextTypeset,
         StepName::LocalizedVideo,
     ] {
@@ -106,10 +108,11 @@ fn settings(enabled: bool, localized: bool) -> JobSettings {
     settings
 }
 
-const REPLACEMENT: [StepName; 4] = [
+const REPLACEMENT: [StepName; 5] = [
     StepName::TextMask,
     StepName::TextInpaint,
     StepName::TextCompose,
+    StepName::TextVerify,
     StepName::LocalizedVideo,
 ];
 
@@ -149,7 +152,7 @@ fn idle_steps_add_no_time_left_even_while_stale() {
     progress.idle = idle_steps(&settings(true, true));
     let (left, _) = estimate(&progress, &rates, now).expect("known duration");
     assert!(
-        (left - audio - PILOT_VIDEO_S * 1.24).abs() < 0.01,
+        (left - audio - PILOT_VIDEO_S * 1.25).abs() < 0.01,
         "the localized video adds its steps: {left}"
     );
 }

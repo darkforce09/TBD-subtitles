@@ -8,6 +8,7 @@
 
 mod localize;
 mod settings;
+mod verify;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -20,6 +21,7 @@ pub use localize::{
     ReplacementDocument,
 };
 pub use settings::TextSettings;
+pub use verify::{TextCheck, VerifiedReplacements, VerifyReading};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Point {
@@ -116,6 +118,9 @@ pub struct TextOccurrence {
     /// The observed frame that represents the occurrence and the whole-frame still taken there.
     #[serde(default)]
     pub keyframe: Option<TextKeyframe>,
+    /// Furigana lines folded into this line: erased with it and never lettered on their own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ruby: Vec<Quad>,
 }
 
 /// One observed frame of an occurrence with its downscaled whole-frame still, relative to the

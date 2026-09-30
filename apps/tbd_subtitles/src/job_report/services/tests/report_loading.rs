@@ -291,6 +291,7 @@ fn composed(baked: usize) -> ReplacementDocument {
         container: None,
         plates: Vec::new(),
         preview: None,
+        lettering_quad: None,
     };
     let mut texts: Vec<ReplacedText> = (0..baked)
         .map(|n| text(format!("T{n}"), ReplaceStatus::Baked))
@@ -340,6 +341,16 @@ fn a_localized_video_reports_what_it_replaced_and_its_files_while_they_are_there
     let localized = report.localized.expect("localized");
     assert_eq!(localized.replaced, Some(3), "counted from the composition");
     assert_eq!(localized.video, None, "not written yet");
+
+    let steps = [StepName::TextCompose, StepName::TextVerify];
+    let job = visual_job(&video, &work_root, true, &steps);
+    write(&job.join("visual/text_verify.json"), &composed(1));
+    let report = load(&video, &work_root).expect("report");
+    assert_eq!(
+        report.localized.and_then(|l| l.replaced),
+        Some(1),
+        "counted from what the read-back check approved"
+    );
 
     let steps = [StepName::TextCompose, StepName::LocalizedVideo];
     let job = visual_job(&video, &work_root, true, &steps);

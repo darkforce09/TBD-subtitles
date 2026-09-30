@@ -10,11 +10,12 @@ localized video, replace the writing itself with English lettering.
 crates/stages/src/onscreen_text/
 ├── detect/               sampled screening, bisected boundaries, keyframe crops and stills
 ├── event_buffer.rs       bounded ASS event storage and adjacent frame coalescing
+├── furigana.rs           kana ruby folded into the kanji line it annotates
 ├── geometry.rs           checked homographies and robust fitting
 ├── glyphs.rs             portable vector outlines for perspective lettering
 ├── keyframe_requests.rs  keyframe grouping, Claude prompts, answer schema and checks, added writing
 ├── mod.rs                stage module exports
-├── read.rs               Japanese readings, compatible fragments and furigana evidence
+├── read.rs               Japanese readings and compatible adjacent fragments
 ├── reference.rs          scene-validated reference wording
 ├── replace/              stroke masks, inpainted plates and English lettering for the localized video
 ├── review.rs             source-identity checks and owner corrections
@@ -22,6 +23,7 @@ crates/stages/src/onscreen_text/
 ├── track.rs              sampled geometry checks against the keyframe quad
 ├── translate.rs          Claude keyframe reading first, local translation for the rest, consolidation
 ├── typeset.rs            confidence checks, safe masks and nearby fallbacks
+├── unify.rs              occurrences of one sign joined into one continuous span
 └── vision.rs             bounded parallel keyframe requests through the Claude CLI
 ```
 
@@ -42,10 +44,27 @@ refreshes a request once and then resumes its cached result. Local readings with
 katakana characters plus kanji cap their local translation confidence at 0.84.
 
 Reading and translation consolidate compatible adjacent occurrences without crossing known cuts;
-translated wording and confidence bands must agree. All observed frames and crops survive. Ruby
-becomes evidence only when its geometry fits and its translated words are covered by the parent.
-Review rejects missing or mismatched source fingerprints and reports orphaned corrections. The
-desktop lets the owner remove those orphans; this folder never silently discards saved edits.
+translated wording and confidence bands must agree, and a gap of up to one and a half of the
+shortest frame counts as one missing frame, which the earlier sighting then covers. All observed
+frames and crops survive. A kana-only line folds into the one kanji line it sits on as ruby: its
+height is 0.18 to 0.55 of the line's, its bottom lies between half a line height above the line's
+top and a third of a line height into it, its centre stays over the line, it is at most 1.6 times
+as wide, for at least two thirds of the time it shares with the line, which is at least half its
+own span. The line keeps its reading and
+English, records the ruby box at its keyframe in `ruby` and the ruby's reading in its reason.
+
+At the end of translation, and again after owner corrections in the review step, `unify` joins the
+occurrences that show one sign: the same Japanese (or one reading containing the other, with
+spaces ignored and small kana read as full-size), keyframe
+boxes that overlap by 0.3 or hold each other's centre, and spans that overlap or pause at most
+0.25 s without a cut. The detector's occurrence survives over writing Claude found (`-c` ids),
+then the longer span; it takes the joined span, fills the time only the others covered with its
+own keyframe box, and tiles its frames without a hole. A reviewed occurrence is never absorbed and
+keeps the owner's timing and English. Furigana grouping runs again afterwards, so ruby only Claude
+found folds into the joined line. A re-run of the review step repairs an existing job without
+Claude calls. Review rejects missing or mismatched source fingerprints and reports orphaned
+corrections. The desktop lets the owner remove those orphans; this folder never silently discards
+saved edits.
 
 Typesetting withholds unreviewed confidence below 0.85 or non-finite scores, retaining candidate
 English and an explicit warning. Accepted wording uses safe replacement or a nearby label; unsafe

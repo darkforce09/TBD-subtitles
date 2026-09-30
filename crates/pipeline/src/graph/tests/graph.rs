@@ -54,13 +54,18 @@ fn changed_steps_carry_their_revision_and_the_rest_are_at_one() {
     assert_eq!(revision(Review), 2);
     assert_eq!(revision(Cues), 3);
     assert_eq!(revision(Qc), 5);
-    assert_eq!(revision(Output), 3);
+    assert_eq!(revision(Output), 5);
     assert_eq!(revision(TextDetect), 4);
     assert_eq!(revision(TextRead), 3);
     assert_eq!(revision(TextTrack), 3);
     assert_eq!(revision(TextTranslate), 7);
-    assert_eq!(revision(TextReview), 2);
-    assert_eq!(revision(TextTypeset), 3);
+    assert_eq!(revision(TextReview), 3);
+    assert_eq!(revision(TextTypeset), 4);
+    assert_eq!(revision(TextMask), 2);
+    assert_eq!(revision(TextInpaint), 3);
+    assert_eq!(revision(TextCompose), 2);
+    assert_eq!(revision(TextVerify), 1);
+    assert_eq!(revision(LocalizedVideo), 2);
     for step in StepName::ALL {
         if !matches!(
             step,
@@ -75,6 +80,10 @@ fn changed_steps_carry_their_revision_and_the_rest_are_at_one() {
                 | TextTranslate
                 | TextReview
                 | TextTypeset
+                | TextMask
+                | TextInpaint
+                | TextCompose
+                | LocalizedVideo
         ) {
             assert_eq!(revision(step), 1, "{step}");
         }
@@ -307,4 +316,41 @@ fn a_missing_keyframe_still_invalidates_detection_while_older_records_need_none(
     assert!(!fixture.valid(), "an empty still is not a keyframe");
     std::fs::write(&still, b"whole-frame still").unwrap();
     assert!(fixture.valid());
+}
+
+#[test]
+fn the_output_and_the_localized_video_read_the_checked_replacements() {
+    use StepName::*;
+    assert_eq!(inputs(TextReview), &[ShotScan, TextTranslate]);
+    assert_eq!(inputs(TextTypeset), &[TextReview]);
+    assert_eq!(inputs(Output), &[Cues, TextTypeset, TextVerify]);
+    assert_eq!(inputs(LocalizedVideo), &[ProbeDecode, TextVerify, Output]);
+    assert_eq!(inputs(TextVerify), &[ProbeDecode, TextReview, TextCompose]);
+    let work = WorkDir::new("/work/job");
+    assert_eq!(
+        outputs(TextTypeset, &work, Path::new("/v/a.mp4"), OutputFormat::Ass),
+        vec![work.text(TextTypeset), work.text_ass()],
+        "the localized subtitle file has no events of its own"
+    );
+}
+
+#[test]
+fn the_read_back_check_runs_between_composition_and_the_outputs_in_an_ocr_worker() {
+    use StepName::*;
+    let position = |step| StepName::ALL.iter().position(|s| *s == step).unwrap();
+    assert_eq!(position(TextVerify), position(TextCompose) + 1);
+    assert!(position(TextVerify) < position(Output));
+    assert_eq!(StepName::ALL.len(), 29);
+    assert_eq!(placement(TextVerify), Placement::Worker(Binary::Main));
+    assert!(uses_gpu(TextVerify) && loads_onnx_runtime(TextVerify));
+    let work = WorkDir::new("/work/job");
+    assert_eq!(
+        outputs(TextVerify, &work, Path::new("/v/a.mp4"), OutputFormat::Ass),
+        vec![work.text(TextVerify)]
+    );
+    assert!(work.text(TextVerify).ends_with("visual/text_verify.json"));
+    let mut job = JobSettings::with_glossary(Vec::new());
+    let before = settings(TextVerify, &job);
+    job.onscreen_text.localized_video = !job.onscreen_text.localized_video;
+    assert_ne!(before, settings(TextVerify, &job));
 }

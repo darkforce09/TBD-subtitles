@@ -1,5 +1,6 @@
 use super::super::cluster::{self, Clusters, lab};
-use super::{lettering, near_segment, panel, without_blends};
+use super::super::panel::panel;
+use super::{lettering, near_segment, outlined_over_ring, without_blends};
 
 /// A window of `w` × `h` painted by `paint`, split into `k` clusters.
 fn window(w: u32, h: u32, k: usize, paint: impl Fn(u32, u32) -> [u8; 3]) -> Clusters {
@@ -109,4 +110,82 @@ fn a_panel_split_into_pieces_is_not_a_sign() {
     let clusters = window(40, 30, 2, |x, _| if x % 8 < 5 { WHITE } else { BLACK });
     let inside = vec![true; 40 * 30];
     assert!(panel(&clusters, 40, 30, &inside).is_none());
+}
+
+/// A 300 × 100 window whose top and bottom ring rows run through the fill and outline of a line
+/// above and below, with outlined lettering of `fill` and `outline` in the middle over `picture`,
+/// and the quad's pixels (rows 36 to 64) flagged: the picture covers two fifths of the quad but
+/// shows in the ring only along its sides.
+fn ring_crossed(
+    fill: impl Fn(u32, u32) -> [u8; 3],
+    outline: [u8; 3],
+    picture: [u8; 3],
+) -> (Clusters, Vec<bool>) {
+    let paint = |x: u32, y: u32| {
+        let glyph_fill = (13..287).contains(&x) && (44..56).contains(&y);
+        let glyph_outline = (10..290).contains(&x) && (41..59).contains(&y);
+        match y {
+            0..2 | 98.. => fill(x, y),
+            2 | 97 => outline,
+            _ if glyph_fill => fill(x, y),
+            _ if glyph_outline => outline,
+            _ => picture,
+        }
+    };
+    let inside = (0..100u32)
+        .flat_map(|y| (0..300u32).map(move |x| (4..296).contains(&x) && (36..64).contains(&y)))
+        .collect();
+    (window(300, 100, 3, paint), inside)
+}
+
+const RED: [u8; 3] = [200, 40, 90];
+
+#[test]
+fn a_picture_colour_the_crossing_lettering_crowds_out_of_the_ring_is_background() {
+    let (clusters, inside) = ring_crossed(|_, _| WHITE, BLACK, RED);
+    let selection = outlined_over_ring(&clusters, 300, 100, &inside, 6).expect("ring lettering");
+    let (white, red, black) = (
+        cluster_of(&clusters, WHITE),
+        cluster_of(&clusters, RED),
+        cluster_of(&clusters, BLACK),
+    );
+    assert!(
+        selection.background[red] && !selection.ink[red],
+        "{selection:?}"
+    );
+    assert!(
+        selection.ink[white] && selection.ink[black],
+        "{selection:?}"
+    );
+    assert!(selection.outlined);
+}
+
+#[test]
+fn a_ring_fill_may_spread_with_the_contrast_of_its_outline() {
+    let grey = [160, 160, 160];
+    let checker = move |x: u32, y: u32| {
+        if (x + y).is_multiple_of(2) {
+            WHITE
+        } else {
+            grey
+        }
+    };
+    let (clusters, inside) = ring_crossed(checker, BLACK, RED);
+    let (fill, black) = (cluster_of(&clusters, WHITE), cluster_of(&clusters, BLACK));
+    assert_eq!(fill, cluster_of(&clusters, grey));
+    let contrast = cluster::distance(clusters.centres[fill], clusters.centres[black]);
+    assert!(
+        clusters.spread[fill] > 15.0 && clusters.spread[fill] <= 0.2 * contrast,
+        "spread {} against contrast {contrast}",
+        clusters.spread[fill]
+    );
+    assert!(outlined_over_ring(&clusters, 300, 100, &inside, 6).is_some());
+
+    let dim = [60, 60, 70];
+    let (clusters, inside) = ring_crossed(checker, dim, RED);
+    let (fill, outline) = (cluster_of(&clusters, WHITE), cluster_of(&clusters, dim));
+    assert_eq!(fill, cluster_of(&clusters, grey));
+    let contrast = cluster::distance(clusters.centres[fill], clusters.centres[outline]);
+    assert!(clusters.spread[fill] > 15.0_f32.max(0.2 * contrast));
+    assert!(outlined_over_ring(&clusters, 300, 100, &inside, 6).is_none());
 }

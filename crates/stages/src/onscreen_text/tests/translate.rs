@@ -61,6 +61,7 @@ pub(super) fn sighting(
     pixels: [f64; 4],
 ) -> TextOccurrence {
     TextOccurrence {
+        ruby: Vec::new(),
         id: id.into(),
         start_s,
         end_s,

@@ -3,7 +3,7 @@
 # System overview
 
 The shape of TBD-subtitles: an app binary with a job runner, separate ggml and local-language-model
-worker binaries, FFmpeg for media, and a work directory per job. The 28-step pipeline runs from
+worker binaries, FFmpeg for media, and a work directory per job. The 29-step pipeline runs from
 the command line (`tbd-subtitles process`) or the window. A video occupies one queue entry for
 dialogue, sound cues and on-screen Japanese translation. Enabled visual translation produces one
 ASS file beside the source video; with the localized video on (the default for new jobs), the job
@@ -26,7 +26,7 @@ packaged host checks and owner acceptance remain in progress
  user / Dolphin / watcher
             |
             v
- tbd-subtitles: GUI or CLI -> one job runner -> 28 resumable steps
+ tbd-subtitles: GUI or CLI -> one job runner -> 29 resumable steps
             |                                      |
             | spawns assigned workers               | alongside initial decode
             v                                      v
@@ -34,7 +34,7 @@ packaged host checks and owner acceptance remain in progress
       probe_decode · separation · asr_parakeet    (FFmpeg scdet, CPU)
       sound_events · alignment · redecode_parakeet
       review (CPU) · adjudicate · readjudicate · sound_cues (claude)
-      text_detect · text_read · text_inpaint (ONNX) · text_track (CPU)
+      text_detect · text_read · text_inpaint · text_verify (ONNX) · text_track (CPU)
       text_mask · text_compose (CPU) · localized_video (FFmpeg, NVENC)
       tbd-subtitles-ggml worker <step>
       asr_whisper · redecode_whisper
@@ -138,7 +138,7 @@ work/<job id>/            <video file stem as a slug>-<8 hex of its path>
 ├── reviewed.json         the aligned words with the corrected lines timed again
 ├── cues.json             finished cues, in frames (and cues_dropped_sounds.json)
 ├── visual/               nine text_<step>.json documents, corrections.json, events.ass,
-│                         events_localized.ass, localized_video.json, representative crops,
+│                         localized_video.json, representative crops,
 │                         keyframe stills, cached readings and translations, and masks/,
 │                         plates/ and patches/ of the writing replaced in the video
 ├── qc.json               the quality check

@@ -1,7 +1,7 @@
 //! The pipeline's steps as the window names them: nine stages the owner recognises, and a plain
 //! title for every step.
 //!
-//! **Role:** group the twenty-eight steps into the nine stages the window shows, each with its title
+//! **Role:** group the twenty-nine steps into the nine stages the window shows, each with its title
 //! ("Settle the words") and what it does while it runs ("Settling the words"), and give every
 //! step a plain title in place of its file name.
 //!
@@ -80,6 +80,7 @@ pub(crate) const STAGES: [Stage; 9] = [
             StepName::TextMask,
             StepName::TextInpaint,
             StepName::TextCompose,
+            StepName::TextVerify,
             StepName::TextTypeset,
         ],
     },
@@ -130,6 +131,7 @@ pub(crate) fn step_title(step: StepName) -> &'static str {
         StepName::TextMask => "Find the strokes to erase",
         StepName::TextInpaint => "Paint over the Japanese",
         StepName::TextCompose => "Letter the English in place",
+        StepName::TextVerify => "Check the lettered English",
         StepName::TextTypeset => "Place and style the English text",
         StepName::Qc => "Quality check",
         StepName::Output => "Save the subtitle file",

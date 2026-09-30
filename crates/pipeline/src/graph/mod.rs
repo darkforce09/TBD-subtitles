@@ -72,6 +72,7 @@ pub fn uses_gpu(step: StepName) -> bool {
             | StepName::TextRead
             | StepName::TextTranslate
             | StepName::TextInpaint
+            | StepName::TextVerify
             | StepName::LocalizedVideo
     )
 }
@@ -89,6 +90,7 @@ pub fn loads_onnx_runtime(step: StepName) -> bool {
             | StepName::TextDetect
             | StepName::TextRead
             | StepName::TextInpaint
+            | StepName::TextVerify
     )
 }
 
@@ -133,11 +135,12 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
         TextRead => &[TextDetect],
         TextTrack => &[ProbeDecode, ShotScan, TextRead],
         TextTranslate => &[TextTrack, Cues],
-        TextReview => &[TextTranslate],
+        TextReview => &[ShotScan, TextTranslate],
         TextMask => &[ProbeDecode, TextReview],
         TextInpaint => &[TextMask],
         TextCompose => &[TextReview, TextInpaint],
-        TextTypeset => &[TextReview, TextCompose],
+        TextVerify => &[ProbeDecode, TextReview, TextCompose],
+        TextTypeset => &[TextReview],
         Qc => &[
             ProbeDecode,
             Vad,
@@ -150,8 +153,8 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
             Cues,
             TextTypeset,
         ],
-        Output => &[Cues, TextTypeset],
-        LocalizedVideo => &[ProbeDecode, TextCompose, Output],
+        Output => &[Cues, TextTypeset, TextVerify],
+        LocalizedVideo => &[ProbeDecode, TextVerify, Output],
     }
 }
 
@@ -166,8 +169,10 @@ const REVISIONS: &[(StepName, u32)] = &[
     (StepName::Cues, 3),
     // Findings include tracked text alongside the spoken lines and their corrections.
     (StepName::Qc, 5),
-    // ASS output combines dialogue and tracked English text; a localized video gets its own file.
-    (StepName::Output, 3),
+    // ASS output combines dialogue and tracked English text; a localized video's own file carries
+    // dialogue and sound cues alone, moved above English lettered into the picture.
+    // The lettered writing it keeps subtitles clear of is what the read-back check approved.
+    (StepName::Output, 5),
     // Sampled screening with bisected boundaries and one keyframe per occurrence.
     (StepName::TextDetect, 4),
     (StepName::TextRead, 3),
@@ -175,9 +180,19 @@ const REVISIONS: &[(StepName, u32)] = &[
     (StepName::TextTrack, 3),
     // Claude reads every keyframe first; the local model answers what it leaves.
     (StepName::TextTranslate, 7),
-    (StepName::TextReview, 2),
-    // Typesetting also writes the events of the localized video's subtitle file.
-    (StepName::TextTypeset, 3),
+    // One occurrence per sign, with furigana folded into their line.
+    (StepName::TextReview, 3),
+    // Typesetting writes the combined file's events alone; the localized file has none.
+    (StepName::TextTypeset, 4),
+    // Masks, fills and lettering account for ruby, check each erase and make one replacement per
+    // sign.
+    (StepName::TextMask, 2),
+    (StepName::TextCompose, 2),
+    // Strokes left after the wider retry no longer decide; the read-back check does.
+    (StepName::TextInpaint, 3),
+    // A local OCR reads each finished replacement back before it reaches the localized video.
+    (StepName::TextVerify, 1),
+    (StepName::LocalizedVideo, 2),
 ];
 
 /// The revision of a step's code; a change makes every earlier output of the step stale.
@@ -203,7 +218,7 @@ pub fn settings(step: StepName, settings: &JobSettings) -> Value {
         TextDetect | TextRead | TextTrack | TextReview => {
             json!({ "enabled": settings.onscreen_text.enabled })
         }
-        TextMask | TextInpaint | TextCompose | TextTypeset | LocalizedVideo => json!({
+        TextMask | TextInpaint | TextCompose | TextVerify | TextTypeset | LocalizedVideo => json!({
             "enabled": settings.onscreen_text.enabled,
             "localized_video": settings.onscreen_text.localized_video,
         }),
@@ -238,6 +253,7 @@ pub fn timeout(step: StepName) -> Duration {
         | StepName::TextMask
         | StepName::TextInpaint
         | StepName::TextCompose
+        | StepName::TextVerify
         | StepName::LocalizedVideo => 360,
         _ => 60,
     };
@@ -265,8 +281,8 @@ pub fn outputs(step: StepName, work: &WorkDir, video: &Path, format: OutputForma
         Review => vec![work.reviewed()],
         Cues => vec![work.cues(), work.dropped_sounds()],
         TextDetect | TextRead | TextTrack | TextTranslate | TextReview => vec![work.text(step)],
-        TextMask | TextInpaint | TextCompose => vec![work.text(step)],
-        TextTypeset => vec![work.text(step), work.text_ass(), work.text_ass_localized()],
+        TextMask | TextInpaint | TextCompose | TextVerify => vec![work.text(step)],
+        TextTypeset => vec![work.text(step), work.text_ass()],
         Qc => vec![work.qc()],
         Output => vec![
             work.output_record(),

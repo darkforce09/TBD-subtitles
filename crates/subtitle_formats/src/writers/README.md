@@ -24,6 +24,8 @@ declares the three.
 - `writers::srt::{write, timestamp}`, `writers::vtt::{write, timestamp}` and
   `writers::ass::{write, timestamp}`: the three files, for the output step in
   `crates/pipeline/src/tasks/layout.rs`.
+- `writers::ass::{write_with, Obstacle, PLAY_RES}`: the ASS file with each cue that would cover
+  writing in the picture moved to the top, for the localized video's subtitle file.
 
 ## Boundaries
 

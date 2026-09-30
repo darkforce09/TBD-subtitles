@@ -1,4 +1,4 @@
-//! The selected job's stages: a card with "Show all 28 steps" on top, then one row per stage with
+//! The selected job's stages: a card with "Show all 29 steps" on top, then one row per stage with
 //! its mark, title and time, and under a running or failed stage, or under every stage while the
 //! disclosure is open, a line per step.
 //!

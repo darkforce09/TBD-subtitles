@@ -35,6 +35,24 @@ Annotations contain source frame rate, height and expected occurrences with text
 - `scenarios` creates an eight-second Japanese source fixture and independent annotations for
   scrolling credits, fading lyrics, vertical writing, a brief sign, a cut and repeated writing.
 - `evaluate` writes a machine-readable verdict and exits unsuccessfully when acceptance fails.
+- `mask-probe <work> <id>…` prints, for occurrences of a finished job, every figure the stroke-mask
+  step judges them by (rectangles, line height, the sampled quads and their offset from the
+  keyframe quad, each colour partition's reading, coverage, cut share, largest piece and failed
+  guard, completion counts, style, refitted area, for moving writing every frame's match and
+  whether it counts as still, and the verdict),
+  through the production `replace::mask::diagnose`, decoding regions of the job's source video on
+  the CPU. `--ruby l,t,r,b` stands in furigana boxes, `--out` writes each keyframe plate and its
+  tinted mask, and `--all` reruns the whole step into `--out` and prints each verdict beside the
+  job's with the mask's overlap.
+- `residue-probe <work>` prints how much of each filled plate's mask still looks like the
+  lettering, through the production `replace::inpaint::residue_share`.
+- `verify-probe <work> [<id>…]` runs the production read-back check (`replace::verify::verify`)
+  over a finished job's `visual/text_compose.json` on the host GPU and prints, per sampled frame,
+  the region, lettering and line height read, every line found with its box score, reading,
+  confidence and whether it counts as the English (E) or where the writing was (J), the
+  similarity and the verdict; then each occurrence's result and the similarity distribution.
+  `--out` saves each finished region read as a PNG. It needs the CUDA and ONNX Runtime libraries
+  on `LD_LIBRARY_PATH` and `ORT_DYLIB_PATH`, as a GPU worker has them.
 - `font-candidate` inspects an official Google Fonts candidate before checksum pinning.
 
 ## Boundaries

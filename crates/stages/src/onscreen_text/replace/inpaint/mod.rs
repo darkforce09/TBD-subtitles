@@ -2,18 +2,23 @@
 //! surroundings.
 //!
 //! **Role:** read every plate's source crop and erase mask, fill the masked pixels through a
-//! square inpainting model, and record the filled plate beside the others.
+//! square inpainting model, fill once more with a wider mask when lettering colour survives the
+//! fill, and record the filled plate beside the others.
 //! **Position:** the step between stroke masks and lettering composition; the pipeline runs it in
 //! the ONNX Runtime worker with LaMa behind the `Inpaint` trait. `fill.rs` fits one plate to the
-//! model.
+//! model; `residue.rs` measures what the fill leaves.
 //! **Signals and state:** one plate decoded at a time, and a bounded cache of finished plates
 //! keyed by the exact bytes of their source and mask files. Plates go to
-//! `visual/plates/<occurrence id>/<plate index>.png`.
-//! **Invariants:** only `Pending` occurrences change; a plate's pixels further than one pixel
-//! from its mask are its source bytes; a mask without a set pixel costs no model call; a missing
-//! or mis-sized file fails the step; every plate file is complete once its path is recorded.
+//! `visual/plates/<occurrence id>/<plate index>.png`, a retry's wider mask beside them as
+//! `<plate index>-mask.png`.
+//! **Invariants:** only `Pending` occurrences change, and each keeps `Pending` with every plate
+//! filled: whether a replacement is clean is the read-back check's call; a plate's pixels
+//! further than one pixel from its mask are its source bytes; a mask without a set pixel costs no
+//! model call; a missing or mis-sized file fails the step; every plate file is complete once its
+//! path is recorded.
 
 mod fill;
+mod residue;
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashSet, VecDeque};
@@ -22,9 +27,10 @@ use std::hash::{Hash, Hasher};
 use std::path::Path;
 
 use image::{ImageFormat, RgbImage};
-use job_model::onscreen::{Plate, ReplaceStatus, ReplacementDocument};
+use job_model::onscreen::{LetteringStyle, Plate, ReplaceStatus, ReplacementDocument};
 
 use crate::onscreen_text::TextResult;
+pub use residue::{MAX_RESIDUE_SHARE, residue_share};
 
 /// The folder of filled plates, relative to the job directory.
 const PLATES_DIR: &str = "visual/plates";
@@ -65,8 +71,11 @@ pub fn inpaint(
         let folder = Path::new(PLATES_DIR).join(unique_folder(&text.id, &mut folders));
         fs::create_dir_all(root.join(&folder))
             .map_err(|e| format!("creating {}: {e}", root.join(&folder).display()))?;
-        for (index, plate) in text.plates.iter_mut().enumerate() {
-            let filled = filled_plate(plate, root, model, &mut cache)
+        let style = text.style.clone();
+        for index in 0..text.plates.len() {
+            let plate = &mut text.plates[index];
+            let written = (folder.as_path(), index);
+            let filled = clean_fill(plate, root, written, style.as_ref(), model, &mut cache)
                 .map_err(|e| format!("{} plate {index}: {e}", text.id))?;
             let relative = folder.join(format!("{index}.png"));
             write_png(&filled, &root.join(&relative))?;
@@ -76,6 +85,45 @@ pub fn inpaint(
         }
     }
     Ok(())
+}
+
+/// The filled plate, once more with the mask widened when the lettering's colour still stands
+/// out under the mask. The wider fill stands even when some still does: the read-back check of
+/// the finished picture (`replace::verify`) decides whether the replacement is clean. Without a
+/// measured `style` the fill is taken as it is. A widened mask is written as `<index>-mask.png`
+/// in the plate `folder` and becomes the plate's mask, so the lettering's patch covers it too.
+fn clean_fill(
+    plate: &mut Plate,
+    root: &Path,
+    (folder, index): (&Path, usize),
+    style: Option<&LetteringStyle>,
+    model: &mut dyn Inpaint,
+    cache: &mut PlateCache,
+) -> TextResult<RgbImage> {
+    let filled = filled_plate(plate, root, model, cache)?;
+    let Some(style) = style else {
+        return Ok(filled);
+    };
+    let mask = decode(&read(root, &plate.mask)?, &plate.mask)?.into_luma8();
+    if residue_share(&filled, &mask, style) <= MAX_RESIDUE_SHARE {
+        return Ok(filled);
+    }
+    let widened = residue::widened(&mask, style.line_height_px);
+    let relative = folder.join(format!("{index}-mask.png"));
+    widened
+        .save_with_format(root.join(&relative), ImageFormat::Png)
+        .map_err(|e| format!("writing {}: {e}", root.join(&relative).display()))?;
+    plate.mask = relative;
+    let filled = filled_plate(plate, root, model, cache)?;
+    let share = residue_share(&filled, &widened, style);
+    if share > MAX_RESIDUE_SHARE {
+        tracing::debug!(
+            plate = %root.join(folder).join(format!("{index}.png")).display(),
+            share,
+            "lettering colour still stands out after the wider fill"
+        );
+    }
+    Ok(filled)
 }
 
 /// The filled pixels of one plate, from the cache when an identical plate was already filled.

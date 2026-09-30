@@ -150,8 +150,9 @@ video beside the source. M4 stays open as it stands; M5 builds on its detection 
 - [x] A `localized_video` step after the output: every frame decoded, the patches blended and the
       video re-encoded with `hevc_nvenc` (libx264 fallback), its peak rate capped near the
       source's, audio and chapters copied, no subtitle stream: `<video>.localized.mkv`.
-- [x] `<video>.localized.ass` with the dialogue, sound cues and the on-screen English not drawn
-      into the video, each fallback flagged with its reason; `<video>.ass` unchanged.
+- [x] `<video>.localized.ass` with the dialogue and sound cues alone, no on-screen text events,
+      each cue moved to the top while English drawn into the video sits under it; each fallback
+      keeps its reason in Check Text; `<video>.ass` unchanged.
 - [x] Guards: variable frame rate refused, a `.localized.mkv` the job did not write never
       overwritten, watch folders and folder adds skip `*.localized.mkv`.
 - [x] Settings → On-screen Text "Replace text in the video", on by default for new jobs; the

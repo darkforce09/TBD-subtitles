@@ -12,6 +12,7 @@ use super::{
     SYSTEM, TextResult, TranslationInput, append_translation_reason, nearby_dialogue, read_cached,
     retry_generation, valid_text, write_cached,
 };
+use crate::onscreen_text::unify::FOUND_BY_CLAUDE;
 use job_model::onscreen::{
     Point, Quad, TextDocument, TextFrame, TextOccurrence, TextPresentation, TextProvenance,
     TextTreatment,
@@ -33,7 +34,6 @@ const MIN_BOX_OVERLAP: f64 = 0.3;
 const DUPLICATE_BOX_OVERLAP: f64 = 0.5;
 pub(super) const INVALID_RESPONSE: &str = "Claude returned an invalid visual response.";
 const LOCATED_ELSEWHERE: &str = "Claude located the writing elsewhere; review it.";
-const FOUND_BY_CLAUDE: &str = "Found by Claude on the keyframe; the local detector did not see it; timing follows the surrounding event.";
 
 /// One occurrence as a request lists it.
 #[derive(Debug)]
@@ -359,6 +359,7 @@ fn add_other_text(
             rendered: None,
             source_fingerprint: None,
             keyframe: Some(keyframe.clone()),
+            ruby: Vec::new(),
         };
         append_translation_reason(&mut item, &text.reason);
         document.occurrences.push(item);

@@ -35,6 +35,7 @@ fn occurrence() -> TextOccurrence {
         rendered: None,
         source_fingerprint: None,
         keyframe: None,
+        ruby: Vec::new(),
     }
 }
 

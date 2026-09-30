@@ -12,7 +12,7 @@ crates/inference/src/ocr/
 
 ## How it works
 
-The mobile PP-OCRv5 detector screens proxy frames in batches; the server detector confirms quadrilaterals on full-resolution stills, and the server recognizer reads their crops. Vertical and uncertain crops receive a second manga-ocr reading. Disagreement remains uncertain. All files come from the pinned model store. The decoder has bounded beam width and sequence length.
+The mobile PP-OCRv5 detector screens proxy frames in batches; the server detector confirms quadrilaterals on full-resolution stills, and the server recognizer reads their crops. Vertical and uncertain crops receive a second manga-ocr reading. Disagreement remains uncertain. `read_primary` returns the server recognizer's reading alone, Japanese and Latin alike, for the read-back check of lettered English, which the Japanese-only manga-ocr must not read. All files come from the pinned model store. The decoder has bounded beam width and sequence length.
 
 CUDA uses heuristic convolution selection with a 3 GB arena limit and bounded convolution
 workspace. One predictor screens proxy frames in batches at the 0.3 box score and inspects single

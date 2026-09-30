@@ -3,7 +3,7 @@
 //!
 //! **Role:** write `<video>.localized.mkv` and its record, or record that the job writes none.
 //! **Position:** pipeline task dispatch above `stages::localize`.
-//! **Signals and state:** reads `visual/text_compose.json`, the probe and the source video, and
+//! **Signals and state:** reads `visual/text_verify.json` (the replacements the read-back check approved), the probe and the source video, and
 //! this step's previous record; writes the localized video through a part file and
 //! `visual/localized_video.json`.
 //! **Invariants:** the source video is only read; a job without the localized video writes an
@@ -37,7 +37,7 @@ pub(super) fn run(job: &Job, progress: StepProgress) -> Result<TaskReport> {
         report.note("disabled", true);
         return Ok(report);
     }
-    let document: ReplacementDocument = work_dir::read_json(&job.work.text(StepName::TextCompose))?;
+    let document: ReplacementDocument = work_dir::read_json(&job.work.text(StepName::TextVerify))?;
     document
         .validate()
         .map_err(|e| PipelineError::new("replacement document", e))?;

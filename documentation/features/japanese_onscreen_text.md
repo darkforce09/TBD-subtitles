@@ -7,7 +7,7 @@ underway. A video job produces one ASS file containing dialogue, sound cues and 
 visible Japanese writing. With Replace text in the video on (the default for new jobs), it also
 writes a [localized video](/documentation/glossary.md#localized-video): a copy with the Japanese
 erased and the English drawn in its place where that can be done cleanly, and a subtitle file of
-its own for everything else. That part is M5, implemented and under validation, not accepted. The
+its own with the dialogue and sound cues. That part is M5, implemented and under validation, not accepted. The
 source video is only read. Pilot coverage, full-episode quality, resource limits, packaged
 playback and owner acceptance are not yet established by this document.
 
@@ -91,11 +91,11 @@ that they are off and do nothing.
 | Step | Work and retained result |
 |---|---|
 | Detect | Streams a 640-wide proxy of every frame through FFmpeg with packet presentation timestamps. Screens every `round(fps / 2)`-th frame plus the first and last frame of each shot with the mobile PP-OCRv5 detector, and bisects the frames between two samples to the exact frame where writing appears or vanishes. Keeps one observed frame per sample or boundary, a keyframe still nearest the midpoint of each occurrence, confirmed by the server PP-OCRv5 detector, and a full-resolution, perspective-corrected crop from that keyframe; cuts or changed writing start new occurrences. Screening noise is dropped: writing shorter than 0.15 s, wider than half the frame, or absent from its keyframe at full resolution. |
-| Read | Reads Japanese with PP-OCRv5 through oar-ocr, using manga-ocr for difficult crops. Consolidates compatible adjacent readings and groups conservative furigana evidence; uncertain readings remain flagged. |
+| Read | Reads Japanese with PP-OCRv5 through oar-ocr, using manga-ocr for difficult crops. Consolidates compatible adjacent readings and folds furigana into the kanji line they annotate; uncertain readings remain flagged. |
 | Track | Checks that every sampled box keeps its centre (within a fifth of the keyframe box height) and half its overlap with the keyframe quad, without decoding video; a detector box that only grows or shrinks around unmoved writing passes. A moving or unverified surface gains a review warning and nearby placement. |
-| Translate | Asks Claude first, one call per keyframe frame with the whole-frame still and the crops of its regions, for each region's Japanese, English, confidence and box plus any other writing on the frame. Qwen3.5-4B, with short dialogue context and the glossary, loads only for occurrences Claude leaves unanswered; compatible corrected occurrences consolidate before review. |
-| Review | Checks a saved correction's source identity before applying the owner's English, timing and presentation independently of dialogue corrections. |
-| Typeset | Produces ASS text or vector glyph events, with stable typography and frame-specific geometry. Unsafe replacement uses nearby English with a review warning. With the localized video on, it also writes the events of the occurrences not drawn into the video. |
+| Translate | Asks Claude first, one call per keyframe frame with the whole-frame still and the crops of its regions, for each region's Japanese, English, confidence and box plus any other writing on the frame. Qwen3.5-4B, with short dialogue context and the glossary, loads only for occurrences Claude leaves unanswered; compatible corrected occurrences consolidate, and occurrences that show one sign join into one, before review. |
+| Review | Checks a saved correction's source identity before applying the owner's English, timing and presentation independently of dialogue corrections, then joins the occurrences that show one sign again. |
+| Typeset | Produces ASS text or vector glyph events, with stable typography and frame-specific geometry. Unsafe replacement uses nearby English with a review warning. These events go into the combined ASS alone; the localized subtitle file has none. |
 
 Claude image requests run as many at once as the job's `claude` process count, before any local
 model loads; requests for the same keyframe share a cache lock, and the existing Claude process
@@ -121,12 +121,37 @@ upright for recognition. Surface-colour safety is measured on the full-resolutio
 that correction cannot turn an unsafe background into permission to cover it.
 
 Adjacent occurrences consolidate only when Japanese readings, geometry and timing agree, with at
-most one observed source-frame gap and no known cut or ambiguous match. Once translated, English
-must also agree and both confidence scores must be on the same side of the 0.85 display threshold.
-This keeps faint fragments separate from a confidently translated interval. A merged interval
-retains every measured frame, representative crop, warning and provenance note, with the lowest
-confidence of its parts. Small kana above a containing kanji line can become furigana evidence;
-after translation, any English words from that small line must already appear in its parent.
+most one observed source-frame gap and no known cut or ambiguous match; half a frame of slack
+absorbs timestamps rounded to the microsecond, and the earlier interval covers the missing frame.
+Once translated, English must also agree and both confidence scores must be on the same side of
+the 0.85 display threshold. This keeps faint fragments separate from a confidently translated
+interval. A merged interval retains every measured frame, representative crop, warning and
+provenance note, with the lowest confidence of its parts.
+
+Furigana, the small kana printed over kanji to give their reading, fold into the one kanji line
+they sit on: the kana line is 0.18 to 0.55 of the line's height, its bottom lies between half a
+line height above the line's top and a third of a line height into it, its centre stays over the
+line (a tenth of a line height past either end at most), it is at most 1.6 times as wide as the
+line, and at least half of its time falls inside the line's; the position must hold for two
+thirds of that shared time, so a detector box that briefly covers only part of the line does not
+break the pair. The line keeps its reading, English
+and geometry; the kana box at the line's keyframe is recorded as its ruby and erased with it, and
+the kana is never translated or lettered on its own. A kana line that fits two kanji lines stays
+separate.
+
+One sign can be observed several times: by the detector, by Claude on each keyframe it reads, and
+in pieces around a short detection miss. After translation, and again after owner corrections in
+the review step, occurrences join when they show the same Japanese (equal once spaces are removed
+and small kana are read as full-size, or one reading of at least two characters inside the
+other), their boxes at the keyframe overlap
+by at least 0.3 or one holds the other's centre within a quarter of its height, and their spans
+overlap or pause at most 0.25 s with no cut in the pause. A reviewed occurrence survives and keeps
+the owner's timing and English; otherwise the detector's occurrence survives over writing Claude
+found, then the longer span and the higher confidence. Two reviewed occurrences never join. The survivor covers the
+joined span with frames that leave no hole, using its own keyframe box where only Claude saw the
+sign, takes the English with the highest confidence, and notes `Same writing as <ids>` in its
+reason; furigana grouping then runs again. Re-running the review step repairs an existing job
+without Claude calls.
 
 A local translation of a reading containing at least four katakana characters and kanji requires
 independent image verification: its local confidence is capped at 0.84. This conservative check
@@ -185,23 +210,29 @@ places nearby because it moves or only Claude found it:
    GPU worker.
 3. **Compose** letters the English in Noto Sans in the writing's place, colour and weight, fitted
    to its area; writing that sits together on one card keeps its size ratio.
-4. **Typeset** writes the usual ASS events for `<name>.ass`, and for `<name>.localized.ass` only the
-   occurrences not drawn into the video.
-5. After the subtitle files, **the localized video** decodes every frame, blends the lettering in
+4. **Check** rebuilds a few frames of each lettered occurrence as the localized video will show
+   them and reads them back with the local PP-OCRv5 on the GPU: Japanese still readable where the
+   writing or its furigana was, or English that does not read back as the translation, leaves the
+   occurrence in Japanese. No API call is made.
+5. **Typeset** writes the usual ASS events for `<name>.ass`; `<name>.localized.ass` gets no
+   on-screen events, and its dialogue moves to the top while English drawn into the video sits
+   under it.
+6. After the subtitle files, **the localized video** decodes every frame, blends the lettering in
    and re-encodes the whole video with the GPU's HEVC encoder (H.264 in software when it cannot
    run), at about the source's size, with the source's audio and chapters and no subtitle stream.
 
 The result beside the source is `<name>.localized.mkv` and `<name>.localized.ass`; `<name>.ass`
 stays the complete subtitle file for the original video. A player loads the `.localized.ass` with
-the localized video, so every line of dialogue, sound cue and on-screen English appears exactly
-once: drawn into the picture or as a subtitle.
+the localized video: it holds the dialogue and sound cues alone, so the on-screen English appears
+only drawn into the picture, never as a second set of subtitles.
 
-An occurrence is left in the picture, its English in `<name>.localized.ass` with the warning `Not
-replaced in the video: <reason>`, when the owner chose Nearby in Check Text, when its strokes
+An occurrence is left in Japanese in the picture, with `Not replaced in the video: <reason>` in
+Check Text, when the owner chose Nearby in Check Text, when its strokes
 cannot be separated from the background, when it moves in a way that cannot be followed or sweeps
 over a quarter of the frame, when its background changes into more than 2,000 runs, when the
-English would be smaller than 14 pixels of cap height at 1080p, or when the font lacks one of its
-characters. A variable-frame-rate video fails the localized-video step with that reason; a
+English would be smaller than 14 pixels of cap height at 1080p, when the font lacks one of its
+characters, or when the finished picture still shows Japanese or its English does not read back
+(Check Text shows what the check read under the reason). A variable-frame-rate video fails the localized-video step with that reason; a
 `<name>.localized.mkv` the job did not write is never overwritten, and the step asks for it to be
 moved away. The report adds a Localized video section: occurrences replaced, fallbacks, the file
 and the encoder. On Dressrosa 11, 15 of 21 candidates were replaced, the Rebecca name card among them
@@ -268,8 +299,8 @@ as the audio stages:
 | File or contract | Purpose |
 |---|---|
 | `job.json` | Job settings, model location and stage fingerprints/measurements, including visual processing. |
-| `visual/text_detect.json` through `visual/text_review.json`, and `visual/text_typeset.json` | Typed `TextDocument` outputs: readings, tracks, provenance, warnings (including `Not replaced in the video: <reason>`), source identity, presentation and rendered status, plus review warnings without a current occurrence. |
-| `visual/text_mask.json`, `visual/text_inpaint.json`, `visual/text_compose.json` | The `ReplacementDocument` each replacement step writes: per occurrence its frame span, status (pending, baked or fallback with its reason), measured lettering style, container and plates. |
+| `visual/text_detect.json` through `visual/text_review.json`, and `visual/text_typeset.json` | Typed `TextDocument` outputs: readings, tracks, provenance, warnings, source identity, presentation and rendered status, plus review warnings without a current occurrence. |
+| `visual/text_mask.json`, `visual/text_inpaint.json`, `visual/text_compose.json`, `visual/text_verify.json` | The `ReplacementDocument` each replacement step writes: per occurrence its frame span, status (pending, baked or fallback with its reason), measured lettering style, container and plates; the read-back check's adds `checks`, what it read from each sampled finished frame. |
 | `visual/masks/`, `visual/plates/`, `visual/patches/` | Per occurrence: [stroke masks](/documentation/glossary.md#stroke-mask) and source crops, inpainted [plates](/documentation/glossary.md#plate), and RGBA [patches](/documentation/glossary.md#patch) with a `preview.png` for Check Text. |
 | `visual/crops/` | Representative full-resolution crops from each keyframe, used by OCR, Claude image requests and review thumbnails. |
 | `visual/keyframes/` | One 1280-wide whole-frame still per keyframe frame, sent to Claude with the crops it holds. |
@@ -277,7 +308,6 @@ as the audio stages:
 | `visual/translations/` | Cached structured replies keyed by request, model identity/pins and retry generation; a keyframe request also includes the still, its crops and the highest retry generation among its regions. |
 | `visual/corrections.json` | Per-occurrence `TextEdit` values with original-source fingerprints and retry requests; written atomically under `visual/corrections.json.lock`. |
 | `visual/events.ass` | Typeset visual events merged into the final ASS. |
-| `visual/events_localized.ass` | The events of the occurrences not drawn into the video, merged into the localized ASS. |
 | `visual/localized_video.json` | The localized video's path, encoder, frames written and occurrences replaced; the earlier path while the setting is off. |
 | `output.json` | The exported subtitle path, the localized subtitle path, and any backup or retired output. |
 
@@ -302,7 +332,7 @@ title-card and name-card examples, so the localized video edits a copy of the pi
 asked for replacement as Google Translate does it on photographs. Only pixels under a stroke
 mask, its one-pixel feather and the new lettering are painted, and only in the copy, which is
 re-encoded whole at about the source's bit rate; the source is only read. Anything the
-replacement cannot do cleanly stays a subtitle, with its reason shown in Check Text, rather than
+replacement cannot do cleanly stays Japanese in the picture, with its reason shown in Check Text, rather than
 a smeared guess. The localized video carries no subtitle stream, so a player shows the sidecar
 `.localized.ass` and never two copies of the same English.
 

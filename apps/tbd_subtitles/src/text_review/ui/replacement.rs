@@ -185,4 +185,7 @@ pub(super) fn status_ui(ui: &mut Ui, session: &Session, localized: &LocalizedRev
             .size(12.0)
             .color(colour),
     );
+    if let Some(check) = replacement.and_then(|r| r.check.as_deref()) {
+        ui.label(RichText::new(check).size(12.0).color(p.text2));
+    }
 }

@@ -35,6 +35,7 @@ fn rectangle(left: f64, top: f64) -> Quad {
 
 fn occurrence(quads: &[Quad], keyframe: Option<f64>) -> TextOccurrence {
     TextOccurrence {
+        ruby: Vec::new(),
         id: "text-000001".into(),
         start_s: 0.0,
         end_s: quads.len() as f64 * 0.5,

@@ -8,12 +8,15 @@
 //!
 //! **Signals and state:** reads the outputs of the earlier steps (the words from `reviewed.json`;
 //! for the check, the corrections, and the re-decodes so Fix It's words are held against every
-//! hypothesis); writes `cues.json`, `cues_dropped_sounds.json`,
-//! `qc.json`, `output.json` and the subtitle file beside the video.
+//! hypothesis; for a localized video, `visual/text_verify.json` and `visual/text_typeset.json`);
+//! writes `cues.json`, `cues_dropped_sounds.json`, `qc.json`, `output.json`, the subtitle file
+//! beside the video and, for a localized video, its own subtitle file.
 //!
 //! **Invariants:** the frame rate comes from the probe (24/1 when the video has none); the subtitle
-//! file is the only file written outside the work directory; a Fix It change the owner has not
-//! checked has its words checked again, and is counted apart from the owner's corrections.
+//! files are the only files written outside the work directory; the localized video's subtitle
+//! file holds dialogue and sound cues alone, each moved to the top while English lettered into
+//! the picture sits under it; a Fix It change the owner has not checked has its words checked
+//! again, and is counted apart from the owner's corrections.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -21,7 +24,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use job_model::StepName;
 use job_model::job::OutputFormat;
-use job_model::onscreen::TextDocument;
+use job_model::onscreen::{Quad, ReplacementDocument, TextDocument};
 use job_model::outputs::{
     AdjudicationPass, Aligned, Corrections, EngineTranscript, Line, OutputRecord, Redecode,
     ShotChanges, SoundCues, SpeechPlan, TimeSpan, Utterance,
@@ -29,7 +32,8 @@ use job_model::outputs::{
 use stages::adjudication::{checks, redecode};
 use stages::{cues, output, qc};
 use subtitle_formats::cue::{CueTrack, FrameRate};
-use subtitle_formats::writers::{ass, srt, vtt};
+use subtitle_formats::writers::ass::{self, Obstacle};
+use subtitle_formats::writers::{srt, vtt};
 
 use super::{Job, TaskReport, since};
 use crate::error::{Context, Result};
@@ -250,10 +254,15 @@ pub(super) fn output(job: &Job) -> Result<TaskReport> {
         report.note("retired", &retired);
     }
     let localized = if super::replace::localized(job) {
-        let events = std::fs::read_to_string(job.work.text_ass_localized())
-            .context("cannot read the localized video's on-screen text events")?;
-        let mut localized_text = ass::write(&track);
-        localized_text.push_str(&events);
+        let replacement: ReplacementDocument =
+            work_dir::read_json(&job.work.text(StepName::TextVerify))
+                .context("cannot read the English lettered into the localized video")?;
+        let text: TextDocument = work_dir::read_json(&job.work.text(StepName::TextTypeset))?;
+        let localized_text = ass::write_with(&track, &lettered_writing(&replacement, &text));
+        report.note(
+            "localized_moved_up",
+            localized_text.matches(",,{\\an8}").count(),
+        );
         let installed = output::install_localized_subtitles(
             &job.video(),
             &localized_text,
@@ -281,6 +290,61 @@ pub(super) fn output(job: &Job) -> Result<TaskReport> {
     };
     work_dir::write_json(&job.work.output_record(), &record)?;
     Ok(report)
+}
+
+/// How far each side of lettered writing a subtitle keeps clear, in canvas pixels.
+const LETTERING_CLEARANCE_PX: f64 = 12.0;
+
+/// The English lettered into the localized video, as places its subtitles keep clear of: for
+/// each replaced occurrence, one obstacle per sampled frame, its quad's bounds on the ASS canvas
+/// from that frame's time to the next frame's (the occurrence's start and end at either side),
+/// grown by `LETTERING_CLEARANCE_PX`.
+pub(super) fn lettered_writing(
+    replacement: &ReplacementDocument,
+    text: &TextDocument,
+) -> Vec<Obstacle> {
+    if replacement.width == 0 || replacement.height == 0 {
+        return Vec::new();
+    }
+    let scale_x = f64::from(ass::PLAY_RES.0) / f64::from(replacement.width);
+    let scale_y = f64::from(ass::PLAY_RES.1) / f64::from(replacement.height);
+    let on_canvas = |start_s: f64, end_s: f64, quad: Quad| {
+        let (left, top, right, bottom) = quad.bounds();
+        let grow = LETTERING_CLEARANCE_PX;
+        Obstacle {
+            start_s,
+            end_s,
+            rect: [
+                left * scale_x - grow,
+                top * scale_y - grow,
+                right * scale_x + grow,
+                bottom * scale_y + grow,
+            ],
+        }
+    };
+    let mut obstacles = Vec::new();
+    for baked in replacement.baked() {
+        let Some(occurrence) = text.occurrences.iter().find(|o| o.id == baked.id) else {
+            continue;
+        };
+        if let Some(quad) = baked.lettering_quad {
+            obstacles.push(on_canvas(occurrence.start_s, occurrence.end_s, quad));
+            continue;
+        }
+        let frames = &occurrence.frames;
+        for (index, frame) in frames.iter().enumerate() {
+            let start_s = if index == 0 {
+                occurrence.start_s.min(frame.time_s)
+            } else {
+                frame.time_s
+            };
+            let end_s = frames
+                .get(index + 1)
+                .map_or(occurrence.end_s.max(frame.end_s), |next| next.time_s);
+            obstacles.push(on_canvas(start_s, end_s, frame.quad));
+        }
+    }
+    obstacles
 }
 
 #[cfg(test)]

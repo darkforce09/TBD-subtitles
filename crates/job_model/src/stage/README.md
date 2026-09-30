@@ -17,7 +17,7 @@ crates/job_model/src/stage/
 
 `StageName::ALL` lists the eleven stages in run order, which is not the order the enum declares
 them in; `runs_in_worker` says which stages load a GPU model or the language model. A stage runs
-as one or more steps: `StepName::ALL` lists the eighteen steps the job runner runs, resumes and
+as one or more steps: `StepName::ALL` lists the twenty-nine steps the job runner runs, resumes and
 times, and `StepName::stage` gives each its stage.
 
 | # | Stage | Steps |

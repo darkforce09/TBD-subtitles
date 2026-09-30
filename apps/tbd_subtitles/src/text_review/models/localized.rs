@@ -49,6 +49,8 @@ pub(crate) struct Replacement {
     pub(crate) preview: Option<PathBuf>,
     /// The keyframe plate's erase mask and where it sits.
     pub(crate) mask: Option<MaskPlate>,
+    /// What the read-back check read from the finished picture, when it checked this one.
+    pub(crate) check: Option<String>,
 }
 
 /// An erase mask (8-bit PNG, 255 erases) and the plate rectangle it covers, in source pixels.

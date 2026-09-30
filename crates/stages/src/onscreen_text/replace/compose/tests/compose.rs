@@ -36,6 +36,7 @@ fn rect_quad(x: f64, y: f64, width: f64, height: f64) -> Quad {
 
 fn occurrence(id: &str, english: Option<&str>, quad: Quad) -> TextOccurrence {
     TextOccurrence {
+        ruby: Vec::new(),
         id: id.into(),
         start_s: 0.4,
         end_s: 2.4,
@@ -117,6 +118,7 @@ fn replaced(root: &Path, id: &str, rect: PixelRect, line_height: f64) -> Replace
         container: None,
         plates,
         preview: None,
+        lettering_quad: None,
     }
 }
 
@@ -331,6 +333,52 @@ fn neighbouring_writing_shares_a_container_and_its_size_ratio() {
         assert_eq!(item.status, ReplaceStatus::Baked);
         assert_eq!(item.container.as_deref(), Some("title"));
     }
+    document.validate().unwrap();
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+#[ignore = "needs the latin-fonts model"]
+fn a_loose_box_letters_in_its_refitted_area() {
+    let root = job("refit");
+    let loose = rect_quad(110.0, 105.0, 380.0, 150.0);
+    let ink = rect_quad(140.0, 130.0, 320.0, 100.0);
+    let mut item = replaced(&root, "sign-c1", RECT, 100.0);
+    item.lettering_quad = Some(ink);
+    let text = occurrence("sign-c1", Some("SHOP"), loose);
+    let font = LetteringFont::open(&fonts()).unwrap();
+    let ready = prepare(&item, Some(&text), &font).unwrap();
+    assert_eq!(ready.quad, ink);
+    assert_eq!(ready.member.quad, ink);
+    item.lettering_quad = None;
+    assert_eq!(prepare(&item, Some(&text), &font).unwrap().quad, loose);
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+#[ignore = "needs the latin-fonts model"]
+fn a_duplicate_of_one_sign_is_drawn_once_by_the_detector_occurrence() {
+    let root = job("duplicate");
+    let detector = rect_quad(140.0, 130.0, 320.0, 100.0);
+    let claude = rect_quad(130.0, 125.0, 330.0, 110.0);
+    let (mut document, text) = documents(
+        vec![
+            replaced(&root, "sign-c2", RECT, 100.0),
+            replaced(&root, "sign", RECT, 100.0),
+        ],
+        vec![
+            occurrence("sign-c2", Some("STORE"), claude),
+            occurrence("sign", Some("SHOP"), detector),
+        ],
+    );
+    compose(&mut document, &text, &root, &fonts(), &|_, _| {}).unwrap();
+    assert_eq!(
+        document.texts[0].status,
+        ReplaceStatus::Fallback(COVERED.into())
+    );
+    assert!(document.texts[0].plates.iter().all(|p| p.patch.is_none()));
+    assert!(!root.join("visual/patches/sign-c2").exists());
+    assert_eq!(document.texts[1].status, ReplaceStatus::Baked);
     document.validate().unwrap();
     std::fs::remove_dir_all(&root).unwrap();
 }

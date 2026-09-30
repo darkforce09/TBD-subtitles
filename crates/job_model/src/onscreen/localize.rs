@@ -14,6 +14,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use super::Quad;
+
 /// An axis-aligned rectangle of source pixels.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PixelRect {
@@ -50,7 +52,7 @@ impl PixelRect {
     }
 }
 
-/// Whether an occurrence is drawn into the localized video or left to the subtitle file.
+/// Whether an occurrence is drawn into the localized video or left in Japanese.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "kind", content = "reason")]
 pub enum ReplaceStatus {
@@ -59,7 +61,7 @@ pub enum ReplaceStatus {
     Pending,
     /// Erased, inpainted and redrawn in English in the localized video.
     Baked,
-    /// Left in the picture; its English stays in the localized subtitle file, with the reason.
+    /// Left in the picture as it is, with the reason.
     Fallback(String),
 }
 
@@ -126,6 +128,10 @@ pub struct ReplacedText {
     /// The keyframe with the composed replacement (RGB PNG) for review.
     #[serde(default)]
     pub preview: Option<PathBuf>,
+    /// Where the English is lettered at the keyframe when the occurrence's own quad is only a
+    /// loose box around the writing: the bounds of the ink the mask erases, in source pixels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lettering_quad: Option<Quad>,
 }
 
 /// The replacements of a job, written by the mask, inpaint and compose steps in turn.
