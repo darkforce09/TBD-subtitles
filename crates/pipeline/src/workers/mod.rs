@@ -1,21 +1,26 @@
 //! Worker processes: `<binary> worker <step> <job dir>`, one at a time for GPU steps, with the
-//! CUDA runtime's environment, its progress frames and model calls forwarded, its stderr kept,
-//! and its time, peak RAM and peak VRAM read back.
+//! CUDA runtime's environment, its inputs sent from the job database, its progress frames and
+//! model calls forwarded, its outputs kept uncommitted, its stderr kept, and its time, peak RAM
+//! and peak VRAM read back.
 //!
-//! **Role:** find the app binaries, start a step's worker, read its frames, and turn what it
-//! reports into the step's measure.
+//! **Role:** find the app binaries, start a step's worker, send its inputs, read its frames, and
+//! turn what it reports into the step's measure and its uncommitted outputs.
 //!
 //! **Position:** called by `runner` for every step placed in a worker; uses `child_process` to
-//! run it, `frames` to read its stdout and `measure::gpu_monitor` to sample its VRAM.
+//! run it, `channel` for its inputs and outputs, `frames` to read its stdout and
+//! `measure::gpu_monitor` to sample its VRAM.
 //!
-//! **Signals and state:** spawns the worker; reads its stdout as frames; writes `logs/<step>.log`.
+//! **Signals and state:** spawns the worker; streams its inputs to its stdin on a thread; reads
+//! its stdout as frames; writes `logs/<step>.log`.
 //!
 //! **Invariants:** a worker that exits non-zero, breaks the frame protocol, or exits 0 without its
-//! `Measure` and `Done` is a failed step with the end of its stderr in the error; a worker that
-//! breaks the protocol is killed at once.
+//! `Measure` and `Done` is a failed step with the end of its stderr in the error, and its outputs
+//! are dropped uncommitted; a worker that breaks the protocol is killed at once; an input that
+//! could not be sent fails a step that otherwise finished.
 
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use child_process::Run;
 use job_model::StepName;
@@ -26,10 +31,14 @@ use crate::error::{Context, PipelineError, Result};
 use crate::graph::{self, Binary};
 use crate::measure::gpu_monitor;
 use crate::progress::{Progress, ProgressSink};
-use crate::work_dir::{self, WorkDir};
+use crate::work_dir::{self, JobStore};
+use worker_channel::address::Address;
 
+pub mod channel;
 mod frames;
 pub mod gpu_lock;
+
+pub use channel::StepWrite;
 
 /// Lines of a failed worker's stderr quoted in the error.
 const STDERR_TAIL: usize = 12;
@@ -62,17 +71,35 @@ impl Binaries {
     }
 }
 
-/// Run `step` in a worker of `binary` with `env` added, and measure it. A GPU step first takes
-/// the machine-wide lock at `gpu_lock`; `cancel` kills the worker, or ends the wait for the lock.
+/// What a finished worker left: its measure, and its outputs when it sent any.
+#[derive(Debug)]
+pub struct WorkerRun {
+    pub measure: StepMeasure,
+    /// The outputs it sent, uncommitted: the caller commits them with the step's record. `None`
+    /// when it sent none.
+    pub outputs: Option<StepWrite>,
+}
+
+/// What a worker works on: its job's store, whose work directory it runs in and which keeps its
+/// outputs, and the stored values it reads, sent down its stdin.
+#[derive(Debug, Clone, Copy)]
+pub struct WorkerData<'a> {
+    pub store: &'a Arc<JobStore>,
+    pub inputs: &'a [Address],
+}
+
+/// Run `step` in a worker of `binary` on the job of `data.store`, with `env` added, and measure
+/// it. A GPU step first takes the machine-wide lock at `gpu_lock`; `cancel` kills the worker, or
+/// ends the wait for the lock.
 pub fn run_worker(
     binary: &Path,
     step: StepName,
-    work: &WorkDir,
+    data: WorkerData<'_>,
     env: &[(String, String)],
     progress: ProgressSink,
     cancel: &CancelToken,
     gpu_lock: &Path,
-) -> Result<StepMeasure> {
+) -> Result<WorkerRun> {
     let context = format!("step {step}");
     if !binary.exists() {
         return Err(PipelineError::new(
@@ -80,6 +107,7 @@ pub fn run_worker(
             format!("{} is missing from the app's own folder", binary.display()),
         ));
     }
+    let work = data.store.work();
     let mut run = Run::new(binary)
         .arg("worker")
         .arg(step.as_str())
@@ -88,6 +116,9 @@ pub fn run_worker(
         .cancel_on(cancel.flag());
     for (key, value) in env {
         run = run.env(key, value);
+    }
+    if !data.inputs.is_empty() {
+        run = run.stdin_piped();
     }
     if graph::placement(step) == graph::Placement::Worker(Binary::LocalLlm) {
         run = run
@@ -115,17 +146,29 @@ pub fn run_worker(
         tracing::debug!("step {step} starts with {} MiB of VRAM free", b.free_mib);
     }
     let mut worker = run.spawn().context(context.clone())?;
+    let sending = worker
+        .take_stdin()
+        .map(|stdin| channel::inputs::send_inputs(data.store.clone(), data.inputs.to_vec(), stdin));
     let monitor = baseline
         .as_ref()
         .map(|b| gpu_monitor::Monitor::start(worker.pid(), b.used_mib));
+    let mut outputs = StepWrite::new(data.store.clone());
     let read = match worker.take_stdout() {
-        Some(stdout) => frames::read_frames(step, &mut BufReader::new(stdout), progress),
+        Some(stdout) => frames::read_frames(
+            step,
+            &mut BufReader::new(stdout),
+            progress,
+            Some(&mut outputs),
+        ),
         None => Err("the worker's stdout is not a pipe".to_string()),
     };
     let report = match read {
         Ok(report) => report,
         Err(broken) => {
+            // The step's outputs drop uncommitted before the worker is stopped.
+            drop(outputs);
             let stopped = worker.kill_and_wait();
+            let _ = sending.map(join_inputs);
             let _ = monitor.and_then(gpu_monitor::Monitor::finish);
             let stderr = match stopped {
                 Err(child_process::RunError::Cancelled { .. }) => {
@@ -145,6 +188,7 @@ pub fn run_worker(
         }
     };
     let finished = worker.wait();
+    let sent = sending.map_or(Ok(()), join_inputs);
     let peaks = monitor.and_then(gpu_monitor::Monitor::finish);
     let finished = match finished {
         Err(child_process::RunError::Cancelled { .. }) => {
@@ -155,33 +199,15 @@ pub fn run_worker(
     work_dir::write_text(&work.log(step), &finished.stderr)?;
     tracing::debug!("step {step} worker log: {}", work.log(step).display());
     let log = work.log(step);
-    let failed = report
-        .failed
-        .as_ref()
-        .map(|message| format!("{message}\n"))
-        .unwrap_or_default();
-    let ending = if finished.code != 0 {
-        format!("the worker exited {}", finished.code)
-    } else {
-        match (&report.measure, report.done) {
-            (Some(_), true) => String::new(),
-            (None, true) => "the worker exited 0 without sending its measure".to_string(),
-            (Some(_), false) => "the worker exited 0 without sending its end".to_string(),
-            (None, false) => {
-                "the worker exited 0 without sending its measure or its end".to_string()
-            }
-        }
-    };
-    let reported = match report.measure {
-        Some(measure) if ending.is_empty() => measure,
-        _ => {
+    let reported = match report
+        .verdict(finished.code)
+        .and_then(|measure| sent.map(|()| measure))
+    {
+        Ok(measure) => measure,
+        Err(why) => {
             return Err(PipelineError::new(
                 context,
-                format!(
-                    "{failed}{ending} (log {}):\n{}",
-                    log.display(),
-                    tail(&finished.stderr)
-                ),
+                format!("{why} (log {}):\n{}", log.display(), tail(&finished.stderr)),
             ));
         }
     };
@@ -195,7 +221,7 @@ pub fn run_worker(
     if let Some(b) = &baseline {
         notes.insert("vram_free_before_mib".into(), b.free_mib.to_string());
     }
-    Ok(StepMeasure {
+    let measure = StepMeasure {
         wall_s: finished.duration.as_secs_f64(),
         load_s: Some(reported.load_s),
         process_s: Some(reported.process_s),
@@ -213,7 +239,20 @@ pub fn run_worker(
             .filter(|&mib| mib > 0)
             .map(|mib| mib as f64),
         notes,
+    };
+    Ok(WorkerRun {
+        measure,
+        outputs: (outputs.received() > 0).then_some(outputs),
     })
+}
+
+/// The input thread's answer; a thread that panicked is an error too.
+fn join_inputs(
+    sending: std::thread::JoinHandle<std::result::Result<(), String>>,
+) -> std::result::Result<(), String> {
+    sending
+        .join()
+        .unwrap_or_else(|_| Err("the thread sending the step's inputs panicked".to_string()))
 }
 
 /// Locate only the CUDA libraries the isolated local model needs, without requiring ORT.

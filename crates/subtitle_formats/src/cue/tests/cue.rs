@@ -77,3 +77,22 @@ fn a_track_round_trips_through_json() {
     let back: CueTrack = serde_json::from_str(&json).expect("parse");
     assert_eq!(back, track);
 }
+
+#[test]
+fn a_track_round_trips_through_rkyv() {
+    let track = CueTrack {
+        frame_rate: FrameRate::new(24000, 1001).expect("rate"),
+        cues: vec![Cue {
+            start: 3,
+            end: 40,
+            lines: vec![CueLine::plain("[DOOR SLAMS]"), CueLine::italic("Long ago…")],
+            kind: CueKind::Sound,
+        }],
+    };
+    let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&track).expect("archive");
+    let archived =
+        rkyv::access::<ArchivedCueTrack, rkyv::rancor::Error>(&bytes).expect("the archive checks");
+    assert_eq!(archived.cues.len(), 1);
+    let back = rkyv::from_bytes::<CueTrack, rkyv::rancor::Error>(&bytes).expect("read back");
+    assert_eq!(back, track);
+}

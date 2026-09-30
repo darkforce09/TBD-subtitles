@@ -220,6 +220,7 @@ fn gui_and_enqueue_concern_the_window_and_the_rest_do_not() {
     for args in [
         &["process", "a.mkv"][..],
         &["fix", "a.mkv"],
+        &["dump", "a.mkv", "meta", "layout"],
         &["worker", "separation", "/tmp/job"],
     ] {
         assert!(window_request(&parse(args).unwrap()).is_none(), "{args:?}");

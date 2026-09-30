@@ -5,18 +5,19 @@ window, or hands its videos to the window already open, `process` runs a job for
 probe to subtitle file without a window, or with `--enqueue` queues the videos in the window,
 `fix` runs
 [Fix It](/documentation/glossary.md#fix-it) on a finished video and the correction run after it,
-and `worker` runs one step of a job in its own
-[worker process](/documentation/glossary.md#worker-process). People run the first three; `worker`
+`dump` prints the rows of a job's database as JSON, and `worker` runs one step of a job in its own
+[worker process](/documentation/glossary.md#worker-process). People run the first four; `worker`
 is the entry point the job runner starts.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/cli/
+├── dump_command.rs     the `dump` job resolution, the job database opened if free, its rows as JSON
 ├── fix_command.rs      the `fix` options over the settings file, Fix It, the correction run, the printout
 ├── mod.rs              `Cli` and its subcommands in clap, and the dispatch to each runner
 ├── process_command.rs  the `process` options over the settings file, folders expanded, the run, its printout and exit code
-├── tests/              parsing, the window's starts, the process and fix settings, folders, exit codes, the worker step check and the refusals
+├── tests/              parsing, the window's starts, the process and fix settings, folders, exit codes, the worker step check, the refusals and dump
 ├── window_command.rs   videos alone, `gui` and `process --enqueue`: the single instance, then the window or a hand-off
 └── worker_command.rs   the `worker` runner and its step check: every step but the Whisper ones
 ```
@@ -46,6 +47,7 @@ tbd-subtitles [COMMAND] ──▶ Cli::parse
                                          or hand off (start)
    process <PATHS>... [OPTIONS]      ──▶ dispatch ──▶ process_command::run ──▶ pipeline::run_job, per video
    fix <VIDEO> [OPTIONS]             ──▶ dispatch ──▶ fix_command::run ──▶ pipeline::fix_it::fix_video, run_job
+   dump <JOB> <TABLE> [KEY]          ──▶ dispatch ──▶ dump_command::run ──▶ JobStore::open_existing, kinds
    worker <STEP> <JOB_DIR>           ──▶ dispatch ──▶ worker_command::run ──▶ pipeline::tasks::worker_main
 ```
 
@@ -126,6 +128,25 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
   made, or a correction run that failed; 2 on a usage error, including no video.
 - Example: `distrobox-host-exec target/release/tbd-subtitles fix "[Muhn Pace] Dressrosa 12.mp4"`
 
+### dump
+
+- Synopsis: `tbd-subtitles dump <JOB_OR_VIDEO> <TABLE> [KEY] [--settings <FILE>] [--work-root <DIR>]`
+- Does: finds the job `<JOB_OR_VIDEO>` names: a folder that holds `job.redb`, else a job folder
+  under the work root (from `--work-root`, else the settings file as `process` reads it, else the
+  default), else a video, whose job folder is named from its canonical path as the runner names
+  it. It opens the job's `job.redb` only when no other process owns it
+  (`pipeline::work_dir::JobStore::open_existing`, which creates nothing) and reads `<TABLE>`
+  (`meta`, `step_records`, `outputs`, `corrections`, `frames` or `readings`). With `[KEY]` (a
+  name such as `layout` or `cues/dropped_sounds`, or `<occurrence>/<frame>` in `frames` and
+  `readings`) it prints that row's record as pretty JSON through its record kind
+  (`pipeline::work_dir::store::kinds`); without it, every row of the table as JSON Lines in key
+  order, one `{"key": …, "value": …}` object each, where a row with no record kind has a null
+  value and its size in `"bytes"`. It never opens the window.
+- Exit codes: 0 printed; 1 no such job, a job with no database, a missing row, or a job another
+  process is running ("process N is running this job; dump it after that run ends"); 2 on a usage
+  error, including a table that does not exist and a per-frame key without its frame.
+- Example: `distrobox-host-exec target/release/tbd-subtitles dump "[Muhn Pace] Dressrosa 11.mp4" meta layout`
+
 ### worker
 
 - Synopsis: `tbd-subtitles worker <STEP> <JOB_DIR>`.
@@ -144,7 +165,9 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
   `crate::core::single_instance` (the claim, the serving thread, the hand-off);
   `crate::job_queue::services::video_files` (a folder's videos); `pipeline` (`run_job`, `JobOptions`,
   `progress::Progress`, `workers::Binaries`, `work_dir::default_root`, `graph::placement`,
-  `tasks::worker_main`, `fix_it::fix_video`) from `crates/pipeline/`; `job_model::StepName` and `job_model::job` from
+  `tasks::worker_main`, `fix_it::fix_video`, `work_dir::{JobStore, WorkDir, job_id}`,
+  `work_dir::store::{kind, kinds}`) from `crates/pipeline/`; `worker_channel::address::{Table,
+  Key}`; `serde_json`; `job_model::StepName` and `job_model::job` from
   `crates/job_model/`; `crate::settings::{models, services}` (the settings file and the job
   settings it makes); `clap` and `anyhow`.
 - Used by: `apps/tbd_subtitles/src/main.rs`, which calls `run`; the job runner in
@@ -172,7 +195,12 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
     (`worker_takes_main_binary_steps_only`);
   - `process` names a missing video, and `worker` fails without a job; neither reports success
     it has not earned (`process_refuses_a_missing_video_by_name`, `a_worker_without_a_job_fails`);
-  - all in `tests/cli.rs`; the step names are an interface the job runner calls by name, and
+  - `dump` takes a job, a table and an optional key in its table's form, finds a job by its
+    folder, its name or its video, and prints one row pretty or a table as JSON Lines, a row
+    without a record kind by its size (`dump_takes_a_job_a_table_and_an_optional_key`,
+    `a_key_takes_the_form_of_its_table`, `a_job_is_found_by_its_folder_its_name_or_its_video`,
+    `a_store_dumps_one_row_pretty_or_a_table_as_json_lines` in `tests/dump_command.rs`);
+  - the rest in `tests/cli.rs`; the step names are an interface the job runner calls by name, and
     `StepName` owns them.
 
 ## Related documentation

@@ -1,17 +1,18 @@
 # Job store
 
 The one handle of a job's database, `job.redb`, that a process holds: who owns it, the six tables
-and the layout version of each, and rkyv rows written in one transaction and read back typed, in
-place or as bytes.
+and the layout version of each, rkyv rows written in one transaction and read back typed, in
+place or as bytes, and the record kind of every row.
 
 ## Contents
 
 ```text
 crates/pipeline/src/work_dir/store/
+├── kinds.rs    `RecordKind` and `kind`: the type each table and key archives, checked and as JSON
 ├── mod.rs      `JobStore`: the open, the registry, `job.lock`, the layout check and transactions
 ├── records.rs  `StoreWrite` (put, reserve, remove, commit) and `StoreRead` (get, view, raw, keys)
 ├── tables.rs   one redb definition per table and `LAYOUT_VERSIONS`
-└── tests/      unit tests for ownership, the shared handle, the layout check and the rows
+└── tests/      unit tests for ownership, the shared handle, the layout check, the rows and kinds
 ```
 
 ## How it works
@@ -54,12 +55,33 @@ snapshot: `get` checks and copies a row out, `view` checks the archive and reads
 `raw` copies the bytes and `keys` lists a table. Each takes a `worker_channel::address` table and
 key; a key whose kind is not its table's is an error. No step writes here yet.
 
+`kinds::kind` names the type behind a table and key as a `RecordKind`, whose `check` runs rkyv's
+bytecheck over an archive and whose `json` reads it back and turns it into JSON. The worker
+channel checks every output a worker sends with it before the row is kept
+(`crate::workers::channel`), and the app's `dump` subcommand prints rows with it.
+
+| Table | Key | Record type |
+|---|---|---|
+| `meta` | `job_record`, `layout` | `JobRecord`, `TableLayouts` |
+| `step_records` | any step name | `StepRecord` |
+| `corrections` | `lines`, `text` | `Corrections` (today `review.json`), `TextCorrections` (today `visual/corrections.json`) |
+| `outputs` | a step name | the document the step writes today: `ProbeDecoded`, `ShotChanges`, `SpeechPlan`, `EngineTranscript` (both ASR steps), `Vec<Utterance>` (`diff_sheet`), `Vec<SoundEvent>`, `AdjudicationPass` (`adjudicate`, `readjudicate`), `Redecode` (both redecodes), `SoundCues`, `Aligned` (`alignment`, `review`), `CueTrack` (`cues`), `TextDocument` (`text_detect` … `text_review`, `text_typeset`), `ReplacementDocument` (`text_mask`, `text_inpaint`, `text_compose`), `VerifiedReplacements`, `QcReport`, `OutputRecord`, `LocalizedVideoRecord` |
+| `outputs` | `<step>/<part>` | a step's second document: `cues/dropped_sounds` is `Vec<String>` |
+| `frames`, `readings` | (occurrence, frame) | none yet |
+
+`separation` writes no document (its stems are files), so its key has no kind, nor has any other
+key the table does not list. `kinds::shown` writes a key as the owner types it: a name, or
+`<occurrence>/<frame>` for a per-frame key.
+
 ## Boundaries
 
-- Depends on: `redb` 4.3.0, `rkyv` (the format `job_model` pins), `job_model::store::TableLayouts`,
-  `worker_channel::address::{Table, Key}`, `tracing`, and `super::{WorkDir, write_text}`.
+- Depends on: `redb` 4.3.0, `rkyv` (the format `job_model` pins), `serde_json` (a kind's JSON),
+  the `job_model` types (`store::TableLayouts` among them) and `subtitle_formats::cue::CueTrack`
+  the kinds name, `worker_channel::address::{Table, Key}`, `tracing`, and
+  `super::{WorkDir, write_text}`.
 - Used by: `crate::runner::run_job` and `crate::fix_it::fix_job`, which hold a `JobStore` while
-  they run; `tools/visual_validation/src/pilot.rs`.
+  they run; `crate::workers` (the worker channel's inputs, outputs and their kinds);
+  `tools/visual_validation/src/pilot.rs`; `apps/tbd_subtitles/src/cli/dump_command.rs` (`kind`).
 - Rules:
   - an open creates the six tables, the layout and `job.lock`
     (`an_open_creates_the_six_tables_the_layout_and_the_lock` in `tests/store.rs`);
@@ -79,8 +101,14 @@ key; a key whose kind is not its table's is an error. No step writes here yet.
   - a reserved row is filled in place and a failed fill leaves none, and nothing is visible before
     `commit` (`a_reserved_row_is_filled_in_place_and_a_failed_fill_leaves_none`,
     `a_removed_row_is_gone_and_an_uncommitted_write_changes_nothing`);
-  - whoever changes a type stored in a table bumps that table's version in `LAYOUT_VERSIONS`
-    (review).
+  - every document a task or the owner writes today has a record kind whose check accepts its
+    archive and refuses garbage, every step but `separation` has one, and a key that names no
+    type is an error
+    (`every_document_a_task_writes_has_a_kind_that_checks_it_and_refuses_garbage`,
+    `every_step_but_separation_has_an_output_document`, `unknown_keys_are_errors` in
+    `tests/kinds.rs`);
+  - whoever changes a type stored in a table bumps that table's version in `LAYOUT_VERSIONS`,
+    and whoever adds a document a step writes adds its kind (review).
 
 ## Related documentation
 

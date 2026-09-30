@@ -2,8 +2,10 @@
 
 The `tbd_subtitles` crate, which builds the `tbd-subtitles` binary: the eframe desktop window that
 queues and runs videos, the headless `process` command that runs a job from video to subtitle
-file, the headless `fix` command that runs Fix It on a finished video, and the `worker` subcommand that runs one step of a job in its own
-[worker process](/documentation/glossary.md#worker-process). The owner runs it on the host PC.
+file, the headless `fix` command that runs Fix It on a finished video, the `dump` command that
+prints the rows of a job's database as JSON, and the `worker` subcommand that runs one step of a
+job in its own [worker process](/documentation/glossary.md#worker-process). The owner runs it on
+the host PC.
 
 ## Contents
 
@@ -60,9 +62,10 @@ cargo build -p tbd_subtitles
 distrobox-host-exec target/debug/tbd-subtitles gui               # the window, with the kept queue
 distrobox-host-exec target/debug/tbd-subtitles gui a.mkv b.mkv   # with these videos queued too
 distrobox-host-exec target/debug/tbd-subtitles process --enqueue a.mkv   # queued and started in the window
-cargo run -p tbd_subtitles -- --help           # the usage and the four subcommands
+cargo run -p tbd_subtitles -- --help           # the usage and the five subcommands
 cargo build --release -p tbd_subtitles
 distrobox-host-exec target/release/tbd-subtitles process "<video>"   # subtitles beside the video
+target/debug/tbd-subtitles dump "<video>" meta layout   # a row of the job's database as JSON
 ```
 
 Check the crate with:
@@ -102,7 +105,8 @@ cargo gates file-length
 
 - The `tbd-subtitles` binary: `tbd-subtitles [VIDEOS]...` or `tbd-subtitles [COMMAND]`, with the
   subcommands `gui [VIDEOS]...`, `process <PATHS>... [OPTIONS]` (or `process --enqueue
-  <PATHS>...`), `fix <VIDEO> [OPTIONS]` and `worker <STEP> <JOB_DIR>`, and `--help` and
+  <PATHS>...`), `fix <VIDEO> [OPTIONS]`, `dump <JOB_OR_VIDEO> <TABLE> [KEY]` and
+  `worker <STEP> <JOB_DIR>`, and `--help` and
   `--version`. It exits 0 on success, 1 with the error chain on stderr, and 2 on a usage error or
   a `process` run in which a job failed its quality check.
   `src/cli/README.md` describes each subcommand. There is no library target.
@@ -110,7 +114,8 @@ cargo gates file-length
 ## Boundaries
 
 - Depends on: `crates/pipeline/` (`run_job`, `JobOptions`, `workers::Binaries`, `tasks`,
-  `graph`, `work_dir`, `progress`); `crates/job_model/` for `StepName`, the job settings, the
+  `graph`, `work_dir` with its job store and record kinds, `progress`); `crates/worker_channel/`
+  for the model-call frames and the job database's table names; `crates/job_model/` for `StepName`, the job settings, the
   quality check and the stage outputs the review reads; `crates/inference/` for the model store
   and the CUDA runtime; `crates/media_io/` for the clip's FFmpeg command lines;
   `crates/child_process/` for the machine check's version queries; `crates/stages/` for the

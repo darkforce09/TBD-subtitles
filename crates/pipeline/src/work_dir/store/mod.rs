@@ -16,6 +16,7 @@
 //! removed only while it still names this process, after the database is closed; a table whose
 //! stored layout version differs from `LAYOUT_VERSIONS` is dropped whole, never migrated.
 
+pub mod kinds;
 mod records;
 mod tables;
 
@@ -32,6 +33,7 @@ use worker_channel::address::Table;
 use super::{WorkDir, write_text};
 use crate::error::{Context, PipelineError, Result};
 
+pub use kinds::{RecordKind, kind};
 pub use records::{StoreRead, StoreWrite};
 pub use tables::{FramedTable, LAYOUT_VERSIONS, NamedTable};
 
@@ -207,13 +209,15 @@ enum Opening {
 fn open_database(work: &WorkDir, mode: Mode) -> std::result::Result<Database, Opening> {
     let path = work.database();
     let shown = path.display().to_string();
+    // redb also takes its repair path when it creates a file, which has no allocator state yet;
+    // only a file that was already there is one a killed run left.
+    let existed = fs::metadata(&path).is_ok_and(|meta| meta.len() > 0);
     let mut builder = Builder::new();
     builder.set_cache_size(CACHE_BYTES);
     builder.set_repair_callback(move |session| {
-        tracing::info!(
-            "repairing the job database {shown} a killed run left: {:.0}%",
-            session.progress() * 100.0
-        );
+        if existed && session.progress() <= 0.0 {
+            tracing::info!("repairing the job database {shown} a killed run left");
+        }
     });
     let opened = match mode {
         Mode::Create => builder.create(&path),

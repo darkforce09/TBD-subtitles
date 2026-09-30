@@ -40,8 +40,10 @@ crates/worker_channel/src/
 ## Public surface
 
 - `frame::{Tag, Header, Frame, HEADER_LEN, write_frame, read_header, read_payload, read_frame}`:
-  the runner's reader in `crates/pipeline/src/workers/frames.rs` and its tests.
-- `address::{Table, Key, Address}`: the addresses of `Input` and `Output` values.
+  the runner's reader in `crates/pipeline/src/workers/frames.rs`, its inputs in
+  `crates/pipeline/src/workers/channel/`, and their tests.
+- `address::{Table, Key, Address}`: the addresses of `Input` and `Output` values, and the tables
+  the `dump` subcommand names.
 - `progress::{Progress, ENCODED_LEN}`: the `Progress` payload, decoded by the runner.
 - `worker::{install, send, progress, model_call, output, measure, failed, done, read_inputs}`:
   `pipeline::tasks::worker_main` and the model-call layers of `apps/tbd_subtitles/` and
@@ -51,6 +53,8 @@ crates/worker_channel/src/
 
 - Depends on: `std` (`std::io`, `std::os::fd`, `std::sync`) and `rustix::stdio::dup2_stdout`.
 - Used by: `crates/pipeline/src/tasks/mod.rs`, `crates/pipeline/src/workers/frames.rs`,
+  `crates/pipeline/src/workers/channel/`, `crates/pipeline/src/work_dir/store/`,
+  `apps/tbd_subtitles/src/cli/dump_command.rs`,
   `apps/tbd_subtitles/src/core/log_buffer/worker_channel.rs` and
   `apps/tbd_subtitles_llm/src/logging.rs`.
 - Rules:

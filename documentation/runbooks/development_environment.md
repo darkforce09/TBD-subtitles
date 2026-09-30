@@ -169,6 +169,18 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
     directory under `~/.local/share/tbd-subtitles/work/`. Running it again skips every step;
     `--rerun cues` redoes the cues, the quality check and the output only.
 
+    To read the job's database, `job.redb`, once the run has ended, print a row as JSON (or leave
+    out the key for every row of the table, one JSON object per line):
+
+    ```bash
+    target/release/tbd-subtitles dump "/run/media/system/Main_storage/Media/one_pace/[Muhn Pace] Dressrosa 11.mp4" meta layout
+    ```
+
+    **Expected:** a JSON object whose `versions` give the layout version of each of the six
+    tables. While
+    a run of the job is still going, it exits 1 with "process N is running this job; dump it
+    after that run ends".
+
 14. Run a job from the window on the host, with nothing else using the GPU.
 
     ```bash

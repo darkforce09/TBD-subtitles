@@ -1,11 +1,12 @@
-//! The command line: videos alone, `gui`, `process`, `fix` and `worker`.
+//! The command line: videos alone, `gui`, `process`, `fix`, `dump` and `worker`.
 //!
 //! **Role:** declares the subcommands with clap and dispatches each to its runner.
 //!
 //! **Position:** called by `main`; `window_command` opens the window, or hands its videos to the
 //! window already open, for videos alone, `gui` and `process --enqueue`; `process_command` runs
 //! each video's job through `pipeline`; `fix_command` runs Fix It on a finished job and the
-//! correction run after it; `worker_command` runs one step of a job for the job runner.
+//! correction run after it; `dump_command` prints a job database's rows as JSON;
+//! `worker_command` runs one step of a job for the job runner.
 //!
 //! **Signals and state:** reads the process arguments; starts logging, to the log file too when
 //! the window opens; no state.
@@ -14,6 +15,7 @@
 //! desktop launcher expects; only the starts that concern the window claim the single instance;
 //! `worker` refuses the steps that belong to the ggml worker binary.
 
+mod dump_command;
 mod fix_command;
 mod process_command;
 mod window_command;
@@ -54,6 +56,9 @@ enum Command {
     Process(process_command::ProcessArgs),
     /// Fix a finished video's flagged lines with a stronger `claude` model, without a window.
     Fix(fix_command::FixArgs),
+    /// Print the rows of a job's database as JSON: one row pretty-printed, or a whole table as
+    /// JSON Lines.
+    Dump(dump_command::DumpArgs),
     /// Run one step of a job in this process; started by the job runner.
     Worker {
         /// The step to run.
@@ -88,7 +93,9 @@ fn window_request(cli: &Cli) -> Option<window_command::WindowRequest> {
         Some(Command::Process(args)) if args.enqueue => {
             Some(window_command::WindowRequest::enqueue(args.videos.clone()))
         }
-        Some(Command::Process(_) | Command::Fix(_) | Command::Worker { .. }) => None,
+        Some(Command::Process(_) | Command::Fix(_) | Command::Dump(_) | Command::Worker { .. }) => {
+            None
+        }
     }
 }
 
@@ -100,6 +107,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         }
         Some(Command::Process(args)) => process_command::run(&args),
         Some(Command::Fix(args)) => fix_command::run(&args).map(|()| ExitCode::SUCCESS),
+        Some(Command::Dump(args)) => dump_command::run(&args),
         Some(Command::Worker { step, job_dir }) => {
             worker_command::run(step, &job_dir).map(|()| ExitCode::SUCCESS)
         }

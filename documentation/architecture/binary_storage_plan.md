@@ -5,7 +5,8 @@
 The approved move of every job's step outputs from loose JSON files into one embedded `redb`
 database per job, with values archived by `rkyv`, and of approved signs into one library shared
 by every episode. The owner approved it; phase 1 (the decision, the pinned releases and the
-archived types) is built, and no step reads or writes a database yet.
+archived types) and phase 2 (the worker channel, the job store, its ownership and `dump`) are
+built, and no step's output is in a database yet.
 
 ## Why
 
@@ -50,8 +51,10 @@ the writer, but it is part of the redb 5 API preview, so this plan does not use 
 separate worker processes (law 7), and the window reads a job while it runs, so:
 
 - **The runner owns `job.redb`.** Only the process running the job opens it, read-write, once,
-  for the whole job, and writes its process id to `job.lock` first. That open also repairs a file
-  a crashed run left.
+  for the whole job, and writes its process id to `job.lock` once the open succeeds (written
+  before, a refused open would overwrite the real owner's id). That open also repairs a file a
+  crashed run left. Every caller in one process (the window's queue, its job threads, Fix It, the
+  background `shot_scan`) gets the same handle from a registry of open jobs.
 - **Workers never open it.** Almost every step runs in a worker process (all but `vad`,
   `diff_sheet`, `cues`, `text_review`, `qc` and `output`), and a background `shot_scan` runs beside
   other steps, so no worker could hold the file. A worker takes its inputs and returns its outputs
@@ -78,8 +81,8 @@ records name by path.
   many bytes. `Input` and `Output` frames carry a table, a key and one `rkyv` archive; `Progress`,
   `ModelCall` (the model call's JSON, as the log window shows it), `Measure` (the worker's
   `WorkerMeasure`), `Failed` (a message) and `Done` carry the rest. The frame types and their
-  codec live in a layer-0 crate with round-trip tests, used by the runner and all three worker
-  binaries.
+  codec live in the layer-0 crate [`worker_channel`](/crates/worker_channel/README.md) with
+  round-trip tests, used by the runner and all three worker binaries.
 - **Inputs down stdin.** The runner reads each archived value a step reads from `job.redb` in one
   read transaction, writes its bytes as `Input` frames to the worker's stdin on a thread of its
   own (so a worker that reports progress before it has read every input never deadlocks), and
@@ -110,8 +113,12 @@ records name by path.
   beside a GPU step), and that worker waits on its full pipe. Neither step reads the other's
   output, so the wait always ends.
 
-Phase 2 measures what redb holds in memory for a large uncommitted transaction (a `text_mask`
-output for a two-hour 60 fps video) before per-frame tables rely on one transaction per step.
+What redb holds in memory for a large uncommitted transaction follows its page cache, not the
+transaction: 432,000 rows of 2 KB (a two-hour 60 fps per-frame table) peaked at 154 MiB with a
+256 MiB cache and 557 MiB with redb's default 1 GiB, and the commit took 17–25 s
+([measurement](/documentation/research/redb_large_transaction_memory.md)). One transaction per
+step therefore fits the 8 GB limit at any video length; every job database opens with a 256 MiB
+cache.
 
 ## Storage layout
 
@@ -185,14 +192,20 @@ and reruns Dressrosa 11 and 28 with identical `.ass` and `.localized.ass` files 
    2) and `rkyv` 0.8.18 by `job_model`, its format pinned to `unaligned`, `little_endian` and
    `pointer_width_32`. `rkyv` derives on every `job_model` type,
    `PathBuf` archived as a UTF-8 string, both maps already ordered; round-trip tests per type.
-2. **Channel, store, ownership and dump.** First the [worker channel](#worker-channel)'s frames
-   and codec, the worker's stdout moved aside, and the runner reading frames as bytes, carrying
-   `Progress`, `ModelCall`, `Measure`, `Failed` and `Done` while outputs are still JSON files.
-   Then `JobStore` in `crates/pipeline/src/work_dir/` owns `job.redb` (redb 4.3.0, default
-   features), opens it once per job with `job.lock`, and exposes typed `put`/`get`/archived `view`
-   per table and the `Input`/`Output` path through `insert_reserve`; the redb memory of a large
-   uncommitted transaction is measured. `tbd-subtitles dump <job_or_video> <table> [key]` prints
-   JSON.
+2. **Channel, store, ownership and dump (done).** The [worker channel](#worker-channel)'s frames
+   and codec (`crates/worker_channel`), the worker's stdout moved aside, and the runner reading
+   frames as bytes, carrying `Progress`, `ModelCall`, `Measure`, `Failed` and `Done`;
+   `steps/*.worker.json` is gone while outputs are still JSON files. `JobStore` in
+   `crates/pipeline/src/work_dir/store/` owns `job.redb` (redb 4.3.0, default features, 256 MiB
+   cache), opened once per job per process through a registry, `job.lock` written after the open;
+   the six tables with their layout versions in `meta`, typed `put`/`get`/archived `view`, record
+   kinds that check an archive and print it as JSON, and the `Input`/`Output` path through
+   `insert_reserve`, tested end to end on pipes. The runner and Fix It hold the store instead of
+   the old pid lock, and the window shows a job another process owns as busy and starts it once
+   that process ends. The redb memory of a large uncommitted transaction is measured (above).
+   `tbd-subtitles dump <job_or_video> <table> [key]` prints JSON. Dressrosa 11 and 28, rerun from
+   `text_mask` (the steps before it call Claude, whose answers vary), gave identical `.ass` and
+   `.localized.ass` files and the same `text_verify` verdicts.
 3. **Steps move, in graph order, straight to rkyv.** Each group moves reader and writer
    together, with its tests:
    - `probe_decode`, `shot_scan`, `separation`, `vad`;

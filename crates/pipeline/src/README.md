@@ -21,7 +21,7 @@ crates/pipeline/src/
 ├── runner/    `run_job`: one video through every step, in order, with resume and the shot scan
 ├── tasks/     the body of every step, shared by the runner and the `worker` subcommands
 ├── work_dir/  the path of every job file, the job id, complete JSON writes and the job store
-└── workers/   starting a step's worker binary, reading its frames, forwarding its progress
+└── workers/   starting a step's worker binary, its inputs and outputs, its frames and progress
 ```
 
 ## How it works
@@ -34,7 +34,8 @@ runner ──▶ resume ──▶ graph            is the step's record still va
                                           └─ `<b> worker <step> <job dir>`
                                                └─ tasks::worker_main ──▶ tasks::run
    │
-   ├─ after each step: resume::fingerprint, job.json through work_dir, Progress::StepFinished
+   ├─ after each step: its outputs committed with its StepRecord in job.redb, job.json through
+   │  work_dir, Progress::StepFinished
    └─ at the end: report::write ──▶ report.md
 ```
 
@@ -43,11 +44,14 @@ a step reads, where it runs, whether it needs the GPU, which settings it depends
 may run and which files it leaves. `resume` hashes that into a fingerprint. `work_dir` names
 every path and writes JSON through a part file, so a file that exists is complete; its `store`
 owns `job.redb`, which the runner and Fix It hold open while they work (one process at a time,
-one shared handle in it, its pid in `job.lock`), and which no step writes to yet. `tasks` holds
-the body of each step; a worker binary calls `tasks::worker_main`,
-which sends `Progress`, `ModelCall`, `Measure` and `Done` (or `Failed`) frames of the worker
-channel (`crates/worker_channel/`) on its stdout, and `workers` turns those into progress events
-and a `StepMeasure`, adding the VRAM that `measure::gpu_monitor` sampled. `report` renders `report.md` after every run. Every fallible call
+one shared handle in it, its pid in `job.lock`), with the record kind of every row
+(`work_dir::store::kinds`), and which no step writes to yet. `tasks` holds the body of each step;
+a worker binary calls `tasks::worker_main`, which sends `Progress`, `ModelCall`, `Measure` and
+`Done` (or `Failed`) frames of the worker channel (`crates/worker_channel/`) on its stdout, and
+`workers` turns those into progress events and a `StepMeasure`, adding the VRAM that
+`measure::gpu_monitor` sampled. `workers::channel` carries a step's stored inputs down its
+worker's stdin and its `Output` frames straight into the job database, uncommitted until the
+runner commits them with the step's record; no step sends either yet. `report` renders `report.md` after every run. Every fallible call
 returns `PipelineError`, whose `ErrorKind` says whether it failed, was cancelled, or found the job
 owned by another process (`Busy`, with that process's pid when known).
 
@@ -73,21 +77,27 @@ makes only the review step and the steps after it run.
 - `measure::gpu_monitor` and `measure::memory`: used by `tools/stack_spike/`.
 - `work_dir::JobStore` and `error::ErrorKind`: the job database the runner owns, and the busy kind
   the window turns into a busy job; `tools/visual_validation/` holds a `JobStore` too.
+- `work_dir::store::{kind, RecordKind, kinds::shown}`: the record kind of a row, which checks its
+  archive and prints it as JSON, for the app's `dump` subcommand.
+- `workers::{run_worker, WorkerData, WorkerRun, StepWrite}`: a step in its worker with its inputs
+  and uncommitted outputs, for the runner and `tools/visual_validation/`.
 
 ## Boundaries
 
 - Depends on: `stages`, `inference`, `media_io`, `subtitle_formats`, `child_process`,
   `job_model`, `worker_channel`, `redb`, `serde_json`, `rkyv`, `sha2`, `libc` and
   `nvml-wrapper`.
-- Used by: `apps/tbd_subtitles/src/cli/`, `apps/tbd_subtitles_ggml/src/main.rs` and
-  `tools/stack_spike/src/measure/`.
+- Used by: `apps/tbd_subtitles/src/cli/`, `apps/tbd_subtitles_ggml/src/main.rs`,
+  `tools/stack_spike/src/measure/` and `tools/visual_validation/src/pilot.rs`.
 - Rules:
   - no module but `runner` writes the job record, and it writes it after each finished step only
     (the header of `runner/mod.rs`);
   - every step's placement, inputs and outputs come from `graph`, never from a second table
     (`graph/tests/graph.rs`);
   - every JSON file goes through a part file and a rename
-    (`json_round_trips_and_leaves_no_part_file` in `work_dir/tests/work_dir.rs`).
+    (`json_round_trips_and_leaves_no_part_file` in `work_dir/tests/work_dir.rs`);
+  - a worker's outputs are stored only with its step's record, in one transaction, and a step that
+    does not finish stores nothing (`workers/channel/tests/channel.rs`).
 
 ## Related documentation
 

@@ -8,8 +8,9 @@
 //! `workers`, `tasks` and `report`.
 //!
 //! **Signals and state:** holds the job's `JobStore` (and so `job.redb` and `job.lock`) until the
-//! run returns; reads the owner's corrections for their digest; writes `job.json` after every
-//! finished step; emits progress events.
+//! run returns, and hands it to every worker; commits the outputs a worker sent with its step's
+//! record, in one transaction; reads the owner's corrections for their digest; writes `job.json`
+//! after every finished step; emits progress events.
 //!
 //! **Invariants:** `job.json` always describes finished steps only, so a killed job resumes from
 //! the last one; one worker loads the GPU at a time (the shot scan uses none); a step starts only
@@ -32,7 +33,7 @@ use crate::graph::{self, Placement};
 use crate::progress::{Progress, ProgressSink};
 use crate::tasks::{self, Job};
 use crate::work_dir::{self, JobStore, WorkDir};
-use crate::workers::{self, Binaries};
+use crate::workers::{self, Binaries, StepWrite, WorkerData};
 use crate::{report, resume};
 
 /// How to run a job.
@@ -81,7 +82,7 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
         .map_or(0, |d| d.as_secs() as i64);
     let work = WorkDir::new(options.work_root.join(work_dir::job_id(&video)));
     // Another process running this job makes the open fail with the busy kind.
-    let _store = JobStore::open(&work)?;
+    let store = JobStore::open(&work)?;
     let video_text = video.to_string_lossy().into_owned();
     let mut record = match work_dir::read_json::<JobRecord>(&work.job_json()) {
         Ok(r) if r.video == video_text => r,
@@ -116,58 +117,67 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
 
     let cuda_env: OnceLock<std::result::Result<Vec<(String, String)>, String>> = OnceLock::new();
     let env_for = |step: StepName| -> Result<Vec<(String, String)>> {
-        if !graph::loads_onnx_runtime(step) {
+        if !graph::needs_cuda_runtime(step) {
             return Ok(Vec::new());
         }
         cuda_env
             .get_or_init(|| {
                 let located = locate_cuda(&options.binaries).map_err(|e| e.to_string());
                 match &located {
-                    Ok(_) => tracing::debug!("the CUDA runtime is found for ONNX Runtime workers"),
-                    Err(error) => tracing::warn!("no CUDA runtime for ONNX Runtime: {error}"),
+                    Ok(_) => tracing::debug!("the CUDA runtime is found for GPU workers"),
+                    Err(error) => tracing::warn!("no CUDA runtime for GPU workers: {error}"),
                 }
                 located
             })
             .clone()
             .map_err(|e| PipelineError::new(format!("step {step}"), e))
     };
-    let run_step = |step: StepName, record: &JobRecord| -> Result<StepMeasure> {
-        let placement = if !record.settings.onscreen_text.enabled
-            && step.stage() == job_model::StageName::OnscreenText
-        {
-            Placement::InProcess
-        } else {
-            graph::placement(step)
+    // A step's measure, and the outputs its worker sent, uncommitted.
+    let run_step =
+        |step: StepName, record: &JobRecord| -> Result<(StepMeasure, Option<StepWrite>)> {
+            let placement = if !record.settings.onscreen_text.enabled
+                && step.stage() == job_model::StageName::OnscreenText
+            {
+                Placement::InProcess
+            } else {
+                graph::placement(step)
+            };
+            match placement {
+                Placement::InProcess => {
+                    tracing::debug!("step {step} runs in this process");
+                    let job = Job {
+                        work: work.clone(),
+                        record: record.clone(),
+                    };
+                    let measure = tasks::in_process(step, &job, &|done, total| {
+                        progress(Progress::StepAdvanced { step, done, total })
+                    })?;
+                    Ok((measure, None))
+                }
+                Placement::Worker(binary) => {
+                    tracing::debug!(
+                        "step {step} runs in a worker of {}",
+                        options.binaries.path(binary).display()
+                    );
+                    let env = env_for(step)?;
+                    // No step reads its inputs from the job database yet.
+                    let data = WorkerData {
+                        store: &store,
+                        inputs: &[],
+                    };
+                    let run = workers::run_worker(
+                        options.binaries.path(binary),
+                        step,
+                        data,
+                        &env,
+                        progress,
+                        &options.cancel,
+                        &options.gpu_lock,
+                    )?;
+                    Ok((run.measure, run.outputs))
+                }
+            }
         };
-        match placement {
-            Placement::InProcess => {
-                tracing::debug!("step {step} runs in this process");
-                let job = Job {
-                    work: work.clone(),
-                    record: record.clone(),
-                };
-                tasks::in_process(step, &job, &|done, total| {
-                    progress(Progress::StepAdvanced { step, done, total })
-                })
-            }
-            Placement::Worker(binary) => {
-                tracing::debug!(
-                    "step {step} runs in a worker of {}",
-                    options.binaries.path(binary).display()
-                );
-                let env = env_for(step)?;
-                workers::run_worker(
-                    options.binaries.path(binary),
-                    step,
-                    &work,
-                    &env,
-                    progress,
-                    &options.cancel,
-                    &options.gpu_lock,
-                )
-            }
-        }
-    };
 
     let (mut ran, mut skipped) = (Vec::new(), Vec::new());
     std::thread::scope(|scope| -> Result<()> {
@@ -181,17 +191,10 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                 let step_span = tracing::info_span!("step", step = %step);
                 let _in_step = step_span.enter();
                 if graph::inputs(step).contains(&StepName::ShotScan)
-                    && let Some((handle, fingerprint)) = shots.take()
+                    && let Some(handle) = shots.take()
                 {
-                    let measure = join(handle)?;
-                    finish(
-                        &mut record,
-                        &work,
-                        StepName::ShotScan,
-                        fingerprint,
-                        measure,
-                        progress,
-                    )?;
+                    let scanned = join(handle)?;
+                    finish(&mut record, &work, StepName::ShotScan, scanned, progress)?;
                 }
                 if resume::is_valid(step, &record, &work) {
                     skipped.push(step);
@@ -207,34 +210,29 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                     let snapshot = record.clone();
                     let run_step = &run_step;
                     let span = step_span.clone();
-                    shots = Some((
-                        scope.spawn(move || {
-                            let _in_step = span.enter();
-                            run_step(StepName::ShotScan, &snapshot)
-                        }),
-                        fingerprint,
-                    ));
+                    // The scan commits its own outputs, so a later step's outputs never wait on
+                    // a transaction only this thread's join would end.
+                    shots = Some(scope.spawn(move || {
+                        let _in_step = span.enter();
+                        let (measure, outputs) = run_step(StepName::ShotScan, &snapshot)?;
+                        stamp(StepName::ShotScan, fingerprint, measure, outputs)
+                    }));
                     continue;
                 }
-                let measure = run_step(step, &record).inspect_err(|error| {
-                    progress(Progress::StepFailed {
-                        step,
-                        message: error.to_string(),
-                    })
-                })?;
-                finish(&mut record, &work, step, fingerprint, measure, progress)?;
+                let stamped = run_step(step, &record)
+                    .and_then(|(measure, outputs)| stamp(step, fingerprint, measure, outputs))
+                    .inspect_err(|error| {
+                        progress(Progress::StepFailed {
+                            step,
+                            message: error.to_string(),
+                        })
+                    })?;
+                finish(&mut record, &work, step, stamped, progress)?;
                 announce_duration(step, &work, progress);
             }
-            if let Some((handle, fingerprint)) = shots.take() {
-                let measure = join(handle)?;
-                finish(
-                    &mut record,
-                    &work,
-                    StepName::ShotScan,
-                    fingerprint,
-                    measure,
-                    progress,
-                )?;
+            if let Some(handle) = shots.take() {
+                let scanned = join(handle)?;
+                finish(&mut record, &work, StepName::ShotScan, scanned, progress)?;
             }
             Ok(())
         })();
@@ -266,8 +264,8 @@ fn announce_duration(step: StepName, work: &WorkDir, progress: ProgressSink) {
     }
 }
 
-/// The CUDA runtime's environment for ONNX Runtime workers, packaged beside the binaries or in
-/// the runtime folder.
+/// The CUDA runtime's environment for ONNX Runtime and Whisper workers, packaged beside the
+/// binaries or in the runtime folder.
 fn locate_cuda(binaries: &Binaries) -> Result<Vec<(String, String)>> {
     let runtime_dir =
         inference::model_store::runtime_dir().context("cannot find the runtime folder")?;
@@ -276,32 +274,44 @@ fn locate_cuda(binaries: &Binaries) -> Result<Vec<(String, String)>> {
     Ok(runtime.worker_env())
 }
 
-fn join(handle: std::thread::ScopedJoinHandle<'_, Result<StepMeasure>>) -> Result<StepMeasure> {
+fn join(handle: std::thread::ScopedJoinHandle<'_, Result<StepRecord>>) -> Result<StepRecord> {
     handle
         .join()
         .map_err(|_| PipelineError::new("step shot_scan", "the scan thread panicked"))?
 }
 
-/// Record `step` with the fingerprint captured before it runs, so concurrent edits remain stale.
+/// `step`'s record, with the fingerprint captured before it ran, so concurrent edits remain stale;
+/// the outputs its worker sent are committed with it, in one transaction.
+fn stamp(
+    step: StepName,
+    fingerprint: String,
+    measure: StepMeasure,
+    outputs: Option<StepWrite>,
+) -> Result<StepRecord> {
+    let finished_ns = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let stamped = StepRecord {
+        fingerprint,
+        finished_ns,
+        measure,
+    };
+    if let Some(outputs) = outputs {
+        outputs.commit(step, &stamped)?;
+    }
+    Ok(stamped)
+}
+
+/// Record the finished `step` in `job.json`.
 fn finish(
     record: &mut JobRecord,
     work: &WorkDir,
     step: StepName,
-    fingerprint: String,
-    measure: StepMeasure,
+    stamped: StepRecord,
     progress: ProgressSink,
 ) -> Result<()> {
-    let finished_ns = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos());
-    record.steps.insert(
-        step,
-        StepRecord {
-            fingerprint,
-            finished_ns,
-            measure: measure.clone(),
-        },
-    );
+    let measure = stamped.measure.clone();
+    record.steps.insert(step, stamped);
     work_dir::write_json(&work.job_json(), record)?;
     progress(Progress::StepFinished { step, measure });
     Ok(())

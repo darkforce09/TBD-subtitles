@@ -26,8 +26,9 @@ reader tells a clean end before a header apart from a stream cut inside a frame.
 worker process                                       job runner (crates/pipeline/src/workers/)
   worker::install()   fd 1 ─▶ copy of fd 2 (the step log)
                       private close-on-exec copy of the stdout pipe
-  worker::progress / model_call / measure / done / failed
-        └─ FrameSink: one lock, header + parts, flush ──▶ pipe ──▶ frame::read_frame, per tag
+  worker::progress / model_call / output / measure / done / failed
+        └─ FrameSink: one lock, header + parts, flush ──▶ pipe ──▶ frame::read_header, per tag
+  worker::read_inputs ◀── stdin ◀── Input frames, from job.redb on a thread of the runner's
 ```
 
 A worker calls `worker::install` first thing, before any native library loads: it keeps a
@@ -57,9 +58,10 @@ None: the crate reads no setting, file or feature.
 ## Public surface
 
 - `frame`: `Tag`, `Header`, `Frame`, `HEADER_LEN`, `write_frame`, `read_header`, `read_payload`
-  and `read_frame`, for the job runner in `crates/pipeline/src/workers/frames.rs` and its tests.
+  and `read_frame`, for the job runner in `crates/pipeline/src/workers/frames.rs` and
+  `crates/pipeline/src/workers/channel/`, and their tests.
 - `address`: `Table`, `Key` and `Address` with `encode` and `read`, the table and key an `Input`
-  or `Output` value belongs to.
+  or `Output` value belongs to, which the runner's worker channel routes into the job database.
 - `progress`: `Progress` with `encode` and `decode`, and `ENCODED_LEN`, the `Progress` payload,
   for `crates/pipeline/`.
 - `worker`: `install`, `send`, `progress`, `model_call`, `output`, `measure`, `failed`, `done` and
@@ -72,7 +74,8 @@ None: the crate reads no setting, file or feature.
 
 - Depends on: `std` and `rustix` 1 (`std`, `stdio`: `dup2_stdout`); no workspace crate. Linux
   only, through `std::os::fd`.
-- Used by: `crates/pipeline/` (the runner's frame reader and `worker_main`),
+- Used by: `crates/pipeline/` (the runner's frame reader, its inputs and outputs, and
+  `worker_main`), `apps/tbd_subtitles/src/cli/dump_command.rs` (`address::{Table, Key}`),
   `apps/tbd_subtitles/` and `apps/tbd_subtitles_llm/` (their model-call layers).
 - Rules:
   - the crate sits in layer 0 and depends on no workspace crate (`cargo gates crate-layering`,

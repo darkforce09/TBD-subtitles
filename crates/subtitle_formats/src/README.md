@@ -30,7 +30,7 @@ only their headers.
 
 ## Boundaries
 
-- Depends on: `serde` in `cue/`; the crate also declares `job_model`.
+- Depends on: `serde` and `rkyv` in `cue/`; the crate also declares `job_model`.
 - Used by: `crates/stages/` (`cues` and `qc`) and `crates/pipeline/`.
 - Rules: every file is UTF-8, and a writer never changes a cue's times or text (the crate header in
   `lib.rs`); every cue time is a whole frame (the header in `cue/mod.rs`).

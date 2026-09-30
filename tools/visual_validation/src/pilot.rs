@@ -19,7 +19,7 @@ use pipeline::{
     resume,
     tasks::{self, Job},
     work_dir::{self, JobStore, WorkDir},
-    workers::{self, Binaries},
+    workers::{self, Binaries, WorkerData},
 };
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -38,7 +38,7 @@ pub fn run(
     let video = video.canonicalize()?;
     let binaries = binaries.canonicalize()?;
     let work = WorkDir::new(output);
-    let _store = JobStore::open(&work)?;
+    let store = JobStore::open(&work)?;
     let meta = std::fs::metadata(&video)?;
     ensure!(meta.is_file(), "pilot input must be a video file");
     let modified_s = meta.modified()?.duration_since(UNIX_EPOCH)?.as_secs() as i64;
@@ -160,37 +160,48 @@ pub fn run(
             }
             _ => {}
         };
-        let measure = match graph::placement(step) {
-            Placement::Worker(binary) => workers::run_worker(
-                paths.path(binary),
-                step,
-                &work,
-                &runtime.worker_env(),
-                &progress,
-                &cancel,
-                &lock,
-            )?,
-            Placement::InProcess => tasks::in_process(
-                step,
-                &Job {
-                    work: work.clone(),
-                    record: record.clone(),
-                },
-                &|_, _| {},
-            )?,
+        let (measure, outputs) = match graph::placement(step) {
+            Placement::Worker(binary) => {
+                let data = WorkerData {
+                    store: &store,
+                    inputs: &[],
+                };
+                let run = workers::run_worker(
+                    paths.path(binary),
+                    step,
+                    data,
+                    &runtime.worker_env(),
+                    &progress,
+                    &cancel,
+                    &lock,
+                )?;
+                (run.measure, run.outputs)
+            }
+            Placement::InProcess => (
+                tasks::in_process(
+                    step,
+                    &Job {
+                        work: work.clone(),
+                        record: record.clone(),
+                    },
+                    &|_, _| {},
+                )?,
+                None,
+            ),
         };
         eprintln!(
             "{step}: {:.2}s, RAM {:?} MiB, VRAM {:?} MiB",
             measure.wall_s, measure.peak_ram_mib, measure.peak_vram_mib
         );
-        record.steps.insert(
-            step,
-            StepRecord {
-                fingerprint,
-                finished_ns: now(),
-                measure,
-            },
-        );
+        let stamped = StepRecord {
+            fingerprint,
+            finished_ns: now(),
+            measure,
+        };
+        if let Some(outputs) = outputs {
+            outputs.commit(step, &stamped)?;
+        }
+        record.steps.insert(step, stamped);
         work_dir::write_json(&work.job_json(), &record)?;
     }
     let mut rendered = ass::write(&cues);

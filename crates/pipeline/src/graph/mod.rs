@@ -94,6 +94,12 @@ pub fn loads_onnx_runtime(step: StepName) -> bool {
     )
 }
 
+/// Whether the step's worker needs the packaged CUDA runtime on its library path: ONNX Runtime
+/// loads CUDA from it, and ggml's CUDA backend links `libcudart` and `libcublas` found only there.
+pub fn needs_cuda_runtime(step: StepName) -> bool {
+    loads_onnx_runtime(step) || placement(step) == Placement::Worker(Binary::Ggml)
+}
+
 /// Whether the step's fingerprint covers the owner's corrections.
 pub fn reads_corrections(step: StepName) -> bool {
     step == StepName::Review

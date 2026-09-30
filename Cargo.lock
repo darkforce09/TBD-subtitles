@@ -7948,6 +7948,7 @@ name = "subtitle_formats"
 version = "0.1.0"
 dependencies = [
  "job_model",
+ "rkyv",
  "serde",
  "serde_json",
 ]

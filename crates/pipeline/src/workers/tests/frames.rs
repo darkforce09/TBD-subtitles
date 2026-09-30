@@ -23,9 +23,12 @@ fn read_through_pipe(
         writer.write_all(&tail).unwrap();
     });
     let heard = Mutex::new(Vec::new());
-    let outcome = read_frames(step, &mut reader, &|event| {
-        heard.lock().unwrap().push(event)
-    });
+    let outcome = read_frames(
+        step,
+        &mut reader,
+        &|event| heard.lock().unwrap().push(event),
+        None,
+    );
     writing.join().unwrap();
     (heard.into_inner().unwrap(), outcome)
 }
@@ -198,4 +201,40 @@ fn an_output_or_a_bad_measure_breaks_the_protocol() {
     assert!(outcome.unwrap_err().contains("measure could not be read"));
     let (_, outcome) = read_through_pipe(StepName::Vad, vec![(Tag::Input, Vec::new())], Vec::new());
     assert!(outcome.unwrap_err().contains("only the runner sends"));
+}
+
+fn report(measure: Option<WorkerMeasure>, failed: Option<&str>, done: bool) -> WorkerReport {
+    WorkerReport {
+        measure,
+        failed: failed.map(str::to_string),
+        done,
+    }
+}
+
+#[test]
+fn a_worker_finishes_only_with_exit_zero_its_measure_and_its_end() {
+    assert_eq!(
+        report(Some(measure()), None, true).verdict(0),
+        Ok(measure())
+    );
+    assert_eq!(
+        report(Some(measure()), None, true).verdict(3),
+        Err("the worker exited 3".to_string())
+    );
+    assert_eq!(
+        report(None, None, true).verdict(0),
+        Err("the worker exited 0 without sending its measure".to_string())
+    );
+    assert_eq!(
+        report(Some(measure()), None, false).verdict(0),
+        Err("the worker exited 0 without sending its end".to_string())
+    );
+    assert_eq!(
+        report(None, None, false).verdict(0),
+        Err("the worker exited 0 without sending its measure or its end".to_string())
+    );
+    assert_eq!(
+        report(Some(measure()), Some("no model"), true).verdict(1),
+        Err("no model\nthe worker exited 1".to_string())
+    );
 }

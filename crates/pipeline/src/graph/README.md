@@ -21,7 +21,9 @@ the runner; every other step in a worker of `tbd-subtitles` (`Binary::Main`). Ty
 CPU worker so cancellation interrupts long glyph and layout work. `uses_gpu`
 marks the steps that load a model onto the GPU, which take the GPU lock and a VRAM monitor;
 `loads_onnx_runtime` adds the review step, which runs Parakeet-CTC on the CPU, to the steps that
-get the CUDA runtime's environment, and `reads_corrections` names it as the step whose
+load ONNX Runtime; `needs_cuda_runtime` is those steps plus the Whisper steps, whose ggml CUDA
+backend finds `libcudart` and `libcublas` only on the library path, and names the workers that
+get the CUDA runtime's environment; `reads_corrections` names the review step as the step whose
 fingerprint covers the owner's corrections.
 `settings` returns the part of `JobSettings` a step reads, so a changed cut score reruns cue
 building and nothing before it, and a changed output format reruns only the output. `revision`

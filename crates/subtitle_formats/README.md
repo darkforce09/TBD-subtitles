@@ -9,7 +9,7 @@ are not written yet.
 
 ```text
 crates/subtitle_formats/
-├── Cargo.toml  the `subtitle_formats` library package: `job_model`, `serde`; `serde_json` in tests
+├── Cargo.toml  the library package: `job_model`, `serde`, `rkyv`; `serde_json` in tests
 └── src/        the cue model, the format writers and subtitle import
 ```
 
@@ -20,7 +20,8 @@ into text: a `CueTrack` is the video's `FrameRate` and its cues in time order, a
 from frame `start` up to, not including, frame `end`, with one or two `CueLine`s (plain or italic)
 and a `CueKind` (dialogue, sound or music). Times are whole frames, so nothing downstream can place
 a cue between frames; `FrameRate` converts frames to seconds and milliseconds and seconds back to
-frames. The track is stored as `cues.json` in the job's work directory.
+frames. The track is stored as `cues.json` in the job's work directory, and archives with rkyv for
+the job database (`tbd-subtitles dump` prints it).
 
 `writers::srt` turns a track into SubRip text, rounding each frame to the nearest millisecond.
 `writers::vtt`, `writers::ass` and `import` hold only their headers. `src/README.md` describes
@@ -32,7 +33,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p subtitle_formats   # the library
-cargo test -p subtitle_formats    # 11 unit tests for the cue model and SRT, well under a second
+cargo test -p subtitle_formats    # 25 unit tests of the cue model and writers, under a second
 ```
 
 ## Configuration
@@ -51,7 +52,8 @@ None: the crate reads no setting.
 
 ## Boundaries
 
-- Depends on: `serde` with derive, for the cue model's JSON; `job_model`, declared in `Cargo.toml`
+- Depends on: `serde` with derive, for the cue model's JSON; `rkyv`, for its archive in the job
+  database, the format named in full as in `job_model`; `job_model`, declared in `Cargo.toml`
   and not called yet; `serde_json` in the tests only.
 - Used by: `crates/stages/` (`cues` and `qc`) and `crates/pipeline/` (`tasks/layout.rs`).
 - Rules:

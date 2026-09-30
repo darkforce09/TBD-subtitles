@@ -116,6 +116,21 @@ fn visual_typesetting_runs_in_a_cancellable_worker_without_a_gpu_runtime_or_lock
 }
 
 #[test]
+fn whisper_and_onnx_runtime_workers_get_the_cuda_runtime() {
+    use StepName::*;
+    for step in [AsrWhisper, RedecodeWhisper] {
+        assert!(
+            needs_cuda_runtime(step) && !loads_onnx_runtime(step),
+            "{step}"
+        );
+    }
+    assert!(needs_cuda_runtime(AsrParakeet));
+    for step in [TextTranslate, TextMask, LocalizedVideo, Vad] {
+        assert!(!needs_cuda_runtime(step), "{step}");
+    }
+}
+
+#[test]
 fn replacement_steps_keep_onnx_runtime_and_the_gpu_lock_to_inpainting_and_encoding() {
     use StepName::*;
     for step in [TextMask, TextInpaint, TextCompose, LocalizedVideo] {

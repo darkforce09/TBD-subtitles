@@ -9,7 +9,7 @@ whole frames with one or two lines, italics, and a kind for dialogue,
 ```text
 crates/subtitle_formats/src/cue/
 ├── mod.rs  `FrameRate`, `CueKind`, `CueLine`, `Cue` and `CueTrack`
-└── tests/  unit tests for frame conversion, reading speed and the JSON round trip
+└── tests/  unit tests for frame conversion, reading speed and the JSON and rkyv round trips
 ```
 
 ## How it works
@@ -21,11 +21,12 @@ the time a frame starts in seconds (`seconds`) and in whole milliseconds rounded
 its `frames`, its characters over all lines (`chars`, line breaks not counted) and its reading
 speed (`cps`). A `CueLine` is plain or italic text. `CueKind` is `dialogue` (spoken lines, perhaps
 with a sound line added), `sound` or `music`. A `CueTrack` holds the frame rate and the cues in
-time order, and serialises to the `cues.json` of the job's work directory.
+time order, serialises to the `cues.json` of the job's work directory, and archives with rkyv
+for the job database.
 
 ## Boundaries
 
-- Depends on: `serde` for the derives.
+- Depends on: `serde` and `rkyv` for the derives.
 - Used by: `crates/subtitle_formats/src/writers/srt/`; `crates/stages/src/cues/`, which builds
   the track; `crates/stages/src/qc/`, which checks it; `crates/pipeline/src/tasks/layout.rs`,
   which stores and writes it.
@@ -36,7 +37,8 @@ time order, and serialises to the `cues.json` of the job's work directory.
     `seconds_snap_to_frame_boundaries`);
   - reading speed counts every character but line breaks
     (`reading_speed_counts_every_character_but_line_breaks`);
-  - a track round-trips through JSON (`a_track_round_trips_through_json`).
+  - a track round-trips through JSON and through rkyv (`a_track_round_trips_through_json`,
+    `a_track_round_trips_through_rkyv`).
 
 ## Related documentation
 

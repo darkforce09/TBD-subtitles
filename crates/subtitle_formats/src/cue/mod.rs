@@ -4,9 +4,10 @@
 //! can place a time between frames, and convert frames to seconds and milliseconds.
 //!
 //! **Position:** built by the cue stage (`crates/stages/src/cues/`), checked by the quality
-//! check, written by `crate::writers`; stored as `cues.json` in the job's work directory.
+//! check, written by `crate::writers`; stored as `cues.json` in the job's work directory, and
+//! archived with rkyv for the job database.
 //!
-//! **Signals and state:** none; plain values.
+//! **Signals and state:** none; plain values, written as JSON and archived with rkyv.
 //!
 //! **Invariants:** a frame rate never has a zero numerator or denominator; a cue's times are
 //! frame indices, so every time sits on a frame boundary.
@@ -14,7 +15,18 @@
 use serde::{Deserialize, Serialize};
 
 /// A frame rate as a fraction, such as 24/1 or 24000/1001.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct FrameRate {
     num: u32,
     den: u32,
@@ -79,7 +91,18 @@ impl FrameRate {
 }
 
 /// What a cue carries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum CueKind {
     /// Spoken lines, possibly with a sound line added.
@@ -91,7 +114,17 @@ pub enum CueKind {
 }
 
 /// One displayed line.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct CueLine {
     pub text: String,
     pub italic: bool,
@@ -119,7 +152,17 @@ impl CueLine {
 }
 
 /// One subtitle event: shown from frame `start` up to, not including, frame `end`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct Cue {
     pub start: u64,
     pub end: u64,
@@ -159,7 +202,16 @@ impl Cue {
 }
 
 /// Every cue of one video, in time order, with the video's frame rate.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
 pub struct CueTrack {
     pub frame_rate: FrameRate,
     pub cues: Vec<Cue>,

@@ -224,7 +224,8 @@ impl StoreRead {
         Ok(keys)
     }
 
-    fn with_bytes<R>(
+    /// `f` of the bytes of the row of `key` in `table`, read in place and unchecked.
+    pub(crate) fn with_bytes<R>(
         &self,
         table: Table,
         key: &Key,

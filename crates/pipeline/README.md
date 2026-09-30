@@ -25,7 +25,8 @@ tbd-subtitles process <video>
         ├─ graph      inputs, placement, GPU flag, settings, timeout and outputs of each step
         ├─ in process ──▶ tasks::in_process ──▶ stages
         ├─ worker     ──▶ workers::run_worker ──▶ `<binary> worker <step> <job dir>`
-        │                   ▲ frames on stdout      └─▶ tasks::worker_main ──▶ stages, inference
+        │                   │ inputs on stdin       └─▶ tasks::worker_main ──▶ stages, inference
+        │                   ▲ frames on stdout, outputs straight into job.redb
         ├─ measure    peak RAM of this process and its children; peak VRAM per worker through NVML
         ├─ progress   events to the caller's sink
         └─ report     report.md from qc.json and the job record
@@ -34,7 +35,10 @@ tbd-subtitles process <video>
 `run_job` canonicalises the video, derives the job's folder under the work root, opens the job's
 database (`work_dir::JobStore`, which one process owns at a time; another process running the job
 is a busy error naming its pid) and writes `job.json` with the settings of this run. No step
-writes to the database yet: every output is still a JSON file. It then walks the steps: a step whose
+writes to the database yet: every output is still a JSON file. The path is in place: a worker's
+`Output` frames go straight into the step's write transaction, checked against their record kind,
+and the runner commits them with the step's record once the step finishes; a step can be sent
+stored values as `Input` frames on its stdin. It then walks the steps: a step whose
 recorded fingerprint and output files are intact is skipped; any other runs, in process (voice
 activity, the diff sheet, cue building, the quality check and the output) or in a worker of
 `tbd-subtitles` (FFmpeg, ONNX Runtime and the `claude` CLI) or `tbd-subtitles-ggml` (Whisper). The
@@ -52,7 +56,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p pipeline   # the library, with stages, inference and the crates beneath it
-cargo test -p pipeline    # 76 unit tests: the graph, resume, the work directory, the job store, worker frames
+cargo test -p pipeline    # 88 unit tests: graph, resume, job store, record kinds, worker channel
 ```
 
 A whole job runs through the app: build both binaries and run
@@ -90,7 +94,11 @@ passes in `JobOptions`, recorded in the job's `job.json` (`crates/job_model/src/
 - `measure::{gpu_monitor, memory}`: the VRAM sampler and the peak-memory readings, also used by
   `tools/stack_spike/`.
 - `work_dir::JobStore` with `work_dir::store::{StoreRead, StoreWrite, LAYOUT_VERSIONS}`: the job
-  database a job runner owns.
+  database a job runner owns; `work_dir::store::{kind, RecordKind}`: the type of every row, which
+  checks an archive and prints it as JSON, for the app's `dump` subcommand.
+- `workers::{run_worker, WorkerData, WorkerRun, StepWrite}`: one step in its worker, with its
+  inputs from the job database and its outputs uncommitted, for the runner and
+  `tools/visual_validation/`.
 - `PipelineError`, `error::ErrorKind` and `Result`: what failed, what was being done, and whether
   it failed, was cancelled or found the job busy in another process.
 - No binary.
@@ -103,8 +111,9 @@ passes in `JobOptions`, recorded in the job's `job.json` (`crates/job_model/src/
   `nvml-wrapper` and `tracing`
   (debug lines on reruns, placement, the CUDA runtime, the GPU lock and the report); at run time
   the app's two binaries as workers, and through them FFmpeg and the `claude` CLI.
-- Used by: `apps/tbd_subtitles/` (the `process` and `worker` subcommands),
-  `apps/tbd_subtitles_ggml/` (its `worker` subcommand) and `tools/stack_spike/` (the measures).
+- Used by: `apps/tbd_subtitles/` (the `process`, `dump` and `worker` subcommands),
+  `apps/tbd_subtitles_ggml/` (its `worker` subcommand), `tools/stack_spike/` (the measures) and
+  `tools/visual_validation/` (the visual pilot's steps).
 - Rules:
   - the crate sits in layer 3 and depends only on lower layers (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);
@@ -117,7 +126,9 @@ passes in `JobOptions`, recorded in the job's `job.json` (`crates/job_model/src/
   - a changed setting, video or upstream step reruns exactly the steps that read it, and a missing
     output reruns its step (`crates/pipeline/src/resume/tests/resume.rs`);
   - one process owns a job's database, and every caller in it shares one handle
-    (`crates/pipeline/src/work_dir/store/tests/store.rs`).
+    (`crates/pipeline/src/work_dir/store/tests/store.rs`);
+  - a worker's outputs are stored with its step's record in one transaction, or not at all
+    (`crates/pipeline/src/workers/channel/tests/channel.rs`).
 
 ## Related documentation
 
