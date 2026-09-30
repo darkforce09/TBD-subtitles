@@ -52,9 +52,10 @@ separate worker processes (law 7), and the window reads a job while it runs, so:
 - **The runner owns `job.redb`.** Only the process running the job opens it, read-write, once,
   for the whole job, and writes its process id to `job.lock` first. That open also repairs a file
   a crashed run left.
-- **Workers never open it.** The runner hands a worker its inputs (as today: arguments, stdin, or
-  files it writes for the worker) and the worker returns its output on stdout or in a file under
-  `work/<job>/exchange/`; the runner validates it and commits it.
+- **Workers never open it.** Almost every step runs in a worker process (all but `vad`,
+  `diff_sheet`, `cues`, `text_review`, `qc` and `output`), and a background `shot_scan` runs beside
+  other steps, so no worker could hold the file. A worker takes its inputs and returns its outputs
+  over the [worker channel](#worker-channel): framed `rkyv` bytes on pipes, never files.
 - **The window reads through its runner.** The window runs jobs in its own process and shares
   that process's one handle per job (a second handle in the same process fails like one
   from another process). When another process owns a job (a `tbd-subtitles process` run from a
@@ -65,13 +66,59 @@ separate worker processes (law 7), and the window reads a job while it runs, so:
   a correction run), so a crashed job is repaired before anything reads it.
 - **Fix It and corrections** write through the owning process in one transaction each.
 
+## Worker channel
+
+A worker and its runner exchange step data as framed binary on two pipes, so an output crosses
+one pipe, is copied once into redb's pages and reaches the disk once, at commit. No input or
+output passes through a file. Large media stay files: the 16 kHz audio streams, the stills, crops,
+plates and patches, and the localized video, which FFmpeg and the image code read and which
+records name by path.
+
+- **Frames.** Every message is one frame: a one-byte tag, a little-endian `u32` length, and that
+  many bytes. `Input` and `Output` frames carry a table, a key and one `rkyv` archive; `Progress`,
+  `ModelCall` (the model call's JSON, as the log window shows it), `Measure` (the worker's
+  `WorkerMeasure`), `Failed` (a message) and `Done` carry the rest. The frame types and their
+  codec live in a layer-0 crate with round-trip tests, used by the runner and all three worker
+  binaries.
+- **Inputs down stdin.** The runner reads each archived value a step reads from `job.redb` in one
+  read transaction, writes its bytes as `Input` frames to the worker's stdin on a thread of its
+  own (so a worker that reports progress before it has read every input never deadlocks), and
+  closes stdin. The worker reads each frame into one buffer and uses it in place with
+  `rkyv::access`; `unaligned` makes any buffer valid.
+- **Outputs on a private descriptor.** At start, before any native library loads, the worker
+  duplicates its stdout to a new descriptor it keeps for frames and points descriptor 1 at stderr
+  (`rustix`, safe calls), so anything whisper.cpp, ONNX Runtime or mistral.rs prints goes to the
+  step log and never into the frame stream. The runner reads the frames from the child's stdout
+  pipe as bytes, never as lines.
+- **Straight into redb.** On the first `Output` frame the runner begins the step's write
+  transaction; for each one it calls `insert_reserve(key, len)` and reads the frame's bytes from
+  the pipe directly into the reserved slice, with no buffer between, then checks them with
+  `rkyv::access` (bytecheck). Per-frame tables arrive as one frame per row, so memory stays
+  bounded by a row, not a table.
+- **Commit.** After `Done` and a zero exit status the runner writes the step record (the worker's
+  `Measure`, its own wall time and peak memory, the fingerprint) in the same transaction and
+  commits it. Anything else — a missing `Done`, a failed check, a non-zero exit, a `Failed` frame —
+  drops the transaction, so nothing of the step is stored.
+- **Cancellation.** The cancel flag and the step's deadline kill the worker's process group as
+  today (`child_process`); the pipe ends early, the read fails and the uncommitted transaction is
+  dropped. A worker whose runner dies gets `PR_SET_PDEATHSIG` and a closed pipe.
+- **In-process steps** (`vad`, `diff_sheet`, `cues`, `text_review`, `qc`, `output`, and the
+  on-screen steps when the runner runs them itself) read and write the store directly through the
+  runner's handle, in one transaction per step.
+- **One writer at a time.** redb has one write transaction per database; while one step's
+  transaction is open, a second step's first `Output` waits for it (the background `shot_scan`
+  beside a GPU step), and that worker waits on its full pipe. Neither step reads the other's
+  output, so the wait always ends.
+
+Phase 2 measures what redb holds in memory for a large uncommitted transaction (a `text_mask`
+output for a two-hour 60 fps video) before per-frame tables rely on one transaction per step.
+
 ## Storage layout
 
 ```text
 work/<job_id>/
 ├── job.redb      every step's output, the job record, step records and per-frame tables
 ├── job.lock      the process that owns job.redb
-├── exchange/     worker inputs and outputs in transit; emptied when a job is opened
 ├── audio/        16 kHz PCM streams (large files, referenced by records)
 ├── visual/       keyframe stills, crops, plates and patches (referenced by records)
 ├── logs/         step logs
@@ -81,7 +128,7 @@ library.redb      beside work/: approved signs shared by every episode
 ```
 
 A file outside the database is written and synced before the record that names it commits. When
-a job is opened, files no record names are removed and `exchange/` is emptied.
+a job is opened, files no record names are removed.
 
 ## Tables in `job.redb`
 
@@ -138,10 +185,14 @@ and reruns Dressrosa 11 and 28 with identical `.ass` and `.localized.ass` files 
    2) and `rkyv` 0.8.18 by `job_model`, its format pinned to `unaligned`, `little_endian` and
    `pointer_width_32`. `rkyv` derives on every `job_model` type,
    `PathBuf` archived as a UTF-8 string, both maps already ordered; round-trip tests per type.
-2. **Store, ownership and dump.** `JobStore` in `crates/pipeline/src/work_dir/` owns `job.redb`,
-   opens it once per job, and exposes typed `put`/`get`/archived `view` per table. The runner
-   passes worker outputs through `exchange/`. `tbd-subtitles dump <job_or_video> <table> [key]`
-   prints JSON.
+2. **Channel, store, ownership and dump.** First the [worker channel](#worker-channel)'s frames
+   and codec, the worker's stdout moved aside, and the runner reading frames as bytes, carrying
+   `Progress`, `ModelCall`, `Measure`, `Failed` and `Done` while outputs are still JSON files.
+   Then `JobStore` in `crates/pipeline/src/work_dir/` owns `job.redb` (redb 4.3.0, default
+   features), opens it once per job with `job.lock`, and exposes typed `put`/`get`/archived `view`
+   per table and the `Input`/`Output` path through `insert_reserve`; the redb memory of a large
+   uncommitted transaction is measured. `tbd-subtitles dump <job_or_video> <table> [key]` prints
+   JSON.
 3. **Steps move, in graph order, straight to rkyv.** Each group moves reader and writer
    together, with its tests:
    - `probe_decode`, `shot_scan`, `separation`, `vad`;
@@ -165,7 +216,8 @@ and reruns Dressrosa 11 and 28 with identical `.ass` and `.localized.ass` files 
 
 - Depends on: `crates/job_model` contracts, the step graph and runner in `crates/pipeline`, the
   worker processes of law 7.
-- Used by: the runner, the GPU workers (through the runner), the CLI and the window.
+- Used by: the runner, the worker processes (through the worker channel), the CLI and the
+  window.
 - Rules: one owning process per database; files outside the database are synced before their
   record commits; every table has a layout version in the fingerprints; no JSON fallback;
   dialogue is never invented.
