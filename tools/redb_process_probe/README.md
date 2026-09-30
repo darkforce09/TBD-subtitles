@@ -2,16 +2,16 @@
 
 The `redb_process_probe` binary (`redb-process-probe`): a test program that shows what redb 4.3.0
 does when a second process opens a database file that another process holds open or is writing,
-read-write and read-only, and that an rkyv archive can be read in place from a redb value slice. A
-developer runs it in the container and on the host; its findings go into the redb multi-process
-research note.
+read-write and read-only, that an rkyv archive can be read in place from a redb value slice, and
+how much RAM redb holds for one large uncommitted write transaction. A developer runs it in the
+container and on the host; its findings go into the redb research notes.
 
 ## Contents
 
 ```text
 tools/redb_process_probe/
 ├── Cargo.toml  the `redb_process_probe` binary package, the `multiprocess` feature, each dependency's reason
-└── src/        the command line, the redb opens, the holder, the matrix scenarios and the in-place check
+└── src/        the command line, the redb opens, the holder, the matrix scenarios, the in-place check, the transaction memory run
 ```
 
 ## How it works
@@ -37,6 +37,15 @@ matrix ──spawn──▶ redb-process-probe hold --db F --mode rw|ro [--writi
    ├─ attempt rw / ro on F, in the matrix process ──▶ one table row each
    └─ close stdin (or SIGKILL) and wait ──▶ a row with how the holder ended
 ```
+
+`txn-memory` runs in one process. It opens one database with the page cache set by
+`--cache-mib` (`Builder::set_cache_size`), begins one write transaction, and inserts `--rows` rows
+into a table `frames` of `(&str, u64)` to `&[u8]`, shaped like the per-frame table of a two-hour
+60 fps video: the key is `(occ-NNNN, frame)` with the frame spread over `--occurrences` ids in
+turn, and each value is `--value-bytes` long, reserved with `insert_reserve` and filled in place
+with xorshift bytes that do not compress. It reads `VmRSS` and `VmHWM` from `/proc/self/status`
+before the transaction, after each tenth of the rows, before the commit, after the commit and after
+the database is dropped, and times the inserts and the commit.
 
 ### What redb 4.3.0 does underneath
 
@@ -78,7 +87,10 @@ export CARGO_TARGET_DIR=/run/media/system/Disk_2/Projects/cargo-targets/main
 cargo build -p redb_process_probe
 $CARGO_TARGET_DIR/debug/redb-process-probe matrix --dir /tmp/redb-probe
 $CARGO_TARGET_DIR/debug/redb-process-probe inplace --dir /tmp/redb-probe
+$CARGO_TARGET_DIR/debug/redb-process-probe txn-memory --dir /tmp/redb-probe --rows 20000   # a quick look
 distrobox-host-exec /run/media/system/Disk_2/Projects/cargo-targets/main/debug/redb-process-probe matrix --dir ~/.local/share/tbd-subtitles/redb-probe
+cargo build --release -p redb_process_probe   # txn-memory measures an optimized build
+distrobox-host-exec /run/media/system/Disk_2/Projects/cargo-targets/main/release/redb-process-probe txn-memory --dir ~/.local/share/tbd-subtitles/redb-probe
 cargo build -p redb_process_probe --features multiprocess   # the experimental sharing modes
 cargo test -p redb_process_probe
 ```
@@ -92,8 +104,8 @@ behave differently on tmpfs, ext4, btrfs and overlay filesystems.
 - Cargo feature `multiprocess` (off by default): builds redb with `experimental-multiprocess`.
   With it, `--sharing` accepts `single-writer` and `multi-writer`, and the default becomes
   `multi-writer`. Without it, only `exclusive-writer` is accepted. `src/open_mode.rs` reads it.
-- No environment variables and no files beyond the database files it is pointed at and
-  `/proc/self/mountinfo`.
+- No environment variables and no files beyond the database files it is pointed at,
+  `/proc/self/mountinfo` and `/proc/self/status`.
 
 ## Public surface
 
@@ -149,6 +161,25 @@ usage error exits 2, as does a folder that cannot be created.
   or a folder that cannot be created.
 - Example: `redb-process-probe inplace --dir /tmp/redb-probe`
 
+### txn-memory
+
+- Synopsis: `redb-process-probe txn-memory --dir <DIR> [--rows <N>] [--value-bytes <N>]
+  [--cache-mib <N>] [--occurrences <N>] [--keep]`
+- Does: measures the RAM redb holds for one large uncommitted write transaction. It removes
+  `<DIR>/txn-memory.redb` if present, opens it with a page cache of `--cache-mib` MiB (default
+  1024, redb's own default), and inserts `--rows` rows (default 432000, two hours at 60 fps) of
+  `--value-bytes` bytes each (default 2048) under keys `(occ-NNNN, frame)` spread over
+  `--occurrences` ids (default 40), all in one write transaction that commits once at the end. It
+  prints one line per sample, `rows <n> rss <MiB> hwm <MiB> (<stage>)`, taken before the
+  transaction, after each tenth of the rows, before the commit, after the commit and after the
+  database is dropped, then a summary block: rows, value bytes, payload MiB, cache MiB, insert s,
+  commit s, file MiB, peak hwm MiB, rss before commit and rss after commit. It removes the file
+  at the end unless `--keep`. The folder must not be on tmpfs, whose pages count against RAM, nor
+  on a nearly full disk: the default run writes about 1 GiB of values.
+- Exit codes: 0 the summary printed; 1 the measurement failed, printed as
+  `txn-memory: failed: <error>`; 2 usage, or a folder that cannot be created.
+- Example: `redb-process-probe txn-memory --dir ~/.local/share/tbd-subtitles/redb-probe`
+
 ## Boundaries
 
 - Depends on: `redb` 4.3.0 (pinned exactly) and `rkyv` 0.8.18 with `unaligned`, as the job model
@@ -161,7 +192,10 @@ usage error exits 2, as does a folder that cannot be created.
     `tools/repo_gates/src/layout.rs` lists it (`cargo gates crate-layering`);
   - `REDB_VERSION` in `src/main.rs` equals the `redb` pin in `Cargo.toml`, and a refused open is
     reported with redb's own texts, never paraphrased (the header of `src/main.rs`);
-  - every holder child is waited for, and every database file the probe makes is removed.
+  - every holder child is waited for, and every database file the probe makes is removed, except
+    the one `txn-memory --keep` is asked to leave;
+  - `txn-memory` puts every row in one write transaction and fills each value in place through
+    `insert_reserve`, and reads memory only from `/proc/self/status`.
 
 ## Related documentation
 

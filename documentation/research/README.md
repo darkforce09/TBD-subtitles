@@ -14,6 +14,7 @@ documentation/research/
 ├── localized_video_polish_dressrosa_28.md  frozen record, 2026-09-30: the owner's review, one replacement per sign, read-back approval, open issues
 ├── long_video_120min.md             frozen record, 2026-09-26: a 128.9-minute video, time and memory
 ├── pilot_dressrosa_11.md            frozen record, 2026-09-26: the first end-to-end run, its fixes, resume
+├── redb_large_transaction_memory.md  frozen record, 2026-09-30: redb memory and commit time for a 432,000-row transaction
 ├── redb_multi_process.md            frozen record, 2026-09-30: redb 4.3.0 with a second process, rkyv read in place
 ├── rust_ml_stack.md                 frozen record, 2026-09-25: Rust crates and model files per capability
 ├── speech_recognition_landscape.md  frozen record, 2026-09-25: benchmarks, prices, options, why local

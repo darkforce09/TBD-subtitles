@@ -1,20 +1,21 @@
 //! The `redb-process-probe` binary: proves how redb behaves when a second process opens a
 //! database file that another process holds open or is writing, and that an rkyv archive reads
-//! in place from a redb value slice.
+//! in place from a redb value slice, and measures the RAM one large write transaction holds.
 //!
-//! **Role:** the command line and the dispatch to `hold`, `attempt`, `matrix` and `inplace`.
+//! **Role:** the command line and the dispatch to `hold`, `attempt`, `matrix`, `inplace` and
+//! `txn-memory`.
 //!
 //! **Position:** a repository tool; depends on `redb`, `rkyv`, `clap` and `anyhow`, and on no
 //! workspace crate. `matrix` starts this same executable again as `hold` child processes.
 //!
 //! **Signals and state:** reads and writes only the database files it is pointed at, and
-//! `/proc/self/mountinfo` to name the filesystem.
+//! `/proc/self/mountinfo` to name the filesystem and `/proc/self/status` for `txn-memory`.
 //!
 //! **Invariants:** `hold` prints exactly `ready` once its database is open and exits when stdin
 //! reaches end of file; `attempt` exits 0 whatever the open did, because the outcome is the
 //! data; `matrix` exits 0 when every scenario ran and 2 when one could not; `inplace` exits 1
-//! when a step of its check fails and 2 when it cannot run (its folder cannot be created); a
-//! refused open is reported with redb's own Display and Debug texts, never paraphrased.
+//! when a step of its check fails and 2 when it cannot run (its folder cannot be created), and so
+//! does `txn-memory` for its measurement; a refused open is reported with redb's own Display and Debug texts, never paraphrased.
 
 mod attempt;
 mod filesystem;
@@ -22,6 +23,7 @@ mod holder;
 mod inplace;
 mod matrix;
 mod open_mode;
+mod txn_memory;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -89,6 +91,8 @@ enum Command {
         #[arg(long)]
         dir: PathBuf,
     },
+    /// Fill one large write transaction with per-frame rows and print the memory redb holds.
+    TxnMemory(txn_memory::Options),
 }
 
 fn main() -> ExitCode {
@@ -128,5 +132,6 @@ fn run(command: Command) -> anyhow::Result<ExitCode> {
                 Ok(ExitCode::FAILURE)
             }
         },
+        Command::TxnMemory(options) => txn_memory::command(&options),
     }
 }

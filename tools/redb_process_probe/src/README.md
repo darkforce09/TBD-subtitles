@@ -1,8 +1,8 @@
 # redb process probe source
 
 The `redb-process-probe` command line, the one way it opens a database, the `hold` and `attempt`
-commands, the matrix of scenarios, the filesystem lookup for the matrix header, and the rkyv
-in-place check.
+commands, the matrix of scenarios, the filesystem lookup for the matrix header, the rkyv in-place
+check, and the memory one large write transaction holds.
 
 ## Contents
 
@@ -15,7 +15,8 @@ tools/redb_process_probe/src/
 ├── main.rs        the binary root: the command line, the dispatch and the pinned versions
 ├── matrix/        the `matrix` command: the scenarios, the holder children and the result table
 ├── open_mode.rs   read-write or read-only, the sharing mode, the redb builder, the outcome of an open
-└── tests/         unit tests for the outcome and summary texts, the mount table and the in-place check
+├── tests/         unit tests for the outcome and summary texts, the mount table, the in-place check, the memory run
+└── txn_memory.rs  the `txn-memory` command: one large write transaction, its RSS and peak RSS, its timings
 ```
 
 ## How it works
@@ -26,13 +27,18 @@ and returns an `OpenOutcome` (opened, or failed with redb's Display and Debug te
 handle. `attempt.rs` adds the counter row the handle reads and, when asked, how often redb called
 the repair callback. `holder.rs` is the process on the other side: it opens, seeds the counter,
 prints `ready` and holds. `matrix/` starts holders as children of this executable and records each
-attempt as a table row. `inplace.rs` needs no second process.
+attempt as a table row. `inplace.rs` and `txn_memory.rs` need no second process.
+`txn_memory.rs` fills one write transaction through `insert_reserve`, reading `VmRSS` and `VmHWM`
+from `/proc/self/status` before it, after each tenth of the rows, around the commit and after the
+drop. The tool README lists its options; `redb-process-probe txn-memory --dir
+~/.local/share/tbd-subtitles/redb-probe` runs the default two-hour 60 fps shape.
 
 ```text
 main ──▶ hold    ──▶ holder::run  ──▶ open_mode::open
      ├─▶ attempt ──▶ attempt::attempt ──▶ open_mode::open, attempt::read_counter
      ├─▶ matrix  ──▶ matrix::run ──▶ holder children + attempt::attempt ──▶ table
-     └─▶ inplace ──▶ inplace::run ──▶ open_mode::builder, rkyv::access
+     ├─▶ inplace ──▶ inplace::run ──▶ open_mode::builder, rkyv::access
+     └─▶ txn-memory ──▶ txn_memory::command ──▶ open_mode::builder, insert_reserve, /proc/self/status
 ```
 
 ## Public surface
@@ -42,7 +48,7 @@ main ──▶ hold    ──▶ holder::run  ──▶ open_mode::open
 ## Boundaries
 
 - Depends on: `redb`, `rkyv`, `clap` and `anyhow`; this executable itself, as the `hold`
-  children.
+  children. Reads `/proc/self/mountinfo` and `/proc/self/status`.
 - Used by: nothing; it is the binary's source.
 - Rules:
   - `open_mode::open` is the only place that opens a database for an attempt or a holder, so both
