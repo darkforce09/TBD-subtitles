@@ -13,7 +13,7 @@ tools/visual_validation/
 
 ## How it works
 
-The tool downloads checksum-pinned models, recognizes owner-provided stills, extracts bounded pilot clips and compares production visual documents against independent annotations. Coverage, timing and tracking errors are measured separately from model confidence. An annotated frame sample counts as observed when a document frame starts within one source frame of it or holds its geometry across it, since the scan keeps one observation per sample or boundary rather than one per frame. `detect-bench` measures what screening at full resolution instead of the proxy would cost, from decoding to the detector, and prints Markdown tables.
+The tool downloads checksum-pinned models, recognizes owner-provided stills, extracts bounded pilot clips and compares production visual documents against independent annotations. Coverage, timing and tracking errors are measured separately from model confidence. An annotated frame sample counts as observed when a document frame starts within one source frame of it or holds its geometry across it, since the scan keeps one observation per sample or boundary rather than one per frame. `detect-bench` measures what screening at full resolution instead of the proxy would cost, from decoding to the detector, and prints Markdown tables. `encode-bench` times the localized video's encodes at each preset and prints their speed, size and PSNR.
 
 `run` stores its steps' outputs and records in the work directory's job database (`job.redb`), as the app does, and writes only a preview ASS and the model calls beside it; `inspect`, `evaluate` and the probes read a finished job's documents and per-frame `frames` rows from that database, so they work on a pilot's work directory and on one the app wrote alike.
 
@@ -72,6 +72,15 @@ Annotations contain source frame rate, height and expected occurrences with text
   once more at the raised arena limit. Run it on the host: it re-executes itself with the CUDA
   runtime's library path and `ORT_DYLIB_PATH`, from `cuda/` beside the binary, `--runtime-dir`
   or the app's runtime folder.
+- `encode-bench <video> [--start S] [--duration D] [--ffmpeg-dir DIR] [--out-dir DIR]` times,
+  on a clip (default 600 s for 60 s), the localized video's encodes of raw frames streamed
+  through the tool from an FFmpeg decoder: the H.264 segment encode matching the source (the
+  production command line of `media_io::encode::segments`) at the x264 presets ultrafast to
+  veryslow and the NVENC presets p1 to p7, and the whole-video HEVC encode at NVENC p1 to p7.
+  Each row gives frames per second, size, bit rate and the mean PSNR against the source from
+  FFmpeg's `psnr` filter; NVENC rows say `unavailable` without a working NVENC, a failed encode
+  prints its error, and a source the segment encode cannot match says why. The encoded clips go
+  to `--out-dir`, else a temporary folder removed at the end.
 - `font-candidate` inspects an official Google Fonts candidate before checksum pinning.
 
 ## Boundaries

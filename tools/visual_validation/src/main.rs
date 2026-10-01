@@ -1,12 +1,13 @@
 //! Reproducible visual translation validation on owner-provided media.
 //!
-//! **Role:** fetch pinned models, recognize stills, evaluate annotated video artifacts and measure
-//! full-resolution screening.
+//! **Role:** fetch pinned models, recognize stills, evaluate annotated video artifacts, measure
+//! full-resolution screening and time the localized video's encodes.
 //! **Position:** repository tool calling the same backends and stages as production.
 //! **Signals and state:** local input files and explicit JSON reports; no source mutation.
 //! **Invariants:** missing readable occurrences fail; uncertain tracks require explicit fallback.
 
 mod detect_bench;
+mod encode_bench;
 mod evaluate;
 mod job_rows;
 mod mask_probe;
@@ -102,6 +103,10 @@ enum Command {
     /// mobile detector by path, batch and workers, the proxy baseline and the server detector
     /// (run on the host: CUDA, NVML and FFmpeg).
     DetectBench(detect_bench::Options),
+    /// Time the localized video's encodes on a clip: the H.264 segment encode at x264 and NVENC
+    /// presets and the whole-video HEVC encode at NVENC presets, with size and PSNR (NVENC rows
+    /// run on the host).
+    EncodeBench(encode_bench::Options),
     /// Extract a bounded pilot clip, preserving the input video.
     Clip {
         video: PathBuf,
@@ -174,6 +179,7 @@ fn main() -> Result<()> {
         Command::ResidueProbe { work } => mask_probe::residue(&work)?,
         Command::VerifyProbe { work, ids, out } => verify_probe::run(&work, &ids, out.as_deref())?,
         Command::DetectBench(options) => detect_bench::run(&options)?,
+        Command::EncodeBench(options) => encode_bench::run(&options)?,
         Command::Clip {
             video,
             output,
