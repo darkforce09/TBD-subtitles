@@ -31,7 +31,7 @@ FfmpegSource ── yuv420p frames, ~4 s ahead ──▶ scan coordinator ──
                                                 ▼
                      tracker: observe in sample order ─▶ probes (Probe priority) ─▶ settle
                                                 │
-                     keyframe candidates (≤ 4 GiB) ─▶ confirmation ─▶ PNG writer thread
+                     keyframe candidates (≤ 16 GiB) ─▶ confirmation ─▶ PNG writer thread
 ```
 
 `FfmpegSource` decodes every frame at the video's own size as yuv420p, exactly as encoded, on a
@@ -64,7 +64,7 @@ absent frame, so the timing is exact. Quads are in source pixels.
 Each occurrence's keyframe is the sample nearest the middle of its interval. While it is active,
 the keyframe candidates hold, shared and counted once, every sample from the last one at or before
 the middle of its start and its latest sample; when it ends, only the chosen sample stays. Past a
-budget of 4 GiB the active window holding the most samples gives up its frames, and that
+budget of 16 GiB the active window holding the most samples gives up its frames, and that
 occurrence's keyframe is decoded from the video instead. After the stream, confirmation takes the
 distinct keyframes in the order occurrences first need them, eight at a time: held ones are
 converted from memory, the others decoded as stills while the previous chunk is confirmed. The

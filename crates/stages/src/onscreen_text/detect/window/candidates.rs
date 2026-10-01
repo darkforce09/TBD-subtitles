@@ -20,8 +20,9 @@ use std::sync::Arc;
 
 use media_io::yuv::YuvFrame;
 
-/// The bytes the keyframe candidates may hold: about 1,300 frames at 1920 by 1080.
-pub(crate) const CANDIDATE_BUDGET: usize = 4 << 30;
+/// The bytes the keyframe candidates may hold within the 24 GB workstation budget:
+/// about 5,500 frames at 1920 by 1080.
+pub(crate) const CANDIDATE_BUDGET: usize = 16 << 30;
 
 /// Where an occurrence's keyframe will come from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

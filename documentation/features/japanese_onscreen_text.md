@@ -148,7 +148,7 @@ that correction cannot turn an unsafe background into permission to cover it.
 
 Each occurrence's keyframe is the screened sample nearest its middle, so at 24 fps it lies within
 six frames of the exact middle. While writing is on screen, the scan keeps the samples that can
-still be its middle in memory, within a budget of 4 GiB; after the scan, the server detector
+still be its middle in memory, within a budget of 16 GiB; after the scan, the server detector
 confirms every occurrence on its keyframe at full resolution, spread over both sessions. A
 keyframe let go to keep the budget is decoded again by FFmpeg as a still, eight at a time
 ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-server-detector-confirms-each-occurrence-at-full-resolution-on-the-sample-nearest-its-middle)).
@@ -195,7 +195,7 @@ stays flagged and unrendered until reviewed; the check does not establish transl
 
 Frame buffers, thumbnails and preview streams are bounded: the scan holds a decode queue of about
 four seconds of frames from a recycled pool, the gap frames between samples until every
-transition that could land on them is resolved, the keyframe candidates within 4 GiB, the
+transition that could land on them is resolved, the keyframe candidates within 16 GiB, the
 batches in flight on the two sessions, and the packet table; the step waits, before it starts,
 for the GPU memory its sessions need within the 6.5 GB worker cap. The scan fails
 explicitly beyond one million geometry observations or one hundred thousand occurrences, and when

@@ -216,7 +216,7 @@ held or a step waits on something other than the GPU. The owner picks which item
       resolution as 8-bit YUV, converted in Rust and padded to 1,088 lines, on two detector
       sessions in one worker, batch and pool one measured pair; duplicates and signatures read
       from luma; each occurrence confirmed by the server detector at full resolution on the
-      screened sample nearest its middle, held in RAM within 4 GiB
+      screened sample nearest its middle, held in RAM within 16 GiB
       ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-detector-screens-full-resolution-frames-padded-to-a-multiple-of-32-on-two-sessions)).
       Built, awaiting the host measurement in the
       [runbook](/documentation/runbooks/measuring_full_resolution_screening.md).

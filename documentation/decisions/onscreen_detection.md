@@ -116,7 +116,7 @@ are already in memory, and the 24 GB of RAM leaves room to keep some of them.
 
 **Decision:** The keyframe is the screened sample nearest the occurrence's middle. While an
 occurrence is active, its window keeps the samples that can still be its middle, from
-`(start + now) / 2 − step` to now, as shared YUV frames; a budget of 4 GiB bounds the candidates
+`(start + now) / 2 − step` to now, as shared YUV frames; a budget of 16 GiB bounds the candidates
 held, and an occurrence whose candidate was let go falls back to an FFmpeg still. Confirmation
 runs after the scan, so its order is fixed: the server detector, at full resolution with the same
 padding, batch 1 and box score 0.5, on both sessions, each opening its confirmation session the

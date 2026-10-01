@@ -7,7 +7,7 @@ their group is observed and bisected, and the samples that may still become a ke
 
 ```text
 crates/stages/src/onscreen_text/detect/window/
-├── candidates.rs  keyframe candidates per occurrence, shared frames and the 4 GiB budget
+├── candidates.rs  keyframe candidates per occurrence, shared frames and the 16 GiB budget
 ├── mod.rs         `HeldSample`, `Group` and `Gathering`: samples with their gaps, grouped by job
 └── tests/         grouping bounds, frame lookup, candidate windows, sharing and the budget
 ```

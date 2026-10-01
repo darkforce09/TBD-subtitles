@@ -88,7 +88,7 @@ faint writing a downscale would lose can be found; the owner accepts the extra n
   on a 512 MiB proxy session. Bisection probes are converted from held YUV and go ahead of
   the queued batches; results apply in sample order, so one and two sessions give one document.
 - **Keyframes from RAM:** the keyframe is the screened sample nearest the occurrence's middle,
-  held as YUV within a 4 GiB budget; the server detector confirms it at full resolution on one
+  held as YUV within a 16 GiB budget; the server detector confirms it at full resolution on one
   session in a 3,072 MiB pool after the scan, and an evicted candidate falls back to an FFmpeg still, eight decoding
   at once
   ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-server-detector-confirms-each-occurrence-at-full-resolution-on-the-sample-nearest-its-middle)).
