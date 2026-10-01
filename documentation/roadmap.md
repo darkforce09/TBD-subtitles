@@ -196,10 +196,16 @@ held or a step waits on something other than the GPU. The owner picks which item
 - [x] Binary storage: `job.redb` per job (step outputs and records, the worker channel, the
       per-frame `frames` and `readings` tables) and the `library.redb` sign library, all six
       phases ([binary storage plan](/documentation/architecture/binary_storage_plan.md)).
-- [ ] Baseline: Dressrosa 11 and 28 from scratch with the current build on the host; each step's
-      wall time, peak RAM and VRAM from the job report, plus GPU use per step through NVML, the
-      localized video's decode, blend and encode time, and the whole job's peak RAM; recorded as
-      a research snapshot. Every later target in M6, M7 and M8 is stated against it.
+- [x] Baseline: Dressrosa 11 and 28 from scratch with the current build on the host; each step's
+      wall time, real-time factor, CPU cores, GPU, NVENC and NVDEC use, peak RAM, whole-job RAM and
+      VRAM, the localized video's decode, blend and encode time and the screen's phases; 16.4 and
+      15.1 minutes of real wall time, whole-job peak RAM 3.9 GB
+      ([M6 baseline](/documentation/research/m6_baseline.md)). Every later target in M6, M7 and
+      M8 is stated against it; an item is compared by resuming a copy of the baseline job from
+      the first step it changes, since Claude's answers differ between runs from scratch.
+- [ ] Separation within the VRAM cap: the separation worker held 7.3 GB of the 7.4 GB free in
+      the baseline, its ONNX Runtime session having no memory limit and an exhaustive cuDNN
+      search; a limit within 5.5 GB as the detector sessions have, its time measured.
 - [ ] Full-resolution visual screening: samples and bisection probes screened at the source's
       resolution instead of the 360-line proxy; bounded by the GPU detector's speed and VRAM, with
       RAM holding the full-size frames between samples.

@@ -13,6 +13,7 @@ documentation/research/
 ├── localized_video_dressrosa_11.md  frozen record, 2026-09-30: writing replaced in a localized video on one episode
 ├── localized_video_polish_dressrosa_28.md  frozen record, 2026-09-30: the owner's review, one replacement per sign, read-back approval, open issues
 ├── per_frame_tables.md             frozen record, 2026-10-01: per-frame tables on Dressrosa 11, 28 and a 60 fps copy
+├── m6_baseline.md                  frozen record, 2026-10-01: Dressrosa 11 and 28 from scratch, time, CPU, GPU and memory per step
 ├── long_video_120min.md             frozen record, 2026-09-26: a 128.9-minute video, time and memory
 ├── pilot_dressrosa_11.md            frozen record, 2026-09-26: the first end-to-end run, its fixes, resume
 ├── redb_large_transaction_memory.md  frozen record, 2026-09-30: redb memory and commit time for a 432,000-row transaction

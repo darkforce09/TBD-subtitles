@@ -34,20 +34,22 @@ channel, and the sign library shared by episodes.
 ## 1. Baseline first
 
 Every target in M6, M7 and M8 is stated against one baseline, measured before any item is built:
-Dressrosa 11 and 28 run from scratch with the current build on the host. The job report already
-gives each step's wall time, load time, peak RAM, peak child RAM and peak VRAM. The baseline adds
-what the report lacks:
+Dressrosa 11 and 28 run from scratch (`process --no-library`, a fresh work root) on the host.
+Beside each step's wall time, load time, peak RAM, peak child RAM and peak VRAM, the job report
+gives what the baseline needs:
 
-- how busy the GPU is during each step (NVML utilisation, sampled like the VRAM), so the idle
-  stretches are known rather than guessed;
-- the localized video's time split into decoding, blending and encoding;
-- the whole job's peak RAM across all its processes at once.
+- the step's speed against the video (× real time) and the frame rates of the frame steps;
+- the CPU cores busy and the busiest thread, and how busy the GPU, NVENC and NVDEC are, sampled
+  every 250 ms, so idle stretches and single-thread bounds are known rather than guessed;
+- the localized video's time split into decode wait, blend, encode wait and flush, and the
+  screen's into decode wait, detection, confirmation and stills;
+- the whole job's peak RAM across all its processes at once, and the run's real wall time.
 
-The job report of Dressrosa 12 from scratch shows where the time goes today: `localized_video`
-234 s, `text_detect` 187 s, `adjudicate` 125 s (Claude calls, GPU idle), `separation` 92 s,
-`asr_whisper` 65 s, `text_translate` 44 s; 14.5 minutes of step time in all, peak RAM 1.6 GB
-and peak VRAM 4.3 GB. The baseline replaces such single readings with a recorded snapshot in
-[research](/documentation/research/README.md).
+The [M6 baseline](/documentation/research/m6_baseline.md) records it: Dressrosa 11 and 28 take
+16.4 and 15.1 minutes of real wall time; `localized_video` (encoder-bound, NVENC at 100 %),
+`text_detect` (detection 66 % of it with the GPU 27 % busy) and `adjudicate` (waiting on Claude,
+GPU and CPU idle) take two thirds of it; whole-job peak RAM is 3.9 GB; the separation worker
+holds 7.3 GB of VRAM, over the 5.5 GB cap.
 
 ## 2. Full-resolution visual screening
 
