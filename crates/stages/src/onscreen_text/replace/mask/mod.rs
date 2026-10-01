@@ -4,8 +4,10 @@
 //! erased, measure its lettering style, and collect the plates later steps inpaint and letter.
 //! **Position:** the first replacement step, after text review; decodes only the keyframe plate
 //! and the span's plate region of each occurrence through a [`RegionSource`].
-//! **Signals and state:** `visual/masks/<occurrence>/` holds `mask.png`, `mask-<n>.png` for moved
-//! placements and `source-<n>.png` per plate; the folder is emptied at the start of every run.
+//! **Signals and state:** `visual/masks/<occurrence>/` holds `mask.png`, `mask-<n>.png` for the
+//! union mask of every other plate and `source-<n>.png` per plate; the folder is emptied at the
+//! start of every run; each frame of an occurrence that keeps its plates goes to the caller's
+//! `FrameSink` as one `FrameRecord`, the per-frame truth of where the erase sits.
 //! **Invariants:** one `ReplacedText` per candidate, in document order; visual problems fall
 //! back with a reason while decode and file errors fail the step; the document validates.
 
@@ -20,25 +22,28 @@ mod pieces;
 mod plates;
 mod probe;
 mod reach;
+mod runs;
 mod segment;
 mod select;
 mod style;
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use image::RgbImage;
 use job_model::onscreen::{
-    LetteringStyle, PixelRect, Plate, Point, Quad, ReplaceStatus, ReplacedText,
+    FrameRecord, LetteringStyle, PixelRect, Plate, Point, Quad, ReplaceStatus, ReplacedText,
     ReplacementDocument, TextDocument, TextOccurrence,
 };
 
 use super::RegionSource;
 use crate::onscreen_text::TextResult;
 use files::{Folder, Names};
-use plates::KeyPlate;
+use plates::Span;
 pub use probe::{
     Completeness, Diagnosis, Followed, Following, Judgement, Reading, Trace, diagnose,
 };
+use runs::KeyPlate;
 use select::Areas;
 
 /// The lettering colour tolerance shared by completion and the residual check after inpainting.
@@ -58,13 +63,20 @@ const NEARBY: &str = "Nearby placement was chosen in Check Text";
 const NO_FRAMES: &str = "No video frame starts while the writing is shown";
 /// Why an occurrence without a usable quad is not replaced.
 const NO_POSITION: &str = "The writing's position in the frame is unknown";
+/// Why an occurrence whose id an earlier one has is not replaced: its frame rows would collide.
+const SAME_ID: &str = "Another occurrence has the same id";
 
-/// Measure every translated occurrence's strokes and plates; the document's frame count is the
-/// source timeline's length.
+/// Where the stroke-mask step sends one occurrence's per-frame row: its id, the frame and the row.
+pub type FrameSink<'a> = &'a mut dyn FnMut(&str, u64, &FrameRecord) -> TextResult<()>;
+
+/// Measure every translated occurrence's strokes and plates, and send each frame of an occurrence
+/// that keeps its plates to `frames` as a `FrameRecord`, in frame order; the document's frame
+/// count is the source timeline's length.
 pub fn extract(
     text: &TextDocument,
     source: &mut dyn RegionSource,
     root: &Path,
+    frames: FrameSink,
     progress: &(dyn Fn(usize, usize) + Sync),
 ) -> TextResult<ReplacementDocument> {
     let (width, height) = source.frame_size();
@@ -79,9 +91,14 @@ pub fn extract(
         return Err("the video has no decoded frames".into());
     }
     let mut names = Names::default();
+    let mut with_rows = HashSet::new();
     let mut texts = Vec::with_capacity(candidates.len());
     for (done, occurrence) in candidates.iter().enumerate() {
-        texts.push(replace(occurrence, source, root, &mut names)?);
+        let item = replace(occurrence, source, root, &mut names, &with_rows, frames)?;
+        if !item.plates.is_empty() {
+            with_rows.insert(occurrence.id.clone());
+        }
+        texts.push(item);
         progress(done + 1, candidates.len());
     }
     let document = ReplacementDocument {
@@ -100,6 +117,8 @@ fn replace(
     source: &mut dyn RegionSource,
     root: &Path,
     names: &mut Names,
+    with_rows: &HashSet<String>,
+    frames: FrameSink,
 ) -> TextResult<ReplacedText> {
     let timeline = source.timeline();
     let span = select::span(timeline, occurrence.start_s, occurrence.end_s);
@@ -122,6 +141,8 @@ fn replace(
         Some(NO_FRAMES)
     } else if select::nearby(occurrence) {
         Some(NEARBY)
+    } else if with_rows.contains(&occurrence.id) {
+        Some(SAME_ID)
     } else {
         None
     };
@@ -129,7 +150,7 @@ fn replace(
         item.status = ReplaceStatus::Fallback(reason.to_string());
         return Ok(item);
     }
-    match measure(occurrence, source, (first, last), root, names)? {
+    match measure(occurrence, source, (first, last), root, names, frames)? {
         Ok(measured) => {
             item.style = Some(measured.style);
             item.plates = measured.plates;
@@ -172,6 +193,7 @@ fn measure(
     span: (u64, u64),
     root: &Path,
     names: &mut Names,
+    frames: FrameSink,
 ) -> TextResult<Outcome<Measured>> {
     let (key_index, areas) = match locate(occurrence, source, span) {
         Ok(found) => found,
@@ -195,11 +217,18 @@ fn measure(
             x: f64::from(window.x) + f64::from(window.width) / 2.0,
             y: f64::from(window.y) + f64::from(window.height) / 2.0,
         },
+        quad: areas.quad,
     };
     let folder = Folder::create(root, &names.claim(&occurrence.id))?;
+    let span = Span {
+        id: &occurrence.id,
+        frames: span,
+        window,
+        key_pixels: &key_crop,
+    };
     let outcome = match &tracker {
-        None => plates::still(source, key, span, &folder)?,
-        Some(tracker) => plates::moving(source, tracker, key, span, &folder)?,
+        None => plates::still(source, key, &span, &folder, frames)?,
+        Some(tracker) => plates::moving(source, tracker, key, &span, &folder, frames)?,
     };
     match outcome {
         Ok(plates) => Ok(Ok(Measured {
@@ -287,3 +316,7 @@ mod fixtures;
 #[cfg(test)]
 #[path = "tests/extract.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/frame_rows.rs"]
+mod frame_rows;

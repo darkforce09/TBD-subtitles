@@ -3,7 +3,7 @@
 //!
 //! **Role:** `StoreWrite` puts, reserves, reads back, removes and clears rows inside one write
 //! transaction that commits them together; `StoreRead` gets a row back as its type, views its archive in place,
-//! copies its bytes or lists a table's keys, all from one snapshot.
+//! copies its bytes, lists a table's keys or walks a per-frame table's rows, all from one snapshot.
 //!
 //! **Position:** made by `JobStore::write` and `JobStore::read`; uses `tables` for each table's
 //! definition.
@@ -267,6 +267,57 @@ impl StoreRead {
             }
         }
         Ok(keys)
+    }
+
+    /// `f` of every row of the per-frame `table`, in key order, as its occurrence, its frame and
+    /// its bytes read in place and unchecked; only `occurrence`'s rows when one is named. One row
+    /// is held at a time.
+    pub fn rows(
+        &self,
+        table: Table,
+        occurrence: Option<&str>,
+        mut f: impl FnMut(&str, u64, &[u8]) -> Result<()>,
+    ) -> Result<()> {
+        let at = context(&self.database, table);
+        let Definition::Framed(definition) = tables::definition(table) else {
+            return Err(PipelineError::new(
+                at,
+                "the table is keyed by name, not by frame",
+            ));
+        };
+        let open = self.transaction.open_table(definition).context(&at)?;
+        let entries = match occurrence {
+            Some(id) => open.range((id, 0)..=(id, u64::MAX)),
+            None => open.range::<(&str, u64)>(..),
+        }
+        .context(&at)?;
+        for entry in entries {
+            let (key, value) = entry.context(&at)?;
+            let (id, frame) = key.value();
+            f(id, frame, value.value())?;
+        }
+        Ok(())
+    }
+
+    /// `f` of every row of the per-frame `table` as a `T`, checked and copied out of its archive,
+    /// in key order; only `occurrence`'s rows when one is named.
+    pub fn rows_as<T>(
+        &self,
+        table: Table,
+        occurrence: Option<&str>,
+        mut f: impl FnMut(&str, u64, T) -> Result<()>,
+    ) -> Result<()>
+    where
+        T: Archive,
+        T::Archived: for<'a> CheckBytes<HighValidator<'a, ArchiveError>>
+            + Deserialize<T, HighDeserializer<ArchiveError>>,
+    {
+        let at = context(&self.database, table);
+        self.rows(table, occurrence, |id, frame, bytes| {
+            let value = rkyv::from_bytes::<T, ArchiveError>(bytes)
+                .context(format!("{at}: cannot read {id}/{frame}"))?;
+            f(id, frame, value)
+        })
     }
 
     /// `f` of the bytes of the row of `key` in `table`, read in place and unchecked.

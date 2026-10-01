@@ -7,7 +7,7 @@ Commands and fail-closed evaluation for local visual pilots.
 ```text
 tools/visual_validation/src/
 ├── evaluate.rs      coverage, timing and geometry verdicts on a pilot job's typeset text
-├── job_rows.rs      a finished job's source, probe and documents, read from its database
+├── job_rows.rs      a finished job's source, probe, documents and frame shifts, from its database
 ├── main.rs          fetch, still recognition, clip, evaluation and probe commands
 ├── mask_probe.rs    stroke-mask and residue diagnostics on a finished job, and a whole-step rerun
 ├── pilot.rs         measured six-stage pilots using production workers and resume

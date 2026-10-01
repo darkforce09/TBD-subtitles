@@ -276,8 +276,8 @@ fn compare_all(
         .collect();
     let root = out.join("rerun");
     std::fs::create_dir_all(&root)?;
-    let rerun =
-        mask::extract(reviewed, source, &root, &|_, _| {}).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let rerun = mask::extract(reviewed, source, &root, &mut |_, _, _| Ok(()), &|_, _| {})
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     let label = |status: Option<&ReplaceStatus>| match status {
         Some(ReplaceStatus::Pending) => "separated".to_string(),
         Some(ReplaceStatus::Baked) => "baked".to_string(),

@@ -39,10 +39,10 @@ pub const LAYOUT_KEY: &str = "layout";
 pub const LAYOUT_VERSIONS: [(Table, u32); 6] = [
     (Table::Meta, 2),
     (Table::StepRecords, 1),
-    (Table::Outputs, 1),
+    (Table::Outputs, 2),
     (Table::Corrections, 1),
-    (Table::Frames, 1),
-    (Table::Readings, 1),
+    (Table::Frames, 2),
+    (Table::Readings, 2),
 ];
 
 /// A table's redb definition, by the kind of key it takes.

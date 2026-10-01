@@ -12,7 +12,7 @@ crates/worker_channel/src/
 ├── lib.rs       the crate root: the module list and the crate header
 ├── progress.rs  `Progress`: the done and total counts of a progress frame, 16 bytes
 ├── tests/       unit tests over in-process pipes for every module
-└── worker.rs    `install`, the send helpers, `read_inputs` and the `FrameSink` they share
+└── worker.rs    `install`, the send helpers, the input readers and the `FrameSink` they share
 ```
 
 ## How it works
@@ -34,8 +34,10 @@ crates/worker_channel/src/
   then `dup2`s stderr over descriptor 1 through `rustix::stdio::dup2_stdout`; a second call finds
   the sink set and does nothing. Each helper builds its payload and sends it through the sink's
   mutex (a lock poisoned by a panicked thread is taken over, never passed on as a panic); a helper
-  answers `false` when the sink is unset or the write fails. `read_inputs` reads frames until a
-  clean end and refuses any tag but `Input`.
+  answers `false` when the sink is unset or the write fails. `read_input` reads one `Input` frame,
+  `read_inputs` every one until a clean end, and `read_documents` the named ones up to the first
+  per-frame row, which it hands back beside them so the step reads the rest one at a time; each
+  refuses any tag but `Input`.
 
 ## Public surface
 
@@ -45,7 +47,8 @@ crates/worker_channel/src/
 - `address::{Table, Key, Address}`: the addresses of `Input` and `Output` values, and the tables
   the `dump` subcommand names.
 - `progress::{Progress, ENCODED_LEN}`: the `Progress` payload, decoded by the runner.
-- `worker::{install, send, progress, model_call, output, measure, failed, done, read_inputs}`:
+- `worker::{install, send, progress, model_call, output, measure, failed, done, Input,
+  read_input, read_inputs, read_documents}`:
   `pipeline::tasks::worker_main` and the model-call layers of `apps/tbd_subtitles/` and
   `apps/tbd_subtitles_llm/`.
 
@@ -67,7 +70,9 @@ crates/worker_channel/src/
     `tests/address.rs`);
   - `read_inputs` reads every input until the stream ends and refuses any other frame
     (`inputs_are_read_until_the_stream_ends`,
-    `any_other_frame_among_the_inputs_is_invalid_data` in `tests/worker.rs`);
+    `any_other_frame_among_the_inputs_is_invalid_data` in `tests/worker.rs`), and
+    `read_documents` stops at the first per-frame row and leaves the rest on the stream
+    (`documents_are_read_up_to_the_first_row_and_the_rows_after_it_one_at_a_time`);
   - no test calls `install`, which would rewire the test process's own stdout.
 
 ## Related documentation

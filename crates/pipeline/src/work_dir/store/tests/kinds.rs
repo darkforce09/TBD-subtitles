@@ -247,14 +247,8 @@ fn unknown_keys_are_errors() {
         occurrence: "o1".into(),
         frame: 4,
     };
-    let error = kind(Table::Frames, &frame).expect_err("frames");
-    assert!(
-        error
-            .message
-            .contains("no record type is defined for the frames table yet"),
-        "{error}"
-    );
-    assert!(kind(Table::Readings, &frame).is_err());
+    assert!(kind(Table::Frames, &name("o1")).is_err());
+    assert!(kind(Table::Readings, &name("o1")).is_err());
     let error = kind(Table::Outputs, &frame).expect_err("a per-frame key");
     assert!(error.message.contains("per-frame key"), "{error}");
 }
@@ -267,4 +261,47 @@ fn a_key_is_shown_as_the_owner_writes_it() {
         frame: 40,
     };
     assert_eq!(shown(&frame), "o1/40");
+}
+
+#[test]
+fn per_frame_rows_are_frame_records_and_readings() {
+    use job_model::onscreen::{FrameRecord, RleRun, VerifyReading};
+
+    let frame = Key::Frame {
+        occurrence: "o1".into(),
+        frame: 4,
+    };
+    let record = FrameRecord {
+        follow_score: 0.9,
+        shift: [2.0, -1.0],
+        scale: 1.0,
+        mask: vec![RleRun {
+            row: 1,
+            start: 2,
+            len: 3,
+        }],
+        plate: 1,
+        ..FrameRecord::default()
+    };
+    let rows = kind(Table::Frames, &frame).expect("frames");
+    assert_eq!(rows.name, "FrameRecord");
+    rows.check(&archive(&record))
+        .expect("a frame record checks");
+    assert!(rows.check(&GARBAGE).is_err());
+    let json = rows.json(&archive(&record)).expect("json");
+    assert_eq!(json["plate"], 1);
+    assert_eq!(json["mask"][0]["len"], 3);
+    let reading = VerifyReading {
+        frame: 4,
+        english_read: "SEA".into(),
+        similarity: 1.0,
+        passed: true,
+        ..VerifyReading::default()
+    };
+    let readings = kind(Table::Readings, &frame).expect("readings");
+    assert_eq!(readings.name, "VerifyReading");
+    assert_eq!(
+        readings.json(&archive(&reading)).expect("json")["english_read"],
+        "SEA"
+    );
 }

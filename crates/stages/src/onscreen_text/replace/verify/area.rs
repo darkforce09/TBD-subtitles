@@ -1,12 +1,13 @@
 //! Where a replacement's lettering sits in a sampled frame, the region read around it, and which
 //! found lines belong to it.
 //!
-//! **Role:** place the keyframe lettering quad and its furigana on the plate covering a frame,
-//! grow them into an even region of the frame to decode and read, pick the upscale that makes a
-//! line tall enough to read, and tell which lines found lie over the lettering (they are read as
-//! its English) and which over the original writing's own place (Japanese there was not erased).
+//! **Role:** place the keyframe lettering quad and its furigana on the plate covering a frame, at
+//! the frame's own shift, grow them into an even region of the frame to decode and read, pick
+//! the upscale that makes a line tall enough to read, and tell which lines found lie over the
+//! lettering (they are read as its English) and which over the original writing's own place
+//! (Japanese there was not erased).
 //! **Position:** between sampling and the OCR in `verify`; the placement is composition's own
-//! (`compose::plate_quad`), so the area is where the English was lettered.
+//! (`compose::plate_quad_at`), so the area is where the English was lettered.
 //! **Signals and state:** pure geometry.
 //! **Invariants:** the region lies inside the frame on even coordinates; the scale is at least 1
 //! and keeps the scaled region within `MAX_READ_PIXELS`; the writing's place reaches above the
@@ -15,8 +16,9 @@
 
 use job_model::onscreen::{PixelRect, Point, Quad, ReplacedText, TextOccurrence};
 
+use crate::localize::motion::Motion;
 use crate::localize::still::even_region;
-use crate::onscreen_text::replace::compose::{keyframe_frame, plate_at, plate_quad};
+use crate::onscreen_text::replace::compose::{keyframe_frame, plate_at, plate_quad_at};
 
 /// How far the region read reaches past the lettering, in lines.
 pub const REGION_GROWTH_LINES: f64 = 0.75;
@@ -56,17 +58,23 @@ pub fn keyframe_quad(text: &ReplacedText, occurrence: &TextOccurrence) -> Option
         .or_else(|| keyframe_frame(occurrence).map(|frame| frame.quad))
 }
 
-/// The area read of `text` at `frame` of a `size` frame, when it has a keyframe quad and a plate.
+/// The area read of `text` at `frame` of a `size` frame, when it has a keyframe quad and a plate;
+/// the lettering sits at the frame's shift in `motion`, else at its plate's own.
 pub fn sample_area(
     text: &ReplacedText,
     occurrence: &TextOccurrence,
     frame: u64,
     size: (u32, u32),
+    motion: &Motion,
 ) -> Option<SampleArea> {
     let quad = keyframe_quad(text, occurrence)?;
-    let plate = &text.plates[plate_at(&text.plates, frame)?];
+    let index = plate_at(&text.plates, frame)?;
+    let plate = &text.plates[index];
+    let shift = motion
+        .shift_at(&text.id, index, frame)
+        .unwrap_or(plate.shift);
     let on_frame = |quad: Quad| {
-        let placed = plate_quad(quad, plate);
+        let placed = plate_quad_at(quad, plate, shift);
         let (dx, dy) = (f64::from(plate.rect.x), f64::from(plate.rect.y));
         Quad(placed.0.map(|p| Point {
             x: p.x + dx,

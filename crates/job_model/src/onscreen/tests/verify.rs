@@ -31,7 +31,8 @@ fn verified() -> VerifiedReplacements {
         },
         checks: vec![TextCheck {
             id: "a".into(),
-            readings: vec![reading(10, 0.9, true), reading(15, 0.4, false)],
+            samples: 2,
+            passed: false,
         }],
     }
 }
@@ -59,15 +60,17 @@ fn a_composed_document_reads_as_verified_without_checks() {
 }
 
 #[test]
-fn the_telling_reading_is_the_first_failure_else_the_weakest_match() {
+fn a_check_is_found_by_its_occurrence() {
     let verified = verified();
-    let check = verified.check("a").unwrap();
-    assert_eq!(check.telling().unwrap().frame, 15);
-    let passing = TextCheck {
-        id: "b".into(),
-        readings: vec![reading(1, 0.9, true), reading(2, 0.7, true)],
-    };
-    assert_eq!(passing.telling().unwrap().frame, 2);
+    assert_eq!(verified.check("a").map(|check| check.samples), Some(2));
     assert!(verified.check("b").is_none());
-    assert!(TextCheck::default().telling().is_none());
+}
+
+#[test]
+fn the_telling_reading_is_the_first_failure_else_the_weakest_match() {
+    let failing = [reading(10, 0.9, true), reading(15, 0.4, false)];
+    assert_eq!(telling(&failing).unwrap().frame, 15);
+    let passing = [reading(1, 0.9, true), reading(2, 0.7, true)];
+    assert_eq!(telling(&passing).unwrap().frame, 2);
+    assert!(telling(&[]).is_none());
 }

@@ -42,6 +42,7 @@ fn a_stream_without_a_frame_rate_is_refused_before_anything_runs() {
         video: Path::new("/nonexistent/source.mkv"),
         stream: &stream,
         document: &ReplacementDocument::default(),
+        motion: &Motion::default(),
         root: Path::new("/nonexistent"),
         output: Path::new("/nonexistent/out.mkv"),
         cancel: None,
@@ -113,6 +114,7 @@ fn replacement(frame_count: u64) -> ReplacementDocument {
         mask: PathBuf::from("visual/plates/T1/mask.png"),
         plate: None,
         patch: Some(PathBuf::from("visual/patches/T1/0.png")),
+        shifted: Vec::new(),
     };
     ReplacementDocument {
         width: 320,
@@ -206,6 +208,7 @@ fn render_case(pix_fmt: &str, format: PixelFormat) {
             video: &video,
             stream: &stream,
             document: &document,
+            motion: &Motion::default(),
             root: &dir,
             output: &output,
             cancel: None,

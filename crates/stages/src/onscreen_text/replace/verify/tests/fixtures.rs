@@ -70,6 +70,7 @@ pub fn plate(first: u64, last: u64, rect: PixelRect, shift: [f64; 2]) -> Plate {
         mask: PathBuf::from("visual/masks/mask.png"),
         plate: None,
         patch: None,
+        shifted: Vec::new(),
     }
 }
 

@@ -12,9 +12,10 @@ crates/stages/src/localize/
 ├── blend.rs    patches as frame samples, and the alpha blend over 8-bit and 10-bit 4:2:0 frames
 ├── colour.rs   RGB to Y′CbCr in the stream's matrix, range and bit depth, and back
 ├── mod.rs      `render`: the decoder, the patch loop and the encoder; `frame_format`; the error
+├── motion.rs   `Motion`: the writing's shift in each frame, folded from the `frames` rows
 ├── patches.rs  the frame-by-frame patch schedule, the byte-bounded patch cache and patch loading
 ├── still.rs    one region of one frame with its patches blended, back in RGB, for the read-back check
-└── tests/      colour values, blend maths, schedule and cache, stills, and the FFmpeg renders
+└── tests/      colour values, blend maths, shift runs, schedule and cache, stills, FFmpeg renders
 ```
 
 ## How it works
@@ -27,12 +28,17 @@ converts. A timeline that `is_constant_frame_rate` rejects is refused, since raw
 carry one constant rate. The encoder gets the stream's frame rate fraction, the first frame's start
 as its offset and the stream's colour tags.
 
+`Motion` folds the `frames` rows, read one at a time in key order, into runs of consecutive frames
+of one plate that share one shift; it grows with the shift changes, never with the frames.
 `Schedule` lists every plate with a patch of every baked occurrence, numbered in document order
-and queued by first frame. Advancing to each frame ends the patches whose last frame has passed and
-starts those whose first frame has come; the active ones stay in document order, so overlapping
-patches stack as the document lists them. `PatchCache` loads a patch's RGBA PNG the first time it is
-active, refuses one whose size differs from its plate's rectangle, converts it once, and keeps it
-until its span ends or, beyond 512 MiB of converted samples, until it is the least recently used.
+and queued by first frame; a plate whose frames take shifts other than its own is listed as one
+entry per run, each with the patch lettered at its shift (`Plate::shifted`), and a frame without a
+row keeps the plate's own patch. Advancing to each frame ends the entries whose last frame has
+passed and starts those whose first frame has come; the active ones stay in document order, so
+overlapping patches stack as the document lists them. `PatchCache` loads a patch's RGBA PNG the
+first time it is active, refuses one whose size differs from its plate's rectangle, converts it
+once, and keeps it until the last entry that blends the file ends or, beyond 512 MiB of converted
+samples, until it is the least recently used.
 
 `colour` converts R′G′B′ with the matrix the stream is tagged with (`bt709`; `bt470bg` and
 `smpte170m` as BT.601; `bt2020nc`), else BT.709 from 720 lines and BT.601 below, in limited range

@@ -9185,6 +9185,7 @@ dependencies = [
  "stages",
  "subtitle_formats",
  "ureq 3.4.2",
+ "worker_channel",
 ]
 
 [[package]]

@@ -22,14 +22,14 @@ It builds this run's `JobRecord` (the video's path, size and modification time, 
 models folder and the digest of the stored line corrections) and `rerun::start` commits it as
 `meta/job_record` in the same write transaction that clears every step `JobOptions::rerun` names
 and every step `graph::dependents` gives for them: their documents in `outputs` and their records
-in `step_records`, and, when `text_mask` or `text_verify` is among them, every `frames` and
-`readings` row. The files those rows named become unnamed and go on the database's next open.
+in `step_records`, and the rows of the per-frame table each of them owns (`graph::writes_rows`:
+every `frames` row when `text_mask` is among them, every `readings` row when `text_verify` is). The files those rows named become unnamed and go on the database's next open.
 No file outside the database holds the job record. `Progress::JobStarted` names the steps this run will do
 (`resume::stale_steps`), and `Progress::JobDuration` the video's length once the probe is stored.
 
 It then walks the steps, checking `JobOptions::cancel` before each: a valid step
 (`resume::is_valid` over a fresh snapshot) is skipped; any other has its fingerprint taken, its
-record removed (`rerun::forget`), and runs through `tasks::in_process` on a `StepIo` of the store
+record and the rows of the per-frame table it owns removed (`rerun::forget`), and runs through `tasks::in_process` on a `StepIo` of the store
 or through `workers::run_worker` with the stored values `worker_inputs` gives it (every
 `graph::reads` value, less the optional ones the job lacks), as `graph::placement` says. Either
 way the outputs the step wrote come back as an uncommitted `StepWrite`, and `stamp` commits them

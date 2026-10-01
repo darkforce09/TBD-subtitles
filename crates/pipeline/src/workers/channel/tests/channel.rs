@@ -208,6 +208,7 @@ fn the_runner_sends_stored_inputs_that_the_worker_reads_back_byte_exact() {
     let sending = send_inputs(
         scratch.store().clone(),
         vec![probe_at.clone(), record_at.clone()],
+        &[],
         writer,
     );
     let inputs = read_inputs(&mut reader).expect("the worker reads its inputs");
@@ -233,6 +234,7 @@ fn a_missing_input_is_an_error_and_closes_the_pipe() {
     let sending = send_inputs(
         scratch.store().clone(),
         vec![named(Table::Outputs, "vad")],
+        &[],
         writer,
     );
     assert_eq!(read_inputs(&mut reader).expect("a clean end"), Vec::new());
@@ -407,4 +409,63 @@ fn a_step_write_dropped_without_commit_stores_nothing() {
     assert!(outputs.is_open());
     drop(outputs);
     assert_eq!(scratch.stored(), (Vec::new(), Vec::new()));
+}
+
+#[test]
+fn per_frame_rows_follow_the_documents_one_frame_per_row_in_key_order() {
+    use worker_channel::address::Key;
+    use worker_channel::worker::{read_documents, read_input};
+
+    let scratch = Scratch::new("input-rows");
+    let probe_at = named(Table::Outputs, "probe_decode");
+    let frame = |occurrence: &str, frame: u64| Key::Frame {
+        occurrence: occurrence.into(),
+        frame,
+    };
+    let mut write = scratch.store().write().expect("write");
+    write
+        .put(probe_at.table, &probe_at.key, &probe())
+        .expect("put");
+    for (key, value) in [
+        (frame("b", 0), 3u32),
+        (frame("a", 9), 2),
+        (frame("a", 2), 1),
+    ] {
+        write.put(Table::Frames, &key, &value).expect("put");
+    }
+    write
+        .put(Table::Readings, &frame("a", 2), &9u32)
+        .expect("put");
+    write.commit().expect("commit");
+
+    let (mut reader, writer) = io::pipe().expect("pipe");
+    let sending = send_inputs(
+        scratch.store().clone(),
+        vec![probe_at.clone()],
+        &[Table::Frames],
+        writer,
+    );
+    let (documents, first) = read_documents(&mut reader).expect("documents");
+    assert_eq!(documents.len(), 1);
+    assert_eq!(documents[0].0, probe_at);
+    let mut rows = vec![first.expect("a first row")];
+    while let Some(row) = read_input(&mut reader).expect("a row") {
+        rows.push(row);
+    }
+    assert_eq!(sending.join().expect("thread"), Ok(()));
+    let keys: Vec<(Table, Key)> = rows.iter().map(|(a, _)| (a.table, a.key.clone())).collect();
+    assert_eq!(
+        keys,
+        [
+            (Table::Frames, frame("a", 2)),
+            (Table::Frames, frame("a", 9)),
+            (Table::Frames, frame("b", 0)),
+        ],
+        "only the tables the step reads, in key order"
+    );
+    let values: Vec<u32> = rows
+        .iter()
+        .map(|(_, bytes)| rkyv::from_bytes::<u32, rkyv::rancor::Error>(bytes).expect("u32"))
+        .collect();
+    assert_eq!(values, [1, 2, 3]);
 }

@@ -51,7 +51,8 @@ Annotations contain source frame rate, height and expected occurrences with text
 - `residue-probe <work>` prints how much of each filled plate's mask still looks like the
   lettering, through the production `replace::inpaint::residue_share`.
 - `verify-probe <work> [<id>…]` runs the production read-back check (`replace::verify::verify`)
-  over a finished job's composed replacements, read from its database, on the host GPU and prints, per sampled frame,
+  over a finished job's composed replacements and `frames` rows, read from its database, on the
+  host GPU and prints, per sampled frame,
   the region, lettering and line height read, every line found with its box score, reading,
   confidence and whether it counts as the English (E) or where the writing was (J), the
   similarity and the verdict; then each occurrence's result and the similarity distribution.

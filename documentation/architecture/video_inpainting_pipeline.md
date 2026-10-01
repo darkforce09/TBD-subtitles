@@ -31,13 +31,13 @@ text_review ─▶ text_mask ─▶ text_inpaint ─▶ text_compose ─▶ text
 
 | Step | Runs in | Reads | Writes |
 |---|---|---|---|
-| `text_mask` | worker, `tbd-subtitles` (CPU; FFmpeg region crops) | `outputs/probe_decode`, `outputs/text_review`, the source video | `outputs/text_mask`, `visual/masks/` |
+| `text_mask` | worker, `tbd-subtitles` (CPU; FFmpeg region crops) | `outputs/probe_decode`, `outputs/text_review`, the source video | `outputs/text_mask`, `visual/masks/`, one `frames` row per frame of every occurrence with plates |
 | `text_inpaint` | worker, `tbd-subtitles` (ONNX Runtime, GPU lock) | `outputs/text_mask` and its PNGs | `outputs/text_inpaint`, `visual/plates/` |
-| `text_compose` | worker, `tbd-subtitles` (CPU) | `outputs/text_review`, `outputs/text_inpaint`, the `latin-fonts` model | `outputs/text_compose`, `visual/patches/` |
-| `text_verify` | worker, `tbd-subtitles` (ONNX Runtime, GPU lock; FFmpeg region crops) | `outputs/probe_decode`, `outputs/text_review`, `outputs/text_compose` and its patches, the source video | `outputs/text_verify` |
+| `text_compose` | worker, `tbd-subtitles` (CPU) | `outputs/text_review`, `outputs/text_inpaint`, the `frames` rows, the `latin-fonts` model | `outputs/text_compose`, `visual/patches/` |
+| `text_verify` | worker, `tbd-subtitles` (ONNX Runtime, GPU lock; FFmpeg region crops) | `outputs/probe_decode`, `outputs/text_review`, `outputs/text_compose` and its patches, the `frames` rows, the source video | `outputs/text_verify`, one `readings` row per frame read |
 | `text_typeset` | worker, `tbd-subtitles` (CPU) | `outputs/text_review` | `outputs/text_typeset`, `outputs/text_typeset/ass` |
-| `output` | job runner | `outputs/cues`, `outputs/text_typeset` and its ASS events, `outputs/text_verify` | `<video>.ass` (or the chosen format), `<video>.localized.ass`, `outputs/output` |
-| `localized_video` | worker, `tbd-subtitles` (FFmpeg decoder and encoder, GPU lock) | `outputs/probe_decode`, `outputs/text_verify` and its patches, `outputs/output`, the source video | `<video>.localized.mkv`, `outputs/localized_video` |
+| `output` | job runner | `outputs/cues`, `outputs/text_typeset/ass`, `outputs/text_typeset`, `outputs/text_verify` | `<video>.ass` (or the chosen format), `<video>.localized.ass`, `outputs/output` |
+| `localized_video` | worker, `tbd-subtitles` (FFmpeg decoder and encoder, GPU lock) | `outputs/probe_decode`, `outputs/text_verify` and its patches, the `frames` rows, the source video | `<video>.localized.mkv`, `visual/localized_video.json` |
 
 The three replacement steps and the read-back check pass one `ReplacementDocument`
 ([contract](/crates/job_model/src/onscreen/localize.rs)) from step to step, each adding to it:
@@ -113,13 +113,31 @@ Code: [mask](/crates/stages/src/onscreen_text/replace/mask/), with region crops 
   interpolated from the sampled quads, within `0.5 × the shorter side + 16` pixels, coarse on
   block averages and then at full size around the best two matches. One frame scoring under 0.8
   loses the occurrence, and so does a swept region over a quarter of the frame.
-- **Background runs:** a frame joins the current run while its placement is unchanged and the
-  plate pixels outside the mask differ from the run's first frame by a mean under 3 and a 99th
-  percentile under 24 per channel value. Each run is one plate, whose source is its first frame;
-  more than 2,000 plates falls back.
+- **Per-frame erase:** every frame's erase mask is the keyframe mask carried to that frame's
+  placement (the keyframe placement for still writing, the matched one for moving writing).
+- **Background runs:** a frame joins the current run while it keeps the run's scale, its mask
+  overlaps the union of the run's masks by an intersection over union of 0.85 or more, and the
+  plate pixels outside both masks differ from the run's first frame by a mean under 3 and a 99th
+  percentile under 24 per channel value. Each run is one plate: its rectangle the union of its
+  frames' rectangles, its source its first frame, its erase mask the union of its frames' masks,
+  its shift and scale its first frame's. 0.85 keeps every frame's own strokes at least 85 % of
+  the plate's erase, so LaMa never repaints more than about 1.18 times what a frame needs; a
+  one-pixel jitter of a dilated stroke mask stays in its run, while writing that travels a few
+  pixels starts a new plate, so the erase follows it. Still writing never leaves its placement,
+  so its plates are those a split per placement gives. More than 2,000 plates falls back.
+- **Frame rows:** once an occurrence has its plates, each frame of its span is one row of the
+  job's `frames` table, keyed by the occurrence id and the frame
+  ([`FrameRecord`](/crates/job_model/src/onscreen/frames.rs)): the keyframe quad carried to the
+  frame, the correlation of the keyframe writing with the frame at its placement (the matched
+  score for moving writing, the keyframe window against the frame's for still writing, 0 for a
+  window without contrast), the shift and scale, the erase mask as run-length rows relative to its
+  plate, and the plate. The rows are the per-frame truth composition and the video place the
+  lettering by. A worker sends each row as one `Output` frame as it is made; an occurrence that
+  falls back sends none, and a second occurrence with the same id falls back (“Another
+  occurrence has the same id”) so rows never collide.
 - **Files:** `visual/masks/<occurrence>/mask.png` for the keyframe placement, `mask-<n>.png` for
-  each other placement and `source-<n>.png` per plate. The folder is emptied at the start of the
-  step, and an occurrence that falls back loses its folder.
+  the union mask of each plate of other placements and `source-<n>.png` per plate. The folder is
+  emptied at the start of the step, and an occurrence that falls back loses its folder.
 
 ## Inpainting (`text_inpaint`)
 
@@ -189,7 +207,10 @@ Code: [compose](/crates/stages/src/onscreen_text/replace/compose/).
 - **Patches:** each plate's [patch](/documentation/glossary.md#patch) is an RGBA PNG,
   `visual/patches/<occurrence>/<n>.png`, whose colour is the lettering over the inpainted plate
   and whose alpha is the larger of the feathered erase mask and the lettering's coverage;
-  `preview.png` shows the keyframe plate's patch over its original pixels for Check Text. Once
+  a plate whose `frames` rows take shifts other than its own gets one more patch per shift,
+  `<n>-<k>.png`, the same fill with the lettering at that frame's shift, recorded in the plate's
+  `shifted`; `preview.png` shows the keyframe plate's patch over its original pixels for Check
+  Text. The task folds the rows, read one at a time, into runs of equal shift per plate. Once
   every plate has its patch, the occurrence is `baked`.
 
 ## The read-back check (`text_verify`)
@@ -208,10 +229,11 @@ run.
   frames either side of where the other starts and ends; then the first frame of each plate,
   spread evenly when they do not all fit. Distinct frames, at most 8.
 - **The finished picture:** the lettering area (the `lettering_quad`, else the tracked quad at
-  the keyframe) and its furigana, placed on the plate covering the frame as composition placed
-  it, grown by 0.75 of a line (the measured line height) into a region on even pixels. FFmpeg
-  decodes that region of the source frame at full resolution; every patch the localized video
-  blends at that frame is blended over it with the render's own Y′CbCr blend in 8-bit 4:2:0 and
+  the keyframe) and its furigana, placed on the plate covering the frame at the frame's own
+  shift from its `frames` row, as composition lettered it, grown by 0.75 of a line (the measured
+  line height) into a region on even pixels. FFmpeg decodes that region of the source frame at
+  full resolution; every patch the localized video blends at that frame (the patch of the
+  frame's shift) is blended over it with the render's own Y′CbCr blend in 8-bit 4:2:0 and
   converted back to RGB, and the region is enlarged so a line is 48 pixels tall (at most
   8 million pixels).
 - **Reading:** PP-OCRv5's server detector finds the lines (box score 0.5) and its recognizer
@@ -230,12 +252,13 @@ run.
 - **Verdict per occurrence:** it stays baked only when every frame passes; otherwise it falls
   back with “The finished picture still shows Japanese” when any frame showed Japanese, else
   “The English does not read back cleanly”.
-- **Output:** `outputs/text_verify` is the replacement document with the final statuses at
-  its top level (so its JSON also reads as a plain `ReplacementDocument`) and `checks`: per checked
-  occurrence each frame's Japanese found, English read, similarity and pass. The localized video,
-  the output step, the report and Check Text read it; the window shows
-  `outputs/text_compose` while the step has not run. A document with nothing baked passes
-  through without loading a model.
+- **Output:** `outputs/text_verify` is the replacement document with the final statuses at its
+  top level (so its JSON also reads as a plain `ReplacementDocument`) and `checks`: per checked
+  occurrence the number of frames read and whether all passed. Each frame read is a row of the
+  `readings` table, keyed by the occurrence id and the frame: the Japanese found, the English
+  read, the similarity and the pass. The localized video, the output step and the report read the
+  document; Check Text reads both and shows each occurrence's telling reading (its first failure,
+  else its weakest match). A document with nothing baked passes through without loading a model.
 - **Measured thresholds:** on Dressrosa 28 (25 baked, 128 frames read in 39 s) every frame that
   read back the English scored 0.8 or more and the one lettering OCR could not read scored 0, so
   0.6 sits in an empty gap; every Japanese reading that counted (leftover furigana over 幹部塔,
@@ -271,11 +294,13 @@ Code: [localize](/crates/stages/src/localize/), the task
 - **Decode:** one FFmpeg decoder streams every frame at its native size, 10-bit 4:2:0 for a 10-bit
   4:2:0 source and 8-bit `yuv420p` otherwise. The decoded count must equal the timeline exactly.
 - **Blend:** a schedule starts each baked plate's patch at its first frame and ends it after its
-  last; overlapping patches stack in document order. Patches are converted once into Y′CbCr in the
-  stream's tagged matrix and range (BT.709 from 720 lines when untagged, BT.601 below) and kept
-  until their span ends, within 512 MiB. Luma blends per pixel and chroma per 2 × 2 block by its
-  summed alpha; a clear pixel keeps its bytes. A frame with no active patch passes through as
-  decoded.
+  last; a plate whose `frames` rows take several shifts is scheduled as one entry per run of
+  frames with the patch lettered at that run's shift (a frame without a row takes the plate's own
+  patch, and a shift without a patch fails the step); overlapping patches stack in document
+  order. Patches are converted once into Y′CbCr in the stream's tagged matrix and range (BT.709
+  from 720 lines when untagged, BT.601 below) and kept until the last frame that blends them,
+  within 512 MiB. Luma blends per pixel and chroma per 2 × 2 block by its summed alpha; a clear
+  pixel keeps its bytes. A frame with no active patch passes through as decoded.
 - **Encode:** raw frames go through a pipe into a second FFmpeg that muxes Matroska: the new video,
   every audio stream of the source copied, its chapters and metadata, and no subtitle or data
   stream (`-sn -dn`). The encoder is `hevc_nvenc` (`-preset p6 -tune hq -rc vbr -cq 19`, `main` or
@@ -300,9 +325,12 @@ Code: [localize](/crates/stages/src/localize/), the task
 
 ## Bounds
 
-- Memory: the mask step holds the current run's first frame and the frame being examined; the
-  inpaint step one plate and a bounded cache; the compose step one plate's images; the encode one
-  frame and the active patches, within 512 MiB. Masks, plates and patches are PNGs in the work
+- Memory: the mask step holds the current run's first frame, its union mask and the frame being
+  examined, plus a log of a few bytes per frame of the occurrence from which it sends the rows one
+  at a time; the inpaint step one plate and a bounded cache; the compose step one plate's images;
+  the encode one frame and the active patches, within 512 MiB. The steps that read the `frames`
+  rows receive them one `Input` frame at a time and keep only runs of equal shift, whose count
+  follows the shift changes, never the frames. Masks, plates and patches are PNGs in the work
   directory.
 - Time: each replacement step and the localized video have a six-hour step deadline; the encoder a
   24-hour one. The localized video reports its progress every 240 frames.

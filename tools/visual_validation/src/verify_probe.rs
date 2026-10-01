@@ -20,7 +20,7 @@ use job_model::StepName;
 use job_model::onscreen::ReplaceStatus;
 use stages::localize::{colour::Conversion, frame_format};
 use stages::onscreen_text::replace::source::FfmpegRegions;
-use stages::onscreen_text::replace::verify::{self, LocalOcr, Request, Sample};
+use stages::onscreen_text::replace::verify::{self, LocalOcr, Request, Sample, Verified};
 
 /// Check the job in `work`, only the occurrences `ids` when any are given; save each region read
 /// under `out`.
@@ -36,6 +36,7 @@ pub fn run(work: &Path, ids: &[String], out: Option<&Path>) -> Result<()> {
     };
     let composed = crate::job_rows::replacements(work, StepName::TextCompose)?;
     let text = crate::job_rows::text(work, StepName::TextReview)?;
+    let motion = crate::job_rows::motion(work)?;
     if let Some(out) = out {
         std::fs::create_dir_all(out)?;
     }
@@ -49,6 +50,7 @@ pub fn run(work: &Path, ids: &[String], out: Option<&Path>) -> Result<()> {
         root: work,
         conversion: Conversion::of(&stream, frame_format(&stream)),
         only: (!ids.is_empty()).then_some(ids),
+        motion: &motion,
     };
     let started = std::time::Instant::now();
     let mut saved: Result<()> = Ok(());
@@ -59,7 +61,10 @@ pub fn run(work: &Path, ids: &[String], out: Option<&Path>) -> Result<()> {
             saved = picture.save(&file).context("save a finished region");
         }
     };
-    let verified = verify::verify(&request, &mut source, &mut ocr, &mut observe, &|_, _| {})
+    let Verified {
+        replacements: verified,
+        readings,
+    } = verify::verify(&request, &mut source, &mut ocr, &mut observe, &|_, _| {})
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     saved?;
     println!();
@@ -82,16 +87,16 @@ pub fn run(work: &Path, ids: &[String], out: Option<&Path>) -> Result<()> {
             Some(ReplaceStatus::Fallback(reason)) => format!("fallback: {reason}"),
             _ => "pending".to_string(),
         };
-        let least = check
-            .readings
+        let own: Vec<f64> = readings
             .iter()
-            .map(|r| r.similarity)
-            .fold(f64::INFINITY, f64::min);
-        similarities.extend(check.readings.iter().map(|r| r.similarity));
+            .filter(|(id, _)| *id == check.id)
+            .map(|(_, r)| r.similarity)
+            .collect();
+        let least = own.iter().copied().fold(f64::INFINITY, f64::min);
+        similarities.extend(&own);
         println!(
             "{} {english:?}: {} samples, least similarity {least:.3}, {verdict}",
-            check.id,
-            check.readings.len()
+            check.id, check.samples
         );
     }
     let approved = verified

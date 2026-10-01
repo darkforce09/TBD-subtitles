@@ -1,11 +1,13 @@
 //! English lettering composed onto inpainted plates.
 //!
 //! **Role:** letter every pending occurrence's English in the original writing's place, colour
-//! and weight, and write one RGBA patch per plate for the localized video.
+//! and weight, and write one RGBA patch per plate and per shift its frames take for the
+//! localized video.
 //! **Position:** the compose step of in-place replacement, after inpainting and before the
 //! localized video is encoded; runs on the CPU.
 //! **Signals and state:** the inpainted `ReplacementDocument`, the reviewed `TextDocument`, the
-//! `latin-fonts` model folder; patches and previews under `visual/patches/<id>/`.
+//! `latin-fonts` model folder, the per-frame shifts of the `frames` rows; patches and previews
+//! under `visual/patches/<id>/`.
 //! **Invariants:** only `Pending` occurrences change; each ends `Baked` with a patch on every
 //! plate or `Fallback` with a reason and no patches; members of one container keep their
 //! original size ratio; no two occurrences on screen together are lettered over one sign;
@@ -30,11 +32,12 @@ use job_model::onscreen::{
 };
 
 use self::containers::Member;
-pub(crate) use self::containers::{keyframe_frame, plate_at, plate_quad};
+pub(crate) use self::containers::{keyframe_frame, plate_at, plate_quad_at};
 use self::font::{FontMetrics, LetteringFont};
 use self::layout::{Area, Layout};
 use self::overlap::{COVERED, Claim};
 use super::found_by_claude;
+use crate::localize::motion::Motion;
 use crate::onscreen_text::TextResult;
 
 /// The smallest cap height, in pixels of a 1080-line frame, that stays readable.
@@ -42,12 +45,15 @@ const MIN_CAP_PX_1080: f64 = 14.0;
 /// The reason recorded when the lettering would be too small.
 pub(crate) const TOO_SMALL: &str = "The English would be too small to read in place";
 
-/// Letter every inpainted occurrence in English; `fonts` is the `latin-fonts` model folder.
+/// Letter every inpainted occurrence in English; `fonts` is the `latin-fonts` model folder and
+/// `motion` the writing's shift in each frame, from the `frames` rows: a plate whose frames take
+/// several shifts gets one patch per shift.
 pub fn compose(
     document: &mut ReplacementDocument,
     text: &TextDocument,
     root: &Path,
     fonts: &Path,
+    motion: &Motion,
     progress: &(dyn Fn(usize, usize) + Sync),
 ) -> TextResult<()> {
     let font = LetteringFont::open(fonts)?;
@@ -115,7 +121,7 @@ pub fn compose(
             let ready = &prepared[position];
             let item = &mut document.texts[ready.index];
             let outcome = match layout {
-                Some(layout) => bake::bake(root, item, ready, &metrics, &layout)?,
+                Some(layout) => bake::bake(root, item, ready, &metrics, &layout, motion)?,
                 None => Err(TOO_SMALL.to_string()),
             };
             if let Err(reason) = outcome {

@@ -146,10 +146,33 @@ pub struct Plate {
     #[rkyv(with = rkyv::with::Map<rkyv::with::AsString>)]
     pub plate: Option<PathBuf>,
     /// The English lettering composed onto the plate (RGBA PNG), once composition has run; alpha
-    /// covers the erased strokes and the new lettering.
+    /// covers the erased strokes and the new lettering. It letters the writing at `shift`.
     #[serde(default)]
     #[rkyv(with = rkyv::with::Map<rkyv::with::AsString>)]
     pub patch: Option<PathBuf>,
+    /// The patches for the other shifts the plate's frames take (from their `frames` rows), one
+    /// per shift: the same fill with the lettering moved by the frame's shift.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shifted: Vec<ShiftedPatch>,
+}
+
+/// A plate's patch lettered at a shift other than the plate's own.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+pub struct ShiftedPatch {
+    /// Movement of the writing relative to the keyframe quad in the frames this patch covers.
+    pub shift: [f64; 2],
+    /// The RGBA patch, the size of the plate's rectangle.
+    #[rkyv(with = rkyv::with::AsString)]
+    pub patch: PathBuf,
 }
 
 /// One occurrence's replacement.
@@ -236,7 +259,11 @@ impl ReplacementDocument {
                 }
                 if !(plate.scale.is_finite()
                     && plate.scale > 0.0
-                    && plate.shift.iter().all(|v| v.is_finite()))
+                    && plate.shift.iter().all(|v| v.is_finite())
+                    && plate
+                        .shifted
+                        .iter()
+                        .all(|shifted| shifted.shift.iter().all(|v| v.is_finite())))
                 {
                     return Err(format!("{}: invalid plate placement", text.id));
                 }

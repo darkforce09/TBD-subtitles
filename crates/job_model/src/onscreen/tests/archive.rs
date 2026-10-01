@@ -5,9 +5,9 @@ use std::path::PathBuf;
 
 use super::{
     LetteringStyle, LocalizedVideoRecord, PixelRect, Plate, Point, Quad, ReplaceStatus,
-    ReplacedText, ReplacementDocument, TextCheck, TextCorrections, TextDocument, TextEdit,
-    TextFrame, TextKeyframe, TextOccurrence, TextPresentation, TextProvenance, TextSettings,
-    TextSummary, TextTreatment, VerifiedReplacements, VerifyReading,
+    ReplacedText, ReplacementDocument, ShiftedPatch, TextCheck, TextCorrections, TextDocument,
+    TextEdit, TextFrame, TextKeyframe, TextOccurrence, TextPresentation, TextProvenance,
+    TextSettings, TextSummary, TextTreatment, VerifiedReplacements, VerifyReading,
 };
 use crate::archive_round_trip::round_trip;
 
@@ -156,6 +156,10 @@ fn plate() -> Plate {
         mask: path("plate 1 mask.png"),
         plate: Some(path("plate 1.png")),
         patch: Some(path("plate 1 patch.png")),
+        shifted: vec![ShiftedPatch {
+            shift: [2.5, -2.0],
+            patch: path("plate 1 patch 1.png"),
+        }],
     }
 }
 
@@ -195,7 +199,8 @@ fn reading() -> VerifyReading {
 fn check() -> TextCheck {
     TextCheck {
         id: "T0001".into(),
-        readings: vec![reading()],
+        samples: 1,
+        passed: true,
     }
 }
 

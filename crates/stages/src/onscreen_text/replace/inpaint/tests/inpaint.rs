@@ -93,6 +93,7 @@ fn plate(root: &Path, name: &str, source: &RgbImage, mask: &GrayImage, size: (u3
         mask: mask_path,
         plate: None,
         patch: None,
+        shifted: Vec::new(),
     }
 }
 

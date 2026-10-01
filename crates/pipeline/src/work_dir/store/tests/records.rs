@@ -206,3 +206,48 @@ fn a_removed_row_is_gone_and_an_uncommitted_write_changes_nothing() {
     drop(store);
     let _ = fs::remove_dir_all(work.root());
 }
+
+#[test]
+fn a_per_frame_table_is_walked_in_key_order_whole_or_for_one_occurrence() {
+    use job_model::onscreen::VerifyReading;
+
+    let work = scratch("rows");
+    let store = JobStore::open(&work).expect("open");
+    let mut write = store.write().expect("write");
+    for (occurrence, frame) in [("b", 1u64), ("a", 30), ("a", 4), ("ab", 0)] {
+        let key = Key::Frame {
+            occurrence: occurrence.into(),
+            frame,
+        };
+        let reading = VerifyReading {
+            frame,
+            english_read: format!("{occurrence}{frame}"),
+            ..VerifyReading::default()
+        };
+        write.put(Table::Readings, &key, &reading).expect("put");
+    }
+    write.commit().expect("commit");
+    let read = store.read().expect("read");
+    let mut all = Vec::new();
+    read.rows_as::<VerifyReading>(Table::Readings, None, |id, frame, reading| {
+        assert_eq!(reading.english_read, format!("{id}{frame}"));
+        all.push((id.to_string(), frame));
+        Ok(())
+    })
+    .expect("walk");
+    let pairs = |list: &[(&str, u64)]| -> Vec<(String, u64)> {
+        list.iter().map(|(id, f)| (id.to_string(), *f)).collect()
+    };
+    assert_eq!(all, pairs(&[("a", 4), ("a", 30), ("ab", 0), ("b", 1)]));
+    let mut one = Vec::new();
+    read.rows(Table::Readings, Some("a"), |id, frame, _| {
+        one.push((id.to_string(), frame));
+        Ok(())
+    })
+    .expect("walk one");
+    assert_eq!(one, pairs(&[("a", 4), ("a", 30)]));
+    assert!(read.rows(Table::Outputs, None, |_, _, _| Ok(())).is_err());
+    drop(read);
+    drop(store);
+    let _ = fs::remove_dir_all(work.root());
+}

@@ -4,9 +4,10 @@
 //! **Role:** write `<video>.localized.mkv` and its record, or record that the job writes none.
 //! **Position:** pipeline task dispatch above `stages::localize`.
 //! **Signals and state:** reads `outputs/text_verify` (the replacements the read-back check
-//! approved), the probe and this step's previous record (`outputs/localized_video`) through the
-//! step's `StepIo`, and the source video; writes the localized video through a part file and
-//! stores its record as `outputs/localized_video`.
+//! approved), the probe, this step's previous record (`outputs/localized_video`) and every `frames`
+//! row (each frame blends the patch of its own shift) through the step's `StepIo`, and the source
+//! video; writes the localized video through a part file and stores its record as
+//! `outputs/localized_video`.
 //! **Invariants:** the source video is only read; a job without the localized video stores an
 //! empty record and starts no encoder; a file at the output path is replaced only when this
 //! job's previous record names it, as its current or earlier video; the output appears whole and
@@ -22,7 +23,7 @@ use stages::localize::{self, RenderRequest};
 
 use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, PipelineError, Result};
-use crate::tasks::replace::localized;
+use crate::tasks::replace::{localized, motion};
 use crate::work_dir::store::keys;
 
 pub(super) fn run(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<TaskReport> {
@@ -53,6 +54,7 @@ pub(super) fn run(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<
         .video
         .as_ref()
         .ok_or_else(|| PipelineError::new("localized video", "the file has no video stream"))?;
+    let motion = motion(io)?;
     let programs = media_io::Programs::beside_current_exe();
     let part = part_path(&output);
     let request = RenderRequest {
@@ -60,6 +62,7 @@ pub(super) fn run(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<
         video: &video,
         stream,
         document: &document,
+        motion: &motion,
         root: job.work.root(),
         output: &part,
         cancel: None,

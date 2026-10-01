@@ -538,6 +538,7 @@ fn localize(fixture: &Fixture) {
         mask: PathBuf::from("visual/patches/board/mask.png"),
         plate: None,
         patch: None,
+        shifted: Vec::new(),
     });
     let verified = VerifiedReplacements {
         document: ReplacementDocument {

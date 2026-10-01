@@ -23,10 +23,9 @@ fn document(occurrences: Vec<TextOccurrence>) -> TextDocument {
     }
 }
 
+/// The extraction's document, its frame rows checked against its plates.
 fn run(text: &TextDocument, source: &mut Scripted, root: &Path) -> ReplacementDocument {
-    let document = extract(text, source, root, &|_, _| {}).expect("extraction succeeds");
-    document.validate().expect("the document validates");
-    document
+    super::frame_rows::run_rows(text, source, root).0
 }
 
 fn read_mask(root: &Path, path: &Path) -> GrayImage {
@@ -209,13 +208,19 @@ fn only_displayable_translated_occurrences_are_listed_in_order() {
     ]);
     let mut source = Scripted::new(2, SIZE, |_, _, _| [0, 0, 0]);
     let calls = std::sync::atomic::AtomicUsize::new(0);
-    let result = extract(&text, &mut source, &root, &|done, total| {
-        assert_eq!(total, 2);
-        assert_eq!(
-            done,
-            calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
-        );
-    })
+    let result = extract(
+        &text,
+        &mut source,
+        &root,
+        &mut |_, _, _| Ok(()),
+        &|done, total| {
+            assert_eq!(total, 2);
+            assert_eq!(
+                done,
+                calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+            );
+        },
+    )
     .expect("extraction succeeds");
     let ids: Vec<&str> = result.texts.iter().map(|t| t.id.as_str()).collect();
     assert_eq!(ids, ["keep-1", "keep-2"]);
@@ -398,7 +403,7 @@ fn a_restless_background_falls_back_after_two_thousand_plates() {
     let result = run(&text, &mut source, &root);
     assert_eq!(
         result.texts[0].status,
-        ReplaceStatus::Fallback(super::plates::TOO_OFTEN.into())
+        ReplaceStatus::Fallback(super::runs::TOO_OFTEN.into())
     );
     assert!(result.texts[0].plates.is_empty());
     assert!(!root.join("visual/masks/r").exists());

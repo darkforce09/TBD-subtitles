@@ -16,6 +16,7 @@ fn plate(first: u64, last: u64) -> Plate {
         mask: PathBuf::from("visual/masks/a/mask.png"),
         plate: None,
         patch: None,
+        shifted: Vec::new(),
     }
 }
 

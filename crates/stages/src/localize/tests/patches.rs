@@ -1,11 +1,14 @@
 use std::path::PathBuf;
 
 use image::{Rgba, RgbaImage};
-use job_model::onscreen::{PixelRect, Plate, ReplaceStatus, ReplacedText, ReplacementDocument};
+use job_model::onscreen::{
+    PixelRect, Plate, ReplaceStatus, ReplacedText, ReplacementDocument, ShiftedPatch,
+};
 
 use super::*;
 use crate::localize::blend::ChromaBlocks;
 use crate::localize::colour::{Conversion, Matrix, Range};
+use crate::localize::motion::Motion;
 
 fn rect(x: u32, width: u32) -> PixelRect {
     PixelRect {
@@ -27,6 +30,7 @@ fn plate(first: u64, last: u64, name: Option<&str>) -> Plate {
         mask: PathBuf::from("mask.png"),
         plate: None,
         patch: name.map(PathBuf::from),
+        shifted: Vec::new(),
     }
 }
 
@@ -71,7 +75,7 @@ fn patches_are_active_exactly_on_their_frames_in_document_order() {
         ),
         text("T2", ReplaceStatus::Baked, vec![plate(2, 10, Some("b"))]),
     ]);
-    let mut schedule = Schedule::new(&doc);
+    let mut schedule = Schedule::new(&doc, &Motion::default()).unwrap();
     assert!(!schedule.is_empty());
     let mut seen = Vec::new();
     let mut ended = Vec::new();
@@ -105,8 +109,12 @@ fn only_baked_occurrences_with_composed_patches_are_scheduled() {
         ),
         text("T3", ReplaceStatus::Baked, vec![plate(0, 5, None)]),
     ]);
-    assert!(Schedule::new(&doc).is_empty());
-    assert!(Schedule::new(&ReplacementDocument::default()).is_empty());
+    assert!(Schedule::new(&doc, &Motion::default()).unwrap().is_empty());
+    assert!(
+        Schedule::new(&ReplacementDocument::default(), &Motion::default())
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -115,7 +123,7 @@ fn skipped_frames_still_activate_and_end_patches() {
         text("T1", ReplaceStatus::Baked, vec![plate(3, 4, Some("short"))]),
         text("T2", ReplaceStatus::Baked, vec![plate(3, 20, Some("long"))]),
     ]);
-    let mut schedule = Schedule::new(&doc);
+    let mut schedule = Schedule::new(&doc, &Motion::default()).unwrap();
     schedule.advance(0).unwrap();
     // Jumping past the short patch's span never activates it.
     schedule.advance(6).unwrap();
@@ -123,8 +131,59 @@ fn skipped_frames_still_activate_and_end_patches() {
 }
 
 #[test]
+fn a_plate_whose_frames_move_takes_the_patch_of_each_frame_s_shift() {
+    let mut moved = plate(10, 15, Some("own"));
+    moved.shifted = vec![ShiftedPatch {
+        shift: [1.0, 0.0],
+        patch: PathBuf::from("right"),
+    }];
+    let doc = document(vec![text("T1", ReplaceStatus::Baked, vec![moved])]);
+    let mut motion = Motion::default();
+    for (frame, dx) in [(10, 0.0), (11, 1.0), (12, 1.0), (13, 0.0), (14, 1.0)] {
+        motion.add("T1", frame, 0, [dx, 0.0]);
+    }
+    let mut schedule = Schedule::new(&doc, &motion).unwrap();
+    let mut seen = Vec::new();
+    let mut ended = Vec::new();
+    for frame in 10..17 {
+        ended.push(schedule.advance(frame).unwrap());
+        seen.push(names(&schedule));
+    }
+    // Frame 15 has no row and takes the plate's own patch.
+    assert_eq!(
+        seen,
+        [
+            vec!["own"],
+            vec!["right"],
+            vec!["right"],
+            vec!["own"],
+            vec!["right"],
+            vec!["own"],
+            vec![],
+        ]
+    );
+    // Each file leaves the cache only after the last frame that blends it.
+    assert_eq!(ended[5], [1]);
+    assert_eq!(ended[6], [0]);
+    assert!(ended[..5].iter().all(Vec::is_empty));
+}
+
+#[test]
+fn a_shift_without_its_patch_is_an_error() {
+    let doc = document(vec![text(
+        "T1",
+        ReplaceStatus::Baked,
+        vec![plate(0, 3, Some("own"))],
+    )]);
+    let mut motion = Motion::default();
+    motion.add("T1", 1, 0, [2.0, 0.0]);
+    let error = Schedule::new(&doc, &motion).unwrap_err();
+    assert!(error.0.contains("no patch for the shift"), "{error}");
+}
+
+#[test]
 fn frames_must_advance() {
-    let mut schedule = Schedule::new(&document(Vec::new()));
+    let mut schedule = Schedule::new(&document(Vec::new()), &Motion::default()).unwrap();
     schedule.advance(4).unwrap();
     assert!(schedule.advance(4).is_err());
     assert!(schedule.advance(3).is_err());
@@ -153,6 +212,7 @@ fn sized(bytes: usize) -> FramePatch {
 fn entry(order: usize) -> ScheduledPatch {
     ScheduledPatch {
         order,
+        file: order,
         first_frame: 0,
         last_frame: 10,
         rect: rect(0, 2),

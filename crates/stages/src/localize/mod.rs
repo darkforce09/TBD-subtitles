@@ -1,8 +1,8 @@
 //! The localized video: every composed patch blended over the source frames and re-encoded.
 //!
 //! **Role:** decode every frame at its native size, blend the patches of baked occurrences over
-//! the frames they cover, and stream the result into an encoder that keeps the source's audio,
-//! chapters and metadata.
+//! the frames they cover, each frame the patch lettered at its own shift, and stream the result
+//! into an encoder that keeps the source's audio, chapters and metadata.
 //! **Position:** the stage of the `localized_video` step, after composition; called by
 //! `pipeline::tasks::localized`, above `media_io`'s native frame stream and encoder.
 //! **Signals and state:** one FFmpeg decoder and one FFmpeg encoder, a patch schedule and a patch
@@ -13,6 +13,7 @@
 
 pub mod blend;
 pub mod colour;
+pub mod motion;
 pub mod patches;
 pub mod still;
 
@@ -32,6 +33,7 @@ use media_io::{MediaError, Programs};
 
 use blend::blend;
 use colour::Conversion;
+use motion::Motion;
 use patches::{PatchCache, Schedule, load};
 
 /// The most converted patch samples held at once.
@@ -85,6 +87,8 @@ pub struct RenderRequest<'a> {
     pub stream: &'a VideoStream,
     /// The composed replacements; patch paths are relative to `root`.
     pub document: &'a ReplacementDocument,
+    /// The writing's shift in each frame, from the `frames` rows: which patch covers it.
+    pub motion: &'a Motion,
     /// The job directory.
     pub root: &'a Path,
     /// The Matroska file to write.
@@ -122,7 +126,7 @@ pub fn render(request: &RenderRequest, progress: Progress) -> LocalizeResult<Ren
     let fps = f64::from(num) / f64::from(den);
     let size = (stream.width, stream.height);
     let format = frame_format(stream);
-    let mut schedule = Schedule::new(request.document);
+    let mut schedule = Schedule::new(request.document, request.motion)?;
     let document = request.document;
     if !schedule.is_empty() && (document.width, document.height) != size {
         return Err(format!(
@@ -186,8 +190,8 @@ pub fn render(request: &RenderRequest, progress: Progress) -> LocalizeResult<Ren
         {
             return Err("the localized video was cancelled".into());
         }
-        for order in schedule.advance(frame.index)? {
-            cache.remove(order);
+        for file in schedule.advance(frame.index)? {
+            cache.remove(file);
         }
         for entry in schedule.active() {
             let patch = cache.get(entry, |entry| load(request.root, entry, conversion))?;

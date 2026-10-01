@@ -18,10 +18,11 @@ crates/pipeline/src/tasks/
 ├── mod.rs        `Job`, `TaskReport`, the dispatcher `run`, and `in_process` and `worker_main`
 ├── replace.rs    stroke masks, inpainting in its ONNX Runtime worker, and lettering composition
 ├── review.rs     the corrections timed again, each alone, on the CPU; other lines kept
+├── rows.rs       `RowStream`: the per-frame rows a worker reads off its stdin one at a time
 ├── sounds.rs     sound events with CED over both stems, and the sound cues the language model picks
 ├── speech.rs     voice activity and chunk plan, Parakeet and Whisper, the diff sheet, re-decodes
 ├── verify.rs     the read-back check: PP-OCRv5 in its ONNX Runtime worker approves each lettering
-└── tests/        unit tests for the alignment's inputs, review, the check, the visual steps, the localized subtitles and video, `StepIo`
+└── tests/        unit tests for the alignment's inputs, review, the check, the visual steps, the localized subtitles and video, `StepIo` and its row stream
 ```
 
 ## How it works
@@ -29,7 +30,7 @@ crates/pipeline/src/tasks/
 ```text
 runner ──▶ in_process(step, StepIo::in_process(store)) ─┐
                                                         ├─▶ run(step, job, io, progress) ──▶ tasks ──▶ stages
-worker ──▶ worker_main(step) ── StepIo::in_worker(stdin) ┘
+worker ──▶ worker_main(step) ── StepIo::over_stdin(step, stdin) ┘
 ```
 
 Every task is `fn(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<TaskReport>`.
@@ -37,11 +38,18 @@ Every task is `fn(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<
 missing one is an error naming its key; `view` reads one in place; `probe`, `job_record`,
 `corrections` and `text_corrections` are the common reads (no corrections is none).
 `StepIo::put(step, part, value)` keeps a document the task writes, refused when its key has no
-record kind, and `put_frame(table, occurrence, frame, value)` a `frames` or `readings` row. In the
+record kind, and `put_frame(table, occurrence, frame, value)` a `frames` or `readings` row, sent
+as it is made. `frame_rows::<T>(table, f)` walks every row of a per-frame table once, in key order,
+each checked and read in place, one at a time. In the
 runner (`StepIo::in_process`) reads come from one snapshot of the job's store and writes go into
 the step's pending write, which `into_outputs` hands the runner to commit with the step's record;
-in a worker (`StepIo::in_worker`) reads come from the `Input` frames the runner sent down stdin
-(`graph::reads`) and writes go up the channel as `Output` frames. Every task, from the probe to
+in a worker (`StepIo::over_stdin`) the documents come from the `Input` frames the runner sent down
+stdin (`graph::reads`), read before the task starts, the rows of the per-frame tables the step
+reads (`graph::reads_rows`) follow them on the pipe and are read only as `frame_rows` asks
+(`rows.rs`), and writes go up the channel as `Output` frames; `finish_inputs` drains what the task
+did not read before `Done`. The stroke masks write one `frames` row per frame; composition, the
+read-back check and the localized video fold those rows into the shift of each frame
+(`replace::motion`); the check writes one `readings` row per frame it read. Every task, from the probe to
 the localized video, reads and writes its documents only through it: the owner's text corrections
 come from `corrections/text`, the typeset ASS events are `outputs/text_typeset/ass`, the diff sheet
 also writes `sheet.txt`, the sheet for reading, and the output writes the subtitle files beside the
@@ -71,7 +79,8 @@ would cover English lettered into the video (every sampled frame of each baked o
 pixels) moved to the top by `subtitle_formats::writers::ass::write_with`. The read-back check
 opens PP-OCRv5 only when composition baked something, reads each baked occurrence back through
 `stages::onscreen_text::replace::verify` and stores `outputs/text_verify`, which the output and
-the localized video read. The quality check settles the findings of every corrected line;
+the localized video read, and one `readings` row per frame it read, which Check Text reads.
+The quality check settles the findings of every corrected line;
 a Fix It change the owner has not checked has its words held again against every hypothesis, the
 re-decodes included, and the summary counts the owner's lines and Fix It's apart. The alignment
 and review tasks read both engines' transcripts for `sheet::heard_spans`, so a line is aligned
@@ -98,6 +107,10 @@ in batches.
   - a worker's inputs arrive down its stdin and its outputs as frames, the same task code as in
     the runner (`a_worker_reads_its_inputs_from_its_stdin_and_sends_its_output_as_frames`), and a
     missing input is an error naming its key (`a_missing_input_is_an_error_naming_its_key`);
+  - a per-frame table reaches a task one row at a time, in key order, in the runner and in a
+    worker alike, and a worker drains the rows it did not read
+    (`a_step_reads_every_frame_row_in_key_order_in_the_runner_and_in_a_worker`,
+    `a_worker_that_reads_no_rows_drains_them_so_the_runner_ends_cleanly` in `tests/io.rs`);
   - the subtitle files beside the video are the only files written outside the work directory,
     and a replaced one is kept in the job's `backup/` (`layout.rs`);
   - the localized subtitle file carries no on-screen events and moves a cue over lettered English

@@ -55,6 +55,7 @@ fn replacement(id: &str) -> ReplacementDocument {
         mask: format!("visual/masks/{id}-mask.png").into(),
         plate: Some(format!("visual/plates/{id}.png").into()),
         patch: None,
+        shifted: Vec::new(),
     };
     ReplacementDocument {
         width: 8,
@@ -173,8 +174,14 @@ fn a_named_keyframe_must_be_a_non_empty_file() {
 fn replacements_name_their_plates_and_the_outputs_the_files_beside_the_video() {
     let scratch = Scratch::new("files-named");
     let store = scratch.store();
+    let mut composed = replacement("t1");
+    composed.texts[0].plates[0].patch = Some("visual/patches/t1/0.png".into());
+    composed.texts[0].plates[0].shifted = vec![job_model::onscreen::ShiftedPatch {
+        shift: [1.0, 0.0],
+        patch: "visual/patches/t1/0-1.png".into(),
+    }];
     store
-        .put_output(StepName::TextCompose, None, &replacement("t1"))
+        .put_output(StepName::TextCompose, None, &composed)
         .unwrap();
     let subtitles = scratch.file("beside/episode.ass", b"");
     store
@@ -196,6 +203,8 @@ fn replacements_name_their_plates_and_the_outputs_the_files_beside_the_video() {
             root.join("visual/masks/t1-source.png"),
             root.join("visual/masks/t1-mask.png"),
             root.join("visual/plates/t1.png"),
+            root.join("visual/patches/t1/0.png"),
+            root.join("visual/patches/t1/0-1.png"),
             root.join("visual/patches/t1-preview.png"),
         ]
     );

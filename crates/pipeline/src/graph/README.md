@@ -36,7 +36,10 @@ the job record, every document (`work_dir::store::keys::output_parts`) of every 
 line corrections for the review and the quality check, the text corrections for reading,
 translation and review, and, for the output and the localized video, their own earlier run's
 record; `is_optional_read` marks the corrections and that earlier record, which a job may not
-have. `dependents` is every step that reads a step, directly or through others, in run order;
+have. `writes_rows` names the per-frame table a step owns (`frames` for the stroke masks,
+`readings` for the read-back check), and `reads_rows` the tables whose rows a step's worker
+receives after its documents, one `Input` frame per row (`frames` for composition, the check and
+the localized video). `dependents` is every step that reads a step, directly or through others, in run order;
 `--rerun` clears them with it. Which documents a step writes is `work_dir::store::keys`, and which
 files its rows name is `work_dir::store::files`.
 
@@ -56,6 +59,8 @@ files its rows name is `work_dir::store::files`.
     kind (`a_step_reads_the_job_record_and_every_document_of_every_step_it_reads`);
   - a step's dependents are every step that reads it through any path, all after it
     (`a_steps_dependents_are_every_step_that_reads_it_through_any_path`);
+  - each per-frame table has one owner, and a step reads rows only of a step it depends on
+    (`the_stroke_masks_own_the_frames_rows_that_composition_and_the_video_read`);
   - only the settings a step reads reach its fingerprint
     (`only_the_settings_a_step_reads_reach_its_fingerprint`);
   - alignment and review read both transcripts (`alignment_and_review_read_both_transcripts`);

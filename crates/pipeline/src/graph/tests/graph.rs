@@ -63,11 +63,11 @@ fn changed_steps_carry_their_revision_and_the_rest_are_at_one() {
     assert_eq!(revision(TextTranslate), 7);
     assert_eq!(revision(TextReview), 3);
     assert_eq!(revision(TextTypeset), 4);
-    assert_eq!(revision(TextMask), 2);
+    assert_eq!(revision(TextMask), 3);
     assert_eq!(revision(TextInpaint), 3);
-    assert_eq!(revision(TextCompose), 2);
-    assert_eq!(revision(TextVerify), 1);
-    assert_eq!(revision(LocalizedVideo), 2);
+    assert_eq!(revision(TextCompose), 3);
+    assert_eq!(revision(TextVerify), 2);
+    assert_eq!(revision(LocalizedVideo), 3);
     for step in StepName::ALL {
         if !matches!(
             step,
@@ -85,6 +85,7 @@ fn changed_steps_carry_their_revision_and_the_rest_are_at_one() {
                 | TextMask
                 | TextInpaint
                 | TextCompose
+                | TextVerify
                 | LocalizedVideo
         ) {
             assert_eq!(revision(step), 1, "{step}");
@@ -310,4 +311,28 @@ fn the_read_back_check_runs_between_composition_and_the_outputs_in_an_ocr_worker
     let before = settings(TextVerify, &job);
     job.onscreen_text.localized_video = !job.onscreen_text.localized_video;
     assert_ne!(before, settings(TextVerify, &job));
+}
+
+#[test]
+fn the_stroke_masks_own_the_frames_rows_that_composition_and_the_video_read() {
+    use StepName::*;
+    for step in StepName::ALL {
+        let owned = writes_rows(step);
+        match step {
+            TextMask => assert_eq!(owned, &[Table::Frames]),
+            TextVerify => assert_eq!(owned, &[Table::Readings]),
+            _ => assert!(owned.is_empty(), "{step}"),
+        }
+        for table in reads_rows(step) {
+            let owner = StepName::ALL
+                .into_iter()
+                .find(|s| writes_rows(*s).contains(table))
+                .expect("an owner");
+            assert!(dependents(owner).contains(&step), "{step} reads {table}");
+        }
+    }
+    assert_eq!(reads_rows(TextCompose), &[Table::Frames]);
+    assert_eq!(reads_rows(TextVerify), &[Table::Frames]);
+    assert_eq!(reads_rows(LocalizedVideo), &[Table::Frames]);
+    assert!(reads_rows(TextInpaint).is_empty());
 }

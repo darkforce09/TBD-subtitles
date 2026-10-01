@@ -23,10 +23,10 @@ side of where another baked occurrence over the same place (intersection over un
 more) starts and ends, then its plates' first frames, spread evenly: distinct, at most 8.
 
 For each sampled frame, in frame order, `area::sample_area` places the keyframe lettering quad
-(the `lettering_quad`, else the tracked quad) and the furigana on the plate covering the frame,
-as composition placed them, and grows them by 0.75 of a line into a region on even pixels. The
+(the `lettering_quad`, else the tracked quad) and the furigana on the plate covering the frame, at
+the frame's shift in the request's `Motion` (from the `frames` rows), as composition lettered them, and grows them by 0.75 of a line into a region on even pixels. The
 `RegionSource` decodes that region of the source frame; every patch the localized video blends at
-that frame (`localize::patches::Schedule`) is blended over it by `localize::still`, which uses the
+that frame (`localize::patches::Schedule`, the patch of each frame's shift) is blended over it by `localize::still`, which uses the
 render's own Y′CbCr blend; the region is enlarged so a line is 48 pixels tall, within 8 million
 pixels.
 
@@ -46,8 +46,9 @@ English: 1 minus the edit distance over the longer length. `verdict::verdict` tu
 occurrence with a failed frame to `Fallback`: “The finished picture still shows Japanese” when
 any frame showed Japanese, else “The English does not read back cleanly”.
 
-`verify` returns a `VerifiedReplacements`: the composed document with the final statuses, and
-per checked occurrence each frame's `VerifyReading`. An observer sees each sample's lines and
+`verify` returns a `Verified`: the `VerifiedReplacements` (the composed document with the final
+statuses, and per checked occurrence the frames read and whether all passed) and every frame's
+`VerifyReading` with its occurrence id, which the task stores as `readings` rows. An observer sees each sample's lines and
 the enlarged picture read, which the `visual_validation` tool's `verify-probe` prints and saves.
 
 ## Boundaries

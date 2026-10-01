@@ -11,13 +11,14 @@
 //! **Signals and state:** none; one static kind per type.
 //!
 //! **Invariants:** a key that names no record type is an error, never a guess; an `outputs` key is
-//! one `keys::output_parts` lists; `frames` and `readings` have no record type yet; a kind's check
-//! and its JSON read the same type.
+//! one `keys::output_parts` lists; every `frames` row is a `FrameRecord` and every `readings` row a
+//! `VerifyReading`; a kind's check and its JSON read the same type.
 
 use job_model::StepName;
 use job_model::job::{JobRecord, StepRecord};
 use job_model::onscreen::{
-    LocalizedVideoRecord, ReplacementDocument, TextCorrections, TextDocument, VerifiedReplacements,
+    FrameRecord, LocalizedVideoRecord, ReplacementDocument, TextCorrections, TextDocument,
+    VerifiedReplacements, VerifyReading,
 };
 use job_model::outputs::{
     AdjudicationPass, Aligned, Corrections, EngineTranscript, FixRecord, OutputRecord,
@@ -129,21 +130,24 @@ static QC_REPORT: RecordKind = RecordKind::of::<QcReport>("QcReport");
 static OUTPUT_RECORD: RecordKind = RecordKind::of::<OutputRecord>("OutputRecord");
 static LOCALIZED_VIDEO_RECORD: RecordKind =
     RecordKind::of::<LocalizedVideoRecord>("LocalizedVideoRecord");
+static FRAME_RECORD: RecordKind = RecordKind::of::<FrameRecord>("FrameRecord");
+static VERIFY_READING: RecordKind = RecordKind::of::<VerifyReading>("VerifyReading");
 
 /// The kind of the row of `key` in `table`; an error when no record type is defined for it.
 pub fn kind(table: Table, key: &Key) -> Result<&'static RecordKind> {
     let at = format!("table {table}, key {}", shown(key));
-    if matches!(table, Table::Frames | Table::Readings) {
-        return Err(PipelineError::new(
-            at,
-            format!("no record type is defined for the {table} table yet"),
-        ));
-    }
-    let Key::Name(name) = key else {
-        return Err(PipelineError::new(
-            at,
-            "a per-frame key addresses a table keyed by name",
-        ));
+    let name = match key {
+        Key::Name(name) => name,
+        Key::Frame { .. } => {
+            return match table {
+                Table::Frames => Ok(&FRAME_RECORD),
+                Table::Readings => Ok(&VERIFY_READING),
+                _ => Err(PipelineError::new(
+                    at,
+                    "a per-frame key addresses a table keyed by name",
+                )),
+            };
+        }
     };
     let found = match table {
         Table::Meta => match name.as_str() {

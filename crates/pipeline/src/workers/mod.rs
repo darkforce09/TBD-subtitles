@@ -117,7 +117,8 @@ pub fn run_worker(
     for (key, value) in env {
         run = run.env(key, value);
     }
-    if !data.inputs.is_empty() {
+    let rows = graph::reads_rows(step);
+    if !data.inputs.is_empty() || !rows.is_empty() {
         run = run.stdin_piped();
     }
     if graph::placement(step) == graph::Placement::Worker(Binary::LocalLlm) {
@@ -146,9 +147,9 @@ pub fn run_worker(
         tracing::debug!("step {step} starts with {} MiB of VRAM free", b.free_mib);
     }
     let mut worker = run.spawn().context(context.clone())?;
-    let sending = worker
-        .take_stdin()
-        .map(|stdin| channel::inputs::send_inputs(data.store.clone(), data.inputs.to_vec(), stdin));
+    let sending = worker.take_stdin().map(|stdin| {
+        channel::inputs::send_inputs(data.store.clone(), data.inputs.to_vec(), rows, stdin)
+    });
     let monitor = baseline
         .as_ref()
         .map(|b| gpu_monitor::Monitor::start(worker.pid(), b.used_mib));

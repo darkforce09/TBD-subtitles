@@ -4,7 +4,8 @@
 //! **Role:** [`install`] keeps a private copy of the worker's stdout pipe for frames and points
 //! descriptor 1 at stderr; [`progress`], [`model_call`], [`output`], [`measure`], [`failed`] and
 //! [`done`] send one frame each; [`read_inputs`] reads the `Input` frames the runner writes to the
-//! worker's stdin.
+//! worker's stdin, and [`read_documents`] reads the named ones up to the per-frame rows that
+//! follow them, which the step then reads one at a time with [`read_input`].
 //!
 //! **Position:** called by `pipeline::tasks::worker_main` first thing in a worker, before any
 //! native library loads, and by the model-call logging layers of the app binaries.
@@ -23,7 +24,7 @@ use std::io::{self, Read, Write};
 use std::os::fd::AsFd;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use crate::address::Address;
+use crate::address::{Address, Key};
 use crate::frame::{self, Tag};
 use crate::progress::Progress;
 
@@ -125,22 +126,47 @@ pub fn done() -> bool {
     with_sink(|sink| sink.done())
 }
 
+/// One value the runner sent: its address and its `rkyv` archive.
+pub type Input = (Address, Vec<u8>);
+
+/// Read the next `Input` frame; `None` when the stream ends cleanly.
+pub fn read_input(r: &mut impl Read) -> io::Result<Option<Input>> {
+    let Some(frame) = frame::read_frame(r)? else {
+        return Ok(None);
+    };
+    if frame.tag != Tag::Input {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("a {} frame among the step's inputs", frame.tag.name()),
+        ));
+    }
+    let (address, taken) = Address::read(&mut frame.payload.as_slice())?;
+    let mut payload = frame.payload;
+    let archive = payload.split_off(taken);
+    Ok(Some((address, archive)))
+}
+
 /// Read `Input` frames until the stream ends cleanly: each value's address and its archive.
-pub fn read_inputs(r: &mut impl Read) -> io::Result<Vec<(Address, Vec<u8>)>> {
+pub fn read_inputs(r: &mut impl Read) -> io::Result<Vec<Input>> {
     let mut inputs = Vec::new();
-    while let Some(frame) = frame::read_frame(r)? {
-        if frame.tag != Tag::Input {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("a {} frame among the step's inputs", frame.tag.name()),
-            ));
-        }
-        let (address, taken) = Address::read(&mut frame.payload.as_slice())?;
-        let mut payload = frame.payload;
-        let archive = payload.split_off(taken);
-        inputs.push((address, archive));
+    while let Some(input) = read_input(r)? {
+        inputs.push(input);
     }
     Ok(inputs)
+}
+
+/// Read the named `Input` frames the runner sends first, up to the first per-frame row or the
+/// end of the stream; that row, when there is one, comes back beside them, and the rows after it
+/// stay on `r` for the step to read one at a time.
+pub fn read_documents(r: &mut impl Read) -> io::Result<(Vec<Input>, Option<Input>)> {
+    let mut documents = Vec::new();
+    while let Some(input) = read_input(r)? {
+        if matches!(input.0.key, Key::Frame { .. }) {
+            return Ok((documents, Some(input)));
+        }
+        documents.push(input);
+    }
+    Ok((documents, None))
 }
 
 fn with_sink(send: impl FnOnce(&FrameSink<File>) -> io::Result<()>) -> bool {

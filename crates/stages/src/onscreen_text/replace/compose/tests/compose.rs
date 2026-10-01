@@ -107,6 +107,7 @@ fn replaced(root: &Path, id: &str, rect: PixelRect, line_height: f64) -> Replace
             mask: name("mask"),
             plate: Some(name("plate")),
             patch: None,
+            shifted: Vec::new(),
         });
     }
     ReplacedText {
@@ -152,7 +153,17 @@ const RECT: PixelRect = PixelRect {
 fn a_missing_font_is_an_error() {
     let root = job("no_font");
     let (mut document, text) = documents(Vec::new(), Vec::new());
-    assert!(compose(&mut document, &text, &root, &root, &|_, _| {}).is_err());
+    assert!(
+        compose(
+            &mut document,
+            &text,
+            &root,
+            &root,
+            &Motion::default(),
+            &|_, _| {}
+        )
+        .is_err()
+    );
     std::fs::remove_dir_all(&root).unwrap();
 }
 
@@ -166,9 +177,16 @@ fn a_synthetic_plate_is_lettered_and_baked() {
         vec![occurrence("sign/1", Some("SHOP"), quad)],
     );
     let calls = std::sync::Mutex::new(Vec::new());
-    compose(&mut document, &text, &root, &fonts(), &|done, total| {
-        calls.lock().unwrap().push((done, total));
-    })
+    compose(
+        &mut document,
+        &text,
+        &root,
+        &fonts(),
+        &Motion::default(),
+        &|done, total| {
+            calls.lock().unwrap().push((done, total));
+        },
+    )
     .unwrap();
     assert_eq!(*calls.lock().unwrap(), vec![(0, 1), (1, 1)]);
     let item = &document.texts[0];
@@ -220,7 +238,15 @@ fn compose_again_is_identical(root: &Path, text: &TextDocument, first: &[u8]) {
         vec![replaced(root, "sign/1", RECT, 100.0)],
         vec![occurrence("sign/1", Some("SHOP"), quad)],
     );
-    compose(&mut again, text, root, &fonts(), &|_, _| {}).unwrap();
+    compose(
+        &mut again,
+        text,
+        root,
+        &fonts(),
+        &Motion::default(),
+        &|_, _| {},
+    )
+    .unwrap();
     assert_eq!(
         std::fs::read(root.join("visual/patches/sign_1/0.png")).unwrap(),
         first
@@ -257,7 +283,15 @@ fn unreadable_or_undrawable_writing_falls_back() {
             occurrence("blank", None, rect_quad(140.0, 130.0, 320.0, 100.0)),
         ],
     );
-    compose(&mut document, &text, &root, &fonts(), &|_, _| {}).unwrap();
+    compose(
+        &mut document,
+        &text,
+        &root,
+        &fonts(),
+        &Motion::default(),
+        &|_, _| {},
+    )
+    .unwrap();
     assert_eq!(
         document.texts[0].status,
         ReplaceStatus::Fallback(TOO_SMALL.into())
@@ -328,7 +362,15 @@ fn neighbouring_writing_shares_a_container_and_its_size_ratio() {
         "ratio kept: {caps:?}"
     );
 
-    compose(&mut document, &text, &root, &fonts(), &|_, _| {}).unwrap();
+    compose(
+        &mut document,
+        &text,
+        &root,
+        &fonts(),
+        &Motion::default(),
+        &|_, _| {},
+    )
+    .unwrap();
     for item in &document.texts {
         assert_eq!(item.status, ReplaceStatus::Baked);
         assert_eq!(item.container.as_deref(), Some("title"));
@@ -371,7 +413,15 @@ fn a_duplicate_of_one_sign_is_drawn_once_by_the_detector_occurrence() {
             occurrence("sign", Some("SHOP"), detector),
         ],
     );
-    compose(&mut document, &text, &root, &fonts(), &|_, _| {}).unwrap();
+    compose(
+        &mut document,
+        &text,
+        &root,
+        &fonts(),
+        &Motion::default(),
+        &|_, _| {},
+    )
+    .unwrap();
     assert_eq!(
         document.texts[0].status,
         ReplaceStatus::Fallback(COVERED.into())
@@ -380,5 +430,63 @@ fn a_duplicate_of_one_sign_is_drawn_once_by_the_detector_occurrence() {
     assert!(!root.join("visual/patches/sign-c2").exists());
     assert_eq!(document.texts[1].status, ReplaceStatus::Baked);
     document.validate().unwrap();
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+#[ignore = "needs the latin-fonts model"]
+fn a_plate_whose_frames_move_gets_one_patch_per_shift() {
+    let root = job("shifted");
+    let quad = rect_quad(140.0, 130.0, 320.0, 100.0);
+    let (mut document, text) = documents(
+        vec![replaced(&root, "sign/2", RECT, 100.0)],
+        vec![occurrence("sign/2", Some("SHOP"), quad)],
+    );
+    let mut motion = Motion::default();
+    for frame in 10..=29 {
+        let shift = if frame < 20 { 0.0 } else { 3.0 };
+        motion.add("sign/2", frame, 0, [shift, 0.0]);
+    }
+    for frame in 30..=59 {
+        motion.add("sign/2", frame, 1, [5.0, 0.0]);
+    }
+    compose(&mut document, &text, &root, &fonts(), &motion, &|_, _| {}).unwrap();
+    let item = &document.texts[0];
+    assert_eq!(item.status, ReplaceStatus::Baked);
+    assert!(
+        item.plates[1].shifted.is_empty(),
+        "its frames keep its own shift"
+    );
+    let shifted = &item.plates[0].shifted;
+    assert_eq!(shifted.len(), 1);
+    assert_eq!(shifted[0].shift, [3.0, 0.0]);
+    assert_eq!(
+        shifted[0].patch,
+        PathBuf::from("visual/patches/sign_2/0-1.png")
+    );
+    let own = image::open(root.join(item.plates[0].patch.as_ref().unwrap()))
+        .unwrap()
+        .into_rgba8();
+    let moved = image::open(root.join(&shifted[0].patch))
+        .unwrap()
+        .into_rgba8();
+    assert_eq!(own.dimensions(), moved.dimensions());
+    // The lettering moves three pixels right; the fill under the mask stays where it was.
+    let opaque_letters = |patch: &image::RgbaImage, dx: u32| {
+        (40 + dx..360 + dx)
+            .flat_map(|x| (30..130).map(move |y| (x, y)))
+            .filter(|&(x, y)| patch.get_pixel(x, y).0 == [255, 255, 255, 255])
+            .count()
+    };
+    assert_eq!(opaque_letters(&own, 0), opaque_letters(&moved, 3));
+    assert_ne!(own, moved);
+    let mut fallen = document.clone();
+    bake::fall_back(&root, &mut fallen.texts[0], "test".into()).unwrap();
+    assert!(
+        fallen.texts[0]
+            .plates
+            .iter()
+            .all(|p| p.shifted.is_empty() && p.patch.is_none())
+    );
     std::fs::remove_dir_all(&root).unwrap();
 }

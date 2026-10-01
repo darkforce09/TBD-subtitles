@@ -542,6 +542,7 @@ fn a_localized_job_loads_each_replacement_and_the_selected_one_s_pictures() {
             mask: PathBuf::from("visual/patches/board/mask.png"),
             plate: None,
             patch: None,
+            shifted: Vec::new(),
         }],
     );
     board.preview = Some(PathBuf::from("visual/patches/board/preview.png"));
@@ -557,14 +558,42 @@ fn a_localized_job_loads_each_replacement_and_the_selected_one_s_pictures() {
             frame_count: 720,
             texts: vec![board, name],
         },
-        checks: Vec::new(),
+        checks: vec![job_model::onscreen::TextCheck {
+            id: "board".into(),
+            samples: 2,
+            passed: true,
+        }],
     };
     store
         .put_output(StepName::TextVerify, None, &verified)
         .expect("verified");
+    let mut write = store.write().expect("write");
+    for (frame, english, similarity) in [(240, "BOARD", 1.0), (287, "BOAD", 0.8)] {
+        let key = worker_channel::address::Key::Frame {
+            occurrence: "board".into(),
+            frame,
+        };
+        let reading = job_model::onscreen::VerifyReading {
+            frame,
+            english_read: english.into(),
+            similarity,
+            passed: true,
+            ..Default::default()
+        };
+        write
+            .put(worker_channel::address::Table::Readings, &key, &reading)
+            .expect("a reading");
+    }
+    write.commit().expect("commit");
     let session = fixture.load();
     let localized = session.localized.expect("localized");
     assert_eq!(localized.replacements["board"].status, ReplaceStatus::Baked);
+    assert_eq!(
+        localized.replacements["board"].check.as_deref(),
+        Some("Checked: English reads back as “BOAD”"),
+        "the weakest match of its readings rows"
+    );
+    assert_eq!(localized.replacements["name"].check, None);
     assert_eq!(
         localized.replacements["name"].status,
         ReplaceStatus::Fallback("the writing is too small".into())

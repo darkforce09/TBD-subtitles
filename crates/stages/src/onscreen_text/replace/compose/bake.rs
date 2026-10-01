@@ -3,14 +3,15 @@
 //! **Role:** turn one laid-out occurrence into its patch and preview files and record them.
 //! **Position:** the file side of `compose`, after layout.
 //! **Signals and state:** reads the plate, mask and source PNGs one plate at a time; writes
-//! `visual/patches/<id>/<n>.png` and `preview.png`.
+//! `visual/patches/<id>/<n>.png` for plate `n` at its own shift, `<n>-<k>.png` for each further
+//! shift its frames take, and `preview.png`.
 //! **Invariants:** an occurrence's patch folder is rebuilt from nothing on every run; a fallback
 //! removes it and clears every patch path; missing or mis-sized input images are errors.
 
 use std::path::{Path, PathBuf};
 
 use image::{DynamicImage, GrayImage, RgbImage};
-use job_model::onscreen::{PixelRect, ReplaceStatus, ReplacedText};
+use job_model::onscreen::{PixelRect, ReplaceStatus, ReplacedText, ShiftedPatch};
 
 use super::Prepared;
 use super::colours;
@@ -20,10 +21,13 @@ use super::layout::{self, Layout};
 use super::patch;
 use super::render::{self, Canvas};
 use super::warp;
+use crate::localize::motion::Motion;
 use crate::onscreen_text::TextResult;
 
 /// The patch folder, relative to the job directory.
 const PATCHES: &str = "visual/patches";
+/// Why lettering whose quad does not map onto a plate falls back.
+const UNMAPPED: &str = "The writing's position cannot be mapped onto its background";
 
 /// Letter `item` and write its patches; `Ok(Err(reason))` when it must fall back instead.
 pub(super) fn bake(
@@ -32,6 +36,7 @@ pub(super) fn bake(
     ready: &Prepared,
     metrics: &FontMetrics<'_>,
     layout: &Layout,
+    motion: &Motion,
 ) -> TextResult<Result<(), String>> {
     let folder = folder(&item.id);
     reset(&root.join(&folder))?;
@@ -52,19 +57,33 @@ pub(super) fn bake(
     }
     for index in 0..item.plates.len() {
         let plate = &item.plates[index];
-        let quad = containers::plate_quad(ready.quad, plate);
         let (width, height) = (plate.rect.width, plate.rect.height);
-        let Some(lettering) = warp::warp(&canvas, ready.area, quad, width, height) else {
-            return Ok(Err(
-                "The writing's position cannot be mapped onto its background".to_string(),
-            ));
+        let lettering_at = |shift: [f64; 2]| {
+            let quad = containers::plate_quad_at(ready.quad, plate, shift);
+            warp::warp(&canvas, ready.area, quad, width, height)
+        };
+        let Some(lettering) = lettering_at(plate.shift) else {
+            return Ok(Err(UNMAPPED.to_string()));
         };
         let background = plate_image(root, plate.plate.as_deref(), plate.rect, &item.id)?;
         let mask = mask_image(root, &plate.mask, plate.rect)?;
-        let composed = patch::patch(&background, &mask, &lettering);
+        let composed = DynamicImage::ImageRgba8(patch::patch(&background, &mask, &lettering));
         let relative = folder.join(format!("{index}.png"));
-        let composed = DynamicImage::ImageRgba8(composed);
         patch::write_png(&root.join(&relative), &composed)?;
+        let mut shifted = Vec::new();
+        for (n, shift) in motion
+            .other_shifts(&item.id, index, plate.shift)
+            .into_iter()
+            .enumerate()
+        {
+            let Some(lettering) = lettering_at(shift) else {
+                return Ok(Err(UNMAPPED.to_string()));
+            };
+            let moved = DynamicImage::ImageRgba8(patch::patch(&background, &mask, &lettering));
+            let path = folder.join(format!("{index}-{}.png", n + 1));
+            patch::write_png(&root.join(&path), &moved)?;
+            shifted.push(ShiftedPatch { shift, patch: path });
+        }
         if index == key {
             let source = rgb_image(root, &plate.source, plate.rect)?;
             let preview = folder.join("preview.png");
@@ -78,6 +97,7 @@ pub(super) fn bake(
             item.preview = Some(preview);
         }
         item.plates[index].patch = Some(relative);
+        item.plates[index].shifted = shifted;
     }
     item.status = ReplaceStatus::Baked;
     Ok(Ok(()))
@@ -89,6 +109,7 @@ pub(super) fn fall_back(root: &Path, item: &mut ReplacedText, reason: String) ->
     item.preview = None;
     for plate in &mut item.plates {
         plate.patch = None;
+        plate.shifted.clear();
     }
     reset(&root.join(folder(&item.id)))
 }

@@ -2,7 +2,7 @@
 //! settings it depends on, which stored values it reads, and which steps depend on it.
 //!
 //! **Role:** the one table the runner, the resume check and the workers consult; the order is
-//! `StepName::ALL`; the documents each step writes are named by `work_dir::store::keys`.
+//! `StepName::ALL`; which per-frame tables each step writes and reads; the documents each step writes are named by `work_dir::store::keys`.
 //!
 //! **Position:** used by `runner`, `resume` and `workers`.
 //!
@@ -199,14 +199,16 @@ const REVISIONS: &[(StepName, u32)] = &[
     // Typesetting writes the combined file's events alone; the localized file has none.
     (StepName::TextTypeset, 4),
     // Masks, fills and lettering account for ruby, check each erase and make one replacement per
-    // sign.
-    (StepName::TextMask, 2),
-    (StepName::TextCompose, 2),
+    // sign; every frame's mask is a `frames` row, a plate's erase the union of its frames', and
+    // a plate whose frames take several shifts has one patch per shift.
+    (StepName::TextMask, 3),
+    (StepName::TextCompose, 3),
     // Strokes left after the wider retry no longer decide; the read-back check does.
     (StepName::TextInpaint, 3),
-    // A local OCR reads each finished replacement back before it reaches the localized video.
-    (StepName::TextVerify, 1),
-    (StepName::LocalizedVideo, 2),
+    // A local OCR reads each finished replacement back before it reaches the localized video;
+    // its readings are `readings` rows, and each frame blends the patch of its own shift.
+    (StepName::TextVerify, 2),
+    (StepName::LocalizedVideo, 3),
 ];
 
 /// The revision of a step's code; a change makes every earlier output of the step stale.
@@ -296,6 +298,27 @@ pub fn reads(step: StepName) -> Vec<Address> {
         reads.push(keys::output_address(step, None));
     }
     reads
+}
+
+/// The per-frame tables `step` writes rows of: the stroke masks write `frames`, the read-back
+/// check `readings`. The step owns the table: its rows go whenever the step runs again.
+pub fn writes_rows(step: StepName) -> &'static [Table] {
+    match step {
+        StepName::TextMask => &[Table::Frames],
+        StepName::TextVerify => &[Table::Readings],
+        _ => &[],
+    }
+}
+
+/// The per-frame tables whose rows `step` reads, all of them, in key order: composition, the
+/// read-back check and the localized video place each frame's lettering by its `frames` row. A
+/// worker receives them after the documents [`reads`] names, one `Input` frame per row, and reads
+/// them one at a time.
+pub fn reads_rows(step: StepName) -> &'static [Table] {
+    match step {
+        StepName::TextCompose | StepName::TextVerify | StepName::LocalizedVideo => &[Table::Frames],
+        _ => &[],
+    }
 }
 
 /// Whether the step reads the record of its own earlier run: the output and the localized video

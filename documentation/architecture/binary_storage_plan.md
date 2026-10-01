@@ -90,6 +90,16 @@ records name by path.
   own (so a worker that reports progress before it has read every input never deadlocks), and
   closes stdin. The worker reads each frame into one buffer and uses it in place with
   `rkyv::access`; `unaligned` makes any buffer valid.
+- **Per-frame rows down stdin.** A step that reads a per-frame table (`graph::reads_rows`:
+  `text_compose`, `text_verify` and `localized_video` read `frames`) receives, after its
+  documents, every row of that table in key order from the same snapshot, one `Input` frame per
+  row read in place from its page. The worker reads its documents up to the first row
+  (`read_documents`) and leaves the rows on the pipe; the task walks them once, one buffer at a
+  time (`StepIo::frame_rows`), and keeps only what it folds them into (runs of equal shift per
+  plate). The pipe's capacity holds the runner's sending thread back until the worker reads on,
+  so neither side ever holds a table whole, and a worker drains whatever it did not read before
+  `Done`, so the sending thread always ends cleanly. In the runner the same call walks the step's
+  snapshot.
 - **Outputs on a private descriptor.** At start, before any native library loads, the worker
   duplicates its stdout to a new descriptor it keeps for frames and points descriptor 1 at stderr
   (`rustix`, safe calls), so anything whisper.cpp, ONNX Runtime or mistral.rs prints goes to the
@@ -152,12 +162,12 @@ a job is opened, the files in the step-owned folders (`audio/`,
 | `step_records` | step name (`probe_decode` … `localized_video`) | fingerprint of its inputs, finished time, measures (with the worker's `Measure` frame) |
 | `outputs` | step name (`asr_parakeet`, `redecode_whisper` are steps of their own), or `<step>/<part>` for a step's further document (`cues/dropped_sounds`, `text_typeset/ass`) | the step's output document |
 | `corrections` | `"lines"`, `"text"`, `"fix"` | the owner's line and on-screen text corrections, and Fix It's record of its runs |
-| `frames` | (occurrence id, frame number) | quad, follow score and shift, mask as run-length rows, plate id |
-| `readings` | (occurrence id, frame number) | the read-back check's Japanese found, English read, similarity, verdict |
+| `frames` | (occurrence id, frame number) | a `FrameRecord` written by `text_mask`: quad, follow score, shift and scale, erase mask as run-length rows relative to its plate, plate index |
+| `readings` | (occurrence id, frame number) | a `VerifyReading` written by `text_verify`: Japanese found, English read, similarity, verdict |
 
-Values are `rkyv` archives of the `job_model` types. `frames` and `readings` stay empty until
-phase 5: they are what per-frame methods (a temporal erase mask, per-frame following, per-frame
-approval) write.
+Values are `rkyv` archives of the `job_model` types. Each per-frame table belongs to the one step
+that writes it (`graph::writes_rows`); `dump <job> frames` prints every row as JSON Lines and
+`dump <job> frames <occurrence>/<frame>` one.
 
 ## Adding a field
 
@@ -172,8 +182,11 @@ rerun, and Git keeps the old code.
 Law 6 reads: *each step commits its output and its record in one transaction, and is skipped
 while its record's revision and input fingerprint are current.* A rerun of a step deletes that
 step's output and record and those of every step that reads it (the graph in
-`crates/pipeline/src/graph/`), plus their `frames` and `readings` rows, in one transaction; files
-they named become unreferenced and are removed on the next open. The
+`crates/pipeline/src/graph/`), plus the `frames` rows when `text_mask` is among them and the
+`readings` rows when `text_verify` is, in one transaction; files they named become unreferenced
+and are removed on the next open. Before a step runs, its record and the rows of the per-frame
+table it owns go in a transaction of their own, so a step that runs again for a changed input
+never leaves rows of frames its earlier run had beside its new ones. The
 [decision entry](/documentation/decisions/storage.md) records the law.
 
 ## Library shared by episodes
@@ -239,9 +252,27 @@ and reruns Dressrosa 11 and 28 with identical `.ass` and `.localized.ass` files 
    one, so the rerun may replace that file. Dressrosa 11 and 28, their earlier documents stored
    once by a throwaway seeder outside the repository and rerun from `text_mask`, gave identical
    `.ass` and `.localized.ass` files and the same `text_verify` verdicts.
-5. **Per-frame tables.** `frames` and `readings` filled by `text_mask`, `text_verify` and
-   following; the erase mask becomes per frame where the writing moves or its background
-   changes. Measured on Dressrosa 11, 28 and a 60 fps video: time, RAM, VRAM, `job.redb` size.
+5. **Per-frame tables (implemented, measurements outstanding).** `text_mask` sends one
+   `FrameRecord` row per frame of every occurrence that keeps its plates, each as one `Output`
+   frame: the keyframe quad carried to the frame, the correlation of the keyframe writing there
+   (the tracker's match for moving writing, the keyframe window against the frame's for still
+   writing), the shift and scale, the frame's erase mask as run-length rows relative to its plate
+   (`RleRun`), and the plate. The per-frame mask is the keyframe mask carried to the frame's
+   placement, so still writing keeps exactly the masks, plates and files it had. A plate run now
+   splits where a frame's mask overlaps the run's union mask by less than 0.85 intersection over
+   union, where the scale changes or where the background changes; a plate is the union of its
+   frames' rectangles and masks, so a one-pixel jitter shares a plate while writing that travels
+   starts new ones. `text_compose` reads the rows and letters one patch per shift a plate's
+   frames take (`Plate::shifted`); `localized_video` and `text_verify` blend each frame the patch
+   of its own shift. `text_verify` writes each reading as a `VerifyReading` row and keeps only a
+   verdict per occurrence (`TextCheck { samples, passed }`); Check Text reads the rows through the
+   store. The rows reach the workers as described under
+   [per-frame rows down stdin](#worker-channel). The `outputs`, `frames` and `readings` layouts
+   are bumped (every table's layout is in every step's fingerprint, so an existing job reruns
+   whole), and `text_mask`, `text_compose`, `text_verify` and `localized_video` carry new
+   revisions. To be measured on Dressrosa 11, 28 and a 60 fps video: time, RAM, VRAM, `job.redb`
+   size, and the `.ass`, `.localized.ass` and `text_verify` verdicts against phase 4.
+   <!-- measurements pending -->
 6. **Library.** `library.redb`, matching by reading and crop hash, reuse measured over a batch
    of episodes.
 

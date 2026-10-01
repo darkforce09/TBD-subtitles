@@ -19,9 +19,10 @@ crates/stages/src/onscreen_text/replace/mask/
 ├── mod.rs          `extract`: candidates, fallbacks, keyframe decode and the document
 ├── panel.rs        which clusters are writing printed on a panel filling the box
 ├── pieces.rs       connected ink pieces: kept, cut, furigana, frames, beside a loose box
-├── plates.rs       background runs, moved masks, source plates and the plate cap
+├── plates.rs       a span streamed into runs, the correlation of still writing, the frame rows
 ├── probe.rs        `diagnose`: every figure segmentation and following judge an occurrence by
 ├── reach.rs        ink outside the window: strokes the box clips and furigana above a line
+├── runs.rs         background runs: per-frame masks, the overlap split, union plates, the cap
 ├── segment.rs      readings, partition choice, coverage and cut-off guards
 ├── select.rs       candidates, frame spans, keyframe quad, static check and rectangles
 ├── style.rs        fill and outline roles and colours, stroke and outline thickness, softness
@@ -138,11 +139,20 @@ sign), its plates are collected as static writing's. Any other frame under 0.8 l
 occurrence. The region moving plates sweep is decoded once; more than a quarter of the frame
 falls back.
 
-A frame joins the current run while its placement is unchanged and the plate pixels the mask keeps
+Every frame's erase mask is the keyframe mask carried to its placement. A frame joins the current
+run while it keeps the run's scale, its mask overlaps the union of the run's masks by an
+intersection over union of at least 0.85 (`MIN_MASK_IOU`), and the plate pixels both masks keep
 differ from the run's first frame by a mean under 3 and a 99th percentile under 24 per channel
-value. Each run is one `Plate` whose source is its first frame. Files live in
-`visual/masks/<occurrence>/`: `mask.png` for the keyframe placement, `mask-<n>.png` for each other
-placement, and `source-<n>.png` per plate. The mask folder is emptied at the start of every
+value. Each run is one `Plate`: the union of its frames' rectangles, its source the first frame,
+its erase mask the union of its frames' masks, its shift and scale the first frame's. Writing that
+keeps one placement therefore gets the plates a split per placement gives. Once an occurrence has
+its plates, every frame of its span goes to the caller's `FrameSink` as one `FrameRecord`: the
+keyframe quad carried to the frame, the correlation there (the tracker's score for moving writing;
+for still writing the keyframe window against the frame's, 0 without contrast), the shift and
+scale, the run-length mask relative to its plate and the plate index. A second occurrence with an
+id already given rows falls back, so rows never collide. Files live in `visual/masks/<occurrence>/`:
+`mask.png` for the keyframe placement, `mask-<n>.png` for the union mask of every other plate,
+and `source-<n>.png` per plate. The mask folder is emptied at the start of every
 extraction, and an occurrence that falls back after writing files loses its folder. More than
 2,000 plates for one occurrence falls back.
 
@@ -152,8 +162,9 @@ extraction, and an occurrence that falls back after writing files loses its fold
   `imageproc`, and the sibling `geometry` module.
 - Used by: `pipeline::tasks::replace` for the stroke-mask step; `diagnose` by the
   `visual_validation` tool's `mask-probe`.
-- Rules: source pixels are only read; only the current run's first frame and the frame being
-  examined are held; decode and file errors fail the step while visual problems fall back; the
+- Rules: source pixels are only read; only the current run's first frame, its union mask and the
+  frame being examined are held, with a log of a few bytes per frame from which the rows are sent
+  one at a time; decode and file errors fail the step while visual problems fall back; the
   document validates before it is returned.
 
 ## Related documentation

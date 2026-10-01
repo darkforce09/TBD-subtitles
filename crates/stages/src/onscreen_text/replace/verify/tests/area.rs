@@ -10,7 +10,7 @@ fn the_region_grows_three_quarters_of_a_line_around_the_lettering_and_its_ruby()
     );
     let ruby = quad(110.0, 92.0, 150.0, 99.0);
     let occurrence = occurrence("a", "Tower", quad(101.0, 100.0, 201.0, 120.0), vec![ruby]);
-    let area = sample_area(&text, &occurrence, 5, (1920, 1080)).unwrap();
+    let area = sample_area(&text, &occurrence, 5, (1920, 1080), &Motion::default()).unwrap();
     assert_eq!(area.lettering, (101.0, 92.0, 201.0, 120.0));
     assert_eq!(area.region, rect(86, 76, 130, 60));
     assert_eq!(area.line_px, 20.0);
@@ -25,8 +25,8 @@ fn the_lettering_follows_the_plate_covering_the_frame() {
     ];
     let text = replaced("a", plates, 60.0);
     let occurrence = occurrence("a", "Tower", quad(100.0, 100.0, 200.0, 120.0), Vec::new());
-    let early = sample_area(&text, &occurrence, 2, (1920, 1080)).unwrap();
-    let late = sample_area(&text, &occurrence, 7, (1920, 1080)).unwrap();
+    let early = sample_area(&text, &occurrence, 2, (1920, 1080), &Motion::default()).unwrap();
+    let late = sample_area(&text, &occurrence, 7, (1920, 1080), &Motion::default()).unwrap();
     assert_eq!(early.lettering, (100.0, 100.0, 200.0, 120.0));
     assert_eq!(late.lettering, (300.0, 100.0, 400.0, 120.0));
     assert_eq!(late.scale, 1.0);
@@ -45,7 +45,7 @@ fn the_measured_lettering_quad_wins_over_the_tracked_box() {
         keyframe_quad(&text, &occurrence),
         Some(quad(140.0, 60.0, 180.0, 80.0))
     );
-    let area = sample_area(&text, &occurrence, 0, (1920, 1080)).unwrap();
+    let area = sample_area(&text, &occurrence, 0, (1920, 1080), &Motion::default()).unwrap();
     assert_eq!(area.lettering, (140.0, 60.0, 180.0, 80.0));
 }
 
@@ -57,7 +57,7 @@ fn the_region_is_clipped_to_the_frame_and_the_scale_to_the_pixel_budget() {
         4.0,
     );
     let occurrence = occurrence("a", "Wide", quad(0.0, 0.0, 1919.0, 1079.0), Vec::new());
-    let area = sample_area(&text, &occurrence, 0, (1920, 1080)).unwrap();
+    let area = sample_area(&text, &occurrence, 0, (1920, 1080), &Motion::default()).unwrap();
     assert_eq!(area.region, rect(0, 0, 1920, 1080));
     let pixels = f64::from(area.region.width) * f64::from(area.region.height);
     assert!(pixels * area.scale * area.scale <= MAX_READ_PIXELS + 1.0);

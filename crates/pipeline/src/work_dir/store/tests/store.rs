@@ -160,7 +160,7 @@ fn a_changed_layout_version_drops_that_table_and_keeps_the_others() {
         .get(Table::Meta, &Key::Name(tables::LAYOUT_KEY.into()))
         .expect("get")
         .expect("a layout");
-    assert_eq!(layouts.versions.get("frames"), Some(&2));
+    assert_eq!(layouts.versions.get("frames"), Some(&3));
     drop(read);
 
     // The same versions again drop nothing.

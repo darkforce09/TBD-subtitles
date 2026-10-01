@@ -65,6 +65,7 @@ pub(crate) const TOOL_DEPENDENCIES: &[(&str, &[&str])] = &[
             "stages",
             "pipeline",
             "subtitle_formats",
+            "worker_channel",
         ],
     ),
 ];

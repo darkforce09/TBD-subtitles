@@ -28,15 +28,17 @@ worker process                                       job runner (crates/pipeline
                       private close-on-exec copy of the stdout pipe
   worker::progress / model_call / output / measure / done / failed
         └─ FrameSink: one lock, header + parts, flush ──▶ pipe ──▶ frame::read_header, per tag
-  worker::read_inputs ◀── stdin ◀── Input frames, from job.redb on a thread of the runner's
+  worker::read_documents ◀── stdin ◀── Input frames, from job.redb on a thread of the runner's,
+  worker::read_input     ◀──        then one Input frame per per-frame row
 ```
 
 A worker calls `worker::install` first thing, before any native library loads: it keeps a
 close-on-exec duplicate of its stdout pipe for frames and points descriptor 1 at stderr, so what
 whisper.cpp, ONNX Runtime or mistral.rs print lands in the step log and never in the frame stream,
 and FFmpeg or `claude` children never inherit the frame pipe. After that each helper sends one
-frame under one lock, so frames from different threads never interleave. `worker::read_inputs`
-reads the `Input` frames a runner writes to the worker's stdin. `src/README.md` describes each
+frame under one lock, so frames from different threads never interleave. `worker::read_documents`
+reads the documents a runner writes to the worker's stdin up to the first per-frame row, and
+`worker::read_input` the rows after it one at a time. `src/README.md` describes each
 file.
 
 ## Getting started
@@ -64,8 +66,8 @@ None: the crate reads no setting, file or feature.
   or `Output` value belongs to, which the runner's worker channel routes into the job database.
 - `progress`: `Progress` with `encode` and `decode`, and `ENCODED_LEN`, the `Progress` payload,
   for `crates/pipeline/`.
-- `worker`: `install`, `send`, `progress`, `model_call`, `output`, `measure`, `failed`, `done` and
-  `read_inputs`, for `crates/pipeline/src/tasks/mod.rs` (`worker_main`) and the model-call layers
+- `worker`: `install`, `send`, `progress`, `model_call`, `output`, `measure`, `failed`, `done`,
+  `read_input`, `read_inputs` and `read_documents`, for `crates/pipeline/src/tasks/mod.rs` (`worker_main`) and the model-call layers
   of `apps/tbd_subtitles/src/core/log_buffer/worker_channel.rs` and
   `apps/tbd_subtitles_llm/src/logging.rs`.
 - No binary.

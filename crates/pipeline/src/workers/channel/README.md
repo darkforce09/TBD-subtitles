@@ -8,7 +8,7 @@ job database and committed with the step's record.
 
 ```text
 crates/pipeline/src/workers/channel/
-├── inputs.rs   `send_inputs`: a step's stored values as `Input` frames down the worker's stdin
+├── inputs.rs   `send_inputs`: a step's stored values, then its per-frame rows, as `Input` frames
 ├── mod.rs      the module header and `StepWrite` re-exported
 ├── outputs.rs  `StepWrite`: a step's outputs kept in one write transaction and committed with its record
 └── tests/      end-to-end tests on real pipes, a thread playing the worker
@@ -17,7 +17,8 @@ crates/pipeline/src/workers/channel/
 ## How it works
 
 ```text
-job.redb ──read snapshot──▶ send_inputs (own thread) ──Input frames──▶ worker stdin ──▶ read_inputs
+job.redb ──read snapshot──▶ send_inputs (own thread) ──Input frames──▶ worker stdin ──▶ read_documents
+                             documents, then one frame per row ─────────────────────▶ StepIo::frame_rows
 worker frame fd ──Output frames──▶ frames::read_frames ──▶ StepWrite::receive ──▶ redb reserved row
                                                         runner: StepWrite::commit(step, record)
 ```
@@ -25,7 +26,10 @@ worker frame fd ──Output frames──▶ frames::read_frames ──▶ StepW
 `send_inputs` runs on a thread of its own, so a worker that reports progress before it reads every
 input never deadlocks its runner. It opens one read snapshot of the job's `JobStore`, writes each
 value as an `Input` frame (the value's `worker_channel::address` then its archive, straight from
-the database's page) and closes the pipe; a value missing from the database ends it with an error.
+the database's page), then every row of each per-frame table the step reads
+(`graph::reads_rows`), one frame per row in key order, and closes the pipe. The pipe's capacity
+holds the thread back until the worker reads on, so a table is never held whole on either side;
+a value missing from the database ends it with an error.
 `workers::run_worker` joins it after the worker's frames are read, and a failed send fails only a
 step that otherwise finished, since a worker that ends early closes the pipe on it.
 

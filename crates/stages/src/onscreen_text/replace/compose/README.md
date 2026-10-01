@@ -56,11 +56,12 @@ rasterized with tiny-skia on a canvas at twice the source resolution (at most 40
 the outline is a round-joined stroke twice its width, drawn under the fill, box-blurred when soft.
 
 Each plate places the keyframe quad scaled about its centre by the plate's scale, moved by its
-shift and made local to its rectangle. Every plate pixel maps back through the inverse homography
+shift and made local to its rectangle; a plate whose frames take other shifts (the `Motion` the
+task folds from the `frames` rows) is lettered again at each of them over the same fill. Every plate pixel maps back through the inverse homography
 into the canvas and samples it bilinearly. The patch's colour is the lettering over the inpainted
 plate everywhere; its alpha is the larger of the 3 by 3 feathered erase mask and the lettering's
-coverage. Patches go to `visual/patches/<id>/<n>.png`, and `preview.png` shows the keyframe
-plate's patch over its original pixels; every file is written to a temporary name and renamed.
+coverage. Patches go to `visual/patches/<id>/<n>.png`, those of further shifts to `<n>-<k>.png`
+(`Plate::shifted`), and `preview.png` shows the keyframe plate's patch over its original pixels; every file is written to a temporary name and renamed.
 Once every plate has its patch, the occurrence is `Baked`.
 
 ## Boundaries

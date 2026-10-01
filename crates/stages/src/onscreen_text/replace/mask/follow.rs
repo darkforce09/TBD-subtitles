@@ -73,8 +73,8 @@ pub(super) enum Path {
     /// The writing never leaves the keyframe placement: frames the search loses are disturbed
     /// by the picture (a flash, a streak crossing the sign), not moved.
     Still,
-    /// One placement per frame of the span.
-    Moving(Vec<Placement>),
+    /// One placement per frame of the span, with its correlation.
+    Moving(Vec<(Placement, f32)>),
 }
 
 /// Follow the writing through every frame of `span`, decoding its search region once.
@@ -91,9 +91,9 @@ pub(super) fn follow(
 /// placement, at least [`LEAST_STILL_SHARE`] of the frames are followed and the others still
 /// match somewhere by [`LEAST_DISTURBED_SCORE`].
 pub(super) fn path(found: &[Match]) -> Outcome<Path> {
-    let followed: Option<Vec<Placement>> = found
+    let followed: Option<Vec<(Placement, f32)>> = found
         .iter()
-        .map(|f| f.filter(|(_, score)| *score >= MIN_SCORE).map(|(p, _)| p))
+        .map(|f| f.filter(|(_, score)| *score >= MIN_SCORE))
         .collect();
     if let Some(placements) = followed {
         return Ok(Path::Moving(placements));

@@ -10,10 +10,11 @@
 //! picks the frames, `area` the region and the lines that belong to the lettering, `verdict`
 //! the judgement; the composite is `localize::still`, over `localize::patches::Schedule`.
 //! **Signals and state:** one decoded region and its patches at a time; the composed document is
-//! only read, and the verified copy it returns carries the final statuses and every reading.
+//! only read, and the verified copy it returns carries the final statuses and a verdict per
+//! occurrence, beside every reading for the `readings` rows.
 //! **Invariants:** only baked occurrences are checked and only a check's failure changes one, to
 //! `Fallback` with `JAPANESE_LEFT` or `UNREADABLE`; the patches blended into a sample are those
-//! the localized video blends at that frame, in the same order; files are only read.
+//! the localized video blends at that frame (each at the frame's shift), in the same order; files are only read.
 
 pub mod area;
 pub mod samples;
@@ -34,6 +35,7 @@ use self::samples::Candidate;
 pub use self::verdict::ReadLine;
 use super::RegionSource;
 use crate::localize::colour::Conversion;
+use crate::localize::motion::Motion;
 use crate::localize::patches::Schedule;
 use crate::localize::still::{PlacedPatch, finished_region};
 use crate::onscreen_text::TextResult;
@@ -85,6 +87,19 @@ pub struct Request<'a> {
     pub conversion: Conversion,
     /// Occurrence ids to check; every baked occurrence when `None`.
     pub only: Option<&'a [String]>,
+    /// The writing's shift in each frame, from the `frames` rows: which patch a sample blends and
+    /// where its lettering sits.
+    pub motion: &'a Motion,
+}
+
+/// What the check decided and what it read.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Verified {
+    /// The replacements with their final statuses and one verdict per checked occurrence.
+    pub replacements: VerifiedReplacements,
+    /// Every reading, with the id of the occurrence it read, in frame order per occurrence: the
+    /// rows of the `readings` table.
+    pub readings: Vec<(String, VerifyReading)>,
 }
 
 /// One line found in a sample.
@@ -116,7 +131,7 @@ pub fn verify(
     reader: &mut dyn ReadBack,
     observe: Observe,
     progress: &(dyn Fn(usize, usize) + Sync),
-) -> TextResult<VerifiedReplacements> {
+) -> TextResult<Verified> {
     let composed = request.composed;
     let occurrences: HashMap<&str, &TextOccurrence> = request
         .text
@@ -157,7 +172,7 @@ pub fn verify(
     let total = by_frame.values().map(Vec::len).sum();
     progress(0, total);
     let size = (composed.width, composed.height);
-    let mut schedule = Schedule::new(composed);
+    let mut schedule = Schedule::new(composed, request.motion)?;
     let mut readings: Vec<Vec<VerifyReading>> = vec![Vec::new(); checked.len()];
     let mut done = 0;
     for (&frame, positions) in &by_frame {
@@ -165,7 +180,7 @@ pub fn verify(
         for &position in positions {
             let (index, occurrence, _) = checked[position];
             let text = &composed.texts[index];
-            if let Some(area) = area::sample_area(text, occurrence, frame, size) {
+            if let Some(area) = area::sample_area(text, occurrence, frame, size, request.motion) {
                 let english = occurrence.english.as_deref().unwrap_or_default();
                 let finished = finished_picture(request, source, &schedule, frame, &area)?;
                 let sample = read_sample(reader, &text.id, frame, area, &finished, english)?;
@@ -176,19 +191,28 @@ pub fn verify(
             progress(done, total);
         }
     }
-    let mut verified = VerifiedReplacements {
-        document: composed.clone(),
-        checks: Vec::with_capacity(checked.len()),
+    let mut verified = Verified {
+        replacements: VerifiedReplacements {
+            document: composed.clone(),
+            checks: Vec::with_capacity(checked.len()),
+        },
+        readings: Vec::with_capacity(total),
     };
     for ((index, _, _), readings) in checked.iter().zip(readings) {
-        let text = &mut verified.document.texts[*index];
-        if let Some(reason) = verdict::verdict(&readings) {
+        let text = &mut verified.replacements.document.texts[*index];
+        let failed = verdict::verdict(&readings);
+        if let Some(reason) = failed {
             text.status = ReplaceStatus::Fallback(reason.to_string());
         }
-        verified.checks.push(TextCheck {
+        verified.replacements.checks.push(TextCheck {
             id: text.id.clone(),
-            readings,
+            samples: readings.len() as u32,
+            passed: failed.is_none(),
         });
+        let id = text.id.clone();
+        verified
+            .readings
+            .extend(readings.into_iter().map(|reading| (id.clone(), reading)));
     }
     Ok(verified)
 }

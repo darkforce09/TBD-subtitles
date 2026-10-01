@@ -3,7 +3,7 @@
 use std::fs;
 
 use job_model::job::JobSettings;
-use job_model::onscreen::{ReplacementDocument, TextKeyframe};
+use job_model::onscreen::{ReplacementDocument, TextCheck, TextKeyframe};
 
 use super::*;
 
@@ -47,6 +47,7 @@ fn plate(first_frame: u64, last_frame: u64, x: u32, mask: &str) -> Plate {
         mask: PathBuf::from(mask),
         plate: None,
         patch: None,
+        shifted: Vec::new(),
     }
 }
 
@@ -174,16 +175,21 @@ fn replacements_take_the_keyframe_plate_s_mask_and_keep_paths_inside_the_job() {
         document: composed,
         checks: vec![TextCheck {
             id: "a".into(),
-            readings: vec![VerifyReading {
-                frame: 250,
-                english_read: "Palace".into(),
-                similarity: 1.0,
-                passed: true,
-                ..VerifyReading::default()
-            }],
+            samples: 1,
+            passed: true,
         }],
     };
-    let found = replacements(root, &verified, &document);
+    let telling = BTreeMap::from([(
+        "a".to_string(),
+        VerifyReading {
+            frame: 250,
+            english_read: "Palace".into(),
+            similarity: 1.0,
+            passed: true,
+            ..VerifyReading::default()
+        },
+    )]);
+    let found = replacements(root, &verified, &telling, &document);
     assert_eq!(
         found["a"].check.as_deref(),
         Some("Checked: English reads back as “Palace”")
@@ -292,6 +298,7 @@ fn missing_records_are_not_written_yet_and_written_ones_name_their_files() {
     let written_only = Rows {
         written: Some(written.clone()),
         verified: None,
+        telling: BTreeMap::new(),
     };
     let review = load(&work, written_only, &record, &output, &document).expect("review");
     assert_eq!(review.video, Some(mkv));
@@ -307,17 +314,23 @@ fn missing_records_are_not_written_yet_and_written_ones_name_their_files() {
         document: checked,
         checks: vec![TextCheck {
             id: "a".into(),
-            readings: vec![VerifyReading {
-                frame: 3,
-                japanese_found: "王宮".into(),
-                english_read: "Palace 王宮".into(),
-                ..VerifyReading::default()
-            }],
+            samples: 1,
+            passed: false,
         }],
     };
+    let telling = BTreeMap::from([(
+        "a".to_string(),
+        VerifyReading {
+            frame: 3,
+            japanese_found: "王宮".into(),
+            english_read: "Palace 王宮".into(),
+            ..VerifyReading::default()
+        },
+    )]);
     let rows = Rows {
         written: Some(written),
         verified: Some(verified),
+        telling,
     };
     let review = load(&work, rows, &record, &output, &document).expect("review");
     let a = &review.replacements["a"];

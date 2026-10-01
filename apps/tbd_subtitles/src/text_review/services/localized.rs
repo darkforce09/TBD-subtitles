@@ -1,8 +1,9 @@
 //! A job's localized video as Check Text shows it: its files, each occurrence's replacement, the
 //! selected occurrence's pictures, and the words and geometry the preview draws them with.
 //!
-//! **Role:** take the localized video's record and the replacements the read-back check left
-//! from the job's database, and the localized subtitle file the output record names; find each occurrence's keyframe plate as composition chose it; decode its
+//! **Role:** take the localized video's record, the replacements the read-back check left and its
+//! `readings` rows from the job's database, and the localized subtitle file the output record
+//! names; find each occurrence's keyframe plate as composition chose it; decode its
 //! replaced plate and erase mask at a bounded size; say whether it was replaced and what the
 //! read-back check read; place a plate's rectangle on the picture.
 //! **Position:** called by `session::load` and by application actions off the window thread; the
@@ -18,11 +19,12 @@ use std::path::{Component, Path, PathBuf};
 use job_model::StepName;
 use job_model::job::JobRecord;
 use job_model::onscreen::{
-    LocalizedVideoRecord, PixelRect, Plate, ReplaceStatus, ReplacedText, TextCheck, TextDocument,
-    TextOccurrence, VerifiedReplacements, VerifyReading,
+    LocalizedVideoRecord, PixelRect, Plate, ReplaceStatus, ReplacedText, TextDocument,
+    TextOccurrence, VerifiedReplacements, VerifyReading, telling,
 };
 use job_model::outputs::OutputRecord;
 use pipeline::work_dir::store::StoreRead;
+use worker_channel::address::Table;
 
 use super::player;
 use crate::text_review::models::{
@@ -37,15 +39,33 @@ const PICTURE_EDGE: u32 = 720;
 pub(crate) struct Rows {
     pub(crate) written: Option<LocalizedVideoRecord>,
     pub(crate) verified: Option<VerifiedReplacements>,
+    /// The reading that says most about each checked occurrence, from its `readings` rows; none
+    /// while they are missing or broken.
+    pub(crate) telling: BTreeMap<String, VerifyReading>,
 }
 
-/// The localized video's rows in `read`: its record and the replacements the read-back check
-/// left.
+/// The localized video's rows in `read`: its record, the replacements the read-back check left
+/// and the telling reading of each occurrence it checked.
 pub(crate) fn rows(read: &StoreRead) -> Rows {
     Rows {
         written: read.output(StepName::LocalizedVideo, None).ok().flatten(),
         verified: read.output(StepName::TextVerify, None).ok().flatten(),
+        telling: telling_readings(read).unwrap_or_default(),
     }
+}
+
+/// The telling reading of every occurrence with `readings` rows: its first failure, else its
+/// weakest match. The check reads a few frames of each occurrence, so its rows are few.
+fn telling_readings(read: &StoreRead) -> pipeline::Result<BTreeMap<String, VerifyReading>> {
+    let mut by_id: BTreeMap<String, Vec<VerifyReading>> = BTreeMap::new();
+    read.rows_as::<VerifyReading>(Table::Readings, None, |id, _, reading| {
+        by_id.entry(id.to_string()).or_default().push(reading);
+        Ok(())
+    })?;
+    Ok(by_id
+        .into_iter()
+        .filter_map(|(id, readings)| telling(&readings).cloned().map(|reading| (id, reading)))
+        .collect())
 }
 
 /// The localized video of the job in the folder `root`, from its `rows`, when its settings write
@@ -73,7 +93,7 @@ pub(crate) fn load(
         .filter(|path| path.is_file());
     let replacements = rows
         .verified
-        .map(|verified| replacements(root, &verified, document))
+        .map(|verified| replacements(root, &verified, &rows.telling, document))
         .unwrap_or_default();
     Some(LocalizedReview {
         mode: default_mode(),
@@ -92,10 +112,11 @@ pub(crate) fn default_mode() -> PreviewMode {
 }
 
 /// Each occurrence's replacement by id, with its keyframe plate's erase mask and what the
-/// read-back check read.
+/// read-back check read in its `telling` frame.
 pub(crate) fn replacements(
     root: &Path,
     verified: &VerifiedReplacements,
+    telling: &BTreeMap<String, VerifyReading>,
     document: &TextDocument,
 ) -> BTreeMap<String, Replacement> {
     verified
@@ -117,7 +138,7 @@ pub(crate) fn replacements(
                 mask,
                 check: verified
                     .check(&text.id)
-                    .and_then(TextCheck::telling)
+                    .and(telling.get(&text.id))
                     .map(check_line),
             };
             (text.id.clone(), replacement)

@@ -164,8 +164,8 @@ pub fn named_files(step: StepName, read: &StoreRead, work: &WorkDir) -> Result<N
     Ok(named)
 }
 
-/// Every file a replacement document names: each plate's source, mask, fill and patch, and each
-/// occurrence's review preview.
+/// Every file a replacement document names: each plate's source, mask, fill, patch and the
+/// patches of its further shifts, and each occurrence's review preview.
 fn replacement_references(
     document: &<ReplacementDocument as rkyv::Archive>::Archived,
 ) -> Vec<String> {
@@ -176,6 +176,12 @@ fn replacement_references(
             references.push(plate.mask.as_str().to_owned());
             references.extend(plate.plate.as_ref().map(|path| path.as_str().to_owned()));
             references.extend(plate.patch.as_ref().map(|path| path.as_str().to_owned()));
+            references.extend(
+                plate
+                    .shifted
+                    .iter()
+                    .map(|shifted| shifted.patch.as_str().to_owned()),
+            );
         }
         references.extend(text.preview.as_ref().map(|path| path.as_str().to_owned()));
     }

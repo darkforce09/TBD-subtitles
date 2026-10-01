@@ -59,7 +59,9 @@ logged, never fatal); caches (`visual/readings/`, `visual/translations/`, `claud
 place (such as straight from a worker's pipe) and leaves no row when the fill fails, `remove`
 takes a row out, and `commit` makes them visible at once. `JobStore::read` gives a `StoreRead`
 snapshot: `get` checks and copies a row out, `view` checks the archive and reads it in place,
-`raw` copies the bytes and `keys` lists a table. Each takes a `worker_channel::address` table and
+`raw` copies the bytes and `keys` lists a table; `rows` walks a per-frame table in key order (all
+of it, or one occurrence's range), handing each row's bytes in place one at a time, and `rows_as`
+the same rows checked and copied out as a type. Each takes a `worker_channel::address` table and
 key; a key whose kind is not its table's is an error. `StoreWrite::get` reads a row inside the
 write, for a read-change-write, and `clear` empties a table.
 
@@ -75,8 +77,8 @@ tests of the crate and the app), and reads a job from its folder for a caller th
 
 `files::named_files` lists the files one step's rows name: the probe's mix, the separation's
 stems, the crops and keyframe stills of every on-screen text document, the sources, masks, fills,
-patches and previews of every replacement document, and the subtitle files and the localized
-video beside the video. A reference that is not a plain relative path, or a detection with an
+patches (a plate's further `shifted` ones too) and previews of every replacement document, and
+the subtitle files and the localized video beside the video. A reference that is not a plain relative path, or a detection with an
 occurrence that names no crop, is malformed. `resume::is_valid` and the orphan cleanup both read
 it, so what a step must keep and what a cleanup keeps are one list.
 
@@ -92,7 +94,8 @@ channel checks every output a worker sends with it before the row is kept
 | `corrections` | `lines`, `text`, `fix` | `Corrections`, `TextCorrections`, `FixRecord` |
 | `outputs` | a step name | the document the step writes: `ProbeDecoded`, `ShotChanges`, `SpeechPlan`, `EngineTranscript` (both ASR steps), `Vec<Utterance>` (`diff_sheet`), `Vec<SoundEvent>`, `AdjudicationPass` (`adjudicate`, `readjudicate`), `Redecode` (both redecodes), `SoundCues`, `Aligned` (`alignment`, `review`), `CueTrack` (`cues`), `TextDocument` (`text_detect` … `text_review`, `text_typeset`), `ReplacementDocument` (`text_mask`, `text_inpaint`, `text_compose`), `VerifiedReplacements`, `QcReport`, `OutputRecord`, `LocalizedVideoRecord` |
 | `outputs` | `<step>/<part>` | a step's further document: `cues/dropped_sounds` is `Vec<String>`, `text_typeset/ass` is `String` |
-| `frames`, `readings` | (occurrence, frame) | none yet |
+| `frames` | (occurrence, frame) | `FrameRecord` |
+| `readings` | (occurrence, frame) | `VerifyReading` |
 
 `separation` writes no document (its stems are files), so its key has no kind, nor has any other
 key the table does not list. `kinds::shown` writes a key as the owner types it: a name, or

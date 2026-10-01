@@ -67,8 +67,11 @@ fn steps_with_records(scratch: &Scratch) -> Vec<StepName> {
 }
 
 fn frame_rows(scratch: &Scratch) -> usize {
-    let read = scratch.store().read().unwrap();
-    read.keys(Table::Frames).unwrap().len() + read.keys(Table::Readings).unwrap().len()
+    rows_of(scratch, Table::Frames) + rows_of(scratch, Table::Readings)
+}
+
+fn rows_of(scratch: &Scratch, table: Table) -> usize {
+    scratch.store().read().unwrap().keys(table).unwrap().len()
 }
 
 #[test]
@@ -125,12 +128,23 @@ fn per_frame_rows_stay_when_no_step_that_writes_them_is_cleared() {
     start(scratch.store(), &job, &[StepName::Output]).unwrap();
     assert_eq!(frame_rows(&scratch), 2);
     start(scratch.store(), &job, &[StepName::TextVerify]).unwrap();
-    assert_eq!(frame_rows(&scratch), 0);
+    assert_eq!(
+        rows_of(&scratch, Table::Readings),
+        0,
+        "the check owns its readings"
+    );
+    assert_eq!(rows_of(&scratch, Table::Frames), 1, "the masks' rows stay");
     start(scratch.store(), &job, &[]).unwrap();
     assert_eq!(
         steps_with_records(&scratch).len(),
         StepName::ALL.len() - 3,
         "no rerun clears nothing"
+    );
+    start(scratch.store(), &job, &[StepName::TextMask]).unwrap();
+    assert_eq!(
+        frame_rows(&scratch),
+        0,
+        "a rerun of the masks clears their rows"
     );
 }
 
@@ -180,4 +194,28 @@ fn a_cleared_localized_video_keeps_the_video_it_wrote_as_its_earlier_one() {
         !steps_with_records(&scratch).contains(&StepName::LocalizedVideo),
         "the step itself runs again"
     );
+}
+
+#[test]
+fn forgetting_a_step_that_owns_a_per_frame_table_clears_its_rows_alone() {
+    let scratch = Scratch::new("rerun-forget-rows");
+    finished(&scratch);
+    let store = scratch.store();
+    forget(store, StepName::TextCompose).unwrap();
+    assert_eq!(frame_rows(&scratch), 2, "composition owns no rows");
+    forget(store, StepName::TextMask).unwrap();
+    assert_eq!(rows_of(&scratch, Table::Frames), 0);
+    assert_eq!(rows_of(&scratch, Table::Readings), 1);
+    assert_eq!(
+        store
+            .read()
+            .unwrap()
+            .step_record(StepName::TextMask)
+            .unwrap(),
+        None
+    );
+    forget(store, StepName::TextVerify).unwrap();
+    assert_eq!(frame_rows(&scratch), 0);
+    // Forgetting again, with nothing left to remove, changes nothing.
+    forget(store, StepName::TextMask).unwrap();
 }

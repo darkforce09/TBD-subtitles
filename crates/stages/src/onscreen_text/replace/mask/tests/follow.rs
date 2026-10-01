@@ -15,8 +15,8 @@ fn held(frames: usize) -> Vec<Match> {
 fn every_frame_followed_is_a_moving_path() {
     let mut found = held(10);
     found[3] = Some((MOVED, 0.95));
-    let mut expected = vec![Placement::KEY; 10];
-    expected[3] = MOVED;
+    let mut expected = vec![(Placement::KEY, 1.0); 10];
+    expected[3] = (MOVED, 0.95);
     assert_eq!(path(&found), Ok(Path::Moving(expected)));
 }
 

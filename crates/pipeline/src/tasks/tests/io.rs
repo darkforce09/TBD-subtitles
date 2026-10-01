@@ -99,7 +99,7 @@ fn a_worker_reads_its_inputs_from_its_stdin_and_sends_its_output_as_frames() {
     let inputs = graph::reads(StepName::Vad);
     let (mut stdin_reader, stdin_writer) = io::pipe().unwrap();
     let (mut stdout_reader, stdout_writer) = io::pipe().unwrap();
-    let sending = send_inputs(scratch.store().clone(), inputs, stdin_writer);
+    let sending = send_inputs(scratch.store().clone(), inputs, &[], stdin_writer);
     let dir = scratch.dir.clone();
     let worker = std::thread::spawn(move || {
         let received = worker_channel::worker::read_inputs(&mut stdin_reader).unwrap();
@@ -173,4 +173,80 @@ fn a_task_writes_only_keys_with_a_kind_and_per_frame_rows_only_in_per_frame_tabl
     };
     assert_eq!(read.get::<u32>(Table::Frames, &key).unwrap(), Some(7));
     assert_eq!(read.get::<u32>(Table::Readings, &key).unwrap(), Some(8));
+}
+
+/// Frame rows of two occurrences, out of key order, in the store of a job with a record.
+fn with_frame_rows(name: &str) -> Scratch {
+    use job_model::onscreen::FrameRecord;
+
+    let scratch = Scratch::new(name);
+    let store = scratch.store();
+    store.put_job_record(&job_record(&scratch.dir)).unwrap();
+    let mut write = store.write().unwrap();
+    for (occurrence, frame, dx) in [("b", 4, 2.0), ("a", 7, 1.0), ("a", 6, 0.0)] {
+        let key = Key::Frame {
+            occurrence: occurrence.into(),
+            frame,
+        };
+        let row = FrameRecord {
+            shift: [dx, 0.0],
+            scale: 1.0,
+            ..FrameRecord::default()
+        };
+        write.put(Table::Frames, &key, &row).unwrap();
+    }
+    write.commit().unwrap();
+    scratch
+}
+
+fn shifts(io: &mut StepIo) -> Vec<(String, u64, f64)> {
+    let mut seen = Vec::new();
+    io.frame_rows::<job_model::onscreen::FrameRecord>(Table::Frames, |occurrence, frame, row| {
+        seen.push((occurrence.to_string(), frame, row.shift[0].to_native()));
+        Ok(())
+    })
+    .unwrap();
+    seen
+}
+
+#[test]
+fn a_step_reads_every_frame_row_in_key_order_in_the_runner_and_in_a_worker() {
+    let expected = vec![
+        ("a".to_string(), 6, 0.0),
+        ("a".to_string(), 7, 1.0),
+        ("b".to_string(), 4, 2.0),
+    ];
+    let scratch = with_frame_rows("io-rows-in-process");
+    let mut io = StepIo::in_process(scratch.store()).unwrap();
+    assert_eq!(shifts(&mut io), expected);
+
+    let scratch = with_frame_rows("io-rows-worker");
+    let (stdin_reader, stdin_writer) = io::pipe().unwrap();
+    let sending = send_inputs(
+        scratch.store().clone(),
+        vec![keys::job_record_address()],
+        graph::reads_rows(StepName::TextCompose),
+        stdin_writer,
+    );
+    let mut io = StepIo::over_stdin(StepName::TextCompose, stdin_reader).unwrap();
+    assert_eq!(io.job_record().unwrap(), job_record(&scratch.dir));
+    assert_eq!(shifts(&mut io), expected);
+    io.finish_inputs().unwrap();
+    assert_eq!(sending.join().unwrap(), Ok(()));
+}
+
+#[test]
+fn a_worker_that_reads_no_rows_drains_them_so_the_runner_ends_cleanly() {
+    let scratch = with_frame_rows("io-rows-drain");
+    let (stdin_reader, stdin_writer) = io::pipe().unwrap();
+    let sending = send_inputs(
+        scratch.store().clone(),
+        vec![keys::job_record_address()],
+        graph::reads_rows(StepName::LocalizedVideo),
+        stdin_writer,
+    );
+    let mut io = StepIo::over_stdin(StepName::LocalizedVideo, stdin_reader).unwrap();
+    io.finish_inputs().unwrap();
+    assert_eq!(sending.join().unwrap(), Ok(()));
+    assert!(shifts(&mut io).is_empty(), "the drained rows are gone");
 }

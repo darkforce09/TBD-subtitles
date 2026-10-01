@@ -10,6 +10,7 @@ use super::fixtures::{occurrence, plate, quad, rect, replaced};
 use super::verdict::{JAPANESE_LEFT, UNREADABLE};
 use super::*;
 use crate::localize::colour::{Matrix, Range};
+use crate::localize::motion::Motion;
 
 struct Temporary(PathBuf);
 
@@ -101,6 +102,7 @@ fn patched(root: &Path, name: &str, span: (u64, u64), at: PixelRect, colour: Rgb
         .unwrap();
     Plate {
         patch: Some(path),
+        shifted: Vec::new(),
         ..plate(span.0, span.1, at, [0.0, 0.0])
     }
 }
@@ -160,7 +162,7 @@ fn run(
     fixture: &Fixture,
     reader: &mut Scripted,
     only: Option<&[String]>,
-) -> (VerifiedReplacements, Black, usize, Vec<(usize, usize)>) {
+) -> (Verified, Black, usize, Vec<(usize, usize)>) {
     let request = Request {
         composed: &fixture.composed,
         text: &fixture.text,
@@ -171,6 +173,7 @@ fn run(
             bits: 8,
         },
         only,
+        motion: &Motion::default(),
     };
     let mut source = Black {
         timeline: (0..20).map(|i| (f64::from(i), f64::from(i + 1))).collect(),
@@ -192,6 +195,16 @@ fn run(
     (verified, source, observed, heard.into_inner().unwrap())
 }
 
+/// The readings of occurrence `id`, in frame order.
+fn readings<'v>(verified: &'v Verified, id: &str) -> Vec<&'v VerifyReading> {
+    verified
+        .readings
+        .iter()
+        .filter(|(of, _)| of == id)
+        .map(|(_, reading)| reading)
+        .collect()
+}
+
 #[test]
 fn lettering_that_reads_back_stays_and_japanese_left_falls_back() {
     let fixture = fixture();
@@ -200,34 +213,37 @@ fn lettering_that_reads_back_stays_and_japanese_left_falls_back() {
         double: false,
     };
     let (verified, source, observed, heard) = run(&fixture, &mut reader, None);
-    let texts = &verified.document.texts;
+    let texts = &verified.replacements.document.texts;
     assert_eq!(texts[0].status, ReplaceStatus::Baked);
     assert_eq!(
         texts[1].status,
         ReplaceStatus::Fallback(JAPANESE_LEFT.into())
     );
     assert_eq!(texts[2].status, fixture.composed.texts[2].status);
-    let frames = |id: &str| -> Vec<u64> {
-        verified
-            .check(id)
-            .unwrap()
-            .readings
-            .iter()
-            .map(|r| r.frame)
-            .collect()
-    };
+    let frames =
+        |id: &str| -> Vec<u64> { readings(&verified, id).iter().map(|r| r.frame).collect() };
     assert_eq!(frames("tower"), vec![0, 4, 9]);
     assert_eq!(frames("yard"), vec![10, 14, 19]);
-    assert!(verified.check("left").is_none());
-    let tower = verified.check("tower").unwrap();
+    assert!(verified.replacements.check("left").is_none());
     assert!(
-        tower
-            .readings
+        readings(&verified, "tower")
             .iter()
             .all(|r| r.passed && r.similarity == 1.0)
     );
-    let yard = verified.check("yard").unwrap();
-    assert!(yard.readings.iter().all(|r| r.japanese_found == "幹部塔"));
+    assert_eq!(
+        verified.replacements.check("tower"),
+        Some(&TextCheck {
+            id: "tower".into(),
+            samples: 3,
+            passed: true,
+        })
+    );
+    assert!(!verified.replacements.check("yard").unwrap().passed);
+    assert!(
+        readings(&verified, "yard")
+            .iter()
+            .all(|r| r.japanese_found == "幹部塔")
+    );
     assert_eq!(observed, 6);
     assert_eq!(heard.first(), Some(&(0, 6)));
     assert_eq!(heard.last(), Some(&(6, 6)));
@@ -238,7 +254,7 @@ fn lettering_that_reads_back_stays_and_japanese_left_falls_back() {
             .all(|(region, _)| { region.x % 2 == 0 && region.y % 2 == 0 && region.width % 2 == 0 })
     );
     assert_eq!(
-        verified.document.texts[0].plates,
+        verified.replacements.document.texts[0].plates,
         fixture.composed.texts[0].plates
     );
 }
@@ -253,11 +269,14 @@ fn doubled_lettering_falls_back_as_unreadable() {
     let only = ["tower".to_string()];
     let (verified, source, observed, _) = run(&fixture, &mut reader, Some(&only));
     assert_eq!(
-        verified.document.texts[0].status,
+        verified.replacements.document.texts[0].status,
         ReplaceStatus::Fallback(UNREADABLE.into())
     );
-    assert_eq!(verified.document.texts[1].status, ReplaceStatus::Baked);
-    assert_eq!(verified.checks.len(), 1);
+    assert_eq!(
+        verified.replacements.document.texts[1].status,
+        ReplaceStatus::Baked
+    );
+    assert_eq!(verified.replacements.checks.len(), 1);
     assert_eq!(observed, 3);
     assert!(source.decoded.iter().all(|(_, frame)| *frame < 10));
 }
@@ -279,11 +298,13 @@ fn a_patch_blends_only_while_its_plate_lasts() {
     };
     let only = ["tower".to_string()];
     let (verified, _, _, _) = run(&fixture, &mut reader, Some(&only));
-    let readings = &verified.check("tower").unwrap().readings;
-    let passed: Vec<(u64, bool)> = readings.iter().map(|r| (r.frame, r.passed)).collect();
+    let passed: Vec<(u64, bool)> = readings(&verified, "tower")
+        .iter()
+        .map(|r| (r.frame, r.passed))
+        .collect();
     assert_eq!(passed, vec![(0, true), (4, true), (5, false), (9, false)]);
     assert_eq!(
-        verified.document.texts[0].status,
+        verified.replacements.document.texts[0].status,
         ReplaceStatus::Fallback(JAPANESE_LEFT.into())
     );
 }

@@ -6,6 +6,7 @@
 //! **Invariants:** times use the video's presentation timeline; coordinates use source pixels;
 //! unreadable writing has no invented English translation.
 
+mod frames;
 mod localize;
 mod settings;
 mod verify;
@@ -16,12 +17,13 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+pub use frames::{FrameRecord, RleRun, decode_mask, encode_mask, mask_area};
 pub use localize::{
     LetteringStyle, LocalizedVideoRecord, PixelRect, Plate, ReplaceStatus, ReplacedText,
-    ReplacementDocument,
+    ReplacementDocument, ShiftedPatch,
 };
 pub use settings::TextSettings;
-pub use verify::{TextCheck, VerifiedReplacements, VerifyReading};
+pub use verify::{TextCheck, VerifiedReplacements, VerifyReading, telling};
 
 #[derive(
     Debug,

@@ -1,30 +1,37 @@
 //! Which composed patches cover each frame, and a bounded cache of their converted samples.
 //!
-//! **Role:** turn the replacement document into a frame-by-frame schedule of patches, and load
-//! each patch file once into frame samples while its span lasts.
-//! **Position:** inside `localize::render`, between the replacement document and `blend`.
+//! **Role:** turn the replacement document and the writing's per-frame shifts into a
+//! frame-by-frame schedule of patches, and load each patch file once into frame samples while
+//! it is in use.
+//! **Position:** inside `localize::render` and the read-back check, between the replacement
+//! document, its `Motion` and `blend`.
 //! **Signals and state:** the schedule holds the patches not yet started, ordered by first
-//! frame, and the active ones in document order; the cache holds converted patches with a
-//! use stamp and their total size.
-//! **Invariants:** only baked occurrences' plates with a patch are scheduled; frames advance
-//! strictly; a patch is active exactly on `first_frame..=last_frame`; overlapping patches apply
-//! in document order; the cache stays within its byte budget except for a single patch larger
-//! than the budget, and a patch whose span has ended leaves it.
+//! frame, and the active ones in document order; the cache holds converted patches by file with
+//! a use stamp and their total size.
+//! **Invariants:** only baked occurrences' plates with a patch are scheduled; a plate whose
+//! frames take several shifts is scheduled as one entry per run of frames, each with the patch
+//! lettered at that run's shift, and a frame no row covers takes the plate's own patch; frames
+//! advance strictly; an entry is active exactly on `first_frame..=last_frame`; overlapping
+//! patches apply in document order; the cache stays within its byte budget except for a single
+//! patch larger than the budget, and a patch file leaves it once the last entry using it ends.
 
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 
-use job_model::onscreen::{PixelRect, ReplacementDocument};
+use job_model::onscreen::{PixelRect, Plate, ReplacedText, ReplacementDocument};
 
 use super::LocalizeResult;
 use super::blend::{FramePatch, convert};
 use super::colour::Conversion;
+use super::motion::Motion;
 
 /// One patch and the frames it covers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScheduledPatch {
-    /// The patch's position in the document: occurrences, then plates, in order.
+    /// The entry's position in the document: occurrences, then plates, then runs, in order.
     pub order: usize,
+    /// The patch file's number, shared by every entry that blends the same file.
+    pub file: usize,
     pub first_frame: u64,
     pub last_frame: u64,
     pub rect: PixelRect,
@@ -37,31 +44,48 @@ pub struct ScheduledPatch {
 pub struct Schedule {
     pending: VecDeque<ScheduledPatch>,
     active: Vec<ScheduledPatch>,
+    /// The last frame each patch file is blended on.
+    last_use: HashMap<usize, u64>,
     next_frame: u64,
 }
 
 impl Schedule {
-    /// Every patch of the document's baked occurrences.
-    pub fn new(document: &ReplacementDocument) -> Schedule {
-        let mut pending: Vec<ScheduledPatch> = document
-            .baked()
-            .flat_map(|text| text.plates.iter())
-            .filter_map(|plate| plate.patch.as_ref().map(|path| (plate, path.clone())))
-            .enumerate()
-            .map(|(order, (plate, path))| ScheduledPatch {
-                order,
-                first_frame: plate.first_frame,
-                last_frame: plate.last_frame,
-                rect: plate.rect,
-                path,
-            })
-            .collect();
+    /// Every patch of the document's baked occurrences, each frame's taken by its shift in
+    /// `motion`.
+    pub fn new(document: &ReplacementDocument, motion: &Motion) -> LocalizeResult<Schedule> {
+        let mut pending = Vec::new();
+        let mut files: HashMap<PathBuf, usize> = HashMap::new();
+        for text in document.baked() {
+            for (index, plate) in text.plates.iter().enumerate() {
+                let Some(own) = plate.patch.as_ref() else {
+                    continue;
+                };
+                for (first_frame, last_frame, path) in entries(text, index, plate, own, motion)? {
+                    let next = files.len();
+                    let file = *files.entry(path.clone()).or_insert(next);
+                    pending.push(ScheduledPatch {
+                        order: pending.len(),
+                        file,
+                        first_frame,
+                        last_frame,
+                        rect: plate.rect,
+                        path,
+                    });
+                }
+            }
+        }
+        let mut last_use: HashMap<usize, u64> = HashMap::new();
+        for patch in &pending {
+            let last = last_use.entry(patch.file).or_insert(patch.last_frame);
+            *last = (*last).max(patch.last_frame);
+        }
         pending.sort_by_key(|patch| (patch.first_frame, patch.order));
-        Schedule {
+        Ok(Schedule {
             pending: pending.into(),
             active: Vec::new(),
+            last_use,
             next_frame: 0,
-        }
+        })
     }
 
     /// Whether no patch is scheduled at all.
@@ -69,17 +93,18 @@ impl Schedule {
         self.pending.is_empty() && self.active.is_empty()
     }
 
-    /// Move to `frame`, later than every frame before; the orders of the patches that ended.
+    /// Move to `frame`, later than every frame before; the patch files no later frame blends.
     pub fn advance(&mut self, frame: u64) -> LocalizeResult<Vec<usize>> {
         if frame < self.next_frame {
             return Err(format!("frame {frame} comes after frame {}", self.next_frame - 1).into());
         }
         self.next_frame = frame + 1;
         let mut ended = Vec::new();
+        let last_use = &self.last_use;
         self.active.retain(|patch| {
             let keep = patch.last_frame >= frame;
-            if !keep {
-                ended.push(patch.order);
+            if !keep && last_use.get(&patch.file) == Some(&patch.last_frame) {
+                ended.push(patch.file);
             }
             keep
         });
@@ -106,6 +131,61 @@ impl Schedule {
     pub fn active(&self) -> &[ScheduledPatch] {
         &self.active
     }
+}
+
+/// The entries of `text`'s plate `index`: its whole span with its own patch when its frames
+/// keep its own shift, else one per run of frames with the patch of that run's shift.
+fn entries(
+    text: &ReplacedText,
+    index: usize,
+    plate: &Plate,
+    own: &Path,
+    motion: &Motion,
+) -> LocalizeResult<Vec<(u64, u64, PathBuf)>> {
+    let runs: Vec<_> = motion
+        .runs(&text.id, index)
+        .iter()
+        .filter(|run| run.last_frame >= plate.first_frame && run.first_frame <= plate.last_frame)
+        .collect();
+    if runs.iter().all(|run| run.shift == plate.shift) {
+        return Ok(vec![(
+            plate.first_frame,
+            plate.last_frame,
+            own.to_path_buf(),
+        )]);
+    }
+    let patch_for = |shift: [f64; 2]| -> LocalizeResult<PathBuf> {
+        if shift == plate.shift {
+            return Ok(own.to_path_buf());
+        }
+        plate
+            .shifted
+            .iter()
+            .find(|shifted| shifted.shift == shift)
+            .map(|shifted| shifted.patch.clone())
+            .ok_or_else(|| {
+                format!(
+                    "{}: plate {index} has no patch for the shift {:?} its frames take",
+                    text.id, shift
+                )
+                .into()
+            })
+    };
+    let mut found = Vec::with_capacity(runs.len() + 2);
+    let mut next = plate.first_frame;
+    for run in runs {
+        let first = run.first_frame.max(plate.first_frame);
+        let last = run.last_frame.min(plate.last_frame);
+        if first > next {
+            found.push((next, first - 1, own.to_path_buf()));
+        }
+        found.push((first, last, patch_for(run.shift)?));
+        next = last + 1;
+    }
+    if next <= plate.last_frame {
+        found.push((next, plate.last_frame, own.to_path_buf()));
+    }
+    Ok(found)
 }
 
 /// Converted patches kept while they are in use, least recently used first out.
@@ -142,13 +222,13 @@ impl PatchCache {
     ) -> LocalizeResult<&FramePatch> {
         self.clock += 1;
         let clock = self.clock;
-        if !self.entries.contains_key(&entry.order) {
+        if !self.entries.contains_key(&entry.file) {
             let patch = load(entry)?;
             let bytes = patch.bytes();
             while self.used + bytes > self.budget && self.evict_oldest() {}
             self.used += bytes;
             self.entries.insert(
-                entry.order,
+                entry.file,
                 Cached {
                     patch,
                     last_use: clock,
@@ -157,15 +237,15 @@ impl PatchCache {
         }
         let cached = self
             .entries
-            .get_mut(&entry.order)
+            .get_mut(&entry.file)
             .ok_or("a cached patch went missing")?;
         cached.last_use = clock;
         Ok(&cached.patch)
     }
 
-    /// Drop the patch with `order`, whose span has ended.
-    pub fn remove(&mut self, order: usize) {
-        if let Some(cached) = self.entries.remove(&order) {
+    /// Drop the patch file `file`, which no later frame blends.
+    pub fn remove(&mut self, file: usize) {
+        if let Some(cached) = self.entries.remove(&file) {
             self.used -= cached.patch.bytes();
         }
     }
@@ -191,10 +271,10 @@ impl PatchCache {
             .entries
             .iter()
             .min_by_key(|(_, cached)| cached.last_use)
-            .map(|(order, _)| *order);
+            .map(|(file, _)| *file);
         match oldest {
-            Some(order) => {
-                self.remove(order);
+            Some(file) => {
+                self.remove(file);
                 true
             }
             None => false,

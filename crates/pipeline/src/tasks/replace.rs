@@ -5,8 +5,10 @@
 //! **Position:** pipeline task dispatch above `stages::onscreen_text::replace`; every stored
 //! input and output goes through the step's `StepIo`.
 //! **Signals and state:** reads `outputs/text_review`, the probe and the previous replacement
-//! step's document; stores `outputs/text_mask`, `outputs/text_inpaint` or `outputs/text_compose`;
-//! writes the mask, source, plate, patch and preview PNGs those documents name.
+//! step's document, and composition every `frames` row; stores `outputs/text_mask`,
+//! `outputs/text_inpaint` or `outputs/text_compose`, and the stroke masks one `frames` row per
+//! frame of every occurrence that keeps its plates, each sent as it is made; writes the mask,
+//! source, plate, patch and preview PNGs those documents name.
 //! **Invariants:** a job without the localized video stores empty documents and loads nothing;
 //! every PNG a document names is synced before the document is handed to the store.
 
@@ -14,9 +16,11 @@ use std::time::Instant;
 
 use inference::onnx::{Device, lama};
 use job_model::StepName;
-use job_model::onscreen::{ReplaceStatus, ReplacementDocument, TextDocument};
+use job_model::onscreen::{FrameRecord, ReplaceStatus, ReplacementDocument, TextDocument};
+use stages::localize::motion::Motion;
 use stages::onscreen_text::TextResult;
 use stages::onscreen_text::replace::{self, inpaint::Inpaint};
+use worker_channel::address::Table;
 
 use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, PipelineError, Result};
@@ -50,8 +54,17 @@ pub(super) fn run(
             let programs = media_io::Programs::beside_current_exe();
             let mut source = replace::source::FfmpegRegions::open(&programs, &job.video(), stream)
                 .context("read the video's frame timeline")?;
-            replace::mask::extract(&reviewed, &mut source, job.work.root(), progress)
-                .context("measure the strokes of visible writing")?
+            let mut rows = 0u64;
+            let mut put = |id: &str, frame: u64, record: &FrameRecord| {
+                rows += 1;
+                io.put_frame(Table::Frames, id, frame, record)
+                    .map_err(|error| error.to_string().into())
+            };
+            let document =
+                replace::mask::extract(&reviewed, &mut source, job.work.root(), &mut put, progress)
+                    .context("measure the strokes of visible writing")?;
+            report.note("frame_rows", rows);
+            document
         }
         StepName::TextInpaint => {
             let mut document: ReplacementDocument = io.get(StepName::TextMask, None)?;
@@ -68,8 +81,16 @@ pub(super) fn run(
             let reviewed: TextDocument = io.get(StepName::TextReview, None)?;
             let mut document: ReplacementDocument = io.get(StepName::TextInpaint, None)?;
             let fonts = job.models()?.join("latin-fonts");
-            replace::compose::compose(&mut document, &reviewed, job.work.root(), &fonts, progress)
-                .context("letter English onto filled backgrounds")?;
+            let motion = motion(io)?;
+            replace::compose::compose(
+                &mut document,
+                &reviewed,
+                job.work.root(),
+                &fonts,
+                &motion,
+                progress,
+            )
+            .context("letter English onto filled backgrounds")?;
             document
         }
         _ => return Err(PipelineError::new("replacement step", "unexpected task")),
@@ -93,6 +114,17 @@ pub(super) fn run(
     );
     io.put(step, None, &document)?;
     Ok(report)
+}
+
+/// The writing's shift in each frame, folded from every `frames` row, one row at a time.
+pub(crate) fn motion(io: &mut StepIo) -> Result<Motion> {
+    let mut motion = Motion::default();
+    io.frame_rows::<FrameRecord>(Table::Frames, |occurrence, frame, row| {
+        let shift = [row.shift[0].to_native(), row.shift[1].to_native()];
+        motion.add(occurrence, frame, row.plate.to_native(), shift);
+        Ok(())
+    })?;
+    Ok(motion)
 }
 
 /// The LaMa backend as the inpainting stage sees it.

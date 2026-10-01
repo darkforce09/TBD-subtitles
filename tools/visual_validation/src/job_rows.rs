@@ -1,7 +1,8 @@
 //! The rows of a finished job the probes read, from its database.
 //!
-//! **Role:** read a job's source video, models folder and probed video stream, and one on-screen
-//! text or replacement document, each in one read of the job's database.
+//! **Role:** read a job's source video, models folder and probed video stream, one on-screen text
+//! or replacement document, and the per-frame shifts of its `frames` rows, each in one read of the
+//! job's database.
 //! **Position:** used by `mask_probe` and `verify_probe`.
 //! **Signals and state:** opens the job's database for the length of each read; a job another
 //! process runs is a busy error.
@@ -12,8 +13,10 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use job_model::StepName;
-use job_model::onscreen::{ReplacementDocument, TextDocument};
+use job_model::onscreen::{FrameRecord, ReplacementDocument, TextDocument};
 use job_model::outputs::{ProbeDecoded, VideoStream};
+use stages::localize::motion::Motion;
+use worker_channel::address::Table;
 
 /// The job's source video, its models folder when the job names one, and its video stream.
 pub struct JobSource {
@@ -56,6 +59,20 @@ pub fn replacements(work: &Path, step: StepName) -> Result<ReplacementDocument> 
     pipeline::work_dir::read_stored(work, |read| read.output(step, None))?
         .with_context(|| no_database(work))?
         .with_context(|| format!("the job has no {step} document"))
+}
+
+/// The writing's shift in each frame of the job in `work`, from its `frames` rows, read one at a
+/// time.
+pub fn motion(work: &Path) -> Result<Motion> {
+    pipeline::work_dir::read_stored(work, |read| {
+        let mut motion = Motion::default();
+        read.rows_as::<FrameRecord>(Table::Frames, None, |occurrence, frame, row| {
+            motion.add(occurrence, frame, row.plate, row.shift);
+            Ok(())
+        })?;
+        Ok(motion)
+    })?
+    .with_context(|| no_database(work))
 }
 
 fn no_database(work: &Path) -> String {

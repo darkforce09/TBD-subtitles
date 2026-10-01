@@ -128,3 +128,38 @@ fn a_send_before_install_answers_false() {
         assert!(!model_call("{}"));
     }
 }
+
+#[test]
+fn documents_are_read_up_to_the_first_row_and_the_rows_after_it_one_at_a_time() {
+    let named = Address {
+        table: Table::Outputs,
+        key: Key::Name("text_compose".into()),
+    };
+    let row = |frame: u64| Address {
+        table: Table::Frames,
+        key: Key::Frame {
+            occurrence: "T0001".into(),
+            frame,
+        },
+    };
+    let mut bytes = Vec::new();
+    for (address, archive) in [
+        (named.clone(), &b"doc"[..]),
+        (row(3), b"r3"),
+        (row(4), b"r4"),
+    ] {
+        let front = address.encode().unwrap();
+        frame::write_frame(&mut bytes, Tag::Input, &[&front, archive]).unwrap();
+    }
+    let mut reader = bytes.as_slice();
+    let (documents, first) = read_documents(&mut reader).unwrap();
+    assert_eq!(documents, [(named, b"doc".to_vec())]);
+    assert_eq!(first, Some((row(3), b"r3".to_vec())));
+    assert_eq!(
+        read_input(&mut reader).unwrap(),
+        Some((row(4), b"r4".to_vec()))
+    );
+    assert_eq!(read_input(&mut reader).unwrap(), None);
+    let (documents, first) = read_documents(&mut &[][..]).unwrap();
+    assert!(documents.is_empty() && first.is_none());
+}

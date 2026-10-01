@@ -76,12 +76,19 @@ pub(crate) fn plate_at(plates: &[Plate], frame: u64) -> Option<usize> {
     (0..plates.len()).min_by_key(|&index| gap(&plates[index]))
 }
 
-/// The keyframe quad placed on a plate: scaled about its centre, shifted, in plate pixels.
+/// The keyframe quad placed on a plate at the plate's own shift: scaled about its centre,
+/// shifted, in plate pixels.
 pub(crate) fn plate_quad(quad: Quad, plate: &Plate) -> Quad {
+    plate_quad_at(quad, plate, plate.shift)
+}
+
+/// The keyframe quad placed on a plate for a frame whose writing sits at `shift`: scaled about
+/// its centre by the plate's scale, shifted, in plate pixels.
+pub(crate) fn plate_quad_at(quad: Quad, plate: &Plate, shift: [f64; 2]) -> Quad {
     let centre = quad.center();
     Quad(quad.0.map(|point| Point {
-        x: centre.x + (point.x - centre.x) * plate.scale + plate.shift[0] - f64::from(plate.rect.x),
-        y: centre.y + (point.y - centre.y) * plate.scale + plate.shift[1] - f64::from(plate.rect.y),
+        x: centre.x + (point.x - centre.x) * plate.scale + shift[0] - f64::from(plate.rect.x),
+        y: centre.y + (point.y - centre.y) * plate.scale + shift[1] - f64::from(plate.rect.y),
     }))
 }
 

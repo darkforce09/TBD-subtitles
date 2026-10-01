@@ -13,6 +13,8 @@ job_model = { path = "../../crates/job_model" }
 stages = { path = "../../crates/stages" }
 media_io = { path = "../../crates/media_io" }
 pipeline = { path = "../../crates/pipeline" }
+# The job database's table names, for the per-frame rows the probes read.
+worker_channel = { path = "../../crates/worker_channel" }
 subtitle_formats = { path = "../../crates/subtitle_formats" }
 child_process = { path = "../../crates/child_process" }
 image = { version = "0.25", default-features = false, features = ["png"] }

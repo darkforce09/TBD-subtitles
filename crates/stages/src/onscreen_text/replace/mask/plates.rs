@@ -1,59 +1,62 @@
-//! Background runs: consecutive frames that share one plate.
+//! An occurrence's frames streamed once into background runs, and its per-frame rows.
 //!
-//! **Role:** stream an occurrence's frames once, place the erase mask on each, and start a new
-//! plate whenever the writing moves or the background around the strokes changes.
-//! **Position:** after segmentation, and after following for moving writing; its plates are
-//! inpainted and lettered by later steps.
-//! **Signals and state:** only the current run's first-frame pixels and mask are held; each
-//! run's source pixels are written to `source-<n>.png` as it starts.
-//! **Invariants:** plates follow each other without overlap inside the occurrence's span; a run
-//! never mixes placements; more than 2,000 runs falls back instead of writing more.
-
-use std::collections::HashMap;
-use std::path::PathBuf;
+//! **Role:** follow the writing through its span (still writing stays at the keyframe
+//! placement, moving writing at the placement the tracker found), hand every frame to the runs
+//! with its correlation, and once the occurrence has its plates, send one `FrameRecord` per frame:
+//! the quad, correlation, shift and scale of its placement, its erase mask as run-length rows
+//! relative to its plate, and its plate.
+//! **Position:** after segmentation, and after following for moving writing; called by
+//! `mask::measure`; the plates are inpainted and lettered by later steps, the rows are the job's
+//! `frames` table.
+//! **Signals and state:** one decoded region per frame at a time; the runs' compact log of every
+//! frame's placement; one frame mask and its run-length rows at a time while the rows are sent.
+//! **Invariants:** every frame of the span gets exactly one row, in frame order, and only when the
+//! occurrence keeps its plates; a row's mask is the keyframe mask carried to the frame's
+//! placement, inside its plate's rectangle; still writing is decoded over the keyframe plate
+//! alone.
 
 use image::imageops;
-use image::{GrayImage, Luma, RgbImage};
-use job_model::onscreen::{PixelRect, Plate, Point};
+use image::{GrayImage, RgbImage};
+use job_model::onscreen::{FrameRecord, PixelRect, Plate, encode_mask};
 
+use super::correlation::{Integral, Plane, Template, grey};
 use super::files::Folder;
 use super::follow::{self, Path, Placement, Tracker, UNFOLLOWED};
+use super::runs::{Collected, KeyPlate, Placed, Runs};
 use super::select::{bounding, clamp};
-use super::{Outcome, RegionSource, check_size};
+use super::{FrameSink, Outcome, RegionSource, check_size};
 use crate::onscreen_text::TextResult;
 
-/// Why an occurrence over a restless background stays in the subtitle file.
-pub(super) const TOO_OFTEN: &str = "The background changes too often to repaint";
-/// Most plates one occurrence may have.
-const MAX_PLATES: usize = 2000;
-/// A frame shares its run's plate while the unmasked plate pixels differ from the run's first
-/// frame by less than this mean and this 99th percentile, per RGB channel value.
-const MEAN_CHANGE: f64 = 3.0;
-const P99_CHANGE: usize = 24;
 /// Largest share of the frame the plates of moving writing may sweep.
 const MAX_UNION_SHARE: f64 = 0.25;
 
-/// The keyframe's plate: where it sits, its erase mask, and the origin of placement scales.
-pub(super) struct KeyPlate {
-    pub rect: PixelRect,
-    pub mask: GrayImage,
-    pub centre: Point,
+/// What one occurrence's plates are collected from.
+pub(super) struct Span<'a> {
+    pub id: &'a str,
+    pub frames: (u64, u64),
+    /// The keyframe window: the writing the correlation of still writing compares.
+    pub window: PixelRect,
+    /// The keyframe's pixels of the keyframe plate.
+    pub key_pixels: &'a RgbImage,
 }
 
 /// Collect the runs of writing that stays where the keyframe shows it.
 pub(super) fn still(
     source: &mut dyn RegionSource,
     key: KeyPlate,
-    span: (u64, u64),
+    span: &Span,
     folder: &Folder,
+    sink: FrameSink,
 ) -> TextResult<Outcome<Vec<Plate>>> {
     let rect = key.rect;
+    let scorer = KeyScore::new(span.key_pixels, rect, span.window);
     let mut runs = Runs::new(folder, key, source.frame_size())?;
-    source.frames(rect, span.0, span.1, &mut |index, image| {
+    source.frames(rect, span.frames.0, span.frames.1, &mut |index, image| {
         check_size(&image, rect)?;
-        runs.offer(index, image, Placement::KEY, rect)
+        let score = scorer.as_ref().map_or(0.0, |scorer| scorer.score(&image));
+        runs.offer(index, image, rect, (Placement::KEY, rect, score))
     })?;
-    Ok(runs.finish())
+    send(runs, span, sink)
 }
 
 /// Follow moving writing through its span, then collect its runs from one decode of the
@@ -62,18 +65,19 @@ pub(super) fn moving(
     source: &mut dyn RegionSource,
     tracker: &Tracker,
     key: KeyPlate,
-    span: (u64, u64),
+    span: &Span,
     folder: &Folder,
+    sink: FrameSink,
 ) -> TextResult<Outcome<Vec<Plate>>> {
-    let placements = match follow::follow(source, tracker, span)? {
+    let placements = match follow::follow(source, tracker, span.frames)? {
         Ok(Path::Moving(placements)) => placements,
-        Ok(Path::Still) => return still(source, key, span, folder),
+        Ok(Path::Still) => return still(source, key, span, folder, sink),
         Err(reason) => return Ok(Err(reason)),
     };
     let frame = source.frame_size();
     let Some(rects) = placements
         .iter()
-        .map(|p| placed(&key, frame, *p))
+        .map(|(p, _)| placed(&key, frame, *p))
         .collect::<Option<Vec<PixelRect>>>()
     else {
         return Ok(Err(UNFOLLOWED));
@@ -84,24 +88,123 @@ pub(super) fn moving(
     if union.area() as f64 > MAX_UNION_SHARE * f64::from(frame.0) * f64::from(frame.1) {
         return Ok(Err(UNFOLLOWED));
     }
+    let first = span.frames.0;
     let mut runs = Runs::new(folder, key, frame)?;
-    source.frames(union, span.0, span.1, &mut |index, image| {
+    source.frames(union, first, span.frames.1, &mut |index, image| {
         check_size(&image, union)?;
-        let i = index.wrapping_sub(span.0) as usize;
-        let (Some(&placement), Some(&rect)) = (placements.get(i), rects.get(i)) else {
+        let i = index.wrapping_sub(first) as usize;
+        let (Some(&(placement, score)), Some(&rect)) = (placements.get(i), rects.get(i)) else {
             return Err(format!("frame {index} is outside the requested span").into());
         };
-        let crop = imageops::crop_imm(
-            &image,
-            rect.x - union.x,
-            rect.y - union.y,
-            rect.width,
-            rect.height,
-        )
-        .to_image();
-        runs.offer(index, crop, placement, rect)
+        runs.offer(index, image, union, (placement, rect, score))
     })?;
-    Ok(runs.finish())
+    send(runs, span, sink)
+}
+
+/// The plates the runs collected, after one row per frame went to `sink`.
+fn send(runs: Runs, span: &Span, sink: FrameSink) -> TextResult<Outcome<Vec<Plate>>> {
+    let Collected {
+        plates,
+        placed,
+        key,
+    } = match runs.finish()? {
+        Ok(found) => found,
+        Err(reason) => return Ok(Err(reason)),
+    };
+    let mut rows = Rows::default();
+    for (offset, frame) in placed.iter().enumerate() {
+        let plate = plates
+            .get(frame.plate as usize)
+            .ok_or("a frame names a plate the runs did not keep")?;
+        let record = rows.record(&key, frame, plate.rect)?;
+        sink(span.id, span.frames.0 + offset as u64, record)?;
+    }
+    Ok(Ok(plates))
+}
+
+/// The row of the frame being sent, its run-length mask reused while the placement, the
+/// rectangle and the plate stay the same.
+#[derive(Default)]
+struct Rows {
+    at: Option<(Placement, PixelRect, PixelRect)>,
+    record: FrameRecord,
+}
+
+impl Rows {
+    fn record(
+        &mut self,
+        key: &KeyPlate,
+        frame: &Placed,
+        plate: PixelRect,
+    ) -> TextResult<&FrameRecord> {
+        let at = (frame.placement, frame.rect, plate);
+        if self.at != Some(at) {
+            let mask = key.mask_at(frame.placement, frame.rect);
+            let on_plate = if frame.rect == plate {
+                mask
+            } else {
+                let mut on_plate = GrayImage::new(plate.width, plate.height);
+                imageops::replace(
+                    &mut on_plate,
+                    &mask,
+                    i64::from(frame.rect.x) - i64::from(plate.x),
+                    i64::from(frame.rect.y) - i64::from(plate.y),
+                );
+                on_plate
+            };
+            self.record.mask = encode_mask(plate.width, plate.height, on_plate.as_raw())
+                .ok_or("a plate is too large for run-length mask rows")?;
+            self.record.quad = key.quad_at(frame.placement);
+            self.record.shift = [f64::from(frame.placement.dx), f64::from(frame.placement.dy)];
+            self.record.scale = frame.placement.factor();
+            self.at = Some(at);
+        }
+        self.record.follow_score = frame.score;
+        self.record.plate = frame.plate;
+        Ok(&self.record)
+    }
+}
+
+/// The correlation of still writing with its keyframe: the keyframe window compared with the
+/// same window of each frame.
+struct KeyScore {
+    template: Template,
+    /// The window's offset inside the keyframe plate.
+    offset: (u32, u32),
+    size: (u32, u32),
+}
+
+impl KeyScore {
+    /// The keyframe window of `key_pixels`, the keyframe's crop of `plate`; `None` when the
+    /// window has no contrast to correlate or leaves the plate.
+    fn new(key_pixels: &RgbImage, plate: PixelRect, window: PixelRect) -> Option<KeyScore> {
+        if window.x < plate.x
+            || window.y < plate.y
+            || window.right() > plate.right()
+            || window.bottom() > plate.bottom()
+            || key_pixels.dimensions() != (plate.width, plate.height)
+        {
+            return None;
+        }
+        let offset = (window.x - plate.x, window.y - plate.y);
+        let size = (window.width, window.height);
+        let crop = imageops::crop_imm(key_pixels, offset.0, offset.1, size.0, size.1).to_image();
+        let template = Template::new(&Plane::from_gray(&grey(&crop)))?;
+        Some(KeyScore {
+            template,
+            offset,
+            size,
+        })
+    }
+
+    /// The correlation of the window of `pixels`, a frame's crop of the keyframe plate.
+    fn score(&self, pixels: &RgbImage) -> f32 {
+        let (x, y) = self.offset;
+        let crop = imageops::crop_imm(pixels, x, y, self.size.0, self.size.1).to_image();
+        let plane = Plane::from_gray(&grey(&crop));
+        let integral = Integral::new(&plane);
+        self.template.score(&plane, &integral, 0, 0)
+    }
 }
 
 /// Where the plate sits for `placement`, clipped to the frame.
@@ -129,192 +232,3 @@ fn placed(key: &KeyPlate, frame: (u32, u32), placement: Placement) -> Option<Pix
         frame,
     )
 }
-
-/// The run being collected.
-struct Current {
-    placement: Placement,
-    rect: PixelRect,
-    mask: GrayImage,
-    mask_path: PathBuf,
-    reference: RgbImage,
-    source: PathBuf,
-    first: u64,
-    last: u64,
-}
-
-/// A hashable copy of a rectangle.
-type RectKey = (u32, u32, u32, u32);
-
-fn key_of(rect: PixelRect) -> RectKey {
-    (rect.x, rect.y, rect.width, rect.height)
-}
-
-/// Plates collected so far and the run in progress.
-struct Runs<'a> {
-    folder: &'a Folder,
-    key: KeyPlate,
-    plates: Vec<Plate>,
-    current: Option<Current>,
-    masks: HashMap<(Placement, RectKey), PathBuf>,
-    overflow: bool,
-}
-
-impl<'a> Runs<'a> {
-    fn new(folder: &'a Folder, key: KeyPlate, frame: (u32, u32)) -> TextResult<Runs<'a>> {
-        if !key.rect.inside(frame.0, frame.1) {
-            return Err("the keyframe plate lies outside the frame".into());
-        }
-        let path = folder.write("mask.png", &key.mask)?;
-        let mut masks = HashMap::new();
-        masks.insert((Placement::KEY, key_of(key.rect)), path);
-        Ok(Runs {
-            folder,
-            key,
-            plates: Vec::new(),
-            current: None,
-            masks,
-            overflow: false,
-        })
-    }
-
-    /// The keyframe mask moved and scaled onto `rect` for `placement`.
-    fn mask_at(&self, placement: Placement, rect: PixelRect) -> GrayImage {
-        if placement == Placement::KEY && rect == self.key.rect {
-            return self.key.mask.clone();
-        }
-        let s = placement.factor();
-        let c = self.key.centre;
-        let key = self.key.rect;
-        GrayImage::from_fn(rect.width, rect.height, |u, v| {
-            let x = f64::from(rect.x + u) + 0.5;
-            let y = f64::from(rect.y + v) + 0.5;
-            let kx = c.x + (x - c.x - f64::from(placement.dx)) / s - f64::from(key.x);
-            let ky = c.y + (y - c.y - f64::from(placement.dy)) / s - f64::from(key.y);
-            if kx < 0.0 || ky < 0.0 || kx >= f64::from(key.width) || ky >= f64::from(key.height) {
-                Luma([0])
-            } else {
-                *self.key.mask.get_pixel(kx as u32, ky as u32)
-            }
-        })
-    }
-
-    /// Add frame `index`, showing `crop` at `rect` with the writing at `placement`.
-    fn offer(
-        &mut self,
-        index: u64,
-        crop: RgbImage,
-        placement: Placement,
-        rect: PixelRect,
-    ) -> TextResult<()> {
-        if self.overflow {
-            return Ok(());
-        }
-        if let Some(current) = self.current.as_mut()
-            && current.placement == placement
-            && current.rect == rect
-            && same_background(&current.reference, &crop, &current.mask)
-        {
-            current.last = index;
-            return Ok(());
-        }
-        let previous = self.current.take();
-        if let Some(run) = &previous {
-            self.plates.push(plate(run));
-        }
-        if self.plates.len() >= MAX_PLATES {
-            self.overflow = true;
-            return Ok(());
-        }
-        let (mask, mask_path) = match previous {
-            Some(run) if run.placement == placement && run.rect == rect => {
-                (run.mask, run.mask_path)
-            }
-            _ => {
-                let mask = self.mask_at(placement, rect);
-                let path = match self.masks.get(&(placement, key_of(rect))) {
-                    Some(path) => path.clone(),
-                    None => {
-                        let name = format!("mask-{}.png", self.masks.len());
-                        let path = self.folder.write(&name, &mask)?;
-                        self.masks.insert((placement, key_of(rect)), path.clone());
-                        path
-                    }
-                };
-                (mask, path)
-            }
-        };
-        let source = self
-            .folder
-            .write(&format!("source-{}.png", self.plates.len()), &crop)?;
-        self.current = Some(Current {
-            placement,
-            rect,
-            mask,
-            mask_path,
-            reference: crop,
-            source,
-            first: index,
-            last: index,
-        });
-        Ok(())
-    }
-
-    fn finish(mut self) -> Outcome<Vec<Plate>> {
-        if self.overflow {
-            return Err(TOO_OFTEN);
-        }
-        if let Some(run) = self.current.take() {
-            self.plates.push(plate(&run));
-        }
-        Ok(self.plates)
-    }
-}
-
-fn plate(run: &Current) -> Plate {
-    Plate {
-        first_frame: run.first,
-        last_frame: run.last,
-        rect: run.rect,
-        shift: [f64::from(run.placement.dx), f64::from(run.placement.dy)],
-        scale: run.placement.factor(),
-        source: run.source.clone(),
-        mask: run.mask_path.clone(),
-        plate: None,
-        patch: None,
-    }
-}
-
-/// Whether the pixels the mask keeps look the same in both crops.
-pub(super) fn same_background(reference: &RgbImage, frame: &RgbImage, mask: &GrayImage) -> bool {
-    let mut histogram = [0usize; 256];
-    let mut total = 0usize;
-    let mut sum = 0u64;
-    for ((a, b), m) in reference.pixels().zip(frame.pixels()).zip(mask.pixels()) {
-        if m.0[0] != 0 {
-            continue;
-        }
-        for (x, y) in a.0.iter().zip(&b.0) {
-            let d = x.abs_diff(*y);
-            histogram[usize::from(d)] += 1;
-            sum += u64::from(d);
-            total += 1;
-        }
-    }
-    if total == 0 {
-        return true;
-    }
-    let mut seen = 0usize;
-    let mut p99 = usize::from(u8::MAX);
-    for (value, &n) in histogram.iter().enumerate() {
-        seen += n;
-        if seen as f64 >= 0.99 * total as f64 {
-            p99 = value;
-            break;
-        }
-    }
-    (sum as f64 / total as f64) < MEAN_CHANGE && p99 < P99_CHANGE
-}
-
-#[cfg(test)]
-#[path = "tests/plates.rs"]
-mod tests;

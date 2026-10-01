@@ -133,7 +133,7 @@ fn a_store_dumps_one_row_pretty_or_a_table_as_json_lines() {
     let text = String::from_utf8(out).expect("UTF-8");
     assert!(text.contains("\n  \"versions\": {"), "{text}");
     let layout: Value = serde_json::from_str(&text).expect("JSON");
-    assert_eq!(layout["versions"]["outputs"], 1);
+    assert_eq!(layout["versions"]["outputs"], 2);
 
     let mut out = Vec::new();
     assert!(print(&read, Table::StepRecords, None, &mut out).unwrap());
@@ -239,6 +239,59 @@ fn every_row_the_pipeline_keeps_prints_as_its_record() {
         serde_json::from_slice::<Value>(&out).unwrap(),
         "Dialogue: 0,0:00:01.00"
     );
+    drop(read);
+    drop(store);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn frame_rows_print_as_frame_records_and_readings_whole_or_one_by_key() {
+    use job_model::onscreen::{FrameRecord, RleRun, VerifyReading};
+    let root = scratch("frames");
+    let store = JobStore::open(&WorkDir::new(root.join("job"))).expect("store");
+    let mut write = store.write().expect("write");
+    for frame in [3u64, 4] {
+        let key = Key::Frame {
+            occurrence: "t1".into(),
+            frame,
+        };
+        let row = FrameRecord {
+            shift: [frame as f64, 0.0],
+            scale: 1.0,
+            mask: vec![RleRun {
+                row: 0,
+                start: 1,
+                len: 2,
+            }],
+            ..FrameRecord::default()
+        };
+        write.put(Table::Frames, &key, &row).expect("frame");
+        let reading = VerifyReading {
+            frame,
+            english_read: "SEA".into(),
+            ..VerifyReading::default()
+        };
+        write.put(Table::Readings, &key, &reading).expect("reading");
+    }
+    write.commit().expect("commit");
+    let read = store.read().expect("read");
+    let mut out = Vec::new();
+    assert!(print(&read, Table::Frames, None, &mut out).unwrap());
+    let lines: Vec<Value> = String::from_utf8(out)
+        .expect("UTF-8")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("JSON"))
+        .collect();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0]["key"], "t1/3");
+    assert_eq!(lines[1]["value"]["shift"][0], 4.0);
+    assert_eq!(lines[1]["value"]["mask"][0]["len"], 2);
+    let key = parse_key(Table::Readings, "t1/4").expect("a key");
+    let mut out = Vec::new();
+    assert!(print(&read, Table::Readings, Some(&key), &mut out).unwrap());
+    let one: Value = serde_json::from_slice(&out).expect("JSON");
+    assert_eq!(one["english_read"], "SEA");
+    assert_eq!(one["frame"], 4);
     drop(read);
     drop(store);
     let _ = fs::remove_dir_all(&root);

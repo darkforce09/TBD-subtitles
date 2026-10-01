@@ -10,8 +10,9 @@
 //! binaries; each task module calls `stages` and the backends; `io` carries every stored input
 //! and output.
 //!
-//! **Signals and state:** a worker reads the job record and the step's inputs from the `Input`
-//! frames on its stdin and installs the worker channel, which points its descriptor 1 at stderr;
+//! **Signals and state:** a worker reads the job record and the step's documents from the `Input`
+//! frames on its stdin, leaves the per-frame rows after them for the task, drains what it did not
+//! read before `Done`, and installs the worker channel, which points its descriptor 1 at stderr;
 //! the files a task streams (audio, crops, plates) are written in the job folder.
 //!
 //! **Invariants:** a task's stored outputs are committed with its step's record or not at all;
@@ -29,6 +30,7 @@ mod media;
 mod onscreen;
 mod replace;
 mod review;
+mod rows;
 mod sounds;
 mod speech;
 mod verify;
@@ -210,14 +212,14 @@ fn run_in_worker(step: StepName, job_dir: &Path, binary: Binary) -> Result<()> {
             format!("the step runs in `{name}`"),
         ));
     }
-    let inputs = worker_channel::worker::read_inputs(&mut std::io::stdin().lock())
-        .context(format!("{context}: cannot read the step's inputs"))?;
-    let mut io = StepIo::in_worker(inputs);
+    let stdin = std::io::BufReader::new(std::io::stdin());
+    let mut io = StepIo::over_stdin(step, stdin)?;
     let job = Job::received(job_dir, &io)?;
     let send = |done: usize, total: usize| {
         worker_channel::worker::progress(done as u64, total as u64);
     };
     let report = run(step, &job, &mut io, &send)?;
+    io.finish_inputs()?;
     let measure = WorkerMeasure {
         load_s: report.load_s,
         process_s: report.process_s,
