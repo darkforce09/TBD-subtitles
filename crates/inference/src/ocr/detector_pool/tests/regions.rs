@@ -55,7 +55,7 @@ fn maps_become_regions_in_frame_pixels_per_image() {
     let (left, top, right, bottom) = found[0][0].0.bounds();
     assert!(left < 12.0 && right > 38.0 && top < 12.0 && bottom > 18.0);
     assert!(right < 50.0 && bottom < 30.0);
-    assert!(found[0][0].1 >= 0.3);
+    assert!(found[0][0].1 >= 0.45);
     assert_eq!(found[1].len(), 1);
     let (_, top, _, bottom) = found[1][0].0.bounds();
     assert!(top < 32.0);
@@ -68,7 +68,7 @@ fn confirmation_needs_the_higher_score() {
     let mut weak = maps(shape, &[[10, 10, 40, 20]]);
     weak.iter_mut()
         .filter(|value| **value > 0.0)
-        .for_each(|value| *value = 0.4);
+        .for_each(|value| *value = 0.47);
     let screened = PostProcess::screening()
         .regions(&weak, shape, 1, (64, 64))
         .unwrap();

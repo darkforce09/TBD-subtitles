@@ -51,7 +51,7 @@ impl PostProcess {
         }
     }
 
-    /// The mobile detector's screening: regions scoring at least 0.3.
+    /// The mobile detector's screening: regions scoring at least 0.45.
     pub fn screening() -> PostProcess {
         PostProcess::at(SCREEN_SCORE)
     }

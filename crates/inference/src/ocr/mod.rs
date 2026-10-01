@@ -29,13 +29,13 @@ pub use manga::MangaReader;
 pub type OcrError = Box<dyn std::error::Error + Send + Sync>;
 
 /// The box score a region needs to count in a screen; the predictor drops weaker boxes.
-const SCREEN_SCORE: f64 = 0.3;
+const SCREEN_SCORE: f64 = 0.45;
 /// The box score a region needs in the exact single-frame pass.
 const DETECT_SCORE: f64 = 0.5;
 
 /// Text region detection on whole frames: a cheap presence screen and an exact pass.
 pub trait TextDetection {
-    /// Every region scoring at least 0.3 on each image, one list per image in input order, from
+    /// Every region scoring at least 0.45 on each image, one list per image in input order, from
     /// one predictor call.
     fn screen_batch(&mut self, images: &[RgbImage]) -> Result<Vec<Vec<(Quad, f64)>>, OcrError>;
     /// Regions scoring at least 0.5 on one image.

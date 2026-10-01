@@ -25,8 +25,8 @@ use crate::onscreen_text::detect::confirm::Closed;
 use crate::onscreen_text::detect::crops::picture_at;
 use crate::onscreen_text::detect::probe::{Search, Seek, Transition};
 use crate::onscreen_text::detect::regions::{
-    Active, Observation, append_observation, associate, check_limits, crosses_cut, plausible,
-    same_signature, start_occurrence,
+    Active, Observation, append_observation, associate, check_limits, crosses_cut, is_legible_size,
+    plausible, same_signature, start_occurrence,
 };
 use crate::onscreen_text::detect::timing::{ScanStats, timed};
 use crate::onscreen_text::detect::window::{Candidates, Group, HeldSample};
@@ -101,7 +101,9 @@ impl<'a> Tracker<'a> {
         self.previous_time = frame.time_s;
         let current: Vec<Observation> = regions
             .iter()
-            .map(|&(quad, confidence)| Observation {
+            .copied()
+            .filter(|&(quad, _)| is_legible_size(quad))
+            .map(|(quad, confidence)| Observation {
                 quad,
                 confidence,
                 surface_rgb: None,

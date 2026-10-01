@@ -27,6 +27,9 @@ pub(crate) const SAME_REGION: f64 = 0.45;
 pub(crate) const MIN_OCCURRENCE_S: f64 = 0.15;
 /// A region covering more of the frame than this share is a merged false detection.
 pub(crate) const MAX_REGION_SHARE: f64 = 0.5;
+/// Minimum width and height of a text region in frame pixels. A region smaller than this in both
+/// dimensions is sub-glyph micro-noise (an eyelash, pupil speck or dust).
+pub(crate) const MIN_BOX_SPAN: f64 = 12.0;
 
 /// A region followed from sample to sample: its latest box in source pixels, and the fixed
 /// anchor box and picture signature of its first observation.
@@ -44,6 +47,14 @@ pub(crate) struct Observation {
     pub(crate) quad: Quad,
     pub(crate) confidence: f64,
     pub(crate) surface_rgb: Option<[u8; 3]>,
+}
+
+/// Whether `quad` is large enough to be legible text rather than a sub-pixel artifact.
+pub(crate) fn is_legible_size(quad: Quad) -> bool {
+    let (left, top, right, bottom) = quad.bounds();
+    let width = right - left;
+    let height = bottom - top;
+    width.max(height) >= MIN_BOX_SPAN && width >= 8.0 && height >= 8.0
 }
 
 pub(crate) fn check_limits(
@@ -65,8 +76,14 @@ pub(crate) fn plausible(item: &TextOccurrence, frame_area: f64) -> bool {
         .first()
         .map(|frame| frame.quad.bounds())
         .unwrap_or((0.0, 0.0, 0.0, 0.0));
-    let share = ((right - left) * (bottom - top)) / frame_area.max(1.0);
-    item.end_s - item.start_s >= MIN_OCCURRENCE_S - 1e-9 && share <= MAX_REGION_SHARE
+    let width = right - left;
+    let height = bottom - top;
+    let share = (width * height) / frame_area.max(1.0);
+    item.end_s - item.start_s >= MIN_OCCURRENCE_S - 1e-9
+        && share <= MAX_REGION_SHARE
+        && width.max(height) >= MIN_BOX_SPAN
+        && width >= 8.0
+        && height >= 8.0
 }
 
 pub(crate) fn crosses_cut(cuts: &ShotChanges, previous: f64, current: f64) -> bool {

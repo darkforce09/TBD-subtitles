@@ -26,7 +26,7 @@ use super::queue::{Queue, Task};
 use super::regions::{PostProcess, Regions};
 use super::session::{SessionOpener, SessionSpec, WarmSession, open_warm};
 use crate::ocr::OcrError;
-use crate::ocr::pool::{ConfirmResult, PaddedFrame, ScreenResult};
+use crate::ocr::pool::{ConfirmResult, PaddedFrame, Priority, ScreenResult};
 
 /// What the sessions report about their opening.
 #[derive(Debug, Default)]
@@ -165,7 +165,17 @@ pub fn run(context: Context, thread: usize, started: Sender<Result<(), OcrError>
             Task::Screen(job) => {
                 let result = guarded(|| {
                     let sessions = screen.as_mut().ok_or("the screening session is closed")?;
-                    screen_batch(&context, sessions, &screening, &job.frames)
+                    if job.priority == Priority::Probe {
+                        detect(
+                            &mut sessions.0,
+                            context.screen.input,
+                            &screening,
+                            &job.frames,
+                            context.frame,
+                        )
+                    } else {
+                        screen_batch(&context, sessions, &screening, &job.frames)
+                    }
                 })
                 .map(|regions| ScreenResult {
                     seq: job.seq,
