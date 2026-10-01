@@ -191,14 +191,27 @@ never leaves rows of frames its earlier run had beside its new ones. The
 
 ## Library shared by episodes
 
-`library.redb` holds approved signs keyed by the normalised Japanese and a perceptual hash of the
-sign's keyframe crop: the English, the lettering style, and the patch and mask of the approved
-replacement. A later occurrence whose crop matches starts from the stored translation and
-lettering and is still erased, composed and read back in its own frames. The window's Settings
-shows the library's size and clears it. A job run from a terminal and the window can run at the
-same time, and a second open of the file fails at once, so no process keeps `library.redb` open: a
-process opens it read-write for one transaction (a lookup, or one approved sign), closes it, and
-retries after a short wait while another process holds it.
+`library.redb` in the app's data folder (`~/.local/share/tbd-subtitles/`, beside the default
+`work/`; one per user, whichever work folder a job uses) holds approved signs in one table,
+`signs`, keyed by the Japanese in Unicode NFKC without whitespace and a 64-bit difference hash of
+the sign's keyframe crop (shrunk to 9 by 8 grey pixels); a `meta` row holds its layout version.
+Each value is an rkyv `LibrarySign`: the English, its confidence, the lettering style, the patch
+and mask of the approved replacement's first plate, and the jobs that recorded it, the first being
+its origin. A sign is approved when `text_verify` kept its replacement baked with every reading
+passed and no owner correction kept it in Japanese; the `output` step records it. A later
+occurrence of another job with the same normalised Japanese and a crop hash at most 6 bits away
+starts from the stored translation (`text_translate`, provenance `library`, no Claude call for a
+keyframe of known signs alone) and lettering style (`text_compose`), and is still erased, composed
+and read back in its own frames; a digest of the matched signs is part of both steps'
+fingerprints, so a library change reruns only the jobs it touches, and a job never matches its own
+signs. A Check Text correction that changes or removes a sign's English or keeps the Japanese, and
+a retry, removes it. The window's Settings shows the library's size and clears it. A job run from
+a terminal and the window can run at the same time, and a second open of the file fails at once,
+so no process keeps `library.redb` open: a process opens it read-write for one transaction (the
+lookups of one step, or one job's approved signs), closes it, and retries every 50 ms for up to
+5 s while another handle holds it. The workers of the two steps that read it open it themselves,
+named in `TBD_SUBTITLES_LIBRARY` by the runner, and hash every crop before they open it
+([sign library](/crates/pipeline/src/library/)).
 
 ## Phases
 
@@ -273,8 +286,13 @@ and reruns Dressrosa 11 and 28 with identical `.ass` and `.localized.ass` files 
    revisions. To be measured on Dressrosa 11, 28 and a 60 fps video: time, RAM, VRAM, `job.redb`
    size, and the `.ass`, `.localized.ass` and `text_verify` verdicts against phase 4.
    <!-- measurements pending -->
-6. **Library.** `library.redb`, matching by reading and crop hash, reuse measured over a batch
-   of episodes.
+6. **Library (implemented; measurements pending).** `crates/pipeline/src/library/` owns
+   `library.redb` beside the default work folder (above), `job_model::onscreen::LibrarySign` its
+   values; `text_translate` and `text_compose` read it, `output` records approved signs, Check
+   Text removes rejected ones, and Settings shows its size and clears it. With an empty library no
+   fingerprint, document or file changes, so Dressrosa 11 and 28 keep their outputs. Reuse over a
+   batch of episodes, and the outputs of a second episode run against the first one's signs:
+   <!-- measurements pending -->
 
 ## Boundaries
 

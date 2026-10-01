@@ -14,7 +14,7 @@ use crate::work_dir::{self, JobStore};
 
 /// Record `step` as finished at `ns` with its current fingerprint.
 fn finish(store: &JobStore, record: &JobRecord, step: StepName, ns: u128) {
-    let fingerprint = fingerprint(step, record, &store.read().unwrap()).unwrap();
+    let fingerprint = fingerprint(step, record, &store.read().unwrap(), None).unwrap();
     store
         .put_step_record(
             step,
@@ -28,7 +28,7 @@ fn finish(store: &JobStore, record: &JobRecord, step: StepName, ns: u128) {
 }
 
 fn current(step: StepName, record: &JobRecord, store: &JobStore) -> String {
-    fingerprint(step, record, &store.read().unwrap()).unwrap()
+    fingerprint(step, record, &store.read().unwrap(), None).unwrap()
 }
 
 fn put_bytes(store: &JobStore, key: &Key) {
@@ -139,7 +139,12 @@ fn finished_job(name: &str) -> (Scratch, JobRecord) {
 }
 
 fn stale(scratch: &Scratch, record: &JobRecord) -> Vec<StepName> {
-    stale_steps(record, &scratch.store().read().unwrap(), scratch.work())
+    stale_steps(
+        record,
+        &scratch.store().read().unwrap(),
+        scratch.work(),
+        None,
+    )
 }
 
 #[test]
@@ -178,6 +183,7 @@ fn a_finished_step_with_its_rows_and_files_is_reused_and_a_missing_one_reruns_it
             &record,
             &store.read().unwrap(),
             scratch.work(),
+            None,
         )
     };
     finish(store, &record, StepName::ProbeDecode, 1);
@@ -342,4 +348,52 @@ fn a_changed_table_layout_changes_every_fingerprint() {
         .unwrap();
     write.commit().unwrap();
     assert_ne!(current(StepName::ShotScan, &r, store), before);
+}
+
+#[test]
+fn only_a_matched_sign_of_another_job_reaches_the_translation_and_composition_fingerprints() {
+    use crate::library::fixtures::{hash, library_sign, occurrence};
+    let scratch = Scratch::new("resume-library");
+    let store = scratch.store();
+    let mut record = job_record(&scratch.dir);
+    record.settings.onscreen_text.enabled = true;
+    record.settings.onscreen_text.localized_video = true;
+    let library = Library::at(scratch.dir.join("library").join(crate::library::FILE_NAME));
+    let text = TextDocument {
+        occurrences: vec![occurrence(&scratch.dir, "a", "王宮", 1)],
+        ..TextDocument::default()
+    };
+    store.put_output(StepName::TextTrack, None, &text).unwrap();
+    store.put_output(StepName::TextReview, None, &text).unwrap();
+    let with = |step| fingerprint(step, &record, &store.read().unwrap(), Some(&library)).unwrap();
+    let without = |step| current(step, &record, store);
+    let steps = [
+        StepName::TextTranslate,
+        StepName::TextCompose,
+        StepName::TextReview,
+    ];
+    for step in steps {
+        assert_eq!(with(step), without(step), "{step}: an empty library");
+    }
+    let own = work_dir::job_id(Path::new(&record.video));
+    library
+        .record(library_sign("王宮", hash(1), "Royal Palace", &own))
+        .unwrap();
+    for step in steps {
+        assert_eq!(with(step), without(step), "{step}: the job's own sign");
+    }
+    library.clear().unwrap();
+    library
+        .record(library_sign("王宮", hash(1), "Royal Palace", "d11"))
+        .unwrap();
+    let matched = [with(StepName::TextTranslate), with(StepName::TextCompose)];
+    assert_ne!(matched[0], without(StepName::TextTranslate));
+    assert_ne!(matched[1], without(StepName::TextCompose));
+    assert_eq!(with(StepName::TextReview), without(StepName::TextReview));
+    library.remove("王宮", hash(1)).unwrap();
+    library
+        .record(library_sign("王宮", hash(1), "The Palace", "d11"))
+        .unwrap();
+    assert_ne!(with(StepName::TextTranslate), matched[0]);
+    assert_ne!(with(StepName::TextCompose), matched[1]);
 }

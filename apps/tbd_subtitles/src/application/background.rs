@@ -30,6 +30,7 @@ use crate::job_report::services::fix_it::Fixing;
 use crate::settings::events::PathField;
 use crate::settings::models::machine::Check;
 use crate::settings::services::model_downloads::Downloading;
+use crate::settings::services::sign_library;
 
 /// How long the window waits for the desktop's colour scheme before its first frame; the portal
 /// answers in a few milliseconds.
@@ -66,6 +67,8 @@ pub(crate) struct Pending {
     pub(crate) checks: Option<Receiver<Vec<Check>>>,
     pub(crate) work_size: Option<Receiver<u64>>,
     pub(crate) models_size: Option<Receiver<u64>>,
+    /// The sign library's size, measured or after a clear.
+    pub(crate) library: Option<Receiver<sign_library::Measured>>,
     pub(crate) scheme: Option<Receiver<Scheme>>,
     /// The desktop's answers to the files it was asked to open.
     pub(crate) opens: Vec<OpenRequest>,

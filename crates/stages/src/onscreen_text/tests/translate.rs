@@ -464,9 +464,15 @@ impl Stage {
         };
         let claude = ask.is_some().then_some(&self.claude);
         let ask = ask.unwrap_or(&never);
-        let result = run(document, &input, &mut open, claude, ask, &|done, total| {
-            progress.lock().unwrap().push((done, total))
-        });
+        let result = run(
+            document,
+            &input,
+            &BTreeMap::new(),
+            &mut open,
+            claude,
+            ask,
+            &|done, total| progress.lock().unwrap().push((done, total)),
+        );
         Ran {
             result,
             opens: opens.get(),

@@ -19,6 +19,7 @@ fn options(cancel: CancelToken) -> JobOptions {
         },
         cancel,
         gpu_lock: PathBuf::from("/tmp/gpu.lock"),
+        library: None,
         models_dir: PathBuf::from("/models"),
     }
 }

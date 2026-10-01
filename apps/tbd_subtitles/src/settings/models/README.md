@@ -12,7 +12,7 @@ apps/tbd_subtitles/src/settings/models/
 ├── claude_models.rs  the `claude` models offered: name, label, tag and help line; `display_name`
 ├── machine.rs        `DownloadItem` and `ItemKind`, `Check` (with the folder it found), `CheckState`
 ├── mod.rs            the module list
-└── page.rs           `SettingsPage`, `SettingsTab`, `Field` and its error, downloads, right-click
+└── page.rs           `SettingsPage`, `SettingsTab`, `Field` and its error, downloads, right-click, the library
 ```
 
 ## How it works
@@ -30,9 +30,11 @@ before the localized video existed, replaces text in the video, while a saved `f
 edit is written at once, so there is no draft), the `FieldError` of the last edit that was
 refused (its `Field` and why), why the file could not be read, the saved glossary's count of
 names, the model folders and runtime archives with a running download and when a download last
-brought everything onto disk, the checks, the models and work folders with their sizes, and the
-`RightClickEntry`: whether Dolphin's "Generate subtitles" entry is written (not installed until
-the application writes it, installed at its path, or failed with the reason).
+brought everything onto disk, the checks, the models and work folders with their sizes, the
+`SignLibrary` (its signs and bytes once measured, its last error, whether a Clear waits for
+confirmation or runs), and the `RightClickEntry`: whether Dolphin's "Generate subtitles" entry
+is written (not installed until the application writes it, installed at its path, or failed with
+the reason).
 `SettingsTab` names the Settings window's five tabs (General, Automation, Engines, Models, This
 Computer) and their titles. `DownloadProgress` names the item downloading now by its id, with its bytes held,
 and the bytes of the whole download. `CLAUDE_MODELS` lists the `claude` models both lists offer

@@ -31,6 +31,10 @@ subtitle_formats = { path = "../subtitle_formats" }
 # The job database, `job.redb`, owned by the process that runs the job; pinned to the measured
 # release, the same pin as `tools/redb_process_probe`, whose findings hold for this version only.
 redb = "=4.3.0"
+# The sign library's crop hash: a keyframe crop decoded and shrunk to 9 by 8 grey pixels.
+image = { version = "0.25", default-features = false, features = ["png"] }
+# The sign library's key: the Japanese in Unicode NFKC, so full- and half-width forms match.
+unicode-normalization = "0.1"
 # Every step's output and `job.json` are JSON.
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 serde_json = "1"

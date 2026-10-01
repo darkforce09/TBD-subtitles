@@ -40,7 +40,7 @@ installs the theme from `core::ui::theme` (Adwaita Sans, the icon font, the mock
 and starts following the desktop's colour scheme through `core::color_scheme`, waiting up to
 250 ms for its first answer so the first frame already has the desktop's colours. Its
 `Environment` names the owner's settings file, the kept queue, the queued history
-(`queued_videos.json`), the GPU lock and the runtime folder, holds the job runner (the pipeline's `run_job`) and Fix It's (`fix_video`), the notifier
+(`queued_videos.json`), the GPU lock, the sign library (`library.redb`) and the runtime folder, holds the job runner (the pipeline's `run_job`) and Fix It's (`fix_video`), the notifier
 (`notify`, the desktop's notifications through `core::portal::notify`), the process's log buffer
 and log file, and wakes the window from any thread (`request_repaint`); the tests build one over
 a scratch folder with a stand-in runner, a log buffer of its own and no log file, a Fix It that

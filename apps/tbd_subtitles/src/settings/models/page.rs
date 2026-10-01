@@ -1,6 +1,7 @@
 //! The settings' state as the Settings window draws it: the file's settings, the error of an edit
 //! that was refused, the models a job needs with any download in progress, the machine checks,
-//! the sizes of the folders and whether Dolphin's right-click entry is written.
+//! the sizes of the folders and of the sign library, and whether Dolphin's right-click entry is
+//! written.
 //!
 //! **Role:** hold what the six tabs and the models banner show, and name the tabs and the fields
 //! an error can sit under.
@@ -113,6 +114,19 @@ pub(crate) enum RightClickEntry {
     Failed(String),
 }
 
+/// The sign library shared by episodes as the On-screen Text tab shows it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct SignLibrary {
+    /// The signs it holds and the bytes of its file, once measured.
+    pub(crate) size: Option<(u64, u64)>,
+    /// Why the last measure or clear failed.
+    pub(crate) error: Option<String>,
+    /// The owner asked to clear it and has not confirmed yet.
+    pub(crate) confirming: bool,
+    /// A clear is under way.
+    pub(crate) clearing: bool,
+}
+
 /// Everything the Settings window and the models banner draw.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SettingsPage {
@@ -143,4 +157,6 @@ pub(crate) struct SettingsPage {
     pub(crate) work_size: Option<u64>,
     /// Whether Dolphin offers "Generate subtitles" for videos.
     pub(crate) right_click: RightClickEntry,
+    /// The sign library shared by episodes.
+    pub(crate) library: SignLibrary,
 }

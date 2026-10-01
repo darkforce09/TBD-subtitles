@@ -45,6 +45,8 @@ pub(crate) struct Environment {
     pub(crate) history_path: PathBuf,
     /// The machine-wide GPU lock.
     pub(crate) gpu_lock: PathBuf,
+    /// The sign library shared by episodes.
+    pub(crate) library: PathBuf,
     /// The runtime folder holding the CUDA libraries.
     pub(crate) runtime_dir: PathBuf,
     /// The running binary's folder, where the Whisper worker sits.
@@ -75,6 +77,7 @@ impl Environment {
             history_path: queued_history::default_path()
                 .ok_or_else(|| anyhow::anyhow!("the app's data folder is unknown"))?,
             gpu_lock: pipeline::work_dir::gpu_lock_path()?,
+            library: pipeline::library::default_path()?,
             runtime_dir: inference::model_store::runtime_dir()?,
             exe_dir: std::env::current_exe()
                 .ok()
@@ -109,6 +112,7 @@ impl Environment {
             queue_path: root.join("data").join("queue.json"),
             history_path: root.join("data").join("queued_videos.json"),
             gpu_lock: root.join("data").join("gpu.lock"),
+            library: root.join("data").join(pipeline::library::FILE_NAME),
             runtime_dir: root.join("runtime"),
             exe_dir: None,
             wake: crate::core::background::no_wake(),

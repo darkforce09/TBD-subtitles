@@ -4,7 +4,8 @@
 //! that writes a localized video, its replacements and the selected occurrence's pictures.
 //! **Position:** called off the window thread by application actions; depends on plain models.
 //! **Signals and state:** reads the job's rows in one snapshot of its database, and its crops;
-//! changes the on-screen text corrections in one write transaction of it.
+//! changes the on-screen text corrections in one write transaction of it, and takes the sign of an
+//! occurrence whose English the owner rejects out of the sign library.
 //! **Invariants:** a change rereads the corrections inside its own write transaction, so a change
 //! committed meanwhile is kept; thumbnails have bounded total size;
 //! absent visual results never masquerade as a completed scan.
@@ -13,8 +14,9 @@ use std::path::{Component, Path};
 
 use job_model::StepName;
 use job_model::job::JobRecord;
-use job_model::onscreen::{TextCorrections, TextDocument, TextEdit, TextOccurrence};
+use job_model::onscreen::{TextCorrections, TextDocument, TextEdit, TextOccurrence, TextTreatment};
 use job_model::outputs::{OutputRecord, ProbeDecoded};
+use pipeline::library::{Library, signs};
 use pipeline::work_dir::{self, JobStore, WorkDir};
 
 use super::{localized, player};
@@ -103,8 +105,9 @@ pub(crate) fn load(work: &Path) -> Result<Session, String> {
     })
 }
 
-/// Save, keep, undo or request another reading of the selected occurrence.
-pub(crate) fn save(session: &Session, event: &Event) -> Result<(), String> {
+/// Save, keep, undo or request another reading of the selected occurrence; a change that rejects
+/// its English first takes its sign out of `library`.
+pub(crate) fn save(session: &Session, event: &Event, library: &Library) -> Result<(), String> {
     let selected = session.document.occurrences.get(session.selected);
     let edit = match event {
         Event::Save => {
@@ -132,6 +135,12 @@ pub(crate) fn save(session: &Session, event: &Event) -> Result<(), String> {
         Event::DiscardOrphans => None,
         _ => return Err("This action does not save an on-screen text correction.".into()),
     };
+    if let Some(selected) = selected
+        && rejects(event, selected, edit.as_ref())
+    {
+        signs::forget(library, selected, &session.work)
+            .map_err(|error| format!("Cannot take the sign out of the library: {error}"))?;
+    }
     let store = JobStore::open_existing(&WorkDir::new(&session.work))
         .map_err(|error| format!("Cannot save the correction: {error}"))?;
     work_dir::update_text_corrections(&store, |current| {
@@ -139,6 +148,23 @@ pub(crate) fn save(session: &Session, event: &Event) -> Result<(), String> {
     })
     .map_err(|error| format!("Cannot save the correction: {error}"))?;
     Ok(())
+}
+
+/// Whether `event` on `selected` rejects its English, so a sign the library holds for it goes: a
+/// saved correction that changes or removes the English or keeps the Japanese in the picture,
+/// and a request to read and translate it again.
+fn rejects(event: &Event, selected: &TextOccurrence, edit: Option<&TextEdit>) -> bool {
+    fn shown(english: Option<&str>) -> Option<&str> {
+        english.map(str::trim).filter(|e| !e.is_empty())
+    }
+    match event {
+        Event::Retry => true,
+        Event::Save => edit.is_some_and(|edit| {
+            shown(edit.english.as_deref()) != shown(selected.english.as_deref())
+                || edit.presentation.treatment == TextTreatment::Nearby
+        }),
+        _ => false,
+    }
 }
 
 /// Apply `event` on the selected occurrence `selected` to the stored `current` corrections.

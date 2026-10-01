@@ -99,6 +99,7 @@ pub(super) fn run(args: &FixArgs) -> anyhow::Result<()> {
         binaries: Binaries::beside_current_exe()?,
         cancel: CancelToken::new(),
         gpu_lock: pipeline::work_dir::gpu_lock_path()?,
+        library: Some(pipeline::library::default_path()?),
         models_dir: job_settings::models_dir(&chosen)?,
     };
     let finished = run_job(&args.video, &job, &process_command::print)

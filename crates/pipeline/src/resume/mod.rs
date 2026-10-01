@@ -2,7 +2,8 @@
 //!
 //! **Role:** a fingerprint hashes the step's name and revision, the settings it reads, the
 //! video's identity (for steps that read the video), the layout version of every table, the
-//! fingerprint and finish time of each step it reads, and the owner's corrections it reads. A
+//! fingerprint and finish time of each step it reads, the owner's corrections it reads, and, for
+//! the translation and the composition, the library signs their occurrences match, when any do. A
 //! step is reused when its stored record holds the same fingerprint, every document it writes is
 //! stored and every file its rows name is there.
 //!
@@ -10,7 +11,7 @@
 //! job's database and `work_dir::store::files` for the files rows name.
 //!
 //! **Signals and state:** reads the job's step records, table layouts and corrections, the model
-//! files and the reference folder for the fingerprints; writes nothing.
+//! files, the reference folder and the sign library for the fingerprints; writes nothing.
 //!
 //! **Invariants:** re-running a step changes its finish time, so every step that reads it runs
 //! again; a missing document or file re-runs its step; a row that does not read makes the step
@@ -22,7 +23,7 @@ use std::time::UNIX_EPOCH;
 
 use job_model::StepName;
 use job_model::job::JobRecord;
-use job_model::onscreen::TextCorrections;
+use job_model::onscreen::{TextCorrections, TextDocument};
 use job_model::store::TableLayouts;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -30,12 +31,18 @@ use worker_channel::address::Table;
 
 use crate::error::Result;
 use crate::graph;
-use crate::work_dir::WorkDir;
+use crate::library::{Library, signs};
 use crate::work_dir::corrections::{digest_in, read_row};
 use crate::work_dir::store::{StoreRead, files, keys};
+use crate::work_dir::{self, WorkDir};
 
 /// The fingerprint `step` would have if it ran now with this record and the rows of `read`.
-pub fn fingerprint(step: StepName, record: &JobRecord, read: &StoreRead) -> Result<String> {
+pub fn fingerprint(
+    step: StepName,
+    record: &JobRecord,
+    read: &StoreRead,
+    library: Option<&Library>,
+) -> Result<String> {
     let mut inputs = Vec::new();
     for input in graph::inputs(step) {
         let done = read.step_record(*input)?;
@@ -82,23 +89,57 @@ pub fn fingerprint(step: StepName, record: &JobRecord, read: &StoreRead) -> Resu
             let corrections: TextCorrections = read_row(read, keys::TEXT_CORRECTIONS)?;
             value["text_corrections"] = text_corrections(step, corrections);
         }
+        if let Some(library) = library
+            && let Some(digest) = library_digest(step, record, read, library)?
+        {
+            value["library"] = json!(digest);
+        }
     }
     Ok(digest(value.to_string().as_bytes()))
 }
 
 /// Whether the step's stored output is still good: its record holds the current fingerprint,
 /// every document it writes is stored and every file its rows name is there.
-pub fn is_valid(step: StepName, record: &JobRecord, read: &StoreRead, work: &WorkDir) -> bool {
+pub fn is_valid(
+    step: StepName,
+    record: &JobRecord,
+    read: &StoreRead,
+    work: &WorkDir,
+    library: Option<&Library>,
+) -> bool {
     let Ok(Some(done)) = read.step_record(step) else {
         return false;
     };
-    let current = fingerprint(step, record, read);
+    let current = fingerprint(step, record, read, library);
     let documents = keys::output_keys(step)
         .iter()
         .all(|key| read.raw(Table::Outputs, key).is_ok_and(|row| row.is_some()));
     current.is_ok_and(|current| current == done.fingerprint)
         && documents
         && files::named_files(step, read, work).is_ok_and(|named| named.present())
+}
+
+/// The digest of the library signs a step starts from: the translation's over the tracked
+/// occurrences, the composition's over the reviewed ones; `None` for every other step, and when
+/// no occurrence matches a sign of another job.
+fn library_digest(
+    step: StepName,
+    record: &JobRecord,
+    read: &StoreRead,
+    library: &Library,
+) -> Result<Option<String>> {
+    let text = &record.settings.onscreen_text;
+    let document = match step {
+        StepName::TextTranslate => StepName::TextTrack,
+        StepName::TextCompose if text.localized_video => StepName::TextReview,
+        _ => return Ok(None),
+    };
+    let Some(document) = read.output::<TextDocument>(document, None)? else {
+        return Ok(None);
+    };
+    let job = work_dir::job_id(Path::new(&record.video));
+    let matches = signs::matches(library, &document, read.job_folder(), &job)?;
+    Ok(signs::digest(&matches))
 }
 
 fn text_models(step: StepName, record: &JobRecord) -> Value {
@@ -193,10 +234,15 @@ fn digest(bytes: &[u8]) -> String {
 
 /// The steps a run would do now, in order: each step whose stored output is not valid, and each
 /// step that reads one of them, because its fingerprint changes once that input runs again.
-pub fn stale_steps(record: &JobRecord, read: &StoreRead, work: &WorkDir) -> Vec<StepName> {
+pub fn stale_steps(
+    record: &JobRecord,
+    read: &StoreRead,
+    work: &WorkDir,
+    library: Option<&Library>,
+) -> Vec<StepName> {
     let mut stale: Vec<StepName> = Vec::new();
     for step in StepName::ALL {
-        if !is_valid(step, record, read, work)
+        if !is_valid(step, record, read, work, library)
             || graph::inputs(step)
                 .iter()
                 .any(|input| stale.contains(input))

@@ -9,7 +9,8 @@
 //! `workers`, `tasks`, `report` and `rerun`.
 //!
 //! **Signals and state:** holds the job's `JobStore` (and so `job.redb` and `job.lock`) until the
-//! run returns; sends each worker the stored values its step reads; commits the outputs a step
+//! run returns; sends each worker the stored values its step reads; names the sign library to the
+//! workers of the steps that read it; commits the outputs a step
 //! wrote with its step record, in one transaction, for in-process and worker steps alike; emits
 //! progress events.
 //!
@@ -35,6 +36,7 @@ use worker_channel::address::Address;
 use crate::cancel::CancelToken;
 use crate::error::{Context, PipelineError, Result};
 use crate::graph::{self, Placement};
+use crate::library::{self, Library};
 use crate::progress::{Progress, ProgressSink};
 use crate::tasks::{self, Job, StepIo};
 use crate::work_dir::store::StoreRead;
@@ -58,6 +60,9 @@ pub struct JobOptions {
     pub cancel: CancelToken,
     /// The machine-wide GPU lock file (`gpu.lock` in the app data folder).
     pub gpu_lock: PathBuf,
+    /// The sign library shared by episodes (`library.redb` in the app data folder); `None` runs
+    /// without one: no sign is looked up or recorded.
+    pub library: Option<PathBuf>,
 }
 
 /// What a finished job left.
@@ -98,6 +103,7 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
         corrections: work_dir::corrections_digest(&store)?,
     };
     tracing::debug!("job {} for {}", work.root().display(), video.display());
+    let library = options.library.as_ref().map(Library::at);
     let cleared = rerun::start(&store, &record, &options.rerun)?;
     if !options.rerun.is_empty() {
         tracing::debug!(
@@ -108,7 +114,7 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
     progress(Progress::JobStarted {
         video: video.clone(),
         work_dir: work.root().to_path_buf(),
-        stale: resume::stale_steps(&record, &store.read()?, &work),
+        stale: resume::stale_steps(&record, &store.read()?, &work, library.as_ref()),
     });
 
     let cuda_env: OnceLock<std::result::Result<Vec<(String, String)>, String>> = OnceLock::new();
@@ -144,6 +150,7 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                     let job = Job {
                         work: work.clone(),
                         record: record.clone(),
+                        library: library.clone(),
                     };
                     let mut io = StepIo::in_process(&store)?;
                     let measure = tasks::in_process(step, &job, &mut io, &|done, total| {
@@ -156,7 +163,12 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                         "step {step} runs in a worker of {}",
                         options.binaries.path(binary).display()
                     );
-                    let env = env_for(step)?;
+                    let mut env = env_for(step)?;
+                    if library::reads_library(step) {
+                        let named = options.library.as_ref();
+                        let path = named.map(|p| p.to_string_lossy().into_owned());
+                        env.push((library::LOCATION_VARIABLE.into(), path.unwrap_or_default()));
+                    }
                     let inputs = worker_inputs(step, &store.read()?)?;
                     let data = WorkerData {
                         store: &store,
@@ -194,13 +206,13 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                     finish(StepName::ShotScan, scanned, progress);
                 }
                 let read = store.read()?;
-                if resume::is_valid(step, &record, &read, &work) {
+                if resume::is_valid(step, &record, &read, &work, library.as_ref()) {
                     skipped.push(step);
                     progress(Progress::StepSkipped(step));
                     announce_duration(step, &read, progress);
                     continue;
                 }
-                let fingerprint = resume::fingerprint(step, &record, &read)?;
+                let fingerprint = resume::fingerprint(step, &record, &read, library.as_ref())?;
                 drop(read);
                 rerun::forget(&store, step)?;
                 ran.push(step);

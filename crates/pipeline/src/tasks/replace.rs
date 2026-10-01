@@ -8,7 +8,9 @@
 //! step's document, and composition every `frames` row; stores `outputs/text_mask`,
 //! `outputs/text_inpaint` or `outputs/text_compose`, and the stroke masks one `frames` row per
 //! frame of every occurrence that keeps its plates, each sent as it is made; writes the mask,
-//! source, plate, patch and preview PNGs those documents name.
+//! source, plate, patch and preview PNGs those documents name; the composition
+//! starts each occurrence the sign library holds for another job from that sign's lettering
+//! style.
 //! **Invariants:** a job without the localized video stores empty documents and loads nothing;
 //! every PNG a document names is synced before the document is handed to the store.
 
@@ -24,6 +26,7 @@ use worker_channel::address::Table;
 
 use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, PipelineError, Result};
+use crate::library::signs;
 
 /// Whether the job replaces writing in a localized video.
 pub(crate) fn localized(job: &Job) -> bool {
@@ -80,6 +83,13 @@ pub(super) fn run(
         StepName::TextCompose => {
             let reviewed: TextDocument = io.get(StepName::TextReview, None)?;
             let mut document: ReplacementDocument = io.get(StepName::TextInpaint, None)?;
+            if let Some(library) = &job.library {
+                let known = signs::matches(library, &reviewed, job.work.root(), &job.id())?;
+                signs::start_from_styles(&mut document, &known);
+                if !known.is_empty() {
+                    report.note("library_styles", known.len());
+                }
+            }
             let fonts = job.models()?.join("latin-fonts");
             let motion = motion(io)?;
             replace::compose::compose(

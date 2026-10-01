@@ -3,7 +3,8 @@
 The settings logic, with no rendering code: where `settings.toml` lives, reading and writing it,
 turning the owner's settings into what a job runs with, applying an edit of the Settings window,
 and the machine side: the models and runtime a job needs, their download and how the Models tab
-and the banner show them, the checks of this machine, and the folders' sizes.
+and the banner show them, the checks of this machine, the folders' sizes, and the sign
+library's size and clearing.
 
 ## Contents
 
@@ -15,6 +16,7 @@ apps/tbd_subtitles/src/settings/services/
 ├── mod.rs              the module list
 ├── page_editing.rs     applying an edit at once or refusing it; what it stales; adding a watch folder
 ├── settings_file.rs    the file's path, `load`, `parse`, `render` and `save`, and `SettingsError`
+├── sign_library.rs     the sign library's size and its clearing, each on a thread
 ├── system_check.rs     the GPU, CUDA runtime, FFmpeg, ffprobe, `claude` and Whisper worker checks
 ├── tests/              unit tests for each file here
 └── work_folder.rs      a folder's size (the work or the models folder), measured on a thread
@@ -63,7 +65,9 @@ else what is missing, else for 4 s after a download that brought everything onto
 MiB a GPU step needs), locates the CUDA runtime (the check `CUDA_RUNTIME`, with the folder it was
 found in as its `path`), asks FFmpeg, ffprobe and `claude` for their versions, looks for FFmpeg's
 `pulse` output (clip sound), and looks for `tbd-subtitles-ggml` beside the binary.
-`work_folder::size` sums every file under a folder.
+`work_folder::size` sums every file under a folder. `sign_library::start` runs `size` (the signs
+held and the bytes of `library.redb`, none without a file) or `clear` (every sign removed and the
+file compacted, then measured) on a thread; the answer or the library's error comes back once.
 
 ## Boundaries
 

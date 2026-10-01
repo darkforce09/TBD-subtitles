@@ -79,8 +79,12 @@ would cover English lettered into the video (every sampled frame of each baked o
 pixels) moved to the top by `subtitle_formats::writers::ass::write_with`. The read-back check
 opens PP-OCRv5 only when composition baked something, reads each baked occurrence back through
 `stages::onscreen_text::replace::verify` and stores `outputs/text_verify`, which the output and
-the localized video read, and one `readings` row per frame it read, which Check Text reads.
-The quality check settles the findings of every corrected line;
+the localized video read, and one `readings` row per frame it read, which Check Text reads. With a sign library (`Job::library`), the translation first looks
+every tracked occurrence up (`library::signs::matches`, signs of other jobs only) and hands the
+matches to `stages::onscreen_text::translate::translate_known`, the composition gives each matched
+pending replacement the sign's `LetteringStyle` before lettering, and the output records each
+replacement `text_verify` kept baked with every reading passed (`library::signs::approved`,
+`library_added` and `library_joined` in its notes when it recorded any). The quality check settles the findings of every corrected line;
 a Fix It change the owner has not checked has its words held again against every hypothesis, the
 re-decodes included, and the summary counts the owner's lines and Fix It's apart. The alignment
 and review tasks read both engines' transcripts for `sheet::heard_spans`, so a line is aligned

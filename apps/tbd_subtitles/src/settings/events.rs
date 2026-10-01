@@ -30,4 +30,10 @@ pub(crate) enum SettingsEvent {
     CheckAgain,
     /// Open the work folder in the file manager.
     OpenWorkFolder,
+    /// Ask to clear the sign library; nothing is cleared until `ClearLibrary`.
+    AskClearLibrary,
+    /// Clear the sign library, as the owner confirmed.
+    ClearLibrary,
+    /// Keep the sign library: the owner did not confirm.
+    KeepLibrary,
 }

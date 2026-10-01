@@ -21,8 +21,12 @@ each step it reads, from `step_records`. Re-running a step gives it a new finish
 step that reads it gets a new fingerprint and runs again. The review's fingerprint also covers the
 digest of the stored line corrections, and reading, translation and review, with on-screen text
 on, the stored text corrections (all of them for the review, the occurrences to retry for the
-other two), besides the model files and the reference folder. `is_valid` also needs every key
-`keys::output_keys` gives the step and `work_dir::store::files::named_files` present: the files
+other two), besides the model files and the reference folder. With a sign library, the translation's
+fingerprint also covers the digest of the signs its tracked occurrences match, and the
+composition's (with the localized video on) those its reviewed occurrences match
+(`library::signs::digest`: key, English, confidence and style); a job no sign of another job
+matches carries no such key, so an empty library changes no fingerprint. `is_valid` also needs
+every key `keys::output_keys` gives the step and `work_dir::store::files::named_files` present: the files
 the step's rows name, the same list the store's orphan cleanup keeps.
 `stale_steps` lists, in order, the steps a run would do now: each step that is not valid and each
 step that reads one of them.
@@ -30,6 +34,7 @@ step that reads one of them.
 ## Boundaries
 
 - Depends on: `crate::graph` (inputs, revision, settings, the corrections a step reads),
+  `crate::library` (the signs a step matches),
   `crate::work_dir` (the store, its keys, `files` and the corrections' digest), `job_model`
   (`StepName`, `JobRecord`, `TableLayouts`), `serde_json` and `sha2`.
 - Used by: `crate::runner`, before each step and when a job starts;
@@ -49,7 +54,10 @@ step that reads one of them.
     read the video
     (`a_setting_changes_only_the_steps_that_read_it_and_the_video_changes_the_first`);
   - the stale steps are the invalid ones and every step that reads them
-    (`the_stale_steps_are_the_invalid_ones_and_everything_that_reads_them`).
+    (`the_stale_steps_are_the_invalid_ones_and_everything_that_reads_them`);
+  - only a matched sign of another job reaches the translation and composition fingerprints, and
+    a changed sign changes them
+    (`only_a_matched_sign_of_another_job_reaches_the_translation_and_composition_fingerprints`).
 
 ## Related documentation
 

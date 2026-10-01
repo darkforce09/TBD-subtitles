@@ -58,6 +58,7 @@ fn job(name: &str, enabled: bool) -> (Scratch, Job) {
     let job = Job {
         work: scratch.work().clone(),
         record,
+        library: None,
     };
     (scratch, job)
 }

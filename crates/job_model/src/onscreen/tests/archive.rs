@@ -4,10 +4,10 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 
 use super::{
-    LetteringStyle, LocalizedVideoRecord, PixelRect, Plate, Point, Quad, ReplaceStatus,
-    ReplacedText, ReplacementDocument, ShiftedPatch, TextCheck, TextCorrections, TextDocument,
-    TextEdit, TextFrame, TextKeyframe, TextOccurrence, TextPresentation, TextProvenance,
-    TextSettings, TextSummary, TextTreatment, VerifiedReplacements, VerifyReading,
+    LetteringStyle, LibrarySign, LocalizedVideoRecord, PixelRect, Plate, Point, Quad,
+    ReplaceStatus, ReplacedText, ReplacementDocument, ShiftedPatch, TextCheck, TextCorrections,
+    TextDocument, TextEdit, TextFrame, TextKeyframe, TextOccurrence, TextPresentation,
+    TextProvenance, TextSettings, TextSummary, TextTreatment, VerifiedReplacements, VerifyReading,
 };
 use crate::archive_round_trip::round_trip;
 
@@ -355,4 +355,26 @@ fn a_path_that_is_not_utf8_fails_to_archive() {
     item.crops
         .push(PathBuf::from(OsStr::from_bytes(b"/tmp/\xff")));
     assert!(rkyv::to_bytes::<rkyv::rancor::Error>(&item).is_err());
+}
+
+#[test]
+fn library_sign_round_trips_in_rkyv_and_json() {
+    let sign = LibrarySign {
+        japanese: "ドレスローザ王宮".into(),
+        crop_hash: 0x0f0f_00ff_1234_8001,
+        english: "Dressrosa Royal Palace".into(),
+        confidence: 0.93,
+        style: style(),
+        patch_png: vec![0x89, b'P', b'N', b'G', 1, 2, 3],
+        mask_png: vec![0x89, b'P', b'N', b'G', 255, 0],
+        episodes: vec![
+            "dressrosa-11-0a1b2c3d".into(),
+            "dressrosa-28-9f8e7d6c".into(),
+        ],
+        added_s: 1_790_000_000,
+    };
+    round_trip(&sign);
+    let json = serde_json::to_string(&sign).unwrap();
+    assert_eq!(serde_json::from_str::<LibrarySign>(&json).unwrap(), sign);
+    assert_eq!(sign.origin(), Some("dressrosa-11-0a1b2c3d"));
 }

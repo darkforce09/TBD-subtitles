@@ -309,9 +309,10 @@ impl TbdSubtitlesApp {
                     video: session.video.clone(),
                     result: receive,
                 });
+                let library = pipeline::library::Library::at(self.env.library.clone());
                 let wake = self.env.wake.clone();
                 std::thread::spawn(move || {
-                    let result = session::save(&session, &event);
+                    let result = session::save(&session, &event, &library);
                     let _ = send.send(result);
                     wake();
                 });

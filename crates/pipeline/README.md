@@ -122,7 +122,8 @@ passes in `JobOptions`, recorded in the job record (`crates/job_model/src/job/se
 
 - Depends on: `stages`, `inference`, `media_io`, `subtitle_formats`, `child_process`,
   `job_model` and `worker_channel`; `redb` 4.3.0 (the job database), `serde`, `serde_json`,
-  `rkyv` (the worker's measure and the database's rows), `sha2`, `libc` (`getrusage`),
+  `rkyv` (the worker's measure and the database's rows), `sha2`, `image` and
+  `unicode-normalization` (the sign library's crop hash and key), `libc` (`getrusage`),
   `nvml-wrapper` and `tracing`
   (debug lines on reruns, placement, the CUDA runtime, the GPU lock and the report); at run time
   the app's two binaries as workers, and through them FFmpeg and the `claude` CLI.

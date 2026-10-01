@@ -205,6 +205,11 @@ impl StoreRead {
         }
     }
 
+    /// The job folder that holds the database, which the paths in its rows are relative to.
+    pub fn job_folder(&self) -> &Path {
+        self.database.parent().unwrap_or(Path::new("."))
+    }
+
     /// The row of `key` in `table` as a `T`, checked and copied out of its archive.
     pub fn get<T>(&self, table: Table, key: &Key) -> Result<Option<T>>
     where

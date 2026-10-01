@@ -74,6 +74,7 @@ fn an_in_process_step_reads_the_store_and_commits_its_output_with_its_record() {
     let job = Job {
         work: scratch.work().clone(),
         record: job_record(&scratch.dir),
+        library: None,
     };
     let mut io = StepIo::in_process(scratch.store()).unwrap();
     crate::tasks::in_process(StepName::Vad, &job, &mut io, &|_, _| {}).unwrap();

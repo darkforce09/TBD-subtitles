@@ -1,7 +1,7 @@
 //! Settings for translated Japanese writing in the same job as dialogue subtitles.
 //!
-//! **Role:** show visual processing, the localized video, translation fallback, reference folders
-//! and model readiness.
+//! **Role:** show visual processing, the localized video, translation fallback, reference folders,
+//! the sign library with its Clear button, and model readiness.
 //!
 //! **Position:** drawn by `settings_window` on On-screen Text; uses the shared form controls.
 //!
@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use eframe::egui::{RichText, TextEdit, Ui};
 
 use super::super::form;
+use crate::core::format;
 use crate::core::ui::button::Button;
 use crate::core::ui::icons;
 use crate::core::ui::palette::palette;
@@ -23,6 +24,11 @@ use crate::settings::events::SettingsEvent;
 use crate::settings::models::machine::CheckState;
 use crate::settings::models::page::{Field, SettingsPage, SettingsTab};
 use crate::settings::services::model_list;
+
+/// What the sign library is, under its size.
+const LIBRARY_HELP: &str = "Signs whose English was drawn into the video and read back cleanly. A later \
+                            episode showing the same sign starts from its translation and \
+                            lettering. Changing a sign's English in Check Text removes it.";
 
 /// What Replace text in the video does, under its switch.
 const REPLACE_HELP: &str = "Erase the Japanese and draw the English into a copy of the video, \
@@ -121,8 +127,43 @@ pub(super) fn onscreen_text_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Ve
         );
         form::field_error(ui, page, Field::OnscreenText);
     });
+    form::row(ui, "Sign library", |ui| sign_library(ui, page, events));
     form::divider(ui);
     form::row(ui, "Models", |ui| model_status(ui, page, events));
+}
+
+/// The sign library's size and its Clear button, which asks before anything is removed.
+fn sign_library(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<SettingsEvent>) {
+    let library = &page.library;
+    let held = match library.size {
+        _ if library.clearing => "Clearing…".to_string(),
+        Some((signs, bytes)) => format!("{signs} signs, {}.", format::size(bytes)),
+        None => "Measuring…".to_string(),
+    };
+    ui.add_space(5.0);
+    ui.label(RichText::new(held).color(palette(ui).text));
+    form::help(ui, LIBRARY_HELP);
+    if let Some(error) = &library.error {
+        form::error(ui, error);
+    }
+    let signs = library.size.map_or(0, |(signs, _)| signs);
+    ui.horizontal_wrapped(|ui| {
+        if library.confirming {
+            ui.label(format!("Remove all {signs} signs?"));
+            if Button::new("Clear").primary(true).show(ui).clicked() {
+                events.push(SettingsEvent::ClearLibrary);
+            }
+            if Button::new("Cancel").show(ui).clicked() {
+                events.push(SettingsEvent::KeepLibrary);
+            }
+        } else if Button::new("Clear…")
+            .enabled(signs > 0 && !library.clearing)
+            .show(ui)
+            .clicked()
+        {
+            events.push(SettingsEvent::AskClearLibrary);
+        }
+    });
 }
 
 fn claude_status(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<SettingsEvent>) {
@@ -188,3 +229,7 @@ fn model_status(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<SettingsEvent
         }
     });
 }
+
+#[cfg(test)]
+#[path = "tests/onscreen_text.rs"]
+mod tests;

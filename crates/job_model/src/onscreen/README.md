@@ -7,6 +7,7 @@ Visible writing, tracked geometry, English translations and owner corrections sh
 ```text
 crates/job_model/src/onscreen/
 ├── frames.rs    the `frames` rows: each frame's quad, follow score, shift, run-length mask and plate
+├── library.rs   one approved sign of the library shared by episodes: English, style, patch, mask
 ├── localize.rs  replacement contracts: stroke masks, plates, patches and the localized video record
 ├── mod.rs       geometry, observations, translations, corrections and summary counts
 ├── settings.rs  new-job and saved-job defaults
@@ -25,7 +26,9 @@ all passed; each sampled frame's `VerifyReading` is a row of the `readings` tabl
 picks the one that says most. `FrameRecord` is one row of the `frames` table: where the writing
 sits in one frame (its quad, follow score, shift and scale), its erase mask as `RleRun`s relative
 to its plate (`encode_mask`, `decode_mask`, `mask_area`) and its plate. A plate's `shifted`
-patches letter the shifts its frames take besides its own.
+patches letter the shifts its frames take besides its own. `LibrarySign` is one approved sign as
+`library.redb` in the app's data folder keeps it: the English, its confidence and lettering style,
+the patch and mask of its first plate, and the jobs that recorded it, the first being its origin.
 
 ## Boundaries
 

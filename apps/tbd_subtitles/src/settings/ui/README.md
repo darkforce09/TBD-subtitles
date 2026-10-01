@@ -9,7 +9,7 @@ nothing.
 
 ```text
 apps/tbd_subtitles/src/settings/ui/
-├── onscreen_text.rs  visual translation, the localized video, Claude fallback, references, models
+├── onscreen_text.rs  visual translation, localized video, Claude fallback, references, sign library, models
 ├── automation_tab.rs   the watch folders with Remove and Add Folder…, and Dolphin's right-click entry
 ├── engines_tab.rs      the engines, the language model, Fix It's model, calls and switch, cut score
 ├── form.rs             the forms' rows, help and error lines, divider, path well, list, field, stepper
@@ -56,7 +56,9 @@ or "Everything a job needs is on disk." On-screen Text has the switch Translate 
 then Replace text in the video (off to clicks while translation is off, which its help then
 says) with what it writes: `<name>.localized.mkv` beside the original with its subtitles in
 `<name>.localized.ass`, the original never changed; then the translation policy, Claude fallback,
-the reference folder and the models' readiness. This Computer lists each check with ✓, ⚠ or ✗ (a spinner
+the reference folder, the sign library ("3 signs, 2.0 MiB.", "Measuring…" until measured, or
+"Clearing…", its error in red, and Clear…, off while it is empty, which asks "Remove all 3
+signs?" with Clear and Cancel before anything goes), and the models' readiness. This Computer lists each check with ✓, ⚠ or ✗ (a spinner
 while they run again), its name and what it found; the CUDA runtime's folder stays on one line
 like the General tab's, or reads "in the models folder" when it is inside it; a failed CUDA
 runtime links to the Models tab

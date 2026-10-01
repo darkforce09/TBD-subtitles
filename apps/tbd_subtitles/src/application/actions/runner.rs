@@ -192,6 +192,7 @@ impl TbdSubtitlesApp {
             binaries: Binaries::beside_current_exe()?,
             cancel,
             gpu_lock: self.env.gpu_lock.clone(),
+            library: Some(self.env.library.clone()),
             models_dir: job_settings::models_dir(saved)?,
         })
     }

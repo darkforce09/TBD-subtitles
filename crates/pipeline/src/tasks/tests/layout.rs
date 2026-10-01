@@ -193,6 +193,7 @@ fn the_localized_subtitles_carry_dialogue_alone_moved_above_lettered_writing() {
     settings.onscreen_text.localized_video = true;
     let video = dir.join("episode.mkv");
     let job = Job {
+        library: None,
         work: scratch.work().clone(),
         record: JobRecord {
             video: video.to_string_lossy().into_owned(),

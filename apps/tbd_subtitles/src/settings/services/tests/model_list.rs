@@ -41,6 +41,7 @@ fn page(items: Vec<DownloadItem>) -> SettingsPage {
         work_folder: PathBuf::from("/work"),
         work_size: None,
         right_click: Default::default(),
+        library: Default::default(),
     }
 }
 

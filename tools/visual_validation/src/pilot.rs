@@ -148,11 +148,12 @@ pub fn run(
     ];
     for step in steps {
         let read = store.read()?;
-        if resume::is_valid(step, &record, &read, &work) {
+        // The pilot measures every sign afresh, so it reads no sign library.
+        if resume::is_valid(step, &record, &read, &work, None) {
             eprintln!("{step}: resumed");
             continue;
         }
-        let fingerprint = resume::fingerprint(step, &record, &read)?;
+        let fingerprint = resume::fingerprint(step, &record, &read, None)?;
         let inputs = runner::worker_inputs(step, &read)?;
         drop(read);
         eprintln!("{step}: running");
@@ -193,6 +194,7 @@ pub fn run(
                 let job = Job {
                     work: work.clone(),
                     record: record.clone(),
+                    library: None,
                 };
                 let measure = tasks::in_process(step, &job, &mut io, &|_, _| {})?;
                 (measure, io.into_outputs())

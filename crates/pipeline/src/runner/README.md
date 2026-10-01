@@ -41,12 +41,16 @@ shot scan runs on a scoped thread, commits its own outputs there, and is joined 
 step that reads it; when the walk ends with an error the runner sets the cancel token, so the
 scan stops instead of running to its end. The CUDA environment, found once through
 `inference::cuda_runtime` beside the binaries or in the runtime folder, goes to GPU workers only.
+The sign library `JobOptions::library` names (`None` for none) reaches the fingerprints
+(`resume::is_valid`, `resume::fingerprint`), the in-process tasks through `tasks::Job::library`,
+and the workers of `text_translate` and `text_compose` as `library::LOCATION_VARIABLE`, empty when
+there is none.
 At the end `report::write` renders `report.md` from the record and the stored step records, and
 `JobOutcome` names the subtitle file, the report, the quality check and the steps run and skipped.
 
 ## Boundaries
 
-- Depends on: `crate::{graph, resume, tasks, workers, work_dir, report, progress}`;
+- Depends on: `crate::{graph, library, resume, tasks, workers, work_dir, report, progress}`;
   `inference::cuda_runtime` and `inference::model_store`; `job_model`; `stages::output`;
   `worker_channel::address`; `tracing` for the `step{step}` span each step runs in (its workers'
   and programs' lines, and the shot scan's thread, log inside it), its debug lines (the job,

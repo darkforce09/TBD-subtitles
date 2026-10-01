@@ -8,13 +8,16 @@
 //! corrections (`corrections/text`) and the previous visual step's document; stores
 //! `outputs/<step>` and, for typesetting, the ASS events as `outputs/text_typeset/ass`; writes
 //! representative crops and keyframe stills under `visual/`, and the readings, translation and
-//! Claude caches.
+//! Claude caches; the translation looks its occurrences up in the sign library.
 //! **Invariants:** disabled visual jobs need no visual model and store empty documents; every PNG
 //! a document names is synced before the document is handed to the store; the local translation
-//! model loads only when Claude leaves an occurrence unanswered.
+//! model loads only when Claude and the sign library leave an occurrence unanswered; a sign the
+//! library holds for an occurrence of another job is its translation, and its keyframe asks
+//! Claude only when it shows writing the library does not hold.
 
 use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, PipelineError, Result};
+use crate::library::signs;
 use crate::work_dir::store::keys;
 use inference::ocr::{OcrDetector, OcrReader, TextDetection};
 use job_model::StepName;
@@ -97,7 +100,16 @@ pub(super) fn run(
             onscreen_text::track::track(&mut document, video_stream(&probe)?, progress)
                 .context("check visible writing geometry")?
         }
-        StepName::TextTranslate => translate(job, io, &mut document, progress, &mut report)?,
+        StepName::TextTranslate => {
+            let known = match &job.library {
+                Some(library) => signs::matches(library, &document, job.work.root(), &job.id())?,
+                None => signs::Matches::new(),
+            };
+            if !known.is_empty() {
+                report.note("library_matches", known.len());
+            }
+            translate(job, io, &mut document, &known, progress, &mut report)?
+        }
         StepName::TextReview => {
             let duration_s = io.probe()?.probe.duration_s;
             onscreen_text::review::apply(&mut document, &io.text_corrections()?, duration_s)
@@ -149,11 +161,12 @@ fn translate(
     job: &Job,
     io: &StepIo,
     document: &mut TextDocument,
+    known: &signs::Matches,
     progress: StepProgress,
     report: &mut TaskReport,
 ) -> Result<()> {
     use inference::llm::{LanguageModel, claude_cli::ClaudeCli, mistral_rs::MistralRs};
-    use onscreen_text::translate::{TranslationInput, translate};
+    use onscreen_text::translate::{TranslationInput, translate_known};
     use std::cell::Cell;
     use subtitle_formats::cue::CueTrack;
     let models = job.models()?;
@@ -182,9 +195,10 @@ fn translate(
         excluded_reference: Some(&own_output),
         parallel_calls: job.settings().llm_processes,
     };
-    translate(
+    translate_known(
         document,
         &input,
+        known,
         &mut open_local,
         Some(&mut claude),
         progress,
@@ -199,6 +213,7 @@ fn translate(
     _job: &Job,
     _io: &StepIo,
     _document: &mut TextDocument,
+    _known: &signs::Matches,
     _progress: StepProgress,
     _report: &mut TaskReport,
 ) -> Result<()> {

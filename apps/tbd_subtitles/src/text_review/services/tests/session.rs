@@ -16,7 +16,8 @@ use super::*;
 /// `step`'s fingerprint for `record` over the rows of the job database in `work`.
 fn fingerprint_in_work(step: StepName, record: &JobRecord, work: &WorkDir) -> String {
     let store = JobStore::open(work).expect("the store");
-    pipeline::resume::fingerprint(step, record, &store.read().expect("read")).expect("fingerprint")
+    pipeline::resume::fingerprint(step, record, &store.read().expect("read"), None)
+        .expect("fingerprint")
 }
 
 struct Fixture {
@@ -102,6 +103,11 @@ impl Fixture {
 
     fn store(&self) -> Arc<JobStore> {
         JobStore::open(&self.work).expect("the store")
+    }
+
+    /// The sign library of this fixture.
+    fn library(&self) -> Library {
+        Library::at(self.root.join("data").join(pipeline::library::FILE_NAME))
     }
 
     fn load(&self) -> Session {
@@ -213,7 +219,7 @@ fn save_rejects_stale_and_unidentified_drafts_without_touching_corrections() {
         let mut draft = edit("Wrong sign wording");
         draft.source_fingerprint = identity;
         session.draft = Some(draft);
-        let error = save(&session, &Event::Save).unwrap_err();
+        let error = save(&session, &Event::Save, &fixture.library()).unwrap_err();
         assert!(error.contains("does not match the current source text"));
         assert_eq!(fixture.corrections_bytes(), Some(before.clone()));
     }
@@ -228,7 +234,7 @@ fn unmatched_corrections_can_be_discarded_without_a_selected_occurrence() {
         edits: [("orphan".into(), edit("Saved wording"))].into(),
         retry: vec![],
     });
-    save(&session, &Event::DiscardOrphans).unwrap();
+    save(&session, &Event::DiscardOrphans, &fixture.library()).unwrap();
     assert!(fixture.corrections().edits.is_empty());
 }
 
@@ -318,7 +324,7 @@ fn save_reloads_wording_timing_placement_size_and_treatment_without_touching_sou
         (path, bytes)
     });
     session.draft = Some(expected.clone());
-    save(&session, &Event::Save).expect("save correction");
+    save(&session, &Event::Save, &fixture.library()).expect("save correction");
     let reloaded = fixture.load();
     assert_eq!(reloaded.draft.as_ref(), Some(&expected));
     assert_eq!(reloaded.corrections.edits.get("board"), Some(&expected));
@@ -339,7 +345,7 @@ fn a_reader_shares_the_handle_of_a_job_running_in_this_process() {
     let running = fixture.store();
     let mut session = fixture.load();
     session.draft = Some(edit("Dressrosa"));
-    save(&session, &Event::Save).expect("save while the job runs");
+    save(&session, &Event::Save, &fixture.library()).expect("save while the job runs");
     assert_eq!(
         work_dir::read_text_corrections(&running)
             .expect("the runner's handle")
@@ -367,7 +373,7 @@ fn undo_rereads_current_corrections_and_preserves_other_occurrences() {
         .into(),
         retry: vec!["name".into()],
     });
-    save(&session, &Event::Undo).expect("undo selected occurrence");
+    save(&session, &Event::Undo, &fixture.library()).expect("undo selected occurrence");
     let current = fixture.corrections();
     assert!(!current.edits.contains_key("board"));
     assert_eq!(current.edits.get("name"), Some(&other));
@@ -397,9 +403,9 @@ fn each_retry_changes_read_and_translation_fingerprints_without_discarding_edits
     };
     let audio = fingerprint_in_work(StepName::Cues, &fixture.record, &fixture.work);
     let before = fingerprints();
-    save(&session, &Event::Retry).expect("first retry");
+    save(&session, &Event::Retry, &fixture.library()).expect("first retry");
     let first = fingerprints();
-    save(&session, &Event::Retry).expect("second retry");
+    save(&session, &Event::Retry, &fixture.library()).expect("second retry");
     let second = fingerprints();
     for index in 0..2 {
         assert_ne!(before[index], first[index]);
@@ -444,7 +450,7 @@ fn invalid_timing_size_and_placement_fail_before_creating_or_replacing_correctio
     }
     for bad in &invalid {
         session.draft = Some(bad.clone());
-        assert!(save(&session, &Event::Save).is_err());
+        assert!(save(&session, &Event::Save, &fixture.library()).is_err());
     }
     assert_eq!(fixture.corrections_bytes(), None, "no corrections row");
     fixture.put_corrections(&TextCorrections {
@@ -454,7 +460,7 @@ fn invalid_timing_size_and_placement_fail_before_creating_or_replacing_correctio
     let before = fixture.corrections_bytes().expect("existing corrections");
     for bad in invalid {
         session.draft = Some(bad);
-        assert!(save(&session, &Event::Save).is_err());
+        assert!(save(&session, &Event::Save, &fixture.library()).is_err());
         assert_eq!(fixture.corrections_bytes(), Some(before.clone()));
     }
 }
@@ -466,7 +472,7 @@ fn malformed_corrections_are_reported_and_never_overwritten() {
     let key = keys::named(keys::TEXT_CORRECTIONS);
     fixture.put_raw(Table::Corrections, &key, &[0xc3; 40]);
     assert!(fixture.error().contains("Cannot read visual corrections"));
-    assert!(save(&session, &Event::Retry).is_err());
+    assert!(save(&session, &Event::Retry, &fixture.library()).is_err());
     assert_eq!(fixture.corrections_bytes(), Some(vec![0xc3; 40]));
 }
 
@@ -608,4 +614,57 @@ fn a_localized_job_loads_each_replacement_and_the_selected_one_s_pictures() {
     let mask = pictures.mask.expect("erase mask");
     assert_eq!(mask.rect, rect);
     assert!(mask.coverage.iter().all(|&c| c == 255));
+}
+
+#[test]
+fn a_correction_that_rejects_the_english_takes_its_sign_out_of_the_library() {
+    use job_model::onscreen::{LetteringStyle, LibrarySign};
+    let fixture = Fixture::new("library-rejection");
+    let crop = "visual/crops/board.png";
+    let mut document = fixture.load().document;
+    document.occurrences[0].crops = vec![PathBuf::from(crop)];
+    let store = fixture.store();
+    store
+        .put_output(StepName::TextTypeset, None, &document)
+        .expect("the crop is named");
+    let picture =
+        image::GrayImage::from_fn(64, 32, |x, y| image::Luma([((x * 7 + y * 13) % 251) as u8]));
+    fs::create_dir_all(fixture.work.root().join("visual/crops")).expect("crops folder");
+    picture.save(fixture.work.root().join(crop)).expect("crop");
+    drop(store);
+    let hash = pipeline::library::key::crop_hash(&fixture.work.root().join(crop)).expect("hash");
+    let library = fixture.library();
+    let sign = LibrarySign {
+        japanese: "レベッカ".into(),
+        crop_hash: hash,
+        english: "Rebecca".into(),
+        confidence: 0.9,
+        style: LetteringStyle {
+            fill_rgb: [255, 255, 255],
+            outline_rgb: None,
+            outline_px: 0.0,
+            soft_outline: false,
+            stroke_px: 3.0,
+            line_height_px: 30.0,
+        },
+        patch_png: Vec::new(),
+        mask_png: Vec::new(),
+        episodes: vec!["dressrosa-11".into()],
+        added_s: 0,
+    };
+    library.record(sign).expect("recorded");
+    let mut session = fixture.load();
+    session.selected = 0;
+    let identity = Some(session.document.occurrences[0].observation_fingerprint());
+    let mut keeping = edit("Rebecca");
+    keeping.presentation.treatment = TextTreatment::Replace;
+    keeping.source_fingerprint.clone_from(&identity);
+    session.draft = Some(keeping);
+    save(&session, &Event::Save, &library).expect("a correction that keeps the English");
+    assert_eq!(library.size().expect("size").signs, 1);
+    let mut changing = edit("Gladiator Rebecca");
+    changing.source_fingerprint = identity;
+    session.draft = Some(changing);
+    save(&session, &Event::Save, &library).expect("a correction of the English");
+    assert_eq!(library.size().expect("size").signs, 0);
 }

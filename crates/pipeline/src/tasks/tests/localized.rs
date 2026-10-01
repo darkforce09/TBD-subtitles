@@ -117,6 +117,7 @@ fn a_job_without_the_localized_video_keeps_its_claim_on_the_stored_earlier_video
     let job = Job {
         work: scratch.work().clone(),
         record: job_row,
+        library: None,
     };
     let mut io = StepIo::on_pipe(inputs, std::io::sink());
     run(&job, &mut io, &|_, _| {}).expect("the worker's reads are enough");

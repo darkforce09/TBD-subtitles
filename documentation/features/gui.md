@@ -12,13 +12,13 @@ The accepted Dressrosa 12–48 batch completes M2. The integrated
 ## Where it lives
 
 - Code: `apps/tbd_subtitles/`, built with eframe (egui) on the glow renderer. The shell (state,
-  frame, actions, shortcuts, the Settings and log windows) is
-  `apps/tbd_subtitles/src/application/`; the shared look and widgets are
-  `apps/tbd_subtitles/src/core/ui/`, the log buffer `apps/tbd_subtitles/src/core/log_buffer/`;
-  one feature folder each holds the
-  queue (`apps/tbd_subtitles/src/job_queue/`), the report (`apps/tbd_subtitles/src/job_report/`),
-  the line and text reviews (`apps/tbd_subtitles/src/line_review/`, `apps/tbd_subtitles/src/text_review/`), the log window
-  (`apps/tbd_subtitles/src/log_console/`) and the settings (`apps/tbd_subtitles/src/settings/`).
+  frame, actions, shortcuts, the Settings and log windows) is `apps/tbd_subtitles/src/application/`;
+  the shared look and widgets are `apps/tbd_subtitles/src/core/ui/`, the log buffer
+  `apps/tbd_subtitles/src/core/log_buffer/`; one feature folder each holds the queue
+  (`apps/tbd_subtitles/src/job_queue/`), the report (`apps/tbd_subtitles/src/job_report/`), the line
+  and text reviews (`apps/tbd_subtitles/src/line_review/`, `apps/tbd_subtitles/src/text_review/`),
+  the log window (`apps/tbd_subtitles/src/log_console/`) and the settings
+  (`apps/tbd_subtitles/src/settings/`).
 - Entry: `tbd-subtitles gui [VIDEO]...`, or the binary with no subcommand, with or without videos.
   It runs on the host, opened from the container with
   `distrobox-host-exec target/debug/tbd-subtitles gui`
@@ -174,31 +174,32 @@ list and the line editor side by side.
 - **Check Text:** thumbnails and timestamps beside Japanese, English, confidence, provenance and
   review status; flagged-only filtering, an English/timing/placement/size/treatment editor, and
   Original/English comparison rendered from the actual ASS by FFmpeg. Play, scrub and frame-step;
-  Save & regenerate ASS, Undo or Retry selected text. Saves survive navigation and update their
-  owning video through the existing correction queue without replacing another open session.
-  For a job with the [localized video](/documentation/glossary.md#localized-video), a Subtitles |
-  Localized video control over the right picture switches it between the source with its ASS
-  and the localized video with its own subtitle file (the default, kept across reloads); until the
-  video is written it shows the occurrence's replaced keyframe plate, captioned "Localized video
-  not written yet". Show erase mask, beside the original picture's title, tints the keyframe's
-  [stroke mask](/documentation/glossary.md#stroke-mask) over the original; a line under the time
-  says "Replaced in the video" (green) or `Not replaced in the video: <reason>` (orange), with what
-  the read-back check read under it in grey (`Checked: English reads back as “…”`, or `Checked:
-  Japanese still reads “…”`), and the Replace treatment reads "Replace in the video".
-- **Settings window:** a second native window, centred over the main one when it opens, in six
-  tabs. General: the models folder and the work folder with their sizes, the subtitle format, the
-  glossary with its count of names. Engines: vocal separation, the second speech engine, the
-  `claude` model a run asks and the one Fix It asks (Sonnet, Opus, Fable or Haiku; Sonnet and Opus
-  by default), processes at once, Fix It's Claude calls at once (1–100, 32 by default: how many
-  `claude` calls Fix It makes at once across every video it fixes; the rest wait their turn, videos
-  started first going first) and the switch Fix It after each job (off by default: Fix It starts on
-  each video when its job finishes, if it has lines to fix), the shot cut score. On-screen Text:
-  enable translation, Replace text in the video (on by default, off to clicks while translation is
-  off; `<name>.localized.mkv` and `<name>.localized.ass` beside the original), local-first policy,
-  Claude fallback, reference-folder path and model status with download controls. Enabled visual
-  translation produces ASS. Models: each model
-  and runtime library with its size and state, Download Missing or Stop. This Computer: the GPU with
-  its driver and free VRAM, the CUDA libraries, FFmpeg and its clip sound, ffprobe, `claude`, the
+  Save & regenerate ASS, Undo or Retry selected text; changing the English, keeping the Japanese or
+  a retry drops its sign from the sign library. Saves survive navigation and update their owning
+  video through the correction queue. For a job with the [localized
+  video](/documentation/glossary.md#localized-video), a Subtitles | Localized video control over the
+  right picture switches it between the source with its ASS and the localized video with its own
+  subtitle file (the default, kept across reloads); until the video is written it shows the
+  occurrence's replaced keyframe plate, captioned "Localized video not written yet". Show erase
+  mask, beside the original picture's title, tints the keyframe's [stroke
+  mask](/documentation/glossary.md#stroke-mask) over the original; a line under the time says
+  "Replaced in the video" (green) or `Not replaced in the video: <reason>` (orange), with what the
+  read-back check read under it in grey (`Checked: English reads back as “…”`, or `Checked: Japanese
+  still reads “…”`), and the Replace treatment reads "Replace in the video".
+- **Settings window:** a second native window, centred over the main one when it opens, in six tabs.
+  General: the models folder and the work folder with their sizes, the subtitle format, the glossary
+  with its count of names. Engines: vocal separation, the second speech engine, the `claude` model a
+  run asks and the one Fix It asks (Sonnet, Opus, Fable or Haiku; Sonnet and Opus by default),
+  processes at once, Fix It's Claude calls at once (1–100, 32 by default: how many `claude` calls
+  Fix It makes at once across every video it fixes; the rest wait their turn, videos started first
+  going first) and the switch Fix It after each job (off by default: Fix It starts on each video
+  when its job finishes, if it has lines to fix), the shot cut score. On-screen Text: enable
+  translation, Replace text in the video (on by default, off to clicks while translation is off;
+  `<name>.localized.mkv` and `<name>.localized.ass` beside the original), local-first policy, Claude
+  fallback, reference-folder path, the sign library's size with Clear…, which asks first, and model
+  status with download controls. Enabled visual translation produces ASS. Models: each model and
+  runtime library with its size and state, Download Missing or Stop. This Computer: the GPU with its
+  driver and free VRAM, the CUDA libraries, FFmpeg and its clip sound, ffprobe, `claude`, the
   Whisper worker; a missing CUDA runtime links to Models. Automation: the watch folders, with Add
   Folder…, Remove and "Not found" for a missing one, and whether Dolphin's right-click entry
   "Generate subtitles" is installed, with its path
@@ -248,11 +249,10 @@ every language-model call with what was sent and what came back.
   sit under it; the owner's own actions never break a group. A worker's own log lines show with
   the worker's level and source, not as program output.
 - **What it shows:** the owner's actions; each job's start, steps (started, kept, finished with
-  time, RAM and VRAM, failed) and end, a step's progress every tenth; Fix It's passes and end,
-  and an answer reused from an earlier run; where each step runs, the CUDA runtime and the GPU
-  lock; one line per model call (model, why it was made, lines sent, seconds, tokens, cost); and
-  every program the app starts: its command line, each line it writes to stderr as it writes it,
-  and how it ended.
+  time, RAM and VRAM, failed) and end, a step's progress every tenth; Fix It's passes and end, and
+  an answer reused from an earlier run; where each step runs, the CUDA runtime and the GPU lock; one
+  line per model call (model, why it was made, lines sent, seconds, tokens, cost); and every program
+  the app starts: its command line, each line it writes to stderr as it writes it, and how it ended.
 - **A line whole:** a click opens the line in a panel below the list: its level, writer, source
   and time, its video and step, and the whole message wrapped, with Copy; a model call's line
   offers **Show Model Call**. ✕ or Esc closes it.
@@ -422,20 +422,20 @@ nothing.
   each change; a broken one is kept as `settings.toml.broken`.
 - The queue: `~/.local/share/tbd-subtitles/queue.json`, written on each change and read when the
   window opens.
-- Models and the CUDA runtime libraries: under `~/.local/share/tbd-subtitles/`, the models in
-  the settings' models folder when it names another.
-- Jobs: each job's [work directory](/documentation/glossary.md#work-directory)
-  ([system overview](/documentation/architecture/system_overview.md#job-work-directory)) and its
-  database, `job.redb`, read through this process's one handle. The window reads the job record
-  and step records for progress and the time left; `outputs/qc`, `outputs/output`,
-  `corrections/fix`, `report.md` and the visual rows for the Overview; the sheet, the
-  re-adjudication, the re-decodes, `outputs/probe_decode`, `corrections/lines` and
-  `audio/vocals_16k.f32` for Check Lines; and `outputs/text_review`, `outputs/text_typeset`,
-  `outputs/text_verify`, `outputs/localized_video`, the crops, masks and plates for Check Text.
-  Line review writes `corrections/lines` and Check Text `corrections/text`, each change in one
-  write transaction that rereads the row; Fix It writes `corrections/lines` with its record
-  `corrections/fix` and, while it runs, `fix/calls/`. A job a terminal run owns shows as busy.
-  Each finished row's verdict and lines to check come from `outputs/qc` and `corrections/lines`.
+- Models, the CUDA runtime and the sign library of every episode (`library.redb`): under
+  `~/.local/share/tbd-subtitles/`, the models in the settings' models folder when it names another.
+- Jobs: each job's [work directory](/documentation/glossary.md#work-directory) ([system
+  overview](/documentation/architecture/system_overview.md#job-work-directory)) and its database,
+  `job.redb`, read through this process's one handle. The window reads the job record and step
+  records for progress and the time left; `outputs/qc`, `outputs/output`, `corrections/fix`,
+  `report.md` and the visual rows for the Overview; the sheet, the re-adjudication, the re-decodes,
+  `outputs/probe_decode`, `corrections/lines` and `audio/vocals_16k.f32` for Check Lines; and
+  `outputs/text_review`, `outputs/text_typeset`, `outputs/text_verify`, `outputs/localized_video`,
+  the crops, masks and plates for Check Text. Line review writes `corrections/lines` and Check Text
+  `corrections/text`, each change in one write transaction that rereads the row; Fix It writes
+  `corrections/lines` with its record `corrections/fix` and, while it runs, `fix/calls/`. A job a
+  terminal run owns shows as busy. Each finished row's verdict and lines to check come from
+  `outputs/qc` and `corrections/lines`.
 - The log: `~/.local/state/tbd-subtitles/tbd-subtitles.log` (under `XDG_STATE_HOME` when set),
   written as the window runs, since a launcher such as Gear Lever drops stderr, and emptied at each
   start; the [log window](#the-log-window) shows the same lines from memory.

@@ -14,6 +14,7 @@ crates/stages/src/onscreen_text/
 ├── geometry.rs           checked homographies and robust fitting
 ├── glyphs.rs             portable vector outlines for perspective lettering
 ├── keyframe_requests.rs  keyframe grouping, Claude prompts, answer schema and checks, added writing
+├── known_signs.rs        signs the library holds: their keyframes skipped, the sign's English kept
 ├── mod.rs                stage module exports
 ├── png.rs                synced PNG writes: crops, stills, masks, plates, patches and previews
 ├── read.rs               Japanese readings and compatible adjacent fragments
@@ -22,7 +23,7 @@ crates/stages/src/onscreen_text/
 ├── review.rs             source-identity checks and owner corrections
 ├── tests/                recognition, translation, geometry, tracking and rendering checks
 ├── track.rs              sampled geometry checks against the keyframe quad
-├── translate.rs          Claude keyframe reading first, local translation for the rest, consolidation
+├── translate.rs          library signs first, Claude keyframes, local translation for the rest, joining
 ├── typeset.rs            confidence checks, safe masks and nearby fallbacks
 ├── unify.rs              occurrences of one sign joined into one continuous span
 └── vision.rs             bounded parallel keyframe requests through the Claude CLI
@@ -40,7 +41,11 @@ supplies. Tracking checks that the sampled quads stay within tolerance of the ke
 moving surface gets nearby placement. When the Claude fallback is on, each keyframe still is sent
 once, whole frame plus region crops, through up to `llm_processes` workers under the shared call
 cap; the local model then opens only for occurrences Claude did not answer, and writing Claude
-finds outside the listed regions becomes a flagged nearby occurrence. A retry generation
+finds outside the listed regions becomes a flagged nearby occurrence. `translate_known` also takes
+the signs the pipeline found in the sign library for some occurrences (by id): a keyframe whose
+every occurrence is a known sign is not sent, and each known occurrence ends as it entered the
+stage but for the sign's reading, English and confidence, with the `library` provenance backend,
+even when its keyframe was sent for other writing. A retry generation
 refreshes a request once and then resumes its cached result. Local readings with at least four
 katakana characters plus kanji cap their local translation confidence at 0.84.
 

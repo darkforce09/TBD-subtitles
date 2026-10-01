@@ -71,6 +71,7 @@ fn with_no_corrections_the_reviewed_words_are_the_aligned_words() {
         .put_output(StepName::Alignment, None, &aligned)
         .expect("aligned");
     let job = Job {
+        library: None,
         work: scratch.work().clone(),
         record: JobRecord {
             video: "a.mp4".into(),

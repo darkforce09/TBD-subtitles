@@ -212,6 +212,10 @@ Code: [compose](/crates/stages/src/onscreen_text/replace/compose/).
   `shifted`; `preview.png` shows the keyframe plate's patch over its original pixels for Check
   Text. The task folds the rows, read one at a time, into runs of equal shift per plate. Once
   every plate has its patch, the occurrence is `baked`.
+- **Library style:** a pending occurrence whose reviewed Japanese and keyframe crop match an
+  approved sign of another episode in the [sign library](#the-sign-library) starts from that
+  sign's `LetteringStyle` instead of the one the mask step measured; everything else above
+  applies unchanged.
 
 ## The read-back check (`text_verify`)
 
@@ -270,6 +274,22 @@ run.
   baked replacements, the Rebecca name card and the 海 wall among them, all pass (70 frames,
   22 s, all 0.9 or more). The `visual_validation` tool's `verify-probe` prints
   every frame's lines, readings, confidences and verdict for a finished job.
+
+## The sign library
+
+Code: [library](/crates/pipeline/src/library/). The output step records each replacement
+`text_verify` kept baked with every reading passed, of an occurrence with English that the owner
+neither kept in Japanese nor moved to a nearby label, in `library.redb` in the app's data folder:
+the normalised Japanese (NFKC, whitespace removed) and the 64-bit difference hash of the
+occurrence's keyframe crop as its key, and the English, confidence, `LetteringStyle` and the first
+plate's patch and mask as its value. A sign already held (the same text, a hash at most 6 bits
+away) keeps its value and adds the episode. Another episode's `text_translate` takes a matched
+sign's English and `text_compose` its style; the occurrence is still masked, inpainted, lettered
+and read back in its own frames, so a sign that no longer fits its background falls back as any
+other would. The digest of the matched signs is in both steps' fingerprints; an empty library
+changes nothing. Check Text removes a sign whose English the owner changes or rejects. Design and
+the busy retry: [library shared by
+episodes](/documentation/architecture/binary_storage_plan.md#library-shared-by-episodes).
 
 ## The localized subtitle file
 
@@ -379,7 +399,8 @@ Decode, model and file errors are not fallbacks: they fail the step, which Try A
   `inference::onnx::lama`, `image`, `imageproc`, `tiny-skia` and `ttf-parser`; FFmpeg and ffprobe
   as child processes.
 - Used by: `pipeline::tasks::replace` and `pipeline::tasks::localized`; the window's Check Text
-  and Overview read the documents and files.
+  and Overview read the documents and files. `pipeline::library` records the approved replacements
+  and gives `text_compose` the styles of matched signs.
 - Rules: the source video is only read; only masked pixels change; frames stream and are never
   held for a whole occurrence; an occurrence that cannot be replaced falls back with a reason
   rather than a guess; the localized video never carries a subtitle stream.

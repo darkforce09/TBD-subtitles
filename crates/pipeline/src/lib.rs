@@ -17,6 +17,7 @@ pub mod cancel;
 pub mod error;
 pub mod fix_it;
 pub mod graph;
+pub mod library;
 pub mod measure;
 pub mod models;
 pub mod progress;

@@ -7,6 +7,7 @@
 //! unreadable writing has no invented English translation.
 
 mod frames;
+mod library;
 mod localize;
 mod settings;
 mod verify;
@@ -18,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub use frames::{FrameRecord, RleRun, decode_mask, encode_mask, mask_area};
+pub use library::LibrarySign;
 pub use localize::{
     LetteringStyle, LocalizedVideoRecord, PixelRect, Plate, ReplaceStatus, ReplacedText,
     ReplacementDocument, ShiftedPatch,

@@ -27,6 +27,7 @@ remain open.
   [task](/crates/pipeline/src/tasks/localized.rs), with FFmpeg's [encode](/crates/media_io/src/encode/)
   and LaMa in the [inference crate](/crates/inference/src/onnx/lama/). The architecture is in the
   [video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md).
+- The sign library shared by episodes: [library](/crates/pipeline/src/library/).
 - Detection and reading: [OCR backends](/crates/inference/src/ocr/); translation:
   [language-model backends](/crates/inference/src/llm/) and the isolated
   [local-model worker](/apps/tbd_subtitles_llm/).
@@ -238,6 +239,22 @@ moved away. The report adds a Localized video section: occurrences replaced, fal
 and the encoder. On Dressrosa 11, 15 of 21 candidates were replaced, the Rebecca name card among them
 ([measurement](/documentation/research/localized_video_dressrosa_11.md)). Algorithms and bounds:
 [video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md).
+
+### Signs shared by episodes
+
+A replacement that read back cleanly, of an occurrence the owner neither kept in Japanese nor
+moved to a nearby label, becomes an approved sign in the sign library, `library.redb` in the app's
+data folder, shared by every episode: its Japanese, its keyframe crop's hash, its English and
+confidence, its lettering style, and its patch and mask. When a later episode shows the same
+writing (the same Japanese once full- and half-width forms and spaces are folded, and a crop that
+looks nearly the same), translation takes the stored English, shown as `library` in Check Text's
+provenance, and asks Claude nothing for a keyframe whose every sign is known; composition starts
+from the stored lettering style. The sign is still erased, lettered and read back in its own
+frames. An episode never takes its own signs. Saving a correction in Check Text that changes or
+removes a sign's English or keeps it in Japanese, or retrying it, removes it from the library.
+Settings, On-screen Text, shows the library's size and clears it after asking. With an empty
+library a job runs exactly as without one. Design:
+[library shared by episodes](/documentation/architecture/binary_storage_plan.md#library-shared-by-episodes).
 
 ### Reviewing the result
 

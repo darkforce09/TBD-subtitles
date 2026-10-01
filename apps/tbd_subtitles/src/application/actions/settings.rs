@@ -33,7 +33,7 @@ use crate::settings::models::app_settings::AppSettings;
 use crate::settings::models::page::{RightClickEntry, SettingsPage};
 use crate::settings::services::model_downloads::{self, DownloadEnd, Folders};
 use crate::settings::services::{
-    job_settings, model_list, page_editing, settings_file, system_check, work_folder,
+    job_settings, model_list, page_editing, settings_file, sign_library, system_check, work_folder,
 };
 
 /// The settings page as the window opens: the file's settings (the defaults, with the reason,
@@ -63,6 +63,7 @@ pub(crate) fn new_settings_page(env: &Environment) -> SettingsPage {
         work_folder: PathBuf::new(),
         work_size: None,
         right_click: RightClickEntry::NotInstalled,
+        library: Default::default(),
     };
     page_editing::read_glossary(&mut page);
     refresh_models(&mut page, env);
@@ -98,6 +99,9 @@ impl TbdSubtitlesApp {
     pub(crate) fn start_settings_threads(&mut self) {
         self.start_checks();
         self.measure(true, true);
+        if self.env.background {
+            self.library(sign_library::size);
+        }
     }
 
     fn start_checks(&mut self) {
@@ -130,10 +134,21 @@ impl TbdSubtitlesApp {
         }
     }
 
+    /// Run `work` on the sign library on a thread; its size comes back to the page.
+    fn library(&mut self, work: fn(PathBuf) -> sign_library::Measured) {
+        let path = self.env.library.clone();
+        self.pending.library = Some(sign_library::start(path, work, self.env.wake.clone()));
+    }
+
     pub(crate) fn apply_settings(&mut self, event: SettingsEvent) {
         match event {
             SettingsEvent::Edit(edited) => self.edit_settings(*edited),
-            SettingsEvent::Open(tab) => self.settings_window = Some(tab),
+            SettingsEvent::Open(tab) => {
+                self.settings_window = Some(tab);
+                if self.env.background && self.pending.library.is_none() {
+                    self.library(sign_library::size);
+                }
+            }
             SettingsEvent::Choose(field) => {
                 let (kind, title) = match field {
                     PathField::ModelsFolder => (Choose::Folder, "Models folder"),
@@ -171,6 +186,13 @@ impl TbdSubtitlesApp {
                     &self.settings.work_folder,
                     self.env.wake.clone(),
                 ));
+            }
+            SettingsEvent::AskClearLibrary => self.settings.library.confirming = true,
+            SettingsEvent::KeepLibrary => self.settings.library.confirming = false,
+            SettingsEvent::ClearLibrary => {
+                self.settings.library.confirming = false;
+                self.settings.library.clearing = true;
+                self.library(sign_library::clear);
             }
         }
     }
@@ -252,6 +274,17 @@ pub(crate) fn poll_settings(app: &mut TbdSubtitlesApp) {
     {
         app.settings.models_size = Some(size);
         app.pending.models_size = None;
+    }
+    if let Some(receiver) = &app.pending.library
+        && let Ok(measured) = receiver.try_recv()
+    {
+        let library = &mut app.settings.library;
+        library.clearing = false;
+        match measured {
+            Ok(size) => (library.size, library.error) = (Some(size), None),
+            Err(error) => library.error = Some(error),
+        }
+        app.pending.library = None;
     }
     let mut ended = None;
     if let Some(download) = &app.pending.download {

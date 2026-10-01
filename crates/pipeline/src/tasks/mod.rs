@@ -47,23 +47,33 @@ use job_model::job::{JobRecord, JobSettings, StepMeasure, WorkerMeasure};
 
 use crate::error::{Context, PipelineError, Result};
 use crate::graph::{self, Binary, Placement};
+use crate::library::Library;
 use crate::measure::memory;
 use crate::work_dir::WorkDir;
 
-/// A job as a task sees it: its folder and its record.
+/// A job as a task sees it: its folder, its record, and the sign library it reads and records
+/// into, when the run uses one.
 #[derive(Debug, Clone)]
 pub struct Job {
     pub work: WorkDir,
     pub record: JobRecord,
+    pub library: Option<Library>,
 }
 
 impl Job {
-    /// The job whose folder is `dir`, with the job record `io` received.
+    /// The job whose folder is `dir`, with the job record `io` received and the library its
+    /// runner named in `library::LOCATION_VARIABLE`.
     pub fn received(dir: &Path, io: &StepIo) -> Result<Job> {
         Ok(Job {
             work: WorkDir::new(dir),
             record: io.job_record()?,
+            library: Library::from_environment(),
         })
+    }
+
+    /// The job's id, which names the signs it adds to the library.
+    pub fn id(&self) -> String {
+        crate::work_dir::job_id(&self.video())
     }
 
     pub fn video(&self) -> PathBuf {

@@ -12,6 +12,7 @@ crates/pipeline/src/
 ├── error.rs   `PipelineError`: what was being done, why, and its kind: failed, cancelled or busy
 ├── fix_it/    Fix It on a finished job: the model's kept changes written into the corrections
 ├── graph/     the step table: inputs, placement, GPU use, revision, settings, timeout and outputs
+├── library/   the sign library shared by episodes: `library.redb`, its keys, matches and approvals
 ├── lib.rs     the crate root: the module list, the crate header and the `run_job` re-exports
 ├── measure/   peak VRAM of a worker through NVML, peak RAM of a process and its children
 ├── models/    the models a job needs: each step's model folder, the required list, the missing ones
@@ -66,6 +67,12 @@ each answered call in `fix/calls/`, and stores its record (`corrections/fix`) an
 changes in the line corrections (`corrections/lines`) in one transaction. The caller then runs
 the job again, and the corrections' digest makes only the review step and the steps after it run.
 
+`library` holds the signs every episode shares in `library.redb` beside the default work folder,
+which no process keeps open: `text_translate` and `text_compose` (their workers, named the file in
+`library::LOCATION_VARIABLE`) start an occurrence of another job's approved sign from its English
+and lettering style, their fingerprints cover the signs they match, and `output` records the
+replacements `text_verify` approved.
+
 ## Public surface
 
 - `run_job`, `JobOptions`, `JobOutcome`, `CancelToken`, `PipelineError` and `Result`, re-exported
@@ -79,6 +86,9 @@ the job again, and the corrections' digest makes only the review step and the st
   models view and the check before a job starts.
 - `fix_it::{fix_video, FixOptions, FixProgress, FixStage, FixOutcome}`: Fix It, for the window
   and the `fix` subcommand; `work_dir::update_corrections`: the window's line review.
+- `library::{Library, default_path, signs, key}`: the sign library, for the runner's
+  `JobOptions::library`, the window's Check Text (a rejected sign goes) and Settings (its size
+  and Clear).
 - `measure::gpu_monitor` and `measure::memory`: used by `tools/stack_spike/`.
 - `work_dir::JobStore` and `error::ErrorKind`: the job database the runner owns, and the busy kind
   the window turns into a busy job; `tools/visual_validation/` holds a `JobStore` too.
@@ -90,8 +100,8 @@ the job again, and the corrections' digest makes only the review step and the st
 ## Boundaries
 
 - Depends on: `stages`, `inference`, `media_io`, `subtitle_formats`, `child_process`,
-  `job_model`, `worker_channel`, `redb`, `serde_json`, `rkyv`, `sha2`, `libc` and
-  `nvml-wrapper`.
+  `job_model`, `worker_channel`, `redb`, `serde_json`, `rkyv`, `sha2`, `image`,
+  `unicode-normalization`, `libc` and `nvml-wrapper`.
 - Used by: `apps/tbd_subtitles/src/cli/`, `apps/tbd_subtitles_ggml/src/main.rs`,
   `tools/stack_spike/src/measure/` and `tools/visual_validation/src/pilot.rs`.
 - Rules:

@@ -12,7 +12,7 @@
 //! `outputs/text_typeset/ass` and, for a localized video, `outputs/text_verify` and
 //! `outputs/text_typeset`); stores `outputs/cues`, `outputs/cues/dropped_sounds`, `outputs/qc` and
 //! `outputs/output`; writes the subtitle file beside the video and, for a localized video, its own
-//! subtitle file.
+//! subtitle file, and records the signs `text_verify` approved in the sign library.
 //!
 //! **Invariants:** the frame rate comes from the probe (24/1 when the video has none); the subtitle
 //! files are the only files written outside the work directory; the localized video's subtitle
@@ -39,6 +39,7 @@ use subtitle_formats::writers::{srt, vtt};
 
 use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, Result};
+use crate::library::{Recorded, signs};
 use crate::work_dir::store::keys;
 
 pub(super) fn cues(job: &Job, io: &mut StepIo, _progress: StepProgress) -> Result<TaskReport> {
@@ -273,6 +274,15 @@ pub(super) fn output(job: &Job, io: &mut StepIo, _progress: StepProgress) -> Res
         if let Some(backup) = shown(&installed.backup) {
             report.note("localized_backup", &backup);
         }
+        if let Some(library) = &job.library {
+            let now_s = stamp.parse().unwrap_or(0);
+            let approved = signs::approved(&verified, &text, job.work.root(), &job.id(), now_s)?;
+            let recorded = library.record_all(approved)?;
+            if recorded != Recorded::default() {
+                report.note("library_added", recorded.added);
+                report.note("library_joined", recorded.joined);
+            }
+        }
         shown(&Some(installed.path))
     } else {
         None
@@ -346,3 +356,7 @@ pub(super) fn lettered_writing(
 #[cfg(test)]
 #[path = "tests/layout.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/layout_library.rs"]
+mod library_tests;
