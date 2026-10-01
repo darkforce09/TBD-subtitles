@@ -408,3 +408,73 @@ fn a_decoder_that_fails_reports_its_own_exit() {
     assert!(matches!(stream.next_frame(), Err(MediaError::Exit { .. })));
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// Frames `first..first + count` of `video` as planar yuv420p bytes, decoded on the CPU or by
+/// NVDEC, nv12 chroma split into its two planes.
+fn planar_frames(
+    video: &Path,
+    size: (u32, u32),
+    first: u64,
+    count: u64,
+    hardware: bool,
+) -> Vec<Vec<u8>> {
+    let options = YuvOptions {
+        first,
+        count: Some(count),
+        hardware,
+        crop: None,
+    };
+    let mut stream =
+        YuvStream::open(&Programs::default(), video, size, 0.0, 24.0, options).unwrap();
+    let luma = (size.0 * size.1) as usize;
+    let mut frames = Vec::new();
+    while let Some(frame) = stream.next_frame().unwrap() {
+        assert_eq!(frame.index, first + frames.len() as u64);
+        let data = &frame.data[..];
+        frames.push(match frame.layout {
+            ChromaLayout::Planar => data.to_vec(),
+            ChromaLayout::Nv12 => {
+                let chroma = &data[luma..];
+                let mut planar = data[..luma].to_vec();
+                planar.extend(chroma.iter().step_by(2));
+                planar.extend(chroma.iter().skip(1).step_by(2));
+                planar
+            }
+        });
+    }
+    stream.finish().unwrap();
+    frames
+}
+
+#[test]
+#[ignore = "needs FFmpeg with NVDEC and libx264; run on the host"]
+fn nvdec_frames_match_the_cpu_frames_from_any_start() {
+    let dir = scratch("nvdec");
+    let video = dir.join("pattern-h264.mkv");
+    let output = Run::new("ffmpeg")
+        .args(["-nostdin", "-hide_banner", "-v", "error", "-f", "lavfi"])
+        .args(["-i", "testsrc2=size=320x180:rate=24:duration=2"])
+        .args([
+            "-pix_fmt", "yuv420p", "-c:v", "libx264", "-g", "12", "-bf", "2",
+        ])
+        .args(["-y"])
+        .arg(&video)
+        .timeout(Duration::from_secs(60))
+        .output()
+        .unwrap();
+    assert_eq!(output.code, 0, "{}", output.stderr);
+    for first in [0u64, 5, 12, 31] {
+        let cpu = planar_frames(&video, (320, 180), first, 8, false);
+        let gpu = planar_frames(&video, (320, 180), first, 8, true);
+        assert_eq!(cpu.len(), 8, "from {first}");
+        assert_eq!(gpu.len(), 8, "from {first}");
+        for (offset, (cpu, gpu)) in cpu.iter().zip(&gpu).enumerate() {
+            assert!(
+                cpu == gpu,
+                "frame {} from {first} differs",
+                first + offset as u64
+            );
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}

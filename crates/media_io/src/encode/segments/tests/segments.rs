@@ -63,12 +63,13 @@ fn cavlc_source(dir: &Path) -> PathBuf {
     video
 }
 
-/// The pieces a source's changed frames make, cut and encoded into `folder`, with each
-/// re-encoded frame inverted; the source's probe, timeline and pieces.
+/// The pieces a source's changed frames make, cut and encoded by `encoder` into `folder`, with
+/// each re-encoded frame inverted; the source's probe, timeline and pieces.
 fn render_pieces(
     video: &Path,
     changed: &[FrameSpan],
     folder: &Path,
+    encoder: LocalizedEncoder,
 ) -> (H264Source, Vec<(f64, f64)>, Vec<Piece>) {
     let programs = Programs::default();
     let source = probe_h264_source(&programs, video).unwrap();
@@ -99,9 +100,7 @@ fn render_pieces(
             continue;
         };
         let file = piece_file(folder, number, *piece);
-        let spec =
-            SegmentSpec::for_source(&source, PixelFormat::Yuv420p, LocalizedEncoder::X264, file)
-                .unwrap();
+        let spec = SegmentSpec::for_source(&source, PixelFormat::Yuv420p, encoder, file).unwrap();
         let mut encoder = EncoderProcess::start_segment(&programs, &spec, DEADLINE, None).unwrap();
         loop {
             let frame = stream.next_frame().unwrap().unwrap();
@@ -203,7 +202,19 @@ fn headers(video: &Path) -> String {
 
 #[test]
 fn a_segment_with_different_headers_joins_cleanly_and_copies_the_rest_unchanged() {
-    let dir = scratch("headers");
+    segment_round_trip(LocalizedEncoder::X264, "headers");
+}
+
+#[test]
+#[ignore = "needs FFmpeg with NVENC; run on the host"]
+fn an_nvenc_segment_joins_cleanly_and_copies_the_rest_unchanged() {
+    segment_round_trip(LocalizedEncoder::Nvenc, "nvenc");
+}
+
+/// One segment of frames 24–47 re-encoded by `encoder` in a CAVLC source, joined and checked:
+/// only those frames change.
+fn segment_round_trip(encoder: LocalizedEncoder, name: &str) {
+    let dir = scratch(name);
     let video = cavlc_source(&dir);
     let (source, frames, pieces) = render_pieces(
         &video,
@@ -212,6 +223,7 @@ fn a_segment_with_different_headers_joins_cleanly_and_copies_the_rest_unchanged(
             last: 40,
         }],
         &dir,
+        encoder,
     );
     assert_eq!(
         pieces,
@@ -269,6 +281,7 @@ fn pieces_cut_without_in_band_headers_fail_the_decode_check() {
             last: 40,
         }],
         &dir,
+        LocalizedEncoder::X264,
     );
     // Cut the copied pieces again as a plain stream copy: their packets lack the headers.
     let pattern = dir.join("copy%05d.mkv");
@@ -365,6 +378,7 @@ fn an_offset_source_keeps_its_video_start_and_a_wrong_offset_fails_the_sync_chec
             last: 52,
         }],
         &dir,
+        LocalizedEncoder::X264,
     );
     let offset = source.starts.video_after_audio_s().unwrap();
     assert!((offset - 0.5).abs() < 0.002, "{offset}");

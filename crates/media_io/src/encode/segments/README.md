@@ -19,7 +19,7 @@ crates/media_io/src/encode/segments/
 ├── profile.rs  H.264 profiles and levels as both encoders name them, the level's peak rate
 ├── source.rs   `H264Source`, when video and audio start, and the eligibility check
 ├── verify.rs   `verify_join`: frame times, video-to-audio offset, decode around joins
-└── tests/      plans, NAL scans, arguments, probes, and FFmpeg round trips with real joins
+└── tests/      plans, NAL scans, arguments, probes, FFmpeg round trips with real joins (NVENC on host)
 ```
 
 ## How it works
