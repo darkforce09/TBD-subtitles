@@ -4,16 +4,18 @@
 //! are missing, and tell a caller whether a model is complete on disk.
 //!
 //! **Position:** called by the app's model download, the pipeline, the AppImage builder and the
-//! stack spike tool's `fetch` command; `cuda_runtime` reads the runtime folder it fills. Uses `manifest.rs`, `download.rs`
-//! and `archive.rs`.
+//! stack spike tool's `fetch` command; `cuda_runtime` reads the runtime folder it fills. Uses
+//! `manifest.rs`, `download.rs`, `archive.rs` and `archive_libraries.rs`.
 //!
 //! **Signals and state:** reads `XDG_DATA_HOME` and `HOME`; writes under
 //! `<data home>/tbd-subtitles/models/` and `<data home>/tbd-subtitles/runtime/`.
 //!
-//! **Invariants:** nothing is converted; a file is used only when its size matches its pin, and
-//! only a download whose SHA-256 matched is ever renamed into place.
+//! **Invariants:** the store converts nothing; a file is used only when its size matches its pin,
+//! only a download whose SHA-256 matched is ever renamed into place, and libraries taken from a
+//! streamed archive are installed only once the whole stream matched its pin.
 
 mod archive;
+mod archive_libraries;
 mod download;
 pub mod manifest;
 
@@ -21,9 +23,14 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 pub use archive::{install as install_archive, is_installed as is_archive_installed, strip_first};
+pub use archive_libraries::{
+    install as install_libraries, is_installed as are_libraries_installed, library_name,
+    placed_path as placed_archive_path,
+};
 pub use download::{Progress, fetch_verified, hex, sha256_of};
 pub use manifest::{
-    CUDA_ARCHIVES, MODEL_FILES, ONNX_RUNTIME_ARCHIVE, PinnedArchive, PinnedFile, runtime_archives,
+    CUDA_ARCHIVES, MODEL_FILES, ONNX_RUNTIME_ARCHIVE, PinnedArchive, PinnedFile, PinnedLibraries,
+    TENSORRT_LIBRARIES, runtime_archives,
 };
 
 /// Why a download or a check failed.

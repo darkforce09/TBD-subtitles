@@ -10,7 +10,7 @@ tools/appimage_builder/src/
 ├── build/        the release builds of the app and of its ggml and local language-model workers
 ├── elf/          NEEDED, SONAME and RUNPATH reading, the library closure, copies and RUNPATH rewrite
 ├── ffmpeg/       the pinned static FFmpeg, its copy into the AppDir and the check it can play
-├── gpu_runtime/  the pinned CUDA, cuDNN and ONNX Runtime archives and the libraries bundled from them
+├── gpu_runtime/  the pinned CUDA, cuDNN, ONNX Runtime and TensorRT archives and the libraries bundled from them
 ├── main.rs       the command line and the steps in order, each timed, failing closed
 ├── runtime/      the pinned AppImage type 2 runtime and the output names
 └── squashfs/     the zstd squashfs image of the AppDir, written behind the runtime
@@ -18,9 +18,10 @@ tools/appimage_builder/src/
 
 ## How it works
 
-`main.rs` makes sure the runtime archives are unpacked (`gpu_runtime`), builds all three binaries
-(`build`), fetches FFmpeg (`ffmpeg`) and the AppImage runtime (`runtime`), then lays out the
-AppDir (`app_dir`): the binaries, the GPU libraries with their NEEDED closure, the ggml worker's
+`main.rs` makes sure the runtime archives are unpacked and TensorRT's libraries installed
+(`gpu_runtime`), builds all three binaries (`build`), fetches FFmpeg (`ffmpeg`) and the AppImage
+runtime (`runtime`), then lays out the AppDir (`app_dir`): the binaries, the GPU libraries
+(TensorRT and ONNX Runtime's TensorRT provider among them) with their NEEDED closure, the ggml worker's
 and the local translation worker's own libraries with their RUNPATH pointed at the AppDir (`elf`),
 FFmpeg, and a checksum-pinned Noto Sans JP font with its redistribution license. A smoke check runs the
 copied app's `--version` and the copied FFmpeg's `-version`, `-filters` and `-devices`. Last,

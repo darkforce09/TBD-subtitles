@@ -1,9 +1,9 @@
 //! The AppImage builder: `cargo appimage [--skip-build] [--out <dir>]`.
 //!
 //! **Role:** builds TBD-subtitles as one self-contained AppImage: the three release binaries, the
-//! CUDA, cuDNN and ONNX Runtime libraries the GPU workers load, each worker's own libraries,
-//! a static FFmpeg, the Noto Sans JP font with its license, the desktop entry and icon, packed as
-//! a zstd squashfs image behind the pinned AppImage runtime, in `dist/`.
+//! CUDA, cuDNN, ONNX Runtime and TensorRT libraries the GPU workers load, each worker's own
+//! libraries, a static FFmpeg, the Noto Sans JP font with its license, the desktop entry and icon,
+//! packed as a zstd squashfs image behind the pinned AppImage runtime, in `dist/`.
 //!
 //! **Position:** a repository tool, run by a developer; `gpu_runtime`, `build`, `ffmpeg` and
 //! `runtime` gather the parts, `app_dir` lays them out, `elf` walks and fixes up the libraries,
@@ -90,7 +90,7 @@ fn run(cli: &Cli) -> Result<PathBuf> {
     let out_dir = repo_root.join(&cli.out);
 
     let runtime_dir = step(
-        "CUDA, cuDNN and ONNX Runtime archives",
+        "CUDA, cuDNN, ONNX Runtime and TensorRT archives",
         gpu_runtime::ensure_unpacked,
     )?;
     let binaries = step("release build", || {

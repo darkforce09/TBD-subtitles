@@ -2,8 +2,8 @@
 
 The `inference` crate: the backends that run the models the GPU stages need (ONNX Runtime, ggml
 and candle models, local OCR and the language-model backends), the model store that downloads and
-verifies model files and the CUDA 13 runtime archives, and the lookup of that runtime for GPU
-workers.
+verifies model files and the CUDA 13 and TensorRT runtime archives, and the lookup of that
+runtime for GPU workers.
 
 ## Contents
 
@@ -22,13 +22,14 @@ Runtime on CUDA, `ggml` for the ggml-based crates, `candle` for the pure-Rust en
 PP-OCRv5 and manga-ocr on the same ONNX Runtime, `llm` for the language models that adjudicate
 the [diff sheet](/documentation/glossary.md#diff-sheet), translate on-screen text and run Fix It.
 `model_store` downloads every model file and runtime archive the manifest pins, checking each
-SHA-256 before the file is used, and `cuda_runtime` finds the unpacked CUDA 13 libraries and
-gives the `LD_LIBRARY_PATH` and `ORT_DYLIB_PATH` a GPU worker starts with. `src/README.md`
-describes each module.
+SHA-256 before the file is used, and `cuda_runtime` finds the unpacked CUDA 13 libraries (and
+TensorRT 10.14 when it lies beside them) and gives the `LD_LIBRARY_PATH` and `ORT_DYLIB_PATH` a
+GPU worker starts with. `src/README.md` describes each module.
 
 ```text
 Settings downloads, stack-spike fetch ──▶ model_store ──▶ ~/.local/share/tbd-subtitles/models/<model>/
                    └─▶ ~/.local/share/tbd-subtitles/runtime/{cuda-13.4,cudnn-9.26,onnxruntime-1.28.2}/
+cargo appimage ──▶ model_store::install_libraries ──▶ runtime/tensorrt-10.14/lib/ (libraries only)
 worker spawn ──▶ cuda_runtime::CudaRuntime::locate ──▶ worker_env (LD_LIBRARY_PATH, ORT_DYLIB_PATH)
 ```
 
@@ -81,9 +82,11 @@ cargo test -p inference    # unit tests; the model checks are #[ignore] and run 
 - Rules:
   - the crate sits in layer 1 and depends only on layer 0 crates (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);
-  - models are downloaded already exported, from pinned URLs with checksums, and never converted,
-    and no two crates that bundle ggml link into one binary (the crate header in
-    `crates/inference/src/lib.rs`).
+  - models are downloaded already exported, from pinned URLs with checksums, and converted or
+    compiled only where a measurement shows it pays, in Rust or inside the runtime (TensorRT's
+    engine builder), and no two crates that bundle ggml link into one binary (the crate header in
+    `crates/inference/src/lib.rs`;
+    [models may be converted or compiled](/documentation/decisions/inference_engines.md#2026-10-01--models-may-be-converted-or-compiled-when-a-measurement-shows-it-pays)).
 
 ## Related documentation
 
@@ -91,5 +94,7 @@ cargo test -p inference    # unit tests; the model checks are #[ignore] and run 
   model files for each capability.
 - [Decisions](/documentation/decisions/) — native runtimes where no pure-Rust engine competes,
   and one worker process per GPU stage.
+- [Decisions: inference engines](/documentation/decisions/inference_engines.md) — TensorRT for the
+  PP-OCRv5 detectors, its bundling and licence, and when a model may be converted or compiled.
 - [System overview](/documentation/architecture/system_overview.md#models) — the models folder and
   its manifest.

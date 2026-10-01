@@ -96,7 +96,8 @@ See: [Verdict](#verdict), [coding standards](/documentation/standards/coding_sta
 ### GGUF, ONNX, safetensors
 
 Model file formats: GGUF for ggml-based runtimes, ONNX for ONNX Runtime, safetensors for candle
-and burn. Downloaded ready-made; never converted by us.
+and burn. Downloaded ready-made; converted or compiled only when a measurement shows it pays, as
+TensorRT builds an FP16 engine from an ONNX file inside the runtime.
 
 ### Hand-off
 

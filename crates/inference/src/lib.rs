@@ -11,8 +11,10 @@
 //! **Signals and state:** reads model files from the models folder; loads each model once per
 //! worker process.
 //!
-//! **Invariants:** models are downloaded already exported, from pinned URLs with checksums, and
-//! never converted; no two ggml-bundling crates link into one binary.
+//! **Invariants:** models are downloaded already exported, from pinned URLs with checksums; one is
+//! converted or compiled only where a measurement shows it pays, in Rust or inside the runtime
+//! (TensorRT builds its engines from the downloaded ONNX files); no two ggml-bundling crates link
+//! into one binary.
 
 pub mod candle;
 pub mod cuda_runtime;

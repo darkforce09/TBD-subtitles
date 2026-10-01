@@ -3,7 +3,8 @@
 //! **Role:** fetch a URL into `<dest>.part`, continue an interrupted `.part` with an HTTP range
 //! request, check the finished file's size and SHA-256, and only then rename it into place.
 //!
-//! **Position:** called by `mod.rs` for model files and by `archive.rs` for runtime archives.
+//! **Position:** called by `mod.rs` for model files and by `archive.rs` for runtime archives;
+//! `archive_libraries.rs` reads a large archive through `open_stream` without storing it.
 //!
 //! **Signals and state:** reads and writes the destination folder; network access through ureq.
 //!
@@ -73,6 +74,15 @@ pub fn fetch_verified(
         });
     }
     fs::rename(&part, dest).map_err(|e| StoreError::io(dest, e))
+}
+
+/// The body of `url` as a stream, for an archive read once and never stored.
+pub(crate) fn open_stream(url: &str) -> Result<Box<dyn Read + Send>, StoreError> {
+    let response = ureq::get(url).call().map_err(|e| StoreError::Http {
+        url: url.to_string(),
+        message: e.to_string(),
+    })?;
+    Ok(Box::new(response.into_body().into_reader()))
 }
 
 /// Hash a whole file, for checks of files already in place.

@@ -3,10 +3,16 @@
 # Building the AppImage
 
 Package `tbd-subtitles` as one self-contained `.AppImage`: the app's three binaries, a bundled CUDA
-13.4 + cuDNN 9.26 + ONNX Runtime 1.28.2 runtime, and a static FFmpeg, so it runs on the host with
-only the NVIDIA driver, X11/EGL, PulseAudio, the desktop portal and FUSE. Building takes about two
-minutes with a cached `cargo build`, longer the first time it downloads the CUDA toolkit and the
-runtime and FFmpeg archives.
+13.4 + cuDNN 9.26 + ONNX Runtime 1.28.2 + TensorRT 10.14 runtime, and a static FFmpeg, so it runs
+on the host with only the NVIDIA driver, X11/EGL, PulseAudio, the desktop portal and FUSE. Building
+takes about two minutes with a cached `cargo build`, longer the first time it downloads the CUDA
+toolkit, the runtime and FFmpeg archives and TensorRT.
+
+**Licence:** NVIDIA's TensorRT licence (SLA §12.1) names only `libnvinfer` and `libnvinfer_plugin`
+as libraries an application may redistribute. The AppImage also carries `libnvonnxparser` and the
+`libnvinfer_builder_resource` libraries, which ONNX Runtime's TensorRT provider needs, by the
+owner's choice and for the owner's own use: do not share the AppImage as is
+([decision](/documentation/decisions/inference_engines.md#2026-10-01--tensorrt-runs-the-pp-ocrv5-detectors)).
 
 ## Prerequisites
 
@@ -18,6 +24,12 @@ runtime and FFmpeg archives.
   CUDA 13.3 compiler with CUDA 13.4 runtime libraries; the builder supplies that compiler too.
 - Network access, to fetch the pinned CUDA toolkit, FFmpeg and AppImage runtime archives into
   `target/appimage/cache/` the first time.
+- Once, the TensorRT tarball: `TensorRT-10.14.1.48.Linux.x86_64-gnu.cuda-13.0.tar.gz`, 7,004,299,092
+  bytes, from `developer.nvidia.com`. `cargo appimage` streams it, hashes it as it reads, and keeps
+  only the libraries ONNX Runtime's TensorRT provider loads, in
+  `~/.local/share/tbd-subtitles/runtime/tensorrt-10.14/lib`; the tarball itself is never written
+  to disk, and a stopped download starts again from the beginning. The kept libraries need a few
+  GB free in the runtime folder.
 
 ## Steps
 
@@ -27,9 +39,12 @@ runtime and FFmpeg archives.
    cargo appimage
    ```
 
-   **Expected:** one line per step (build, gather the CUDA runtime, download FFmpeg, lay out
-   `AppDir`, pack the squashfs image), then the path
-   `dist/TBD-subtitles-<version>-<git short>-x86_64.AppImage` and its size (around 1.5 GB).
+   **Expected:** one line per step (gather the CUDA, cuDNN, ONNX Runtime and TensorRT archives,
+   build, download FFmpeg, lay out `AppDir`, pack the squashfs image), then the path
+   `dist/TBD-subtitles-<version>-<git short>-x86_64.AppImage` and its size. The first run prints
+   `streaming …TensorRT-10.14.1.48…tar.gz`, a percentage, and `kept libnvinfer.so…`, the library
+   names taken from it. Without TensorRT the image was around 1.5 GB; the size with TensorRT's
+   libraries is to be recorded here after the first host build.
    `dist/TBD-subtitles-x86_64.AppImage` is a hard link to the same file, for a stable name.
 
 2. Rebuild the image from an already-built `AppDir` without rebuilding the app, after only a docs
@@ -102,6 +117,21 @@ using the bundled Noto Sans JP font and preview the exported ASS through FFmpeg.
   release was deleted upstream; re-pin the URL and SHA-256 in `tools/appimage_builder` to a
   current build and rerun `cargo appimage`. Files already in `target/appimage/cache/` are reused
   as long as their SHA-256 still matches, so a local rebuild is unaffected.
+- **The TensorRT download is refused, or answers with a sign-in page:** the step fails with
+  `installing TensorRT: …` and keeps nothing. Download
+  `TensorRT-10.14.1.48.Linux.x86_64-gnu.cuda-13.0.tar.gz` in a browser from NVIDIA's TensorRT 10.14
+  page and place it, under that name, in `~/.local/share/tbd-subtitles/runtime/.archives/`; the
+  next `cargo appimage` reads it instead of the URL, checks the same size and SHA-256, and deletes
+  it once its libraries are installed.
+- **`installing TensorRT: … SHA-256 …, expected c74af67d…` or a size mismatch:** the file is not
+  the pinned one (the pin comes from nixpkgs' manifest, not from NVIDIA directly). Nothing was
+  installed. Check the file NVIDIA serves for 10.14.1.48 and CUDA 13.0; if NVIDIA's own checksum
+  differs from the pin, re-pin `TENSORRT_ARCHIVE` in
+  `crates/inference/src/model_store/manifest/gpu_runtime.rs`. Any TensorRT other than 10.x does not
+  load with ONNX Runtime 1.28.2.
+- **`no library in the archive starts with …`:** the tarball's `lib/` holds no library of that
+  name; adjust `TENSORRT_LIBRARIES` in the same file and `TENSORRT_LOADED_AT_RUN_TIME` in
+  `crates/inference/src/cuda_runtime/mod.rs` to the names it holds.
 - **`tbd-subtitles-ggml … built without crispasr` during the build step:** the ggml worker built
   without the CUDA 13.4 toolkit on `PATH`; `cargo appimage` sets `CUDACXX`, `CUDAToolkit_ROOT` and
   `CUDAARCHS=86` itself, so this means the toolkit under
@@ -127,3 +157,4 @@ using the bundled Noto Sans JP font and preview the exported ASS through FFmpeg.
   app's own binaries and the CUDA toolkit the AppImage build step needs.
 - [Decisions: stack and pipeline](/documentation/decisions/stack_and_pipeline.md#2026-09-28--ship-as-one-appimage-bundling-cuda-cudnn-onnx-runtime-and-ffmpeg) — why the image bundles CUDA, cuDNN, ONNX Runtime and FFmpeg.
 - [Decisions: foundations](/documentation/decisions/foundations.md#2026-09-28--repository-tooling-may-also-run-ffmpeg-and-the-apps-own-binaries) — why `tools/appimage_builder` may run FFmpeg and the app's own binaries.
+- [Decisions: inference engines](/documentation/decisions/inference_engines.md#2026-10-01--tensorrt-runs-the-pp-ocrv5-detectors) — why the image bundles TensorRT, and its licence.

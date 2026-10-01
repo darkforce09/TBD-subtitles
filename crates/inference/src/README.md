@@ -37,11 +37,13 @@ and mistral.rs backends, the call gate Fix It's runs share, and the call log.
 ## Public surface
 
 - `model_store`: `app_data_dir`, `models_dir`, `runtime_dir`, `fetch_model`, `is_complete`,
-  `install_archive`, `is_archive_installed`, `fetch_verified`, `sha256_of`, the `manifest` with
-  `MODEL_FILES`, `CUDA_ARCHIVES` and `ONNX_RUNTIME_ARCHIVE`, and `StoreError`; for the app,
-  `crates/pipeline/`, `crates/stages/` and the tools.
-- `cuda_runtime`: `CudaRuntime::locate` and `CudaRuntime::worker_env`, and `REQUIRED_CUDA_LIBS`;
-  for the processes that start GPU workers, the app's settings and the AppImage builder.
+  `install_archive`, `is_archive_installed`, `install_libraries`, `are_libraries_installed`,
+  `fetch_verified`, `sha256_of`, the `manifest` with `MODEL_FILES`, `CUDA_ARCHIVES`,
+  `ONNX_RUNTIME_ARCHIVE`, `TENSORRT_ARCHIVE`, `TENSORRT_LIBRARIES` and `TENSORRT_VERSION`, and
+  `StoreError`; for the app, `crates/pipeline/`, `crates/stages/` and the tools.
+- `cuda_runtime`: `CudaRuntime::locate`, `CudaRuntime::worker_env`,
+  `CudaRuntime::tensorrt_available` and `tensorrt_version`, and `REQUIRED_CUDA_LIBS`; for the
+  processes that start GPU workers, the app's settings and the AppImage builder.
 - `onnx`: `session::open`, `Device`, `OnnxError`, `separation::{MdxNet, MelRoformer,
   OverlapAdd, WindowModel}`, `parakeet_tdt::ParakeetTdt`, `parakeet_ctc::ParakeetCtc`,
   `ced::Ced` and `lama::Lama`; for `crates/stages/`, `crates/pipeline/` and `tools/stack_spike/`.

@@ -1,8 +1,10 @@
 # AppImage builder
 
 The `appimage_builder` binary behind `cargo appimage`: it builds TBD-subtitles and packs it, with
-the CUDA, cuDNN and ONNX Runtime libraries and a static FFmpeg, into one self-contained AppImage in
-`dist/` that a desktop can start with nothing installed but the NVIDIA driver.
+the CUDA, cuDNN, ONNX Runtime and TensorRT libraries and a static FFmpeg, into one self-contained
+AppImage in `dist/` that a desktop can start with nothing installed but the NVIDIA driver. The
+image bundles TensorRT libraries NVIDIA's licence does not name as redistributable, so it is for
+the owner's own use and not to be shared as is.
 
 ## Contents
 
@@ -20,9 +22,13 @@ each with its time, and stops at the first failure, before an AppImage is writte
 
 ```text
 runtime archives ─> release build ─> static FFmpeg ─> AppImage runtime ─> AppDir ─> smoke check ─> image
-(nvcc, CUDA libs)   (app, ggml and   (pinned, hash)   (pinned, hash)      (layout,   (--version,   (squashfs
-                     llm workers)                                         font)      -devices)     behind runtime)
+(nvcc, CUDA libs,   (app, ggml and   (pinned, hash)   (pinned, hash)      (layout,   (--version,   (squashfs
+ TensorRT libs)      llm workers)                                         font)      -devices)     behind runtime)
 ```
+
+TensorRT's tarball (about 7 GB) is streamed once, hashed as it is read, and only the libraries ONNX
+Runtime's TensorRT provider loads are kept, in `runtime/tensorrt-10.14/lib`; the tarball itself is
+never stored. A copy placed by hand in `runtime/.archives/` is read instead of the URL.
 
 No packaging program outside Rust takes part: the ELF walk and the RUNPATH rewrite use `object`,
 the squashfs image is written by `backhand` with zstd, and the desktop entry and the icon are
@@ -34,7 +40,8 @@ generated, so no packaging file is tracked. The result is
 AppRun -> usr/bin/tbd-subtitles    tbd-subtitles.desktop    tbd-subtitles.png    .DirIcon
 usr/bin/tbd-subtitles
 usr/bin/tbd-subtitles-ggml, usr/bin/tbd-subtitles-llm (RUNPATH $ORIGIN/../lib)
-usr/bin/cuda/{cuda-13.4,cudnn-9.26,onnxruntime-1.28.2}/lib    the libraries the GPU workers load
+usr/bin/cuda/{cuda-13.4,cudnn-9.26,onnxruntime-1.28.2,tensorrt-10.14}/lib
+                                                               the libraries the GPU workers load
 usr/bin/ffmpeg/{ffmpeg,ffprobe}                                static FFmpeg 8.1 with pulse
 usr/lib/libcrispasr.so.1, libggml*.so.0, …                     each worker's own libraries (RUNPATH $ORIGIN)
 usr/share/fonts/NotoSansJP.ttf, usr/share/licenses/tbd-subtitles/NotoSansJP-OFL.txt
@@ -49,7 +56,7 @@ in `<exe dir>/cuda/` first, and the job runner finds both workers beside the app
 Run these from the repository root:
 
 ```bash
-cargo appimage                    # build, gather and pack; the first run downloads about 2.5 GB
+cargo appimage                    # build, gather and pack; the first run downloads about 9.5 GB
 cargo appimage --skip-build       # pack the binaries already in target/release
 cargo test -p appimage_builder    # the unit tests, about a second
 ```
@@ -87,10 +94,18 @@ Downloads are cached in `target/appimage/cache/`; the AppDir is laid out in
   - it depends on no workspace crate but `app_icon`, `child_process` and `inference` (the tool
     table in `tools/repo_gates/src/layout.rs`, `cargo gates crate-layering`);
   - every download is pinned by URL and SHA-256 and checked before use (`fetch_verified`,
-    `install_archive`);
-  - the NVIDIA driver's libraries and glibc are never bundled (`host_libraries_are_recognised_by_stem`).
+    `install_archive`; `install_libraries` checks TensorRT's stream when it ends and keeps
+    nothing on a mismatch);
+  - the NVIDIA driver's libraries and glibc are never bundled (`host_libraries_are_recognised_by_stem`);
+  - the image carries TensorRT with ONNX Runtime's TensorRT provider, or no image is written
+    (`the_bundle_carries_tensorrt_and_its_provider`).
 
 ## Related documentation
+
+- [Building the AppImage](/documentation/runbooks/building_the_appimage.md) — the steps, the
+  TensorRT download and the licence note.
+- [TensorRT runs the PP-OCRv5 detectors](/documentation/decisions/inference_engines.md#2026-10-01--tensorrt-runs-the-pp-ocrv5-detectors)
+  — why TensorRT is bundled, and which of its libraries NVIDIA names as redistributable.
 
 - [Development environment](/documentation/runbooks/development_environment.md) — the CUDA
   toolkit and the build commands this tool runs.

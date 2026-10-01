@@ -104,4 +104,4 @@ pub(crate) fn parse_dynamic(data: &[u8]) -> Result<Dynamic> {
 
 #[cfg(test)]
 #[path = "tests/elf.rs"]
-mod tests;
+pub(crate) mod tests;

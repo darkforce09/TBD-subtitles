@@ -7,7 +7,7 @@ use super::*;
 
 /// A minimal 64-bit little-endian shared library: a `.dynstr`, a `.dynamic` with the given
 /// NEEDED names, SONAME and RUNPATH, and a `.shstrtab`.
-fn tiny_library(soname: &str, needed: &[&str], runpath: &str) -> Vec<u8> {
+pub(crate) fn tiny_library(soname: &str, needed: &[&str], runpath: &str) -> Vec<u8> {
     let mut dynstr = vec![0u8];
     let mut add = |text: &str| {
         let at = dynstr.len() as u64;

@@ -1,9 +1,9 @@
-//! Unpacking a pinned runtime archive (`.tar.xz` or `.tgz`) into a runtime folder.
+//! Unpacking a pinned runtime archive (`.tar.xz`, `.tgz` or `.tar.gz`) into a runtime folder.
 //!
 //! **Role:** download a runtime archive (NVIDIA's `.tar.xz` redistributables, Microsoft's ONNX
-//! Runtime `.tgz`) through `download.rs`, decompress it on one thread (lzma-rs or flate2) while
-//! the tar reader unpacks it on another, strip the archive's top folder, and record the archive's
-//! hash in a marker so the unpack is not repeated.
+//! Runtime `.tgz`, any `.tar.gz`) through `download.rs`, decompress it on one thread (lzma-rs or
+//! flate2) while the tar reader unpacks it on another, strip the archive's top folder, and record
+//! the archive's hash in a marker so the unpack is not repeated.
 //!
 //! **Position:** called by `mod.rs` for each runtime archive.
 //!
@@ -67,9 +67,10 @@ fn link_lib64(cuda_root: &Path) -> Result<(), StoreError> {
     std::os::unix::fs::symlink("lib", &link).map_err(|e| StoreError::io(&link, e))
 }
 
-/// Unpack a `.tar.xz` or `.tgz` into `target`, dropping each entry's first path component.
+/// Unpack a `.tar.xz`, `.tgz` or `.tar.gz` into `target`, dropping each entry's first path component.
 pub fn unpack(archive: &Path, target: &Path) -> Result<(), StoreError> {
-    let gzip = archive.to_string_lossy().ends_with(".tgz");
+    let name = archive.to_string_lossy();
+    let gzip = name.ends_with(".tgz") || name.ends_with(".tar.gz");
     let source = File::open(archive).map_err(|e| StoreError::io(archive, e))?;
     let (reader, mut writer) = std::io::pipe().map_err(|e| StoreError::io(archive, e))?;
     let label = archive.to_path_buf();
@@ -151,3 +152,7 @@ pub fn strip_first(path: &Path) -> Option<PathBuf> {
     }
     (!inner.as_os_str().is_empty()).then_some(inner)
 }
+
+#[cfg(test)]
+#[path = "tests/archive.rs"]
+mod tests;

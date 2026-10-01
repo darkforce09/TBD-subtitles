@@ -1,8 +1,9 @@
-//! Where the CUDA 13 runtime libraries and ONNX Runtime live, and the environment a GPU worker
-//! needs to load them.
+//! Where the CUDA 13 runtime libraries, ONNX Runtime and TensorRT live, and the environment a GPU
+//! worker needs to load them.
 //!
 //! **Role:** find the folder holding cudart, cuBLAS, cuFFT, cuRAND, NVRTC and cuDNN for CUDA 13,
-//! check the libraries ONNX Runtime's CUDA provider loads are all there, and give the
+//! check the libraries ONNX Runtime's CUDA provider loads are all there, note whether a complete
+//! TensorRT 10.14 lies beside them for ONNX Runtime's TensorRT provider, and give the
 //! `LD_LIBRARY_PATH` and `ORT_DYLIB_PATH` values that make ORT, ggml-cuda and candle find them.
 //!
 //! **Position:** called by whoever starts a GPU worker (the job runner, the stack spike and
@@ -11,13 +12,18 @@
 //!
 //! **Signals and state:** reads `LD_LIBRARY_PATH` and the file system; holds nothing.
 //!
-//! **Invariants:** a runtime is returned only when every required library file exists; the
-//! packaged folder beside the executable wins over the user folder.
+//! **Invariants:** a runtime is returned only when every required library file exists; TensorRT
+//! is optional and never decides whether a runtime is found; the packaged folder beside the
+//! executable wins over the user folder; TensorRT's library folder is on the worker's library
+//! path whenever it is found, because ONNX Runtime's provider opens `libnvinfer_plugin.so.10` by
+//! bare name.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use crate::model_store::manifest::{CUDA_FOLDER, CUDNN_FOLDER, ONNX_RUNTIME_FOLDER};
+use crate::model_store::manifest::{
+    CUDA_FOLDER, CUDNN_FOLDER, ONNX_RUNTIME_FOLDER, TENSORRT_FOLDER, TENSORRT_VERSION,
+};
 
 /// The libraries ONNX Runtime 1.28's CUDA provider and cuDNN load, by soname.
 pub const REQUIRED_CUDA_LIBS: &[&str] = &[
@@ -48,6 +54,18 @@ pub const REQUIRED_ONNX_RUNTIME_LIBS: &[&str] = &[
     "libonnxruntime_providers_cuda.so",
 ];
 
+/// ONNX Runtime's TensorRT provider, which ONNX Runtime opens from its own folder when a session
+/// asks for TensorRT.
+pub const TENSORRT_PROVIDER_LIB: &str = "libonnxruntime_providers_tensorrt.so";
+
+/// The TensorRT libraries the TensorRT provider links, by soname.
+pub const REQUIRED_TENSORRT_LIBS: &[&str] = &["libnvinfer.so.10", "libnvonnxparser.so.10"];
+
+/// Name prefixes of the TensorRT libraries opened at run time, which no NEEDED entry names: the
+/// plugin library the provider opens by bare name, and the builder's resource libraries.
+pub const TENSORRT_LOADED_AT_RUN_TIME: &[&str] =
+    &["libnvinfer_plugin.so.", "libnvinfer_builder_resource"];
+
 /// A CUDA 13 runtime found on disk.
 #[derive(Debug, Clone)]
 pub struct CudaRuntime {
@@ -57,6 +75,9 @@ pub struct CudaRuntime {
     pub cudnn_root: PathBuf,
     /// The ONNX Runtime root: `lib/`, `include/`.
     pub onnxruntime_root: PathBuf,
+    /// The TensorRT root (`lib/`), when a complete TensorRT lies beside the runtime and ONNX
+    /// Runtime's TensorRT provider is in its folder; `None` otherwise.
+    pub tensorrt_root: Option<PathBuf>,
 }
 
 /// Why no runtime was found.
@@ -79,7 +100,8 @@ impl fmt::Display for MissingRuntime {
 impl std::error::Error for MissingRuntime {}
 
 impl CudaRuntime {
-    /// Look in `<exe dir>/cuda/` first, then in `runtime_dir`.
+    /// Look in `<exe dir>/cuda/` first, then in `runtime_dir`. TensorRT is taken from the same
+    /// folder as the runtime, when it is complete there.
     pub fn locate(
         exe_dir: Option<&Path>,
         runtime_dir: &Path,
@@ -90,20 +112,27 @@ impl CudaRuntime {
             .into_iter()
             .chain(std::iter::once(runtime_dir.to_path_buf()));
         for base in candidates {
-            let runtime = CudaRuntime {
+            let mut runtime = CudaRuntime {
                 cuda_root: base.join(CUDA_FOLDER),
                 cudnn_root: base.join(CUDNN_FOLDER),
                 onnxruntime_root: base.join(ONNX_RUNTIME_FOLDER),
+                tensorrt_root: None,
             };
             match runtime.first_missing() {
-                None => return Ok(runtime),
+                None => {
+                    let tensorrt_root = base.join(TENSORRT_FOLDER);
+                    if runtime.first_missing_tensorrt(&tensorrt_root).is_none() {
+                        runtime.tensorrt_root = Some(tensorrt_root);
+                    }
+                    return Ok(runtime);
+                }
                 Some(missing) => looked_in.push((base, missing)),
             }
         }
         Err(MissingRuntime { looked_in })
     }
 
-    /// The first required library not on disk, if any.
+    /// The first required library not on disk, if any. TensorRT is not required.
     pub fn first_missing(&self) -> Option<String> {
         let cuda_lib = self.cuda_root.join("lib");
         let cudnn_lib = self.cudnn_root.join("lib");
@@ -121,13 +150,56 @@ impl CudaRuntime {
             .map(|path| path.display().to_string())
     }
 
-    /// The library folders: CUDA, cuDNN, ONNX Runtime.
-    pub fn lib_dirs(&self) -> [PathBuf; 3] {
-        [
-            self.cuda_root.join("lib"),
-            self.cudnn_root.join("lib"),
-            self.onnxruntime_root.join("lib"),
-        ]
+    /// What keeps TensorRT at `tensorrt_root` from being used with this runtime, if anything:
+    /// ONNX Runtime's TensorRT provider, a linked TensorRT library, or a library opened at run
+    /// time, named by the first one missing.
+    pub fn first_missing_tensorrt(&self, tensorrt_root: &Path) -> Option<String> {
+        let provider = self
+            .onnxruntime_root
+            .join("lib")
+            .join(TENSORRT_PROVIDER_LIB);
+        if !provider.exists() {
+            return Some(provider.display().to_string());
+        }
+        let lib = tensorrt_root.join("lib");
+        if let Some(missing) = REQUIRED_TENSORRT_LIBS
+            .iter()
+            .map(|name| lib.join(name))
+            .find(|path| !path.exists())
+        {
+            return Some(missing.display().to_string());
+        }
+        let names: Vec<String> = std::fs::read_dir(&lib)
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        TENSORRT_LOADED_AT_RUN_TIME
+            .iter()
+            .find(|prefix| !names.iter().any(|name| name.starts_with(*prefix)))
+            .map(|prefix| format!("{}/{prefix}*", lib.display()))
+    }
+
+    /// Whether ONNX Runtime's TensorRT provider can run with this runtime.
+    pub fn tensorrt_available(&self) -> bool {
+        self.tensorrt_root.is_some()
+    }
+
+    /// The TensorRT version found, for engine cache keys and reports; `None` without TensorRT.
+    pub fn tensorrt_version(&self) -> Option<&'static str> {
+        self.tensorrt_available().then_some(TENSORRT_VERSION)
+    }
+
+    /// The library folders: CUDA, cuDNN, ONNX Runtime, then TensorRT when it was found.
+    pub fn lib_dirs(&self) -> Vec<PathBuf> {
+        [&self.cuda_root, &self.cudnn_root, &self.onnxruntime_root]
+            .into_iter()
+            .chain(self.tensorrt_root.as_ref())
+            .map(|root| root.join("lib"))
+            .collect()
     }
 
     /// The ONNX Runtime library `ort` loads at run time.

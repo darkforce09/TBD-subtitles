@@ -17,7 +17,9 @@ that holds it; the rest are held in review.
   also run `git`, `cargo`, FFmpeg (to verify a bundled build) and the app's own built binaries
   (to smoke-test them). Every child process goes through `crates/child_process/`.
 - Models are downloaded already exported (ONNX, GGUF, safetensors) from pinned URLs with
-  checksums; no code converts or exports models.
+  checksums. A model is converted or compiled only when a measurement shows it pays, in Rust or
+  inside its runtime, as TensorRT builds its engines
+  ([decision](/documentation/decisions/inference_engines.md#2026-10-01--models-may-be-converted-or-compiled-when-a-measurement-shows-it-pays)).
 
 ## Workspace
 

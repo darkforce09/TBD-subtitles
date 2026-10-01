@@ -123,7 +123,8 @@ diarization (up to eight speakers, as speaker turns, not names).
 
 - **What changes:** a diarization pass over the vocal stem gives speaker turns that adjudication
   sees beside the sheet, and that the speaker labels in the roadmap's Later list could build on.
-- **Needs:** an exported Sortformer ONNX model to download (the app never converts models).
+- **Needs:** an exported Sortformer ONNX model to download (the app converts a model only when a
+  measurement shows it pays).
 - **Measured:** `SPK` flags against the turns on Dressrosa 11 and 28, and the owner's judgement.
 
 ## Boundaries

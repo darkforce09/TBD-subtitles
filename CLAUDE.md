@@ -98,7 +98,9 @@ workstation scaling in the [roadmap](/documentation/roadmap.md).
    crates that bind a native runtime (ONNX Runtime through `ort`, ggml through whisper-rs or
    transcribe-cpp) are used only where no pure-Rust option is competitive
    ([decisions](/documentation/decisions/)). Models are downloaded already exported (ONNX, GGUF,
-   safetensors); we never convert models.
+   safetensors) first; a model is converted or compiled (a TensorRT engine, an FP16 graph) only
+   when a measurement shows it pays, in Rust or inside the runtime
+   ([decision](/documentation/decisions/inference_engines.md#2026-10-01--models-may-be-converted-or-compiled-when-a-measurement-shows-it-pays)).
 5. **Fast and bounded.** The completed M1 audio pipeline has a 30-minute target for a 120-minute
    video on the RTX 3070. Visual processing may take additional time, measured separately on one
    20–30-minute episode for M4 acceptance. The pipeline targets the owner's machine: peak RAM
