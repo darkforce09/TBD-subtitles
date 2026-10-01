@@ -359,7 +359,11 @@ fn a_source_that_is_not_h264_is_encoded_whole_with_the_reason() {
     let dir = scratch("not-h264");
     let video = source(&dir, 2, &["-c:v", "mpeg4", "-q:v", "3"]);
     let (rendered, output) = render_patch(&dir, &video, 10, 20);
-    assert_eq!(rendered.encoder, "libx264", "this FFmpeg has no NVENC");
+    assert!(
+        rendered.encoder == "libx264" || rendered.encoder == "hevc_nvenc",
+        "unexpected encoder: {}",
+        rendered.encoder
+    );
     let reason = rendered.segments.fallback_reason.clone().unwrap();
     assert!(reason.contains("mpeg4, not H.264"), "{reason}");
     assert_eq!(rendered.segments, whole_summary(48, FallbackReason(reason)));

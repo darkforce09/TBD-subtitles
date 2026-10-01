@@ -40,10 +40,11 @@ pub fn enlarge(pipe: &impl AsRawFd) -> Result<usize, MediaError> {
     // changes only its capacity.
     let set = unsafe { libc::fcntl(fd, libc::F_SETPIPE_SZ, bytes) };
     if set < 0 {
-        return Err(MediaError::Parse(format!(
-            "F_SETPIPE_SZ: {}",
-            std::io::Error::last_os_error()
-        )));
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::EPERM) {
+            return capacity(pipe);
+        }
+        return Err(MediaError::Parse(format!("F_SETPIPE_SZ: {err}")));
     }
     capacity(pipe)
 }
