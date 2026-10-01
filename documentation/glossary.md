@@ -202,16 +202,11 @@ and `visual/plates/`.
 
 See: [Stroke mask](#stroke-mask), [Patch](#patch)
 
-### Proxy frame
-
-A 640-wide copy of a source frame, decoded with deblocking skipped, that the visual scan screens
-for writing and bisects over; exact geometry comes from the full-resolution keyframe.
-
 ### Sample step
 
-The number of frames between two screened proxy frames, `round(fps / 2)`; the first and last
-frame of every shot are screened as well, and writing shorter than the step that no sample or cut
-lands on is missed.
+The number of frames between two screened sample frames, `round(fps / 2)`; the first and last
+frame of every shot are screened as well, each at the source's full resolution, and writing
+shorter than the step that no sample or cut lands on is missed.
 
 ### SDH
 

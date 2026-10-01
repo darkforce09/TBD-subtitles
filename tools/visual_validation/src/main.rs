@@ -100,8 +100,9 @@ enum Command {
         out: Option<PathBuf>,
     },
     /// Measure full-resolution text screening on a clip: decode routes, YUV conversion, the
-    /// mobile detector by path, batch and workers, the proxy baseline and the server detector
-    /// (run on the host: CUDA, NVML and FFmpeg).
+    /// mobile detector by path, batch and workers, the proxy baseline, the server detector, and
+    /// the production detector pool by batch and pool, sessions, search mode and TensorRT
+    /// precision, with optional box images (run on the host: CUDA, NVML and FFmpeg).
     DetectBench(detect_bench::Options),
     /// Time the localized video's encodes on a clip: the H.264 segment encode at x264 and NVENC
     /// presets and the whole-video HEVC encode at NVENC presets, with size and PSNR (NVENC rows

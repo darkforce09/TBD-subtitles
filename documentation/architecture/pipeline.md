@@ -61,7 +61,7 @@ fingerprint, and gets its own row of time and peak memory in the job report.
 | alignment | 7 | worker, `tbd-subtitles` (ONNX Runtime) | `outputs/alignment` |
 | review | 7 | worker, `tbd-subtitles` (ONNX Runtime on the CPU) | `outputs/review` |
 | cues | 9 | job runner | `outputs/cues`, `outputs/cues/dropped_sounds` |
-| text_detect | on-screen text | worker, `tbd-subtitles` (ONNX Runtime; FFmpeg proxy stream and stills), in the visual lane | `outputs/text_detect`, `visual/crops/`, `visual/keyframes/` |
+| text_detect | on-screen text | worker, `tbd-subtitles` (ONNX Runtime, two detector sessions; FFmpeg full-resolution YUV stream and stills), in the visual lane | `outputs/text_detect`, `visual/crops/`, `visual/keyframes/` |
 | text_read | on-screen text | worker, `tbd-subtitles` (ONNX Runtime), in the visual lane | `outputs/text_read`, reading cache `visual/readings/` |
 | text_track | on-screen text | worker, `tbd-subtitles` (CPU, no decoding), in the visual lane | `outputs/text_track` |
 | text_translate | on-screen text | worker, `tbd-subtitles-llm` (`claude` children first; mistral.rs for the rest) | `outputs/text_translate`, translation cache `visual/translations/` |
@@ -109,7 +109,14 @@ the other on-screen text steps with translation off, write empty outputs and loa
   lane's GPU steps and the main walk's take it one at a time too; the kernel frees the lock when
   its holder dies. `text_inpaint` and `localized_video` (for NVENC) hold it too. A step waiting
   for it says which step of the app holds it ("text_detect of this job is using it"), or that
-  another run of the app does.
+  another run of the app does. While an audio step waits for the lock, a visual step stays off
+  it. `text_translate` takes the lock only just before its local model loads and keeps it until
+  the model is dropped, since it waits on Claude for most of its time.
+- **GPU memory:** each GPU worker stays within 6.5 GB of VRAM. After taking the lock, a GPU step
+  waits until NVML reports enough free memory for its measured need, telling the window "waiting
+  for GPU memory: N MiB free, M needed", and fails after ten minutes with a message to close other
+  GPU programs
+  ([decision](/documentation/decisions/foundations.md#2026-10-01--each-gpu-worker-stays-within-65-gb-of-vram-and-a-step-waits-up-to-a-deadline-for-the-memory-it-measured)).
 - **Binaries:** ONNX Runtime, ggml and candle never share a process. `tbd-subtitles` hosts the
   ONNX Runtime, FFmpeg and `claude` workers; `tbd-subtitles-ggml`, built beside it with the
   `crispasr` feature, hosts Whisper. `tbd-subtitles-llm`, built with `mistralrs`, hosts the local
@@ -349,10 +356,13 @@ into the picture and approve it, and a last step after `output` writes the video
 - `text_typeset` writes the usual events for `<video base name>.ass` alone; the localized
   subtitle file has no on-screen events, and the output step moves its cues clear of the
   English drawn in.
-- `localized_video` decodes every frame, blends the patches over the frames they cover and
-  re-encodes the video with `hevc_nvenc` (libx264 when NVENC cannot run), its peak rate capped
-  near the source's, into `<video base name>.localized.mkv` with the source's audio, chapters and
-  metadata and no subtitle stream.
+- `localized_video` blends the patches over the frames they cover into
+  `<video base name>.localized.mkv`, with the source's audio, chapters and metadata and no
+  subtitle stream. For a constant-frame-rate H.264 source it re-encodes only the segments with
+  replaced writing, widened to IDR keyframes, as H.264 matching the source (x264, or NVENC as a
+  setting), and joins them to stream-copied pieces; any other source, or a join that fails its
+  checks, decodes every frame and re-encodes the whole video with `hevc_nvenc` (libx264 when
+  NVENC cannot run), its peak rate capped near the source's.
 
 An occurrence that cannot be separated, followed or lettered legibly, or that fails the read-back
 check, stays Japanese in the localized video; `outputs/text_verify` keeps the reason, which

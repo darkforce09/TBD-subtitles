@@ -2,8 +2,9 @@
 
 # Runbooks
 
-Step-by-step procedures: setting up and checking the development environment, and handing the
-project to the next working session.
+Step-by-step procedures: setting up and checking the development environment, building the
+AppImage, measuring full-resolution screening on the host, and handing the project to the next
+working session.
 
 ## Contents
 
@@ -11,7 +12,8 @@ project to the next working session.
 documentation/runbooks/
 ├── building_the_appimage.md     package the app as a self-contained AppImage with `cargo appimage`
 ├── continue_in_claude_code.md   the prompt that starts the next session in the Claude Code GUI
-└── development_environment.md   host and container, GPU, paths, toolchain, FFmpeg, build and check
+├── development_environment.md   host and container, GPU, paths, toolchain, FFmpeg, build and check
+└── measuring_full_resolution_screening.md   the host benches, checks and fresh runs that settle full-resolution screening
 ```
 
 ## How it works
@@ -27,6 +29,8 @@ matching the code, the runbook is fixed in the same commit as the change that br
 - [Repository gates](/tools/repo_gates/) — the `cargo gates` checks the environment runbook runs.
 - [AppImage builder](/tools/appimage_builder/) — the `cargo appimage` packager the AppImage
   runbook runs.
+- [Visual validation](/tools/visual_validation/) — the `detect-bench` and `encode-bench` the
+  screening runbook runs.
 
 ## Boundaries
 

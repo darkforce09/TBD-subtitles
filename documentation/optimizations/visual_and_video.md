@@ -24,11 +24,13 @@ owner picks it.
   replaced: joining the shot's pieces into one occurrence makes its frames step between the
   pieces' boxes, and following fails ("The writing moves in a way that could not be followed")
   ([polish record](/documentation/research/localized_video_polish_dressrosa_28.md#open-issues)).
-- **The encode.** `localized_video` decodes every frame, blends the patches and re-encodes the
-  whole video with `hevc_nvenc`: 265 s for Dressrosa 11's 44,489 frames, 166 frames per second
+- **The encode.** The whole-video encode decodes every frame, blends the patches and re-encodes
+  the video with `hevc_nvenc`: 265 s for Dressrosa 11's 44,489 frames, 166 frames per second
   ([measurement](/documentation/research/localized_video_dressrosa_11.md)). Few of those frames
   change: Dressrosa 11's `frames` table holds 370 rows, Dressrosa 28's 1,898
-  ([per-frame tables](/documentation/research/per_frame_tables.md)).
+  ([per-frame tables](/documentation/research/per_frame_tables.md)). For a constant-frame-rate
+  H.264 source, `localized_video` re-encodes only the segments that change (item 3), and keeps the
+  whole-video encode as its fallback.
 
 ## 1. Per-frame homography
 
@@ -66,21 +68,39 @@ The Dressrosa sources are H.264 Main profile, level 4.0 (ffprobe on 11, 28 and 4
 is `yuv420p`, 1920×1080 at 24 fps with B-frames, with a keyframe every 3.4 s on average and at most
 10 s apart.
 
-- **What changes:** the frame spans with patches come from the `frames` table; each span widens to
-  the keyframes around it; only those segments are decoded, blended and re-encoded; everything
-  else is stream-copied; the segments are joined in order with the audio copied as today.
+Built, awaiting the host measurement
+([decision](/documentation/decisions/localized_video.md#2026-10-01--the-localized-video-re-encodes-only-the-segments-with-replaced-writing-as-h264-matching-the-source-and-copies-the-rest);
+how it runs: [video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md#the-localized-video-localized_video)).
+
+- **Which sources:** a constant-frame-rate H.264 source takes the segment encode; any other
+  constant-frame-rate source goes to the whole-video HEVC encode, and the report line says why; a
+  variable frame rate is refused as before.
+- **Segments:** the frame spans with patches come from the blend schedule; each span widens to the
+  IDR keyframes around it, read from the packets' keyframe flags and confirmed by a Rust scan of
+  the boundary packet's NAL units (an open group of pictures widens to the next IDR), and
+  overlapping spans merge. Only those segments are decoded from their keyframe, blended and
+  re-encoded; the ranges between them are stream-copied.
 - **The constraint:** stream-copied H.264 and re-encoded segments join into one playable stream
-  only if the re-encoded segments are H.264 too, with the source's profile, level, resolution,
-  pixel format and compatible parameter sets, and each copied segment starts on a keyframe a
-  decoder can start from (an IDR frame, or a closed group of pictures). An HEVC segment cannot be
-  joined to copied H.264. The localized video would then be H.264 (`h264_nvenc` or libx264)
-  rather than HEVC, which changes the
-  [in-place replacement decision](/documentation/decisions/stack_and_pipeline.md#2026-09-30--writing-is-replaced-in-a-localized-video-re-encoded-beside-the-source)
-  and needs a new decision entry.
+  only if the re-encoded segments are H.264 too, matching the source's profile, level, pixel
+  format, size, sample aspect ratio, colour tags, B-frames and reference frames (read with
+  ffprobe), opening on an IDR with closed groups of pictures, and each piece carries its stream
+  headers in-band before every keyframe, since the concat demuxer keeps only the first file's
+  out-of-band headers. The encoder is libx264 with `stitchable=1:repeat-headers=1` by default, or
+  `h264_nvenc` with `-repeat_headers 1` when the setting asks for it (a 10-bit H.264 source always
+  takes x264), its peak rate capped at 1.5 times the source's and at the level's maximum; copied
+  pieces get their headers from `dump_extra=freq=keyframe`.
+- **The join:** FFmpeg's concat demuxer over the pieces with the source's audio, chapters and
+  metadata copied, and the source's video start offset carried over with `-itsoffset`.
+- **Checks, failing closed:** the frame count and duration equal the source's, the video–audio
+  offset matches the source's within half a frame, a decode around each join reports no error,
+  and the copied pieces' packets equal the source's apart from the in-band headers. Any failure
+  falls back to the whole-video encode, with its reason in the record and the report.
 - **What it keeps:** frames without replaced writing keep the source's bitstream exactly.
-- **Measured:** `localized_video` time against the baseline on Dressrosa 11 and 28; playback in VLC
-  and mpv across every join (no stall, no corrupt frame, audio in sync); the frame count equal to
-  the source's.
+- **What the host measures:** the encode-bench sets the x264 and NVENC presets (`-preset slow` and
+  `p7 -tune hq` until then; the whole-video HEVC keeps `p6`); `localized_video` time and size
+  against the baseline on Dressrosa 11 and 28; playback in VLC and mpv across every join (no
+  stall, no corrupt frame, audio in sync); the frame count equal to the source's
+  ([runbook](/documentation/runbooks/measuring_full_resolution_screening.md)).
 
 ## 4. Smoothing and fragments
 
@@ -104,12 +124,15 @@ is `yuv420p`, 1920×1080 at 24 fps with B-frames, with a keyframe every 3.4 s on
   [binary storage](/documentation/architecture/binary_storage_plan.md).
 - Used by: roadmap milestone M8, `stages::localize` and `pipeline::tasks::localized`.
 - Rules: source videos stay read-only; replaced writing appears on the exact frame the picture
-  changes, which detection finds by bisection; frames without replaced writing keep their
-  bitstream once item 3 is built.
+  changes, which detection finds by bisection; under the segment encode, frames without replaced
+  writing keep their bitstream; a segment join that fails a check falls back to the whole-video
+  encode, never to an unchecked file.
 
 ## Related documentation
 
 - [Roadmap](/documentation/roadmap.md#m8--visual-tracking-and-video-acceleration) — milestone M8.
 - [Memory profiles](memory_profiles.md) — the baseline, hardware decoding and overlapped encoding.
+- [Measuring full-resolution screening](/documentation/runbooks/measuring_full_resolution_screening.md)
+  — the host steps, the encode-bench and the playback checks across the joins among them.
 - [Localized video polish on Dressrosa 28](/documentation/research/localized_video_polish_dressrosa_28.md)
   — the open issues these items address.

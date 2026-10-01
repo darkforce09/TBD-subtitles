@@ -2,9 +2,10 @@
 
 # Decisions: on-screen text detection
 
-The decisions about how the detection step screens proxy frames for writing: how many one
-detector call takes, the GPU memory it may hold, and which PP-OCRv5 detector screens and which
-confirms. "The previous entry" in them is the
+The decisions about how the detection step screens frames for writing: at what resolution, how
+many frames one detector call takes, the GPU memory it may hold, which PP-OCRv5 detector screens
+and which confirms, and how the CUDA path picks its algorithms. "The previous entry" in the
+entries of 2026-09-29 is the
 [sampled-screening entry](/documentation/decisions/stack_and_pipeline.md#2026-09-29--on-screen-text-is-found-by-sampled-screening-with-bisected-boundaries-and-read-once-per-event-by-claude-vision)
 of the stack and pipeline decisions. The [decision log](/documentation/decisions/) says how
 entries are written; the feature is
@@ -56,5 +57,100 @@ corner tolerance flagged 136 of 143 occurrences on this episode.
 inside the misses the owner already accepts, and a sign shown for fewer than four frames at
 24 fps counts as noise; the synthetic scenario's brief sign lasts four frames for that reason. The pp-ocrv5 model folder gains
 one file, which Settings offers to download.
+
+**Supersedes:** none.
+
+### 2026-10-01 — The detector screens full-resolution frames, padded to a multiple of 32, on two sessions
+
+**Context:** The proxy is 640 pixels wide, so small or faint writing that does not survive the
+downscale is never found, and the owner wants it found. The detect-bench (commit 5febb2b,
+`tools/visual_validation/src/detect_bench/`) measured on the RTX 3070 that screening full-resolution
+frames with one detector session is bound by the GPU near 35 frames per second; that FFmpeg's
+conversion to RGB caps decoding near 700 frames per second, while decoding to `yuv420p` reaches
+about 1,500 and NVDEC about 770; and that the padded path held 1,472 MiB at batch 2 while batch 8
+hit its 3 GiB arena cap. Each GPU worker may now hold 6.5 GB of VRAM
+([decision](/documentation/decisions/foundations.md#2026-10-01--each-gpu-worker-stays-within-65-gb-of-vram-and-a-step-waits-up-to-a-deadline-for-the-memory-it-measured)).
+
+**Decision:** `text_detect` decodes every frame at the source's resolution as 8-bit `yuv420p`
+(10-bit sources included), through a pipe enlarged to 1 MiB, into a bounded queue of about four
+seconds of frames whose buffers come from a recycled pool. The samples are the same as before:
+every `round(fps / 2)`-th frame plus both frames around each cut, with no downscaling, and the
+owner accepts the extra noise that brings. A sample is a duplicate when the 32 × 32 block means
+of its Y plane differ from the last screened sample's by at most 4 on average; the rest are
+converted in Rust to RGB with rows padded with black to a multiple of 32 (1,080 lines become
+1,088), never stretched, and screened by the mobile PP-OCRv5 detector at a fixed input shape on
+two sessions, each on its own thread and CUDA stream in the one worker process. The batch and the
+session's arena limit are one measured pair, `ScreenShape { batch, pool_mib }`: it starts at
+batch 4 per session, eight frames in flight, with the pool at the bench's padded batch-4 peak plus
+headroom, and the host sweep of pool against batch fixes both before acceptance. A partial batch
+is filled with black frames, so the shape never changes. Bisection probes are converted from the
+held YUV frames and go ahead of the queued screening batches. Results are applied strictly in
+sample order, so one and two sessions give the same document. Region signatures read the
+full-range luma plane instead of a grey conversion of RGB, with the thresholds unchanged. The CUDA
+provider runs with TF32, NHWC and a CUDA graph, its arena growing only as requested up to the pool;
+a session that refuses the graph or NHWC reopens once without them, and the step's notes say so.
+Decoding on the GPU (NVDEC) is a setting, off by default and outside every fingerprint, since
+H.264 decoding is bit-exact. The detection step is at revision 5.
+
+**Consequences:** Writing small enough to vanish in the proxy can be found, and the screen finds
+more noise, which the existing drops (shorter than 0.15 s, wider than half the frame, unconfirmed
+on its keyframe) and the owner's accepted limits absorb. The time of the step follows the GPU;
+`text_detect`'s VRAM need is a named constant that the same sweep fixes within 6.5 GB, and the
+step waits for that much free memory before it starts. The step's notes time warm-up, decode
+wait, conversion, screening, probes, signatures and confirmation apart. Gap frames between two
+samples are held as YUV until every transition that could land on them is resolved.
+
+**Supersedes:** the proxy and batch-of-four parts, and the 3 GB arena, of 2026-09-29 — The
+detector screens four proxies per call under a 3 GB arena; the proxy part of 2026-09-29 — The
+mobile PP-OCRv5 detector screens proxies; the server detector confirms keyframes, whose choice of
+detectors, anchor boxes, noise drops and tracking tolerance stand; and the 640-wide proxy, the
+eight samples per call and "NVDEC is not needed" of 2026-09-29 — On-screen text is found by
+sampled screening with bisected boundaries and read once per event by Claude vision.
+
+### 2026-10-01 — The server detector confirms each occurrence at full resolution on the sample nearest its middle
+
+**Context:** Each occurrence's keyframe was the observed frame nearest its midpoint, decoded again
+at full resolution by an FFmpeg seek, four at a time, and confirmed by the server PP-OCRv5
+detector at 960 × 544. Once the scan decodes every frame at full resolution, the screened samples
+are already in memory, and the 24 GB of RAM leaves room to keep some of them.
+
+**Decision:** The keyframe is the screened sample nearest the occurrence's middle. While an
+occurrence is active, its window keeps the samples that can still be its middle, from
+`(start + now) / 2 − step` to now, as shared YUV frames; a budget of 4 GiB bounds the candidates
+held, and an occurrence whose candidate was let go falls back to an FFmpeg still. Confirmation
+runs after the scan, so its order is fixed: the server detector, at full resolution with the same
+padding, batch 1 and box score 0.5, on both sessions, each opening its confirmation session the
+first time it needs one, after the screening sessions are dropped. Fallback stills decode eight at
+once, and the next chunk is decoded while the current one is confirmed. Each confirmation
+session's pool is a named constant the host sweep fixes.
+
+**Consequences:** At 24 fps, with a 12-frame sample step, a keyframe can move by up to six frames
+against the frame the earlier rule chose, so the crops, the 1280-wide still and the requests to
+Claude change once. Most occurrences cost no FFmpeg seek; the step's notes count stills from RAM
+against stills from FFmpeg. Peak VRAM is the larger of the screening and the confirmation phases,
+never their sum.
+
+**Supersedes:** the keyframe fetched by a seek of 2026-09-29 — On-screen text is found by sampled
+screening with bisected boundaries and read once per event by Claude vision, and the keyframe pass
+at 960 × 544 of 2026-09-29 — The detector screens four proxies per call under a 3 GB arena.
+
+### 2026-10-01 — The CUDA path searches cuDNN algorithms exhaustively unless a repeat run disagrees
+
+**Context:** The CUDA provider can search cuDNN's convolution algorithms exhaustively, with the
+largest workspace, which is fastest but may pick different algorithms from one run to the next,
+so two runs of `text_detect` could find slightly different boxes; or it can choose them by
+heuristic with deterministic compute, which repeats exactly but runs slower. A TensorRT engine,
+once built and cached, always runs the same kernels
+([decision](/documentation/decisions/inference_engines.md#2026-10-01--tensorrt-runs-the-pp-ocrv5-detectors)).
+
+**Decision:** The search is a named mode with two values: `Fast`, the exhaustive search with the
+largest workspace, and `Deterministic`, the heuristic search with deterministic compute. `Fast` is
+the default. The host check runs `text_detect` twice on one fresh job with the CUDA engine and
+compares the two documents; if they differ, the default becomes `Deterministic`, and a new entry
+records which mode holds and why.
+
+**Consequences:** The detect-bench prints the boxes of both modes on the same frames. With the
+TensorRT engine, runs that reuse its cached engine give identical results, while a rebuilt engine
+may differ. The search runs during each session's warm-up, timed apart from screening.
 
 **Supersedes:** none.

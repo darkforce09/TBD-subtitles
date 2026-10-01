@@ -219,7 +219,7 @@ plus the audio track and the steps to run again. The job record keeps the job's 
   system-wide. GPU workers receive the CUDA library path; only ONNX workers receive
   `ORT_DYLIB_PATH`. The mistral.rs worker does not load ONNX Runtime.
 - ONNX Runtime, ggml and mistral.rs stay in separate worker binaries.
-- Resource limits: peak RAM within 24 GB (8 GB of the 32 GB left to the desktop) and 5.5 GB VRAM
+- Resource limits: peak RAM within 24 GB (8 GB of the 32 GB left to the desktop) and 6.5 GB VRAM
   per GPU worker with the desktop running; each ONNX Runtime session's CUDA memory arena is capped
   at 4.5 GiB so the cap holds whatever the card has free. Visual processing adds measured time to
   the audio pipeline.

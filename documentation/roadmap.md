@@ -187,9 +187,11 @@ and accepts it, and accepts the localized video's review in Check Text.
 
 ## M6 — 24 GB workstation throughput
 
-Use the owner's machine (i7-14700K, 32 GB DDR5-6000, RTX 3070) directly: 24 GB of RAM at peak and
-5.5 GB of VRAM per GPU worker
-([decision](/documentation/decisions/foundations.md#2026-09-30--the-pipeline-targets-the-owners-32-gb-machine-24-gb-of-ram)).
+Use the owner's machine (i7-14700K, 32 GB DDR5-6000, RTX 3070) directly: 24 GB of RAM at peak
+([decision](/documentation/decisions/foundations.md#2026-09-30--the-pipeline-targets-the-owners-32-gb-machine-24-gb-of-ram))
+and 6.5 GB of VRAM per GPU worker, each GPU step waiting, up to a deadline, for the memory it
+measured
+([decision](/documentation/decisions/foundations.md#2026-10-01--each-gpu-worker-stays-within-65-gb-of-vram-and-a-step-waits-up-to-a-deadline-for-the-memory-it-measured)).
 The GPU lock stays: two GPU steps never share the card, so the headroom helps where frames are
 held or a step waits on something other than the GPU. The owner picks which items to build.
 
@@ -206,12 +208,47 @@ held or a step waits on something other than the GPU. The owner picks which item
 - [x] Separation within the VRAM cap: every ONNX Runtime CUDA session caps its arena at 4.5 GiB;
       the separation worker went from 7.3 GB to 4.2 GB with byte-identical stems and the same
       wall time ([measurement](/documentation/research/m6_separation_limit_and_overlap.md)).
+- [ ] The VRAM cap at 6.5 GB per GPU worker: after taking the GPU lock, each GPU step waits until
+      the free memory covers its measured need, saying how much is free and needed, and fails
+      after ten minutes with a message to close other GPU programs. Built, awaiting the host
+      measurement in the [runbook](/documentation/runbooks/measuring_full_resolution_screening.md).
 - [ ] Full-resolution visual screening: samples and bisection probes screened at the source's
-      resolution instead of the 360-line proxy; bounded by the GPU detector's speed and VRAM, with
-      RAM holding the full-size frames between samples.
-- [ ] Hardware decoding (NVDEC) for the screen and the localized video, measured against FFmpeg's
-      CPU decoder.
-- [ ] Bounded frame queues between the localized video's decoder, blend and encoder.
+      resolution as 8-bit YUV, converted in Rust and padded to 1,088 lines, on two detector
+      sessions in one worker, batch and pool one measured pair; duplicates and signatures read
+      from luma; each occurrence confirmed by the server detector at full resolution on the
+      screened sample nearest its middle, held in RAM within 4 GiB
+      ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-detector-screens-full-resolution-frames-padded-to-a-multiple-of-32-on-two-sessions)).
+      Built, awaiting the host measurement in the
+      [runbook](/documentation/runbooks/measuring_full_resolution_screening.md).
+- [ ] The TensorRT detector engine: Settings, On-screen Text, "Detector engine: TensorRT / CUDA"
+      for the screening and confirmation sessions; FP16 engines built inside the runtime from the
+      exported ONNX files and cached by GPU, driver, TensorRT version, model and input shape;
+      TensorRT bundled in the AppImage. The default stays CUDA until the host bench confirms
+      TensorRT
+      ([decision](/documentation/decisions/inference_engines.md#2026-10-01--tensorrt-runs-the-pp-ocrv5-detectors),
+      [conversion](/documentation/decisions/inference_engines.md#2026-10-01--models-may-be-converted-or-compiled-when-a-measurement-shows-it-pays)).
+      Built, awaiting the host measurement in the
+      [runbook](/documentation/runbooks/measuring_full_resolution_screening.md).
+- [ ] Hardware decoding (NVDEC): an optional CPU or GPU decode setting for the screen, Settings,
+      On-screen Text, "Decode video on the GPU (NVDEC)", CPU by default and outside every
+      fingerprint; on the RTX 3070 the detect-bench measured NVDEC at about 770 frames per second
+      against about 1,500 for the CPU's `yuv420p`. Built, awaiting the host measurement in the
+      [runbook](/documentation/runbooks/measuring_full_resolution_screening.md).
+- [ ] YUV region decoding for `text_mask`, `text_inpaint` and `text_verify`: FFmpeg delivers
+      `yuv420p` cropped to the even-aligned rectangle around the region, converted in Rust with
+      the stream's matrix and range and decoded ahead on a thread through a bounded queue. Built,
+      awaiting the host measurement in the
+      [runbook](/documentation/runbooks/measuring_full_resolution_screening.md).
+- [ ] Bounded frame queues in the localized video: a decode thread, the blend on the step's
+      thread and an encoder thread, joined by bounded queues of about five seconds of frames.
+      Built, awaiting the host measurement in the
+      [runbook](/documentation/runbooks/measuring_full_resolution_screening.md).
+- [ ] Audio steps first at the GPU lock, and a late lock for `text_translate`: a visual step stays
+      off the lock while an audio step waits for it; `text_translate` takes the lock and the
+      memory wait only when the local model loads, and holds them until the model is dropped.
+      Built, awaiting the host measurement in the
+      [runbook](/documentation/runbooks/measuring_full_resolution_screening.md), which also
+      measures whether `text_detect` now ends before adjudication.
 - [x] Overlapping steps that wait on different things: the screen, reading and tracking (which
       need only the probe and the shot scan) run as a lane beside adjudication; 111–139 s saved
       per episode, 12–15 % of the whole job, limited by detection outlasting adjudication
@@ -224,8 +261,44 @@ Details: [memory profiles](/documentation/optimizations/memory_profiles.md).
 
 **Acceptance:** the baseline is recorded. Each item built is measured against it on Dressrosa 11
 and 28 in a research snapshot: per-step and whole-job wall time, peak RAM within 24 GB, every GPU
-worker within 5.5 GB of VRAM, and the same subtitle files and approved replacements unless the item
-means to change them. The owner keeps each item whose measurement justifies it.
+worker within 6.5 GB of VRAM, and the same subtitle files and approved replacements unless the item
+means to change them. The owner keeps each item whose measurement justifies it. The items marked
+built change the job database's layout, so every job runs all its steps once more: they are
+measured on fresh runs of Dressrosa 11 and 28, the visual and localized steps judged on their own
+outputs ([runbook](/documentation/runbooks/measuring_full_resolution_screening.md)).
+
+## M6.5 — GPU-resident frames and a shared visual worker
+
+Keep decoded frames where the next step needs them: on the GPU for the detector, in one process
+across the visual steps, or in RAM between them. None of these is built; each waits for the
+measurement it names.
+
+- [ ] GPU decoding with frames kept on the GPU: NVDEC (Video Codec SDK through a Rust crate)
+      decodes into device memory; YUV→RGB, padding and normalisation run as CUDA kernels and feed
+      the TensorRT detector without a host round trip. Needs law 3 amended (FFmpeg stays for
+      muxing, encoding, probing and the fallback). Built only if the TensorRT measurement shows
+      decode, conversion or host↔device copies dominating `text_detect`. On the RTX 3070, NVDEC
+      measured ~770 fps against ~1,500 fps CPU yuv420p (detect-bench, 5febb2b).
+- [ ] One ONNX Runtime GPU process across the visual steps: `text_read`, `text_mask`,
+      `text_inpaint` and `text_verify` (and `text_detect`) run in one long-lived worker that keeps
+      their sessions loaded and a bounded frame cache, instead of one process per step. Runtimes
+      stay apart (ggml and mistral.rs keep their own processes). Needs law 7 amended. Measured
+      ceiling first: the summed `load_s` and decode time of those steps on Dressrosa 11 and 28.
+- [ ] Shared frame cache in RAM: `text_detect` writes the decoded YUV frames of each occurrence's
+      span (widened by the margins later steps read) to a memory-mapped file under `/dev/shm`
+      (RAM), within a fixed budget (e.g. 4 GiB, part of the 24 GB); `text_mask`, `text_inpaint`
+      and `text_verify` read frames from it instead of starting FFmpeg seeks, and fall back to
+      FFmpeg for frames outside it. The cache is per job, removed when the job ends or is
+      reopened, and never part of a fingerprint (decoded frames are bit-exact). Needs no change
+      to law 7. Measured: those steps' decode time on Dressrosa 11 and 28 before and after.
+
+Details: [memory profiles](/documentation/optimizations/memory_profiles.md#6-frames-kept-where-the-next-step-needs-them).
+
+**Acceptance:** each item is built only once its measurement above shows it pays, and is then
+measured on Dressrosa 11 and 28 against the M6 results in a research snapshot: per-step and
+whole-job wall time, peak RAM within 24 GB, every GPU worker within 6.5 GB of VRAM, and the same
+subtitle files and approved replacements. A law the item needs amended changes with its decision
+entry, in the same commit. The owner keeps each item whose measurement justifies it.
 
 ## M7 — Dialogue accuracy and audio ensembling
 
@@ -268,9 +341,15 @@ the segments of the localized video that change.
       scale ([polish record](/documentation/research/localized_video_polish_dressrosa_28.md#open-issues)).
 - [ ] Keyframe inpaint and warped plates: LaMa fills one plate per shot, warped along the
       homography to the other frames, with a new plate where the warp stops matching.
-- [ ] Re-encoding only what changed: segments with replaced writing, widened to keyframes, are
-      re-encoded as H.264 matching the source's profile, level and parameters, and joined to
-      stream-copied H.264; this replaces the HEVC encode of the whole video and needs a new decision.
+- [ ] Re-encoding only what changed: segments with replaced writing, widened to IDR keyframes, are
+      re-encoded as H.264 matching the source's profile, level and parameters (x264 by default,
+      NVENC as a setting), with stream headers in-band, and joined to stream-copied H.264 by
+      FFmpeg's concat demuxer; checks of frame count, duration, audio sync, decoding around each
+      join and the copied bytes fall back to the HEVC encode of the whole video, which also serves
+      every other constant-frame-rate source
+      ([decision](/documentation/decisions/localized_video.md#2026-10-01--the-localized-video-re-encodes-only-the-segments-with-replaced-writing-as-h264-matching-the-source-and-copies-the-rest)).
+      Built, awaiting the host measurement in the
+      [runbook](/documentation/runbooks/measuring_full_resolution_screening.md).
 - [ ] Smoothing the per-frame placement of moving writing over time (a Kalman filter or similar),
       and joining short fragments at fades to their occurrence; shot cuts already bound every
       occurrence.

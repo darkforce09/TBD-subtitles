@@ -142,7 +142,7 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
     ```
 
     **Expected:** `decode: Ok in <s> s (<x>× realtime)`; `stack-spike report --video …` prints the
-    table. A GPU item with less than 5632 MiB of VRAM free is recorded as not run.
+    table. A GPU item with less than 6656 MiB of VRAM free is recorded as not run.
 
 12. Build the app's three binaries: `tbd-subtitles`, its Whisper worker `tbd-subtitles-ggml`
     under the CUDA 13.4 toolkit (about 3 minutes the first time), and its local translation

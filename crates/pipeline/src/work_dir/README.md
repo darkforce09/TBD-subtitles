@@ -18,7 +18,9 @@ crates/pipeline/src/work_dir/
 ## How it works
 
 `WorkDir` names each path in one place: `job.redb`, `job.lock`, the three 16 kHz files under
-`audio/`, the replacement folders `visual/masks`, `visual/plates` and `visual/patches`,
+`audio/`, the replacement folders `visual/masks`, `visual/plates` and `visual/patches`, the
+localized video's copied and re-encoded pieces under `visual/localized_pieces` (removed when the
+step ends),
 `sheet.txt`, `fix/calls/`, `report.md`, the empty `claude-cwd/`, `backup/` and
 `logs/<step>.log`. Every step document lives in `job.redb`; the files here are the large media
 its rows name, the caches, the logs and the two files written for reading. `job_id` is the

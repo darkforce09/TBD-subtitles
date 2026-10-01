@@ -4,10 +4,11 @@
 
 How the job replaces visible Japanese writing inside the picture: it erases each translated
 occurrence's strokes, fills the background behind them with an inpainting model, letters the
-English in the original writing's place, colour and weight, and re-encodes the whole video as a
-[localized video](/documentation/glossary.md#localized-video) beside the source. Writing that
-cannot be replaced cleanly keeps its English in the localized video's own subtitle file. The
-source video is only read. What the owner sees of it is in
+English in the original writing's place, colour and weight, and writes a
+[localized video](/documentation/glossary.md#localized-video) beside the source that re-encodes
+only the segments with replaced writing and copies the rest, or re-encodes the whole video where
+that cannot be done. Writing that cannot be replaced cleanly stays Japanese in the picture, with
+its reason in Check Text. The source video is only read. What the owner sees of it is in
 [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md#replacement-in-the-video).
 
 ## Why the picture is edited
@@ -60,9 +61,11 @@ Code: [mask](/crates/stages/src/onscreen_text/replace/mask/), with region crops 
   frame, falls back at once. Nearby placement chosen by an earlier step for the ASS file (moving
   writing, writing only Claude found) does not stop an attempt.
 - **Regions, not frames:** only the keyframe's plate is decoded for segmentation, then the
-  span's plate region once, each at full resolution through a region stream that converts each
-  frame to RGB and crops it. The analysis window is the bounds of the keyframe quad and of the
-  furigana folded into the line (`ruby`) grown by 4 pixels; the plate is those bounds grown by
+  span's plate region once, each at full resolution through a region stream: FFmpeg delivers
+  `yuv420p` cropped to the even-aligned rectangle around the region, Rust trims it and converts it
+  to RGB with the stream's matrix and range, and the decode runs ahead on a thread through a
+  bounded queue with pooled buffers. The analysis window is the bounds of the keyframe quad and
+  of the furigana folded into the line (`ruby`) grown by 4 pixels; the plate is those bounds grown by
   `max(32, 0.75 × the quad's shorter side)`, the context inpainting sees. The English is still
   lettered in the line's own quad. A box Claude found on a keyframe (an id ending in `-c` and a
   number) is loose: its window and plate grow by a further 0.35 of its height, and when the
@@ -236,8 +239,8 @@ run.
   the keyframe) and its furigana, placed on the plate covering the frame at the frame's own
   shift from its `frames` row, as composition lettered it, grown by 0.75 of a line (the measured
   line height) into a region on even pixels. FFmpeg decodes that region of the source frame at
-  full resolution; every patch the localized video blends at that frame (the patch of the
-  frame's shift) is blended over it with the render's own Y′CbCr blend in 8-bit 4:2:0 and
+  full resolution, as `yuv420p` through the same region stream as the mask step; every patch the
+  localized video blends at that frame (the patch of the frame's shift) is blended over it with the render's own Y′CbCr blend in 8-bit 4:2:0 and
   converted back to RGB, and the region is enlarged so a line is 48 pixels tall (at most
   8 million pixels).
 - **Reading:** PP-OCRv5's server detector finds the lines (box score 0.5) and its recognizer
@@ -311,8 +314,27 @@ Code: [localize](/crates/stages/src/localize/), the task
 [`tasks/localized.rs`](/crates/pipeline/src/tasks/localized.rs), and FFmpeg's
 [encode](/crates/media_io/src/encode/) and [native frames](/crates/media_io/src/video_frames/).
 
-- **Decode:** one FFmpeg decoder streams every frame at its native size, 10-bit 4:2:0 for a 10-bit
-  4:2:0 source and 8-bit `yuv420p` otherwise. The decoded count must equal the timeline exactly.
+The step re-encodes only the segments with replaced writing and copies the rest of the video when
+the source is constant-frame-rate H.264
+([decision](/documentation/decisions/localized_video.md#2026-10-01--the-localized-video-re-encodes-only-the-segments-with-replaced-writing-as-h264-matching-the-source-and-copies-the-rest));
+any other constant-frame-rate source, and a segment join that fails a check, gets the
+whole-video encode below; a variable frame rate is refused.
+
+```text
+decode thread ──▶ bounded queue ──▶ blend (step thread) ──▶ bounded queue ──▶ encoder thread
+FFmpeg, pooled    about 4 s of       patches over the         frames            owns the FFmpeg
+YUV buffers       frames             frames they cover                          encoder to the end
+```
+
+- **Threads:** a decode thread streams the frames into a bounded queue of about four seconds of
+  frames, with buffers from a recycled pool; the step's thread blends and passes each frame
+  through a second bounded queue of eight frames to an encoder thread that owns the FFmpeg encoder from start to
+  finish. Each runs ahead of the next as far as its queue allows, and the phase notes (decode
+  wait, blend, encode wait, flush) are measured per thread.
+- **Decode:** FFmpeg streams the frames at their native size, 10-bit 4:2:0 for a 10-bit 4:2:0
+  source and 8-bit `yuv420p` otherwise: every frame for the whole-video encode, each re-encoded
+  segment from its keyframe for the segment encode. The decoded count must equal the timeline
+  exactly.
 - **Blend:** a schedule starts each baked plate's patch at its first frame and ends it after its
   last; a plate whose `frames` rows take several shifts is scheduled as one entry per run of
   frames with the patch lettered at that run's shift (a frame without a row takes the plate's own
@@ -321,37 +343,66 @@ Code: [localize](/crates/stages/src/localize/), the task
   from 720 lines when untagged, BT.601 below) and kept until the last frame that blends them,
   within 512 MiB. Luma blends per pixel and chroma per 2 × 2 block by its summed alpha; a clear
   pixel keeps its bytes. A frame with no active patch passes through as decoded.
-- **Encode:** raw frames go through a pipe into a second FFmpeg that muxes Matroska: the new video,
-  every audio stream of the source copied, its chapters and metadata, and no subtitle or data
-  stream (`-sn -dn`). The encoder is `hevc_nvenc` (`-preset p6 -tune hq -rc vbr -cq 19`, `main` or
+- **Segments:** the frame spans the schedule gives patches widen to the IDR keyframes around
+  them, and overlapping spans merge. Keyframes come from the packets' `K` flags in the timeline,
+  and a Rust scan of each boundary packet's NAL units confirms it is an IDR picture
+  (`nal_unit_type` 5); an open group of pictures at a boundary widens the span to the next IDR.
+- **Pieces:** every piece is a Matroska file, so its timestamps survive, and carries its stream
+  headers (SPS and PPS) in-band before every keyframe, since the concat demuxer with `-c copy`
+  keeps only the first file's out-of-band headers. The ranges between segments are cut from the
+  source with `-c copy -bsf:v dump_extra=freq=keyframe -f segment -segment_format matroska
+  -segment_frames <boundaries>`. Each changed segment is blended and encoded by libx264 with
+  `-x264-params stitchable=1:repeat-headers=1` by default, matching the source's profile, level,
+  pixel format, size, sample aspect ratio, colour tags, B-frames and reference frames as ffprobe
+  reads them, opening on an IDR with closed groups of pictures, its peak rate capped at 1.5 times
+  the source's (`H264_PEAK_SHARE`) and at the level's maximum. With the encoder setting at NVENC,
+  `h264_nvenc` encodes it with `-repeat_headers 1` (headers in-band on every IDR) and closed
+  groups of pictures; a 10-bit H.264 source always takes x264. The presets are x264
+  `-preset slow` and NVENC `p7 -tune hq` until the host's encode-bench sets them.
+- **Join:** FFmpeg's concat demuxer reads a list file of the pieces, beside the source for its
+  audio, chapters and metadata: `-f concat -safe 0 -i <list> -i <source> -map 0:v -map 1:a?
+  -map_chapters 1 -map_metadata 1 -c copy`. An MP4 edit list or a B-frame delay can put the
+  source's first video frame after its first audio sample, while the joined video starts at 0;
+  ffprobe measures the source's offset between the two, and `-itsoffset` applies it to the joined
+  video input. The result goes to `<video>.localized.mkv.part`.
+- **Checks before install,** each failing closed to the whole-video encode: ffprobe's frame count
+  and duration equal the source's; the output's first video timestamp, against its first audio
+  timestamp, equals the source's offset within half a frame duration; a `-v error` decode of a few
+  seconds around each join reports nothing; and the copied pieces' packets are byte-identical to
+  the source's, apart from the in-band headers `dump_extra` adds.
+- **Whole-video encode:** raw frames go through a pipe into a second FFmpeg that muxes Matroska:
+  the new video, every audio stream of the source copied, its chapters and metadata, and no
+  subtitle or data stream (`-sn -dn`). The encoder is `hevc_nvenc` (`-preset p6 -tune hq -rc vbr -cq 19`, `main` or
   `main10`) when FFmpeg lists it and a one-frame test encode runs, else libx264 (`-preset slow
   -crf 16`). The peak rate is capped at 1.25 times the source video's bit rate for NVENC and 1.5
   times for libx264 (`-maxrate`, `-bufsize` twice that); the rate is the stream's own, else the
   container's, else, for a probe written before the field existed, the file's size over the
   timeline's length. The frame rate is the stream's fraction, the first frame's time its offset,
   and the colour tags the probe knows are copied.
-- **Guards:** a stream without a frame rate, and a timeline whose frames stray from their
-  constant-rate positions by more than 1 % of a frame plus a millisecond (a variable frame rate),
-  fail the step before encoding, since raw frames on a pipe carry one rate. The file is written to
-  `<video>.localized.mkv.part` and renamed when whole; a failed encode removes the part file. A
-  `<video>.localized.mkv` already there is replaced only when this job's record names it as its
-  own; any other file fails the step with a message to move it away. A video itself named
-  `.localized.mkv` is refused.
+- **Guards:** for the whole-video encode, a stream without a frame rate, and a timeline whose
+  frames stray from their constant-rate positions by more than 1 % of a frame plus a millisecond
+  (a variable frame rate), fail the step before encoding, since raw frames on a pipe carry one
+  rate. On either path the file is written to `<video>.localized.mkv.part` and renamed when
+  whole; a failed encode removes the part file. A `<video>.localized.mkv` already there is
+  replaced only when this job's record names it as its own; any other file fails the step with a
+  message to move it away. A video itself named `.localized.mkv` is refused.
 - **Record:** `outputs/localized_video` holds the path, the encoder, the frames written and
-  the occurrences replaced. With the setting turned off it holds no path but keeps the earlier
-  path as `earlier`, so turning it on again may overwrite the job's own file. The step's output
-  counts as valid only while the recorded file exists; the output step's only while its
-  `<video>.localized.ass` does.
+  the occurrences replaced, the segments re-encoded, the frames re-encoded and copied, and the
+  reason when the whole video was re-encoded; the report prints them. With the setting turned
+  off it holds no path but keeps the earlier path as `earlier`, so turning it on again may
+  overwrite the job's own file. The step's output counts as valid only while the recorded file
+  exists; the output step's only while its `<video>.localized.ass` does.
 
 ## Bounds
 
 - Memory: the mask step holds the current run's first frame, its union mask and the frame being
   examined, plus a log of a few bytes per frame of the occurrence from which it sends the rows one
   at a time; the inpaint step one plate and a bounded cache; the compose step one plate's images;
-  the encode one frame and the active patches, within 512 MiB. The steps that read the `frames`
-  rows receive them one `Input` frame at a time and keep only runs of equal shift, whose count
-  follows the shift changes, never the frames. Masks, plates and patches are PNGs in the work
-  directory.
+  the localized video its two bounded frame queues and the active patches, within 512 MiB; the
+  region streams of the mask and verify steps a bounded queue of region crops. The steps that read
+  the `frames` rows receive them one `Input` frame at a time and keep only runs of equal shift,
+  whose count follows the shift changes, never the frames. Masks, plates and patches are PNGs in
+  the work directory.
 - Time: each replacement step and the localized video have a six-hour step deadline; the encoder a
   24-hour one. The localized video reports its progress every 240 frames.
 - Resume: `text_inpaint`, `text_compose` and `text_verify` fingerprint the installed LaMa, font
@@ -416,3 +467,7 @@ Decode, model and file errors are not fallbacks: they fail the step, which Try A
 - [Localized video on Dressrosa 11](/documentation/research/localized_video_dressrosa_11.md) —
   time, memory, size and results on one episode.
 - [In-place replacement decision](/documentation/decisions/stack_and_pipeline.md#2026-09-30--writing-is-replaced-in-a-localized-video-re-encoded-beside-the-source).
+- [Segment encode decision](/documentation/decisions/localized_video.md#2026-10-01--the-localized-video-re-encodes-only-the-segments-with-replaced-writing-as-h264-matching-the-source-and-copies-the-rest)
+  — which segments are re-encoded, and the checks that fall back to the whole video.
+- [Measuring full-resolution screening](/documentation/runbooks/measuring_full_resolution_screening.md)
+  — the encode-bench and the playback checks across every join, on the host.

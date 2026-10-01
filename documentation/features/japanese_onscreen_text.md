@@ -12,10 +12,12 @@ source video is only read. Pilot coverage, full-episode quality, resource limits
 playback and owner acceptance are not yet established by this document.
 
 The owner accepts missed faint text and false detections as current limitations. The AppImage
-is built and passes its host startup smoke check. Detection screens sampled proxy frames and
-bisects the exact boundaries, and Claude reads each text event once from its keyframe; the
-single-episode benchmark that measures this, full GUI correction acceptance and VLC playback
-remain open.
+is built and passes its host startup smoke check. Detection screens sampled frames at full
+resolution and bisects the exact boundaries, and Claude reads each text event once from its
+keyframe; the host measurement of full-resolution screening and of the segment encode of the
+localized video
+([runbook](/documentation/runbooks/measuring_full_resolution_screening.md)), full GUI correction
+acceptance and VLC playback remain open.
 
 ## Where it lives
 
@@ -65,6 +67,15 @@ Settings → On-screen Text provides:
   limit with structured replies; local OCR and Qwen answer whatever it leaves. Off, or with the
   CLI unavailable, the local models supply the result and compatible reference wording can
   improve it. There is no paid API backend or automatic billing fallback.
+- **Detector engine: TensorRT / CUDA**, CUDA by default until the host bench confirms TensorRT.
+  It runs both the screening and the confirming detector; TensorRT builds an FP16 engine the first
+  time for each GPU, driver, TensorRT version, model and input shape, and reuses it from the app
+  data folder after. The detection step's fingerprint covers the choice, since the results differ
+  between engines.
+- **Decode video on the GPU (NVDEC)**, off by default, so the CPU decodes. It changes only how the
+  screen's frames are decoded, which is bit-exact either way, so switching it reruns nothing.
+- **Video encoder**, x264 (the default) or NVENC, for the segments the localized video
+  re-encodes; the localized video's fingerprint covers it.
 - **Reference subtitles**, an editable folder path. The reference loader reads ASS files directly
   in that folder; it does not recursively scan the media library. No path means no references.
 - **Model availability**, with Open Models and Download Missing. Missing models prevent a job
@@ -92,7 +103,7 @@ that they are off and do nothing.
 
 | Step | Work and retained result |
 |---|---|
-| Detect | Streams a 640-wide proxy of every frame through FFmpeg with packet presentation timestamps. Screens every `round(fps / 2)`-th frame plus the first and last frame of each shot with the mobile PP-OCRv5 detector, and bisects the frames between two samples to the exact frame where writing appears or vanishes. Keeps one observed frame per sample or boundary, a keyframe still nearest the midpoint of each occurrence, confirmed by the server PP-OCRv5 detector, and a full-resolution, perspective-corrected crop from that keyframe; cuts or changed writing start new occurrences. Screening noise is dropped: writing shorter than 0.15 s, wider than half the frame, or absent from its keyframe at full resolution. |
+| Detect | Streams every frame at full resolution as 8-bit YUV through FFmpeg with packet presentation timestamps. Screens every `round(fps / 2)`-th frame plus the first and last frame of each shot with the mobile PP-OCRv5 detector on two sessions, and bisects the frames between two samples to the exact frame where writing appears or vanishes. Keeps one observed frame per sample or boundary, a keyframe for each occurrence (the screened sample nearest its middle), confirmed by the server PP-OCRv5 detector at full resolution, and a perspective-corrected crop from that keyframe; cuts or changed writing start new occurrences. Screening noise is dropped: writing shorter than 0.15 s, wider than half the frame, or absent from its keyframe. |
 | Read | Reads Japanese with PP-OCRv5 through oar-ocr, using manga-ocr for difficult crops. Consolidates compatible adjacent readings and folds furigana into the kanji line they annotate; uncertain readings remain flagged. |
 | Track | Checks that every sampled box keeps its centre (within a fifth of the keyframe box height) and half its overlap with the keyframe quad, without decoding video; a detector box that only grows or shrinks around unmoved writing passes. A moving or unverified surface gains a review warning and nearby placement. |
 | Translate | Asks Claude first, one call per keyframe frame with the whole-frame still and the crops of its regions, for each region's Japanese, English, confidence and box plus any other writing on the frame. Qwen3.5-4B, with short dialogue context and the glossary, loads only for occurrences Claude leaves unanswered; compatible corrected occurrences consolidate, and occurrences that show one sign join into one, before review. |
@@ -108,19 +119,37 @@ surrounding event's timing, nearby placement and a review warning. Qwen runs thr
 `tbd-subtitles-llm`, separate from the ONNX Runtime processes, and only for occurrences without
 a valid Claude answer. Readings without Japanese script, or with OCR confidence below 0.5, bypass
 Qwen and remain unresolved. The shared GPU lock prevents simultaneous GPU stages. The model store
-downloads pinned exported models; there is no local model conversion.
+downloads pinned exported models; the only local compilation is the TensorRT engine the runtime
+builds from the detector exports when that engine is chosen.
 
-Detection samples the proxy stream at two frames per second and at every shot boundary, so
-writing visible for fewer frames than the sample step that falls between two samples and touches
-no cut is missed. Near-duplicate samples reuse the previous detections; the rest are screened
-four at a time. Detection compares each candidate with the occurrence's fixed first signature,
-rather than allowing small changes to accumulate against successive samples. Matching requires a
-unique association in both directions. The signature allows small alignment jitter but checks
+Detection samples the full-resolution stream at two frames per second and at every shot
+boundary, so writing visible for fewer frames than the sample step that falls between two samples
+and touches no cut is missed; there is no downscaled proxy, so small or faint writing has the
+source's pixels, and the owner accepts the extra noise that brings. A sample whose luma, in
+32 × 32 blocks, matches the last screened sample's within a mean difference of 4 reuses its
+detections. The rest are converted to RGB, padded with black rows to a multiple of 32 lines
+(1,088 for a 1080p source, never stretched), and screened in batches on two detector sessions in
+the one worker, each on its own thread; bisection probes go ahead of waiting batches, and results
+are applied in sample order, so the document is the same with one session or two. The batch and
+each session's GPU memory pool are one measured pair, set by the host sweep
+([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-detector-screens-full-resolution-frames-padded-to-a-multiple-of-32-on-two-sessions)).
+Detection compares each candidate with the occurrence's fixed first signature, read from the
+luma plane, rather than allowing small changes to accumulate against successive samples.
+Matching requires a unique association in both directions. The signature allows small alignment jitter but checks
 individual pixel differences, 8 by 8 cells and the whole crop, including its edges; a changed
 glyph in a long line or newly visible scrolling text can therefore split the occurrence, and the
 bisection finds the exact frame of that change. Perspective correction makes slanted crops
 upright for recognition. Surface-colour safety is measured on the full-resolution keyframe, so
 that correction cannot turn an unsafe background into permission to cover it.
+
+Each occurrence's keyframe is the screened sample nearest its middle, so at 24 fps it lies within
+six frames of the exact middle. While writing is on screen, the scan keeps the samples that can
+still be its middle in memory, within a budget of 4 GiB; after the scan, the server detector
+confirms every occurrence on its keyframe at full resolution, spread over both sessions. A
+keyframe let go to keep the budget is decoded again by FFmpeg as a still, eight at a time
+([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-server-detector-confirms-each-occurrence-at-full-resolution-on-the-sample-nearest-its-middle)).
+The step's notes in the report time the warm-up, decode wait, conversion, screening, probes,
+signatures and confirmation, and count stills from memory against stills from FFmpeg.
 
 Adjacent occurrences consolidate only when Japanese readings, geometry and timing agree, with at
 most one observed source-frame gap and no known cut or ambiguous match; half a frame of slack
@@ -160,8 +189,11 @@ independent image verification: its local confidence is capped at 0.84. This con
 helps catch shortened compound names and qualifiers. Without available Claude verification it
 stays flagged and unrendered until reviewed; the check does not establish translation completeness.
 
-Frame buffers, thumbnails and preview streams are bounded: the scan holds the frames between at
-most four pending samples, four full-resolution stills and the packet table. The scan fails
+Frame buffers, thumbnails and preview streams are bounded: the scan holds a decode queue of about
+four seconds of frames from a recycled pool, the gap frames between samples until every
+transition that could land on them is resolved, the keyframe candidates within 4 GiB, the
+batches in flight on the two sessions, and the packet table; the step waits, before it starts,
+for the GPU memory its sessions need within the 6.5 GB worker cap. The scan fails
 explicitly beyond one million geometry observations or one hundred thousand occurrences, and when
 the decoded frame count differs from the packet count. Each ASS event buffer has a
 128 MiB budget: oversized vector lettering for one occurrence uses a flagged nearby label, while
@@ -219,9 +251,16 @@ places nearby because it moves or only Claude found it:
 5. **Typeset** writes the usual ASS events for `<name>.ass`; `<name>.localized.ass` gets no
    on-screen events, and its dialogue moves to the top while English drawn into the video sits
    under it.
-6. After the subtitle files, **the localized video** decodes every frame, blends the lettering in
-   and re-encodes the whole video with the GPU's HEVC encoder (H.264 in software when it cannot
-   run), at about the source's size, with the source's audio and chapters and no subtitle stream.
+6. After the subtitle files, **the localized video** blends the lettering in, with the source's
+   audio and chapters and no subtitle stream. For a constant-frame-rate H.264 source it
+   re-encodes only the segments with replaced writing, from the keyframe before to the keyframe
+   after, as H.264 matching the source (x264 by default, NVENC as the encoder setting), copies the
+   rest of the video untouched and joins the pieces; the join is checked (frame count, duration,
+   audio sync, clean decoding around each join, the copied bytes), and a failed check, or any
+   other constant-frame-rate source, gets the whole video decoded and re-encoded with the GPU's
+   HEVC encoder (H.264 in software when it cannot run) at about the source's size; a variable
+   frame rate is refused as before
+   ([decision](/documentation/decisions/localized_video.md#2026-10-01--the-localized-video-re-encodes-only-the-segments-with-replaced-writing-as-h264-matching-the-source-and-copies-the-rest)).
 
 The result beside the source is `<name>.localized.mkv` and `<name>.localized.ass`; `<name>.ass`
 stays the complete subtitle file for the original video. A player loads the `.localized.ass` with
@@ -236,9 +275,10 @@ English would be smaller than 14 pixels of cap height at 1080p, when the font la
 characters, or when the finished picture still shows Japanese or its English does not read back
 (Check Text shows what the check read under the reason). A variable-frame-rate video fails the localized-video step with that reason; a
 `<name>.localized.mkv` the job did not write is never overwritten, and the step asks for it to be
-moved away. The report adds a Localized video section: occurrences replaced, fallbacks, the file
-and the encoder. On Dressrosa 11, 15 of 21 candidates were replaced, the Rebecca name card among them
-([measurement](/documentation/research/localized_video_dressrosa_11.md)). Algorithms and bounds:
+moved away. The report adds a Localized video section: occurrences replaced, fallbacks, the file,
+the encoder, the segments and frames re-encoded, the frames copied and, when the whole video was
+re-encoded, why. On Dressrosa 11, 15 of 21 candidates were replaced, the Rebecca name card among
+them ([measurement](/documentation/research/localized_video_dressrosa_11.md)). Algorithms and bounds:
 [video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md).
 
 ### Signs shared by episodes
@@ -329,7 +369,7 @@ stages', and their large files in the same
 | `visual/translations/` | Cached structured replies keyed by request, model identity/pins and retry generation; a keyframe request also includes the still, its crops and the highest retry generation among its regions. |
 | `corrections/text` | Per-occurrence `TextEdit` values with original-source fingerprints and retry requests; each change is one write transaction that reads the row again. |
 | `outputs/text_typeset/ass` | Typeset visual events merged into the final ASS. |
-| `outputs/localized_video` | The localized video's path, encoder, frames written and occurrences replaced; the earlier path while the setting is off. |
+| `outputs/localized_video` | The localized video's path, encoder, frames written and occurrences replaced; the segments re-encoded, frames re-encoded and frames copied, and the reason for a whole-video encode; the earlier path while the setting is off. |
 | `outputs/output` | The exported subtitle path, the localized subtitle path, and any backup or retired output. |
 
 A file a row names is synced before the row commits, and an open of the database removes the
@@ -354,8 +394,10 @@ The output favours readable, reviewable English when clean replacement cannot be
 subtitle file alone cannot restore the background hidden by the Japanese in the supplied board,
 title-card and name-card examples, so the localized video edits a copy of the picture: the owner
 asked for replacement as Google Translate does it on photographs. Only pixels under a stroke
-mask, its one-pixel feather and the new lettering are painted, and only in the copy, which is
-re-encoded whole at about the source's bit rate; the source is only read. Anything the
+mask, its one-pixel feather and the new lettering are painted, and only in the copy, whose
+segments with replaced writing are re-encoded and whose other frames keep the source's bitstream
+(or, when that cannot be done and checked, the whole copy is re-encoded at about the source's bit
+rate); the source is only read. Anything the
 replacement cannot do cleanly stays Japanese in the picture, with its reason shown in Check Text, rather than
 a smeared guess. The localized video carries no subtitle stream, so a player shows the sidecar
 `.localized.ass` and never two copies of the same English.
@@ -370,7 +412,7 @@ a smeared guess. The localized video carries no subtitle stream, so a player sho
   mismatched references. The targets are timing within one source frame and accepted tracking
   error within two pixels at 1080p; failed tracks require a flagged fallback.
 - The same milestone requires the complete GUI correction flow, VLC playback, a 20–30 minute episode
-  benchmark reporting added visual time and compliance with 24 GB RAM / 5.5 GB worker VRAM,
+  benchmark reporting added visual time and compliance with 24 GB RAM / 6.5 GB worker VRAM,
   packaging and host smoke checks, and explicit owner acceptance of the UI and playback.
   Acceptance remains open; unit tests and the harness do not establish these media-level results.
 - [M5 — In-place on-screen text](/documentation/roadmap.md#m5--in-place-on-screen-text): on
@@ -378,20 +420,35 @@ a smeared guess. The localized video carries no subtitle stream, so a player sho
   a title logo whose box spans its artwork and boxes Claude placed away from their writing. The
   localized video still needs a playback check in VLC and mpv, an AppImage rebuild with its host
   smoke test, and the owner's acceptance.
+- [M6](/documentation/roadmap.md#m6--24-gb-workstation-throughput) and
+  [M8](/documentation/roadmap.md#m8--visual-tracking-and-video-acceleration): full-resolution
+  screening, the detector engine, NVDEC and the segment encode are built and await the host
+  measurement in the
+  [runbook](/documentation/runbooks/measuring_full_resolution_screening.md): the pool and batch
+  sweep, the determinism check, the encode presets, fresh runs of Dressrosa 11 and 28 against the
+  [M6 baseline](/documentation/research/m6_baseline.md), and playback across every join.
 
 ## Decisions
 
 - Local detection finds and times the writing; Claude reads it. The chosen OCR exports are
   documented by [oar-ocr](https://github.com/GreatV/oar-ocr/blob/main/docs/models.md), and
   difficult Japanese crops use [manga-ocr](https://github.com/kha-white/manga-ocr). Exports are
-  pinned in the repository's model manifest and downloaded without conversion.
+  pinned in the repository's model manifest and downloaded already exported; with the TensorRT
+  engine, the runtime compiles its FP16 engines from them
+  ([decision entry](/documentation/decisions/inference_engines.md#2026-10-01--tensorrt-runs-the-pp-ocrv5-detectors)).
 - Sampled screening with bisected boundaries and one Claude call per keyframe: the
-  [decision entry](/documentation/decisions/stack_and_pipeline.md#2026-09-29--on-screen-text-is-found-by-sampled-screening-with-bisected-boundaries-and-read-once-per-event-by-claude-vision).
+  [decision entry](/documentation/decisions/stack_and_pipeline.md#2026-09-29--on-screen-text-is-found-by-sampled-screening-with-bisected-boundaries-and-read-once-per-event-by-claude-vision);
+  full-resolution frames on two sessions, keyframes confirmed at full resolution and the cuDNN
+  search mode: the
+  [on-screen detection decisions](/documentation/decisions/onscreen_detection.md).
 - [ASS positioning, transforms and vector drawing](https://aegisub.org/docs/latest/ass_tags/)
   keep the source video intact and allow one file to carry dialogue, sound cues and signs.
 - Writing is replaced in a localized video beside the source: LaMa through ONNX Runtime, Noto Sans
-  through tiny-skia, a full `hevc_nvenc` re-encode capped near the source's bit rate, no embedded
-  subtitles, `<name>.localized.ass` beside it, on by default for new jobs
-  ([decision entry](/documentation/decisions/stack_and_pipeline.md#2026-09-30--writing-is-replaced-in-a-localized-video-re-encoded-beside-the-source)).
+  through tiny-skia, no embedded subtitles, `<name>.localized.ass` beside it, on by default for
+  new jobs
+  ([decision entry](/documentation/decisions/stack_and_pipeline.md#2026-09-30--writing-is-replaced-in-a-localized-video-re-encoded-beside-the-source));
+  only the segments with replaced writing are re-encoded, as H.264 matching the source, with the
+  full `hevc_nvenc` re-encode as the fallback
+  ([decision entry](/documentation/decisions/localized_video.md#2026-10-01--the-localized-video-re-encodes-only-the-segments-with-replaced-writing-as-h264-matching-the-source-and-copies-the-rest)).
 - References contribute verified wording, never unchecked timing or placement from a different
   edit. Unreadable content and unsafe masks remain reviewable instead of being fabricated.

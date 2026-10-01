@@ -40,10 +40,11 @@ their videos to, a notification when a job ends, and the window's icon; the owne
 host and accepted it (2026-09-29) ([automation](/documentation/features/automation.md)).
 
 M4 adds Detect → Read → Track → Translate → Review → Typeset between cue construction and final
-QC/output. Detection screens a 640-wide proxy of every frame at two samples per second plus shot
-boundaries with the mobile PP-OCRv5 detector, bisects the frames between samples to the exact
-entry and exit frame, and keeps one full-resolution keyframe per occurrence confirmed by the
-server detector; tracking checks the sampled geometry without decoding; translation asks
+QC/output. Detection decodes every frame at full resolution as YUV (CPU, or NVDEC as a setting)
+and screens two samples per second plus shot boundaries, padded to 1088 lines, with the mobile
+PP-OCRv5 detector on two sessions of one pool (CUDA, or TensorRT FP16 as a setting), bisects the
+frames between samples to the exact entry and exit frame, and confirms each occurrence on the
+screened sample nearest its middle, kept in memory, with the server detector; tracking checks the sampled geometry without decoding; translation asks
 tool-disabled Claude (the run's Sonnet) once per keyframe with the whole-frame still and its
 crops, and loads local Qwen3.5-4B only for what Claude leaves; manga-ocr and validated reference
 wording remain. Settings, queue progress, Overview, Check Text,
@@ -62,8 +63,10 @@ between review and typesetting separate each translated occurrence's strokes, fi
 LaMa (ONNX Runtime, in its own worker under the GPU lock) and letter the English in Noto Sans
 through tiny-skia; `text_verify` rebuilds sampled finished frames and has the local PP-OCRv5 read
 them back, keeping only replacements with no Japanese left and English that reads back;
-`localized_video` after the output re-encodes every frame with `hevc_nvenc` (libx264 fallback),
-peak rate capped at 1.25× the source's, audio copied, no subtitle stream.
+`localized_video` after the output re-encodes only the keyframe-bounded segments with replaced
+writing as H.264 matching the source (x264, or NVENC as a setting), copies the rest of the source's
+bitstream and joins and checks the pieces, falling back to the `hevc_nvenc` (libx264) encode of
+the whole video; audio copied, no subtitle stream.
 Writing that cannot be replaced cleanly stays Japanese, its reason shown in Check Text; the
 localized ASS holds only dialogue and sound cues, moved to the top over lettered English. Dressrosa 11:
 4.9 minutes added, 707 MB against 647 MB, 15 of 21 candidates replaced, the Rebecca name card
@@ -79,8 +82,12 @@ corrections and the per-frame `frames` and `readings` tables in one `job.redb` (
 archived with rkyv) that one process owns; workers stream their outputs to the runner over framed
 pipes (`crates/worker_channel`), `tbd-subtitles dump` prints any row as JSON, and approved signs
 are shared between episodes in `library.redb`
-([binary storage](/documentation/architecture/binary_storage_plan.md)). Next is M6, the 24 GB
-workstation scaling in the [roadmap](/documentation/roadmap.md).
+([binary storage](/documentation/architecture/binary_storage_plan.md)). M6, the 24 GB
+workstation scaling, is built and awaits the host's measurement: full-resolution screening on two
+detector sessions with TensorRT bundled, 6.5 GB per GPU worker with a memory wait, audio-first GPU
+priority, the segment encode of the localized video, and YUV decoding throughout
+([runbook](/documentation/runbooks/measuring_full_resolution_screening.md),
+[roadmap](/documentation/roadmap.md)).
 
 ## 1. Project laws
 

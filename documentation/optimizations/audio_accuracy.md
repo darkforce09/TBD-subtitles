@@ -99,7 +99,7 @@ With two engines, every disagreement is one against one, and adjudication choose
 - **What changes:** a third open engine, such as Qwen3-ASR-1.7B or Canary
   ([speech recognition landscape](/documentation/research/speech_recognition_landscape.md)),
   hears only the disputed utterances, and its words join the sheet as one more hypothesis. It
-  needs an exported model on a runtime law 4 allows, within 5.5 GB of VRAM, in its own worker.
+  needs an exported model on a runtime law 4 allows, within 6.5 GB of VRAM, in its own worker.
 - **Measured:** disagreements settled, unsure lines and Claude calls on Dressrosa 11 and 28.
 
 ## 7. Separation quality
@@ -135,7 +135,7 @@ diarization (up to eight speakers, as speaker turns, not names).
   [sign library](/crates/pipeline/src/library/README.md).
 - Used by: roadmap milestone M7.
 - Rules: never invent dialogue; every subtitle word comes from what a speech engine heard; models
-  are downloaded already exported; each GPU worker within 5.5 GB of VRAM.
+  are downloaded already exported; each GPU worker within 6.5 GB of VRAM.
 
 ## Related documentation
 

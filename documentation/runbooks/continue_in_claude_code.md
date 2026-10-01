@@ -37,7 +37,7 @@ library.redb. `tbd-subtitles process <video>` runs 29 resumable steps in `tbd-su
 `tbd-subtitles-ggml` and `tbd-subtitles-llm`. Now do milestone M6, the 24 GB workstation scaling.
 
 1. Read first: CLAUDE.md (the laws are binding: Rust only, no scripts; FFmpeg/ffprobe/claude CLI
-   as the only external programs; peak RAM within 24 GB and 5.5 GB of VRAM per GPU worker; a
+   as the only external programs; peak RAM within 24 GB and 6.5 GB of VRAM per GPU worker; a
    README in every folder from the templates; Conventional Commits straight to main with explicit
    paths; no silent deferrals). Then documentation/roadmap.md (M4 to M6),
    documentation/optimizations/memory_profiles.md, documentation/decisions/foundations.md (the
