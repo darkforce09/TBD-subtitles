@@ -2,7 +2,8 @@
 //! kind.
 //!
 //! **Role:** [`install`] keeps a private copy of the worker's stdout pipe for frames and points
-//! descriptor 1 at stderr; [`progress`], [`model_call`], [`output`], [`measure`], [`failed`] and
+//! descriptor 1 at stderr; [`progress`], [`message`], [`model_call`], [`output`], [`measure`],
+//! [`failed`] and
 //! [`done`] send one frame each; [`read_inputs`] reads the `Input` frames the runner writes to the
 //! worker's stdin, and [`read_documents`] reads the named ones up to the per-frame rows that
 //! follow them, which the step then reads one at a time with [`read_input`].
@@ -52,6 +53,10 @@ impl<W: Write> FrameSink<W> {
         self.send(Tag::Progress, &[&Progress { done, total }.encode()])
     }
 
+    pub(crate) fn message(&self, text: &str) -> io::Result<()> {
+        self.send(Tag::Message, &[text.as_bytes()])
+    }
+
     pub(crate) fn model_call(&self, json: &str) -> io::Result<()> {
         self.send(Tag::ModelCall, &[json.as_bytes()])
     }
@@ -99,6 +104,11 @@ pub fn send(tag: Tag, parts: &[&[u8]]) -> bool {
 /// Report that `done` of the step's `total` units are finished.
 pub fn progress(done: u64, total: u64) -> bool {
     with_sink(|sink| sink.progress(done, total))
+}
+
+/// Tell the owner what the step is waiting for, such as the GPU, as one line of text.
+pub fn message(text: &str) -> bool {
+    with_sink(|sink| sink.message(text))
 }
 
 /// Send one language-model call, as the JSON of its record.

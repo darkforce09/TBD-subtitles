@@ -30,7 +30,7 @@ use crate::settings::models::machine::{Check, CheckState};
 /// The name of the CUDA runtime's check, whose failure the Settings window links to the Models tab.
 pub(crate) const CUDA_RUNTIME: &str = "CUDA runtime";
 /// The free VRAM a GPU step needs with the desktop running, in MiB.
-pub(crate) const VRAM_BUDGET_MIB: u64 = 5_632;
+pub(crate) const VRAM_BUDGET_MIB: u64 = 6_656;
 /// How long a version query may take.
 const QUERY_DEADLINE: Duration = Duration::from_secs(20);
 

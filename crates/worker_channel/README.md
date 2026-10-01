@@ -16,9 +16,10 @@ crates/worker_channel/
 ## How it works
 
 Every message is one frame: a tag byte, a little-endian `u32` payload length, and the payload.
-The seven tags are `Input` and `Output` (an address, then one `rkyv` archive), `Progress` (two
+The eight tags are `Input` and `Output` (an address, then one `rkyv` archive), `Progress` (two
 little-endian `u64` counts), `ModelCall` (a model call's JSON), `Measure` (the worker's
-`WorkerMeasure` as an `rkyv` archive), `Failed` (a UTF-8 message) and `Done` (empty). The codec
+`WorkerMeasure` as an `rkyv` archive), `Failed` (a UTF-8 message), `Done` (empty) and `Message`
+(a UTF-8 line for the owner while the step waits, such as for the GPU). The codec
 never decodes a payload as text, so a byte sequence that is not UTF-8 crosses unchanged, and a
 reader tells a clean end before a header apart from a stream cut inside a frame.
 
@@ -26,7 +27,7 @@ reader tells a clean end before a header apart from a stream cut inside a frame.
 worker process                                       job runner (crates/pipeline/src/workers/)
   worker::install()   fd 1 ─▶ copy of fd 2 (the step log)
                       private close-on-exec copy of the stdout pipe
-  worker::progress / model_call / output / measure / done / failed
+  worker::progress / message / model_call / output / measure / done / failed
         └─ FrameSink: one lock, header + parts, flush ──▶ pipe ──▶ frame::read_header, per tag
   worker::read_documents ◀── stdin ◀── Input frames, from job.redb on a thread of the runner's,
   worker::read_input     ◀──        then one Input frame per per-frame row
@@ -47,7 +48,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p worker_channel   # the library alone
-cargo test -p worker_channel    # 23 unit tests over in-process pipes; well under a second
+cargo test -p worker_channel    # 24 unit tests over in-process pipes; well under a second
 ```
 
 The tests never call `worker::install`, which would rewire the test process's own stdout; they
@@ -66,9 +67,11 @@ None: the crate reads no setting, file or feature.
   or `Output` value belongs to, which the runner's worker channel routes into the job database.
 - `progress`: `Progress` with `encode` and `decode`, and `ENCODED_LEN`, the `Progress` payload,
   for `crates/pipeline/`.
-- `worker`: `install`, `send`, `progress`, `model_call`, `output`, `measure`, `failed`, `done`,
-  `read_input`, `read_inputs` and `read_documents`, for `crates/pipeline/src/tasks/`
-  (`worker_main`, `StepIo`, the row stream) and the model-call layers of
+- `worker`: `install`, `send`, `progress`, `message`, `model_call`, `output`, `measure`,
+  `failed`, `done`, `read_input`, `read_inputs` and `read_documents`, for
+  `crates/pipeline/src/tasks/` (`worker_main`, `StepIo`, the row stream),
+  `crates/pipeline/src/workers/lazy_gpu.rs` (`message`, while a worker waits for the GPU) and the
+  model-call layers of
   `apps/tbd_subtitles/src/core/log_buffer/worker_channel.rs` and
   `apps/tbd_subtitles_llm/src/logging.rs`.
 - No binary.

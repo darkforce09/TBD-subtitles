@@ -51,8 +51,9 @@ hold open while they work (one process at a time, one shared handle in it, its p
 with the name (`work_dir::store::keys`) and record kind (`work_dir::store::kinds`) of every row,
 and removes the files no row names when it opens. `tasks` holds the body of each step, which
 reads and writes stored documents through its `tasks::StepIo`;
-a worker binary calls `tasks::worker_main`, which sends `Progress`, `ModelCall`, `Measure` and
-`Done` (or `Failed`) frames of the worker channel (`crates/worker_channel/`) on its stdout, and
+a worker binary calls `tasks::worker_main`, which sends `Progress`, `ModelCall`, `Message`,
+`Measure` and `Done` (or `Failed`) frames of the worker channel (`crates/worker_channel/`) on its
+stdout, and
 `workers` turns those into progress events and a `StepMeasure`, adding the VRAM that
 `measure::gpu_monitor` sampled. `workers::channel` carries a step's stored inputs down its
 worker's stdin and its `Output` frames straight into the job database, uncommitted until the

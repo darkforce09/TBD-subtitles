@@ -1,8 +1,8 @@
 //! A worker's frames as the runner reads them: progress events for the caller, outputs for the
 //! step's write, and what the worker says about its own end.
 //!
-//! **Role:** read the frames of a worker's stdout as bytes, turn `Progress` and `ModelCall` frames
-//! into [`Progress`] events, hand each `Output` to the step's [`StepWrite`] straight from the
+//! **Role:** read the frames of a worker's stdout as bytes, turn `Progress`, `ModelCall` and
+//! `Message` frames into [`Progress`] events, hand each `Output` to the step's [`StepWrite`] straight from the
 //! pipe, collect its `Measure`, its `Failed` message and its `Done`, and decide from them and the
 //! exit code whether the step finished.
 //!
@@ -15,7 +15,7 @@
 //! refuses, a frame shorter than its address, a measure that does not check, any frame after
 //! `Done`, a stream cut inside a frame and an unknown tag are protocol errors; an `Output`'s
 //! archive is never buffered here; a model call that does not parse is a short message, never its
-//! bytes; a `Failed` message that is not UTF-8 is kept, its bad bytes replaced.
+//! bytes; a `Failed` or `Message` text that is not UTF-8 is kept, its bad bytes replaced.
 
 use std::io::Read;
 
@@ -114,6 +114,10 @@ pub(crate) fn read_frames(
                 });
             }
             Tag::ModelCall => progress(model_call(step, &payload)),
+            Tag::Message => progress(Progress::StepMessage {
+                step,
+                text: String::from_utf8_lossy(&payload).into_owned(),
+            }),
             Tag::Measure => {
                 let measure = rkyv::from_bytes::<WorkerMeasure, rkyv::rancor::Error>(&payload)
                     .map_err(|error| format!("the worker's measure could not be read: {error}"))?;

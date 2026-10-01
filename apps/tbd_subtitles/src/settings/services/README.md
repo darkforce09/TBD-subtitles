@@ -61,7 +61,7 @@ each on disk, missing or downloading with its share; `missing` counts the missin
 runtime libraries apart, with their bytes and their headline ("5 models and 2 runtime libraries
 are missing (10.7 GiB)"); `banner` is the banner under the toolbar: the download while one runs,
 else what is missing, else for 4 s after a download that brought everything onto disk.
-`system_check::run_all` reads the GPU through NVML (name, driver, free memory against the 5632
+`system_check::run_all` reads the GPU through NVML (name, driver, free memory against the 6656
 MiB a GPU step needs), locates the CUDA runtime (the check `CUDA_RUNTIME`, with the folder it was
 found in as its `path`), asks FFmpeg, ffprobe and `claude` for their versions, looks for FFmpeg's
 `pulse` output (clip sound), and looks for `tbd-subtitles-ggml` beside the binary.

@@ -11,7 +11,7 @@ fn info(free_mib: u64) -> DeviceInfo {
 
 #[test]
 fn a_gpu_with_room_for_a_step_is_ok() {
-    let check = gpu(Some(info(6000)));
+    let check = gpu(Some(info(7000)));
     assert_eq!(check.state, CheckState::Ok);
     assert!(check.detail.contains("RTX 3070"), "{}", check.detail);
     assert!(check.detail.contains("615.0"), "{}", check.detail);
@@ -21,7 +21,7 @@ fn a_gpu_with_room_for_a_step_is_ok() {
 fn too_little_free_memory_is_a_warning_naming_the_budget() {
     let check = gpu(Some(info(4000)));
     assert_eq!(check.state, CheckState::Warning);
-    assert!(check.detail.contains("5632"), "{}", check.detail);
+    assert!(check.detail.contains("6656"), "{}", check.detail);
 }
 
 #[test]

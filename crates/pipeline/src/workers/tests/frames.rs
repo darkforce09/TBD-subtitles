@@ -114,6 +114,35 @@ fn an_unreadable_model_call_is_a_short_message() {
 }
 
 #[test]
+fn a_message_frame_becomes_a_step_message() {
+    let (heard, outcome) = read_through_pipe(
+        StepName::TextTranslate,
+        vec![
+            (
+                Tag::Message,
+                b"waiting for GPU memory: 2048 MiB free, 3822 needed".to_vec(),
+            ),
+            (Tag::Message, vec![b'a', 0xff]),
+        ],
+        Vec::new(),
+    );
+    assert_eq!(
+        heard,
+        [
+            Progress::StepMessage {
+                step: StepName::TextTranslate,
+                text: "waiting for GPU memory: 2048 MiB free, 3822 needed".into()
+            },
+            Progress::StepMessage {
+                step: StepName::TextTranslate,
+                text: "a\u{fffd}".into()
+            }
+        ]
+    );
+    assert_eq!(outcome, Ok(WorkerReport::default()));
+}
+
+#[test]
 fn a_failure_that_is_not_text_is_kept() {
     let message = vec![b'n', b'o', 0xff, 0xfe, 0x00, b'\n', b'!'];
     let (_, outcome) = read_through_pipe(StepName::Vad, vec![(Tag::Failed, message)], Vec::new());

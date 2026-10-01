@@ -30,6 +30,7 @@ fn each_call_sends_its_own_frame() {
         sink.measure(b"measure").unwrap();
         sink.failed("the step broke").unwrap();
         sink.done().unwrap();
+        sink.message("waiting for the GPU").unwrap();
     });
     let tags: Vec<Tag> = frames.iter().map(|frame| frame.tag).collect();
     assert_eq!(
@@ -40,7 +41,8 @@ fn each_call_sends_its_own_frame() {
             Tag::Output,
             Tag::Measure,
             Tag::Failed,
-            Tag::Done
+            Tag::Done,
+            Tag::Message
         ]
     );
     assert_eq!(
@@ -54,6 +56,7 @@ fn each_call_sends_its_own_frame() {
     assert_eq!(frames[3].payload, b"measure");
     assert_eq!(frames[4].payload, b"the step broke");
     assert!(frames[5].payload.is_empty());
+    assert_eq!(frames[6].payload, b"waiting for the GPU");
 }
 
 #[test]
@@ -126,6 +129,7 @@ fn a_send_before_install_answers_false() {
     if FRAMES.get().is_none() {
         assert!(!done());
         assert!(!model_call("{}"));
+        assert!(!message("waiting for the GPU"));
     }
 }
 

@@ -102,7 +102,7 @@ workstation scaling in the [roadmap](/documentation/roadmap.md).
 5. **Fast and bounded.** The completed M1 audio pipeline has a 30-minute target for a 120-minute
    video on the RTX 3070. Visual processing may take additional time, measured separately on one
    20–30-minute episode for M4 acceptance. The pipeline targets the owner's machine: peak RAM
-   within 24 GB (32 GB installed, 8 GB left to the desktop) and each GPU worker within 5.5 GB of
+   within 24 GB (32 GB installed, 8 GB left to the desktop) and each GPU worker within 6.5 GB of
    VRAM. Memory stays bounded: audio and frames are streamed or held in bounded windows, and
    visual steps keep representative crops as files and per-frame records in the job's database
    rather than extracting the whole video.

@@ -32,7 +32,7 @@ capped at `SESSION_MEMORY_LIMIT` (4.5 GiB) and grows by what each allocation req
 powers of two. Without the cap the arena and the cuDNN convolution search size themselves to the
 card's free memory: separation held 7,264 MiB with 7,360 MiB free. The search keeps ONNX
 Runtime's exhaustive default and its maximum workspace, so it chooses the same algorithms
-whenever they fit within the cap, and a worker with its CUDA context stays within the 5.5 GB per
+whenever they fit within the cap, and a worker with its CUDA context stays within the 6.5 GB per
 GPU worker that the project allows.
 
 ## Boundaries

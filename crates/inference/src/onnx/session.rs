@@ -11,7 +11,7 @@
 //! **Invariants:** a CUDA session either registers the CUDA provider or fails; it never runs on
 //! the CPU while claiming the GPU. Each CUDA session's memory arena stays within
 //! [`SESSION_MEMORY_LIMIT`] and grows by what is requested, so a worker, with its CUDA context,
-//! stays within the 5.5 GB VRAM cap per GPU worker whatever the card has free.
+//! stays within the 6.5 GB VRAM cap per GPU worker whatever the card has free.
 
 use std::fmt;
 use std::path::Path;
@@ -52,7 +52,7 @@ pub enum Device {
 }
 
 /// The most VRAM one CUDA session's memory arena may take: 4.5 GiB. The largest measured model,
-/// separation, peaks near 4.3 GB; with the CUDA context the worker stays within its 5.5 GB cap.
+/// separation, peaks near 4.3 GB; with the CUDA context the worker stays within its 6.5 GB cap.
 pub const SESSION_MEMORY_LIMIT: usize = 4608 * 1024 * 1024;
 
 /// The CUDA execution provider every CUDA session registers.

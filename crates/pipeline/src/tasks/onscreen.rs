@@ -11,7 +11,8 @@
 //! Claude caches; the translation looks its occurrences up in the sign library.
 //! **Invariants:** disabled visual jobs need no visual model and store empty documents; every PNG
 //! a document names is synced before the document is handed to the store; the local translation
-//! model loads only when Claude and the sign library leave an occurrence unanswered; a sign the
+//! model loads only when Claude and the sign library leave an occurrence unanswered, and only
+//! under the GPU lock its runner names, which it holds until it drops; a sign the
 //! library holds for an occurrence of another job is its translation, and its keyframe asks
 //! Claude only when it shows writing the library does not hold.
 
@@ -176,19 +177,23 @@ fn translate(
     progress: StepProgress,
     report: &mut TaskReport,
 ) -> Result<()> {
-    use inference::llm::{LanguageModel, claude_cli::ClaudeCli, mistral_rs::MistralRs};
+    use crate::workers::lazy_gpu;
+    use inference::llm::{LanguageModel, LlmError, claude_cli::ClaudeCli, mistral_rs::MistralRs};
     use onscreen_text::translate::{TranslationInput, translate_known};
     use std::cell::Cell;
     use subtitle_formats::cue::CueTrack;
     let models = job.models()?;
     let load_s = Cell::new(0.0);
     // The local model loads only for occurrences Claude leaves, so its load time is measured
-    // where it happens.
+    // where it happens; it loads under the GPU lock and holds it until it drops.
     let mut open_local = || -> onscreen_text::TextResult<Box<dyn LanguageModel>> {
-        let started = Instant::now();
-        let mut local = MistralRs::open(&models.join("qwen3.5-4b"), "Qwen3.5-4B-Q4_K_M.gguf")?;
-        local.max_tokens = 512;
-        load_s.set(since(started));
+        let local = lazy_gpu::open_held(StepName::TextTranslate, job.work.root(), || {
+            let started = Instant::now();
+            let mut local = MistralRs::open(&models.join("qwen3.5-4b"), "Qwen3.5-4B-Q4_K_M.gguf")?;
+            local.max_tokens = 512;
+            load_s.set(since(started));
+            Ok::<_, LlmError>(local)
+        })?;
         Ok(Box::new(local))
     };
     let mut claude = ClaudeCli::new(&job.settings().llm_model, job.work.claude_cwd());

@@ -33,7 +33,7 @@ use crate::context::Context;
 use crate::items::Item;
 
 /// The VRAM a GPU stage may use with the desktop running.
-pub(crate) const VRAM_BUDGET_MIB: u64 = 5_632;
+pub(crate) const VRAM_BUDGET_MIB: u64 = 6_656;
 /// The longest any one item may run.
 const WORKER_DEADLINE: Duration = Duration::from_secs(3 * 3600);
 

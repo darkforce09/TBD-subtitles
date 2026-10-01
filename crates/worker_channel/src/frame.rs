@@ -37,11 +37,14 @@ pub enum Tag {
     Failed = 6,
     /// The step finished; the payload is empty.
     Done = 7,
+    /// A line for the owner while the step waits, such as for the GPU, as UTF-8 text. Worker to
+    /// runner.
+    Message = 8,
 }
 
 impl Tag {
     /// Every tag, in wire order.
-    pub const ALL: [Tag; 7] = [
+    pub const ALL: [Tag; 8] = [
         Tag::Input,
         Tag::Output,
         Tag::Progress,
@@ -49,6 +52,7 @@ impl Tag {
         Tag::Measure,
         Tag::Failed,
         Tag::Done,
+        Tag::Message,
     ];
 
     /// The tag's name in messages, such as `model call`.
@@ -61,6 +65,7 @@ impl Tag {
             Tag::Measure => "measure",
             Tag::Failed => "failure",
             Tag::Done => "end",
+            Tag::Message => "message",
         }
     }
 }

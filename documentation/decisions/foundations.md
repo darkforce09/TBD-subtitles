@@ -209,3 +209,44 @@ measured on a real episode before it is kept.
 
 **Supersedes:** the 8 GB RAM limit of law 5 and of the success criteria in
 [vision and goals](/documentation/vision_and_goals.md).
+
+### 2026-10-01 — Each GPU worker stays within 6.5 GB of VRAM, and a step waits, up to a deadline, for the memory it measured
+
+**Context:** The detect-bench (`tools/visual_validation/src/detect_bench/`) showed
+full-resolution text screening bound by the GPU near 35 frames a second with one detector
+session, and the owner decided to run two detector sessions in the one `text_detect` worker. Two
+sessions' memory pools and their CUDA context do not fit in 5.5 GB. The card is an RTX 3070 with
+8 GiB, of which the desktop uses about 1.2–1.9 GB, so a worker has between about 6.3 and 7 GB
+before anything else runs. Each GPU step so far started as soon as it held the GPU lock: when
+another program held VRAM, the step's model failed to load or ran out of memory part-way, and the
+job crashed. The options were to keep 5.5 GB and one session, to raise the cap and let a short
+card crash the job, or to raise the cap and have each step wait for the memory it needs.
+Translation held the GPU lock for its whole run although Claude answers most keyframes and the
+local model loads only for what Claude leaves; meanwhile the main walk's audio steps, which delay
+the whole job, could queue behind the visual lane's steps.
+
+**Decision:** Each GPU worker stays within 6.5 GB (6,656 MiB, `graph::WORKER_VRAM_CAP_MIB`) of
+VRAM. Each GPU step needs its measured peak on Dressrosa 11 and 28
+([baseline](/documentation/research/m6_baseline.md)) plus 256 MiB (`graph::vram_need_mib`),
+never the cap; `text_detect`'s need is `graph::TEXT_DETECT_VRAM_MIB`, which the host's pool-by-batch
+sweep sets. After a step takes the GPU lock it reads the device's free memory through NVML every
+second until it reaches the need, showing "waiting for GPU memory: N MiB free, M needed" once and
+again on each change of 128 MiB or more; cancelling the job ends the wait; after 10 minutes the
+step fails, naming the free memory and the need and saying "close other GPU programs and retry".
+Without NVML there is no check. A main-walk step waiting for the lock goes before every
+visual-lane step, in this process or another (`graph::gpu_priority`). `text_translate` takes the
+lock and the memory wait only when its local model loads, in its worker, and holds both until the
+model drops; its waiting lines reach the runner as `Message` frames of the worker channel.
+
+**Consequences:** Law 5 of CLAUDE.md says 6.5 GB. The machine check in Settings warns below
+6,656 MiB free, and the stack spike refuses a GPU item below it. A job on a card that another
+program fills waits, saying so, instead of crashing, and fails after 10 minutes rather than waiting
+silently; a step whose need fits beside the desktop never waits. A visual-lane step may wait longer
+behind the audio steps. The needs are measured values: a model change that raises a step's peak
+raises its need in the same commit. The wait, the priority and the lazy lock are held by the tests
+of `crates/pipeline/src/workers/` (`tests/vram_guard.rs`, `tests/gpu_lock.rs`,
+`tests/lazy_gpu.rs`) and the graph's `tests/gpu.rs`.
+
+**Supersedes:** the 5.5 GB VRAM part of
+[2026-09-30 — The pipeline targets the owner's 32 GB machine: 24 GB of RAM](/documentation/decisions/foundations.md#2026-09-30--the-pipeline-targets-the-owners-32-gb-machine-24-gb-of-ram);
+its 24 GB of RAM stands.

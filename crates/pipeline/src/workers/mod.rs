@@ -3,20 +3,24 @@
 //! model calls forwarded, its outputs kept uncommitted, its stderr kept, and its time, peak RAM
 //! and peak VRAM read back.
 //!
-//! **Role:** find the app binaries, start a step's worker, send its inputs, read its frames, and
-//! turn what it reports into the step's measure and its uncommitted outputs.
+//! **Role:** find the app binaries, take the GPU and wait for its memory, start a step's worker,
+//! send its inputs, read its frames, and turn what it reports into the step's measure and its
+//! uncommitted outputs.
 //!
 //! **Position:** called by `runner` for every step placed in a worker; uses `child_process` to
-//! run it, `channel` for its inputs and outputs, `frames` to read its stdout and
-//! `measure::gpu_monitor` to sample its VRAM.
+//! run it, `gpu_lock` and `vram_guard` before a GPU worker starts, `lazy_gpu` for a step that
+//! takes the GPU in its worker, `channel` for its inputs and outputs, `frames` to read its stdout
+//! and `measure::gpu_monitor` to sample its VRAM.
 //!
 //! **Signals and state:** spawns the worker; streams its inputs to its stdin on a thread; reads
 //! its stdout as frames; writes `logs/<step>.log`.
 //!
-//! **Invariants:** a worker that exits non-zero, breaks the frame protocol, or exits 0 without its
-//! `Measure` and `Done` is a failed step with the end of its stderr in the error, and its outputs
-//! are dropped uncommitted; a worker that breaks the protocol is killed at once; an input that
-//! could not be sent fails a step that otherwise finished.
+//! **Invariants:** a GPU step's worker starts only with the GPU lock held and its memory free,
+//! unless the step takes both in its worker when its model loads; a worker that exits non-zero,
+//! breaks the frame protocol, or exits 0 without its `Measure` and `Done` is a failed step with
+//! the end of its stderr in the error, and its outputs are dropped uncommitted; a worker that
+//! breaks the protocol is killed at once; an input that could not be sent fails a step that
+//! otherwise finished.
 
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
@@ -37,6 +41,8 @@ use worker_channel::address::Address;
 pub mod channel;
 pub(crate) mod frames;
 pub mod gpu_lock;
+pub mod lazy_gpu;
+pub mod vram_guard;
 
 pub use channel::StepWrite;
 
@@ -89,8 +95,9 @@ pub struct WorkerData<'a> {
 }
 
 /// Run `step` in a worker of `binary` on the job of `data.store`, with `env` added, and measure
-/// it. A GPU step first takes the machine-wide lock at `gpu_lock`; `cancel` kills the worker, or
-/// ends the wait for the lock.
+/// it. A GPU step first takes the machine-wide lock at `gpu_lock` with its priority and waits for
+/// its memory; a step that locks the GPU lazily is told the lock's path instead and takes it in
+/// its worker. `cancel` kills the worker, or ends the wait for the lock or the memory.
 pub fn run_worker(
     binary: &Path,
     step: StepName,
@@ -127,21 +134,26 @@ pub fn run_worker(
             .env("LD_LIBRARY_PATH", local_llm_library_path(binary)?);
     }
     let gpu = graph::uses_gpu(step);
-    let _held = if gpu {
+    let say = |text: String| progress(Progress::StepMessage { step, text });
+    let _held = if gpu && !graph::locks_gpu_lazily(step) {
         tracing::debug!("step {step} takes the GPU lock {}", gpu_lock.display());
         let holder = gpu_lock::Holder {
             step,
             job: work.root().to_path_buf(),
         };
-        Some(gpu_lock::acquire(gpu_lock, holder, cancel, &|held| {
-            progress(Progress::StepMessage {
-                step,
-                text: gpu_lock::waiting_message(held, work.root()),
-            })
-        })?)
+        let priority = graph::gpu_priority(step);
+        let held = gpu_lock::acquire(gpu_lock, holder, priority, cancel, &|held| {
+            say(gpu_lock::waiting_message(held, work.root()))
+        })?;
+        vram_guard::wait_for_memory(step, cancel, &say)?;
+        Some(held)
     } else {
         None
     };
+    if let Some((key, value)) = lazy_gpu::worker_variable(step, gpu_lock) {
+        tracing::debug!("step {step} takes the GPU lock {value} when its model loads");
+        run = run.env(key, value);
+    }
     let baseline = if gpu {
         gpu_monitor::device_memory()
     } else {

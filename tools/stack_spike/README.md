@@ -50,7 +50,7 @@ distrobox-host-exec target/release/stack-spike run decode shots --video "<video>
 distrobox-host-exec target/release/stack-spike report --video "<video>"
 ```
 
-A GPU item refuses to run (and records "not run") while less than 5632 MiB of VRAM is free.
+A GPU item refuses to run (and records "not run") while less than 6656 MiB of VRAM is free.
 
 ## Configuration
 

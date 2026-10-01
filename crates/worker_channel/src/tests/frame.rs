@@ -70,7 +70,20 @@ fn an_unknown_tag_is_invalid_data() {
     assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     assert!(error.to_string().contains("42"), "{error}");
     assert_eq!(Tag::try_from(0), Err(0));
-    assert_eq!(Tag::try_from(8), Err(8));
+    assert_eq!(Tag::try_from(9), Err(9));
+}
+
+#[test]
+fn a_message_frame_is_tag_eight_and_carries_its_text() {
+    assert_eq!(Tag::try_from(8), Ok(Tag::Message));
+    let text = "waiting for GPU memory: 4096 MiB free, 5376 needed";
+    let bytes = frame_bytes(Tag::Message, &[text.as_bytes()]);
+    assert_eq!(bytes[0], 8);
+    let mut reader = through_pipe(bytes);
+    let frame = read_frame(&mut reader).unwrap().expect("a frame");
+    assert_eq!(frame.tag, Tag::Message);
+    assert_eq!(frame.payload, text.as_bytes());
+    assert_eq!(Tag::Message.name(), "message");
 }
 
 #[test]
