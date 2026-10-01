@@ -183,3 +183,19 @@ fn no_phase_section_without_phases() {
     phase_section(&mut md, &StepRecords::new(), 1800.0);
     assert!(md.is_empty());
 }
+
+#[test]
+fn a_step_too_short_to_time_shows_no_speed() {
+    assert_eq!(speed(1800.0, 0.02), None);
+    assert_eq!(speed(1800.0, 90.0), Some(20.0));
+    let steps = StepRecords::from([(
+        StepName::Cues,
+        record(StepMeasure {
+            wall_s: 0.002,
+            ..StepMeasure::default()
+        }),
+    )]);
+    let mut md = String::new();
+    steps_section(&mut md, &steps, 1800.0, None);
+    assert!(md.contains("| cues | cues | 0.0 | — |"), "{md}");
+}

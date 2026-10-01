@@ -20,6 +20,9 @@ use job_model::job::{JobRun, StepMeasure, StepRecords};
 
 use super::markdown::{BUDGET_VIDEO_S, clock};
 
+/// The shortest wall time a speed against the video is shown for, in seconds.
+const SHORTEST_TIMED_S: f64 = 0.1;
+
 /// Append `## Steps`: every step's row, then the totals. `video_s` is the video's length.
 pub(super) fn steps_section(
     md: &mut String,
@@ -50,7 +53,7 @@ pub(super) fn steps_section(
             "| {step} | {} | {:.1} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |",
             step.stage(),
             m.wall_s,
-            num(rate(video_s, m.wall_s), 1),
+            num(speed(video_s, m.wall_s), 1),
             num(m.load_s, 1),
             num(m.process_s, 1),
             cores(m),
@@ -79,7 +82,8 @@ pub(super) fn steps_section(
     );
     let _ = writeln!(
         md,
-        "\nReal wall time of the last run {} min against {:.1} min of summed step time (steps still valid were skipped). \
+        "\nReal wall time of the last run {} min against {:.1} min of summed step time, which counts every stored step, \
+         also those an earlier run finished and this one skipped. \
          Whole-job peak RAM, every process of the job at once: {} MiB across the steps, {} MiB over the last run.",
         num(run.map(|run| run.wall_s() / 60.0), 1),
         total / 60.0,
@@ -215,6 +219,12 @@ fn note(m: &StepMeasure, key: &str) -> Option<f64> {
 /// `amount` per second of `seconds`; `None` without time or amount.
 fn rate(amount: f64, seconds: f64) -> Option<f64> {
     (amount > 0.0 && seconds > 0.0).then(|| amount / seconds)
+}
+
+/// The video's length over a step's wall time; `None` for a step shorter than `SHORTEST_TIMED_S`,
+/// whose time is too small to divide by.
+fn speed(video_s: f64, wall_s: f64) -> Option<f64> {
+    rate(video_s, wall_s).filter(|_| wall_s >= SHORTEST_TIMED_S)
 }
 
 /// The mean and peak cores busy, `mean / peak`; a dash when neither was measured.
