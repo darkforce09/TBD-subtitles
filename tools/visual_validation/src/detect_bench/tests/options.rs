@@ -67,6 +67,105 @@ fn a_missing_video_or_an_unusable_clip_is_refused() {
 }
 
 #[test]
+fn every_pool_section_runs_by_default_over_three_batches_and_four_pools() {
+    let options = parse(&["ep.mp4"]).expect("a video alone parses");
+    assert_eq!(options.sweep_batches, vec![2, 4, 8]);
+    assert_eq!(options.sweep_pools_mib, vec![1536, 2048, 2560, 3072]);
+    assert_eq!(options.vram_cap_mib, DEFAULT_VRAM_CAP_MIB);
+    assert_eq!(options.frames_dir, None);
+    assert_eq!(options.frames_count, 6);
+    let sections = options.sections().expect("the defaults are usable");
+    assert_eq!(sections.grid.len(), 12);
+    assert_eq!(sections.shape, None);
+    assert!(sections.cuda_sweep && sections.sessions && sections.search);
+    assert!(sections.tensorrt && sections.confirm);
+    assert!(!sections.reference);
+    assert!(
+        options
+            .trt_cache()
+            .ends_with("tbd-subtitles-detect-bench/tensorrt")
+    );
+}
+
+#[test]
+fn every_pool_option_is_read() {
+    let options = parse(&[
+        "ep.mp4",
+        "--no-decode",
+        "--no-oar-ocr",
+        "--no-sweep",
+        "--no-sessions",
+        "--no-search",
+        "--no-tensorrt",
+        "--no-pool-confirm",
+        "--sweep-batches",
+        "4,8",
+        "--sweep-pools-mib",
+        "2048",
+        "--shape-batch",
+        "8",
+        "--shape-pool-mib",
+        "3072",
+        "--trt-cache",
+        "/work/trt",
+        "--vram-cap-mib",
+        "6000",
+        "--frames-dir",
+        "/work/frames",
+        "--frames-count",
+        "3",
+    ])
+    .expect("every option parses");
+    assert!(options.no_decode && options.no_oar_ocr);
+    assert_eq!(options.sweep_batches, vec![4, 8]);
+    assert_eq!(options.sweep_pools_mib, vec![2048]);
+    assert_eq!(options.trt_cache(), PathBuf::from("/work/trt"));
+    assert_eq!(options.vram_cap_mib, 6000);
+    assert_eq!(options.frames_dir, Some(PathBuf::from("/work/frames")));
+    assert_eq!(options.frames_count, 3);
+    let sections = options.sections().expect("the options are usable");
+    assert_eq!(
+        sections.shape,
+        Some(ScreenShape {
+            batch: 8,
+            pool_mib: 3072
+        })
+    );
+    assert!(!sections.cuda_sweep && !sections.sessions && !sections.search);
+    assert!(!sections.tensorrt && !sections.confirm);
+    assert!(sections.reference);
+}
+
+#[test]
+fn half_a_shape_takes_the_production_default_for_the_other_half() {
+    let options = parse(&["ep.mp4", "--shape-batch", "2"]).expect("parses");
+    let shape = options.shape().expect("usable").expect("given");
+    assert_eq!(shape.batch, 2);
+    assert_eq!(shape.pool_mib, ScreenShape::INITIAL.pool_mib);
+    let zero = parse(&["ep.mp4", "--shape-pool-mib", "0"]).expect("parses");
+    assert!(zero.shape().is_err());
+}
+
+#[test]
+fn an_empty_sweep_is_refused_only_when_a_sweep_runs() {
+    let empty = parse(&["ep.mp4", "--sweep-batches", "0"]).expect("parses");
+    assert!(empty.sections().is_err());
+    let skipped = parse(&[
+        "ep.mp4",
+        "--sweep-batches",
+        "0",
+        "--no-sweep",
+        "--no-tensorrt",
+    ])
+    .expect("parses");
+    assert!(skipped.sections().is_ok());
+    let no_frames =
+        parse(&["ep.mp4", "--frames-dir", "/f", "--frames-count", "0"]).expect("parses");
+    assert!(no_frames.sections().is_err());
+    assert!(parse(&["ep.mp4", "--sweep-batches", "two"]).is_err());
+}
+
+#[test]
 fn a_1080p_source_gets_a_640_by_360_proxy() {
     assert_eq!(even(PROXY_WIDTH * 1080 / 1920), 360);
     assert_eq!(even(PROXY_WIDTH * 817 / 1440), 362);

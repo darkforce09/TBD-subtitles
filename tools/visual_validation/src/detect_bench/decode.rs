@@ -4,7 +4,7 @@
 //! pipe, rgb24 and yuv420p on an enlarged pipe, NVDEC downloaded as nv12 on an enlarged pipe)
 //! into one reused buffer, measuring wall time, CPU cores and GPU and NVDEC use; time the Rust
 //! YUV 4:2:0 conversion of one frame; and hold every sample-step frame of the clip in memory at
-//! full resolution or as a proxy.
+//! full resolution or as a proxy, or hand the same frames over one at a time as yuv420p.
 //! **Position:** the decode section of `detect-bench` and the frame source of its detector
 //! sections; runs FFmpeg as a child through `child_process`, and enlarges its pipe through
 //! `media_io::video_frames::pipe`.
@@ -345,6 +345,32 @@ pub fn samples(
     drop(pipe);
     reap(decoder)?;
     anyhow::ensure!(!frames.is_empty(), "the clip has no frames");
+    Ok(frames)
+}
+
+/// The same `step`-th frames of `clip` as `samples`, at the source's own `size` as yuv420p,
+/// handed to `each` in order through one reused buffer; how many frames there were.
+pub fn yuv_samples(
+    programs: &Programs,
+    video: &Path,
+    clip: Clip,
+    size: (u32, u32),
+    step: u32,
+    mut each: impl FnMut(&[u8]) -> Result<()>,
+) -> Result<usize> {
+    let filter = format!("select=not(mod(n\\,{step}))");
+    let args = ffmpeg_args(&[], video, clip, &filter, "yuv420p");
+    let (decoder, mut pipe) = spawn(programs, args)?;
+    size_pipe(&pipe, true)?;
+    let mut buffer = vec![0u8; Route::Yuv420pWide.frame_bytes(size)];
+    let mut frames = 0;
+    while read_frame(&mut pipe, &mut buffer)? {
+        each(&buffer)?;
+        frames += 1;
+    }
+    drop(pipe);
+    reap(decoder)?;
+    anyhow::ensure!(frames > 0, "the clip has no frames");
     Ok(frames)
 }
 
