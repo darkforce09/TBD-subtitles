@@ -261,6 +261,47 @@ fn the_shot_scan_runs_in_the_background_and_never_holds_its_stage_open() {
 }
 
 #[test]
+fn a_lane_step_beside_adjudication_runs_in_the_background() {
+    let now = Instant::now();
+    let mut progress = settling(now);
+    progress
+        .row_mut(StepName::TextDetect)
+        .expect("lane step")
+        .state = StepState::Running {
+        started: now - Duration::from_secs(30),
+        done: 1_000,
+        total: 50_000,
+        message: None,
+    };
+    let rows = running(&progress, now);
+    let line = rows[6]
+        .steps
+        .iter()
+        .find(|line| line.step == StepName::TextDetect)
+        .expect("the detection line");
+    assert_eq!(line.state, StageState::Background);
+    assert_eq!(
+        rows[6].state,
+        StageState::Pending,
+        "a step in the background never holds its stage open"
+    );
+    progress
+        .row_mut(StepName::Adjudicate)
+        .expect("adjudication")
+        .state = StepState::Done { wall_s: 120.0 };
+    let rows = running(&progress, now);
+    let line = rows[6]
+        .steps
+        .iter()
+        .find(|line| line.step == StepName::TextDetect)
+        .expect("the detection line");
+    assert!(
+        matches!(line.state, StageState::Running { .. }),
+        "running alone, it is the step at work"
+    );
+}
+
+#[test]
 fn steps_are_numbered_from_one_of_twenty_nine() {
     assert_eq!(StepName::ALL.len(), 29);
     assert_eq!(step_number(StepName::ProbeDecode), 1);

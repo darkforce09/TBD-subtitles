@@ -129,10 +129,14 @@ pub fn run_worker(
     let gpu = graph::uses_gpu(step);
     let _held = if gpu {
         tracing::debug!("step {step} takes the GPU lock {}", gpu_lock.display());
-        Some(gpu_lock::acquire(gpu_lock, cancel, &|| {
+        let holder = gpu_lock::Holder {
+            step,
+            job: work.root().to_path_buf(),
+        };
+        Some(gpu_lock::acquire(gpu_lock, holder, cancel, &|held| {
             progress(Progress::StepMessage {
                 step,
-                text: "waiting for the GPU: another run of the app is using it".to_string(),
+                text: gpu_lock::waiting_message(held, work.root()),
             })
         })?)
     } else {

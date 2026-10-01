@@ -2,8 +2,9 @@
 //! jobs already in the work folder, applied to the steps still to run.
 //!
 //! **Role:** learn how long each step takes per second of video from earlier jobs' step records
-//! and probes in their databases, fall back to the Dressrosa 11 pilot's rates for a step never measured, and
-//! estimate a running job's seconds left and its share done.
+//! and probes in their databases, fall back to the Dressrosa 11 pilot's rates for a step never
+//! measured, and estimate a running job's seconds left and its share done, the visual lane
+//! counted as running beside the main walk.
 //!
 //! **Position:** called by the application when the window opens and after each job; read by
 //! the queue panel and the progress view.
@@ -12,10 +13,11 @@
 //! read, skipping a job another process runs; the rest is pure.
 //!
 //! **Invariants:** the shot scan, which runs alongside the other steps, never adds to the time
-//! left, and neither does a step the job's settings leave idle (the on-screen text steps with
-//! translation off, the replacement steps and the localized video with it off), nor does such a
-//! step's near-zero time lower the rate learnt from history; a running step that reports its
-//! progress is estimated from its own pace.
+//! left; the visual lane and the main-walk steps it runs beside add the longer of the two; a
+//! step the job's settings leave idle (the on-screen text steps with translation off, the
+//! replacement steps and the localized video with it off) adds nothing, nor does its near-zero
+//! time lower the rate learnt from history; a running step that reports its progress is
+//! estimated from its own pace.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -24,6 +26,7 @@ use std::time::Instant;
 use job_model::job::JobSettings;
 use job_model::outputs::ProbeDecoded;
 use job_model::{StageName, StepName};
+use pipeline::graph;
 
 use crate::job_queue::models::progress::{JobProgress, Rates, StepState};
 
@@ -131,19 +134,67 @@ fn expected(rates: &Rates, step: StepName, duration_s: f64) -> f64 {
     rates.per_step.get(&step).copied().unwrap_or(initial) * duration_s
 }
 
+/// Where a step runs on the job's timeline: the main walk before the visual lane starts, the
+/// main walk beside the lane, the lane, or the main walk from the lane's join on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Segment {
+    Before,
+    Beside,
+    Lane,
+    After,
+}
+
+fn segment(step: StepName) -> Segment {
+    let position = |step: StepName| StepName::ALL.iter().position(|s| *s == step);
+    if graph::in_visual_lane(step) {
+        Segment::Lane
+    } else if position(step) < position(graph::VISUAL_LANE_STARTS_AT) {
+        Segment::Before
+    } else if position(step) < position(graph::VISUAL_LANE_JOINS_AT) {
+        Segment::Beside
+    } else {
+        Segment::After
+    }
+}
+
+/// Seconds along the job's timeline, by segment: the lane and the main walk beside it overlap,
+/// so the longer of the two counts.
+#[derive(Debug, Clone, Copy, Default)]
+struct Timeline {
+    before: f64,
+    beside: f64,
+    lane: f64,
+    after: f64,
+}
+
+impl Timeline {
+    fn add(&mut self, step: StepName, seconds: f64) {
+        match segment(step) {
+            Segment::Before => self.before += seconds,
+            Segment::Beside => self.beside += seconds,
+            Segment::Lane => self.lane += seconds,
+            Segment::After => self.after += seconds,
+        }
+    }
+
+    fn seconds(&self) -> f64 {
+        self.before + self.beside.max(self.lane) + self.after
+    }
+}
+
 /// The seconds left, and the share of the job's expected time done; `None` until the video's
 /// length is known.
 pub(crate) fn estimate(progress: &JobProgress, rates: &Rates, now: Instant) -> Option<(f64, f64)> {
     let duration = progress.duration_s?;
-    let (mut left, mut total) = (0.0, 0.0);
+    let (mut left, mut total) = (Timeline::default(), Timeline::default());
     for row in progress
         .steps
         .iter()
         .filter(|r| r.stale && r.step != StepName::ShotScan && !progress.idle.contains(&r.step))
     {
         let expected = expected(rates, row.step, duration);
-        total += expected;
-        left += match &row.state {
+        total.add(row.step, expected);
+        let remaining = match &row.state {
             StepState::Pending => expected,
             StepState::Running {
                 started,
@@ -162,7 +213,9 @@ pub(crate) fn estimate(progress: &JobProgress, rates: &Rates, now: Instant) -> O
             }
             StepState::Skipped | StepState::Done { .. } | StepState::Failed(_) => 0.0,
         };
+        left.add(row.step, remaining);
     }
+    let (left, total) = (left.seconds(), total.seconds());
     let share = if total > 0.0 {
         (1.0 - left / total).clamp(0.0, 1.0)
     } else {

@@ -85,14 +85,18 @@ writing that does not survive the downscale is never found; the owner wants it f
 
 ## 4. Overlapping steps that wait on different things
 
-Steps run one after another, except the shot scan, which runs beside the steps after it. Some
-steps leave the GPU idle while they wait: `adjudicate`, `readjudicate` and `sound_cues` wait on
-Claude, and `text_translate` waits on Claude for most of its time while it holds the GPU lock in
-case the local model loads. `text_detect`, `text_read` and `text_track` need only the probe and
-the shot scan, so they can run while the audio chain waits on Claude.
+Steps run in `StepName::ALL` order on the runner's main walk, with two lanes beside it. The shot
+scan runs beside the steps after it until the visual lane starts. `adjudicate`, `readjudicate`
+and `sound_cues` wait on Claude and leave the GPU and the CPU idle; `text_detect`, `text_read`
+and `text_track` need only the probe and the shot scan, so they run as the visual lane, on a
+thread of their own, beside adjudication and the audio steps after it. `text_translate` still
+waits on Claude for most of its time while it holds the GPU lock in case the local model loads.
 
-- **What changes:** the runner starts a step whose inputs are ready while another step waits on
-  Claude or FFmpeg, within the GPU lock (two GPU steps still never overlap) and within 24 GB.
+- **How it runs:** the main walk starts the lane when it reaches `adjudicate`
+  (`graph::VISUAL_LANE_STARTS_AT`), after the shot scan has finished, and waits for it before
+  `text_translate`, the first step that reads it. Everything stays within the GPU lock (two GPU
+  steps, the lane's and the main walk's, still never overlap; the one waiting names the holder)
+  and within 24 GB.
 - **Measured:** whole-job wall time, peak RAM of all processes together and VRAM per worker on
   Dressrosa 11 and 28 against the baseline; the subtitle files and approved replacements stay
   the same.

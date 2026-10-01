@@ -13,7 +13,7 @@
 //! sums, counts and peaks, never the samples themselves, so memory stays bounded.
 //!
 //! **Invariants:** a value no sample measured stays `None`, never zero; overlapping windows (the
-//! shot scan beside another step) each take every sample; a sample's CPU use is that of the
+//! shot scan or a visual lane step beside another step) each take every sample; a sample's CPU use is that of the
 //! interval since the previous sample, a pid or thread new since then counts its ticks in full,
 //! and one gone since then loses the ticks of its last interval.
 

@@ -89,9 +89,11 @@ or some are done while others wait (between two of its steps), kept when all are
 none waits (the sum of its steps' seconds), else to run. `stage_progress::failed` gives a failed
 job's stages: the steps before the failed one kept, it failed, the rest to run; `step_number`
 numbers a step from 1 of 29.
-The shot scan runs in the background until the cues join it: while it runs its line says so, and
-neither it nor a shot scan still to start holds "Read the video" open, which is done once the
-video's details are read. A failed job's stages come from its `Failure`'s finished steps: those
+The shot scan runs in the background until the visual lane or the cues join it: while it runs its
+line says so, and neither it nor a shot scan still to start holds "Read the video" open, which is
+done once the video's details are read. A visual lane step running beside a step of the main walk
+(`JobProgress::runs_in_background`) shows the same way and never holds "Translate on-screen text"
+open; running alone, it is the step at work. A failed job's stages come from its `Failure`'s finished steps: those
 done in the run that failed are done with their seconds, those skipped as still valid are kept,
 the failed step failed and every other step, a shot scan never joined too, to run, so the list
 keeps exactly the steps the failure counts.
@@ -111,8 +113,10 @@ queue: `progress_log::emit_call` logs it as the exchange event the log window ke
 `time_left::from_history` reads every job's step records and probe from its database in the work
 folder (skipping a job another process runs) for
 each step's mean seconds per second of video, over the pilot's rates, leaving out the steps each
-job's settings left idle; `estimate` sums the steps still to run, leaving out the shot scan that
-runs beside them and the steps the job's settings leave idle (`idle_steps`, set on the job's
+job's settings left idle; `estimate` sums the steps still to run along the job's timeline, the
+main walk before the visual lane, the longer of the lane and the main-walk steps beside it
+(`graph::VISUAL_LANE_STARTS_AT` up to `graph::VISUAL_LANE_JOINS_AT`), and the rest, leaving out
+the shot scan that runs beside them and the steps the job's settings leave idle (`idle_steps`, set on the job's
 progress when it starts: the on-screen text steps while translation is off, and the stroke masks,
 inpainting, lettering and localized video while the localized video is off, which only record
 that they are off). The line for a job's end names its localized video when it wrote one. `queue_store` keeps each job's
@@ -162,8 +166,9 @@ for a frame every `CHECK_EVERY` (1 s) while `any_busy` holds.
 
 - Depends on: `crate::job_queue::models`; `crate::core::{background::Wake, format, steps}`;
   `crate::job_report::models::summary::RowSummary` and `crate::job_report::models::fixing::FIX_STEPS`
-  in `status_text.rs`; `pipeline` (the job runner, its events, and `work_dir` for the job
-  databases `time_left`, `video_files` and `queue_store` read); `job_model`;
+  in `status_text.rs`; `pipeline` (the job runner, its events, `graph` for the visual lane in
+  `time_left`, and `work_dir` for the job databases `time_left`, `video_files` and `queue_store`
+  read); `job_model`;
   `inference::model_store::app_data_dir` and `anyhow` in `queued_history.rs`;
   `inference::llm::call_log::EXCHANGE_TARGET` in `progress_log.rs`;
   `serde`, `serde_json` and `tracing` (`progress_log`, `job_runner`, `folder_watcher`,
@@ -194,6 +199,7 @@ for a frame every `CHECK_EVERY` (1 s) while `any_busy` holds.
     `a_stage_between_two_of_its_steps_is_still_running`, `a_failed_step_fails_its_stage`,
     `a_failed_job_lists_exactly_the_steps_it_kept`,
     `the_shot_scan_runs_in_the_background_and_never_holds_its_stage_open`,
+    `a_lane_step_beside_adjudication_runs_in_the_background`,
     `steps_are_numbered_from_one_of_twenty_nine` in `tests/stage_progress.rs`);
   - every job is on one row, a correction run on its video's (`correction_runs_fold_into_their_videos_row`,
     `a_failed_or_lone_correction_run_keeps_its_own_row` in `tests/sidebar_rows.rs`), and a place in
@@ -216,9 +222,10 @@ for a frame every `CHECK_EVERY` (1 s) while `any_busy` holds.
   - four review lanes hold one run each, a fifth is refused, a released lane takes a new run,
     and a run's token is its own (`four_lanes_fill_and_a_fifth_run_is_refused`,
     `releasing_a_run_frees_its_lane`, `a_runs_token_is_its_own` in `tests/review_lanes.rs`);
-  - the shot scan never adds to the time left, and a step keeps its own pace
-    (`done_skipped_and_the_shot_scan_add_nothing_and_a_step_keeps_its_own_pace` in
-    `tests/time_left.rs`);
+  - the shot scan never adds to the time left, a step keeps its own pace, and the visual lane and
+    the main-walk steps beside it count the longer of the two
+    (`done_skipped_and_the_shot_scan_add_nothing_and_a_step_keeps_its_own_pace`,
+    `the_lane_and_the_main_walk_beside_it_count_the_longer_of_the_two` in `tests/time_left.rs`);
   - a job running when the window closed waits again, a file without the newer fields loads, and
     a failure an older window kept reads its finished steps from its job database
     (`a_saved_queue_loads_back_with_the_running_job_waiting`,

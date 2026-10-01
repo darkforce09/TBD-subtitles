@@ -72,7 +72,7 @@ done", a ring filled to its share with the time "so far", a red cross with "fail
 empty ring and a grey title for a stage to come. A running or failed stage shows its steps, or
 every stage does while the disclosure is open: each step's plain title, then "already done",
 "done" in green with its time (when known), a thin bar with its time so far, "running in the
-background" for the shot scan, "failed" in red, or "to run" in grey. A failed job's card has a
+background" for the shot scan and a visual lane step beside the main walk, "failed" in red, or "to run" in grey. A failed job's card has a
 red cross, "Failed at Hear the speech", the step in plain words ("Listen with Whisper stopped
 with an error."), the finished steps kept, what Try Again continues after ("Try Again continues
 after any steps already done." when it kept none) and when it starts ("It starts at once.", "It

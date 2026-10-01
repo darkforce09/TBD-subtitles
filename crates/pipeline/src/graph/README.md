@@ -2,14 +2,14 @@
 
 The one table of the pipeline's steps: what each reads, where it runs, whether it loads a model
 onto the GPU, which settings it depends on, its revision, how long it may run, which stored values
-it reads and which steps depend on it. The run order is `StepName::ALL` in `crates/job_model/src/stage/step_name.rs`.
+it reads, which steps depend on it, and which steps form the visual lane. The run order is `StepName::ALL` in `crates/job_model/src/stage/step_name.rs`.
 
 ## Contents
 
 ```text
 crates/pipeline/src/graph/
-├── mod.rs  placement, GPU/runtime needs, inputs, stored reads, dependents, settings, revisions
-└── tests/  unit tests for inputs, placements, reads, dependents, settings and revisions
+├── mod.rs  placement, GPU/runtime needs, inputs, stored reads, dependents, settings, revisions, lane
+└── tests/  unit tests for inputs, placements, reads, dependents, settings, revisions and the lane
 ```
 
 ## How it works
@@ -41,20 +41,30 @@ have. `writes_rows` names the per-frame table a step owns (`frames` for the stro
 `readings` for the read-back check), and `reads_rows` the tables whose rows a step's worker
 receives after its documents, one `Input` frame per row (`frames` for composition, the check and
 the localized video). `dependents` is every step that reads a step, directly or through others, in run order;
-`--rerun` clears them with it. Which documents a step writes is `work_dir::store::keys`, and which
+`--rerun` clears them with it. `VISUAL_LANE` is `text_detect`, `text_read` and `text_track`,
+which read only the probe, the shot scan and each other, so the runner walks them on a thread of
+their own (`in_visual_lane`): from `VISUAL_LANE_STARTS_AT`, `adjudicate`, the first step that
+waits on Claude, until `VISUAL_LANE_JOINS_AT`, `text_translate`, the first step that reads one
+(`reads_visual_lane`). Which documents a step writes is `work_dir::store::keys`, and which
 files its rows name is `work_dir::store::files`.
 
 ## Boundaries
 
 - Depends on: `job_model` (`StepName`, `JobSettings`), `serde_json`, `worker_channel::address`,
   and `crate::work_dir::store::keys` for the rows a step writes.
-- Used by: `crate::runner`, `crate::resume`, `crate::workers` and `crate::tasks`; the `worker`
+- Used by: `crate::runner`, `crate::resume`, `crate::workers` and `crate::tasks`; the window's
+  job queue (`apps/tbd_subtitles/src/job_queue/`) for the visual lane; the `worker`
   subcommands in `apps/tbd_subtitles/src/cli/worker_command.rs`,
   `apps/tbd_subtitles_ggml/src/main.rs` and `apps/tbd_subtitles_llm/src/main.rs`, which check a
   step's placement or name their binary.
 - Rules:
   - a step reads only steps before it (`every_step_reads_only_earlier_steps` in
     `tests/graph.rs`);
+  - the visual lane reads only the probe, the shot scan and its own earlier steps, starts after
+    the shot scan and before its steps at a step none of them reads, and is joined at the first
+    step that reads it (`the_visual_lane_reads_only_the_probe_the_shot_scan_and_itself`,
+    `the_visual_lane_starts_after_the_shot_scan_and_before_its_steps`,
+    `the_visual_lane_joins_at_the_first_step_that_reads_it`);
   - every GPU step runs in a worker, and only the Whisper steps run in the ggml binary
     (`gpu_steps_run_in_workers_and_whisper_alone_in_the_ggml_binary`);
   - a step reads the job record and every document of every step it reads, each with a record

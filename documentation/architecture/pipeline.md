@@ -46,7 +46,7 @@ fingerprint, and gets its own row of time and peak memory in the job report.
 | Step | Stage | Runs in | Output |
 |---|---|---|---|
 | probe_decode | 1 | worker, `tbd-subtitles` (FFmpeg child) | `outputs/probe_decode`, `audio/mix_16k.f32` |
-| shot_scan | 1 | worker, `tbd-subtitles`, alongside the steps after it | `outputs/shot_scan` |
+| shot_scan | 1 | worker, `tbd-subtitles`, beside the steps after it until the visual lane starts | `outputs/shot_scan` |
 | separation | 2 | worker, `tbd-subtitles` (ONNX Runtime) | `audio/vocals_16k.f32`, `audio/background_16k.f32` (no document) |
 | vad | 3 | job runner | `outputs/vad` |
 | asr_parakeet | 4 | worker, `tbd-subtitles` (ONNX Runtime) | `outputs/asr_parakeet` |
@@ -61,9 +61,9 @@ fingerprint, and gets its own row of time and peak memory in the job report.
 | alignment | 7 | worker, `tbd-subtitles` (ONNX Runtime) | `outputs/alignment` |
 | review | 7 | worker, `tbd-subtitles` (ONNX Runtime on the CPU) | `outputs/review` |
 | cues | 9 | job runner | `outputs/cues`, `outputs/cues/dropped_sounds` |
-| text_detect | on-screen text | worker, `tbd-subtitles` (ONNX Runtime; FFmpeg proxy stream and stills) | `outputs/text_detect`, `visual/crops/`, `visual/keyframes/` |
-| text_read | on-screen text | worker, `tbd-subtitles` (ONNX Runtime) | `outputs/text_read`, reading cache `visual/readings/` |
-| text_track | on-screen text | worker, `tbd-subtitles` (CPU, no decoding) | `outputs/text_track` |
+| text_detect | on-screen text | worker, `tbd-subtitles` (ONNX Runtime; FFmpeg proxy stream and stills), in the visual lane | `outputs/text_detect`, `visual/crops/`, `visual/keyframes/` |
+| text_read | on-screen text | worker, `tbd-subtitles` (ONNX Runtime), in the visual lane | `outputs/text_read`, reading cache `visual/readings/` |
+| text_track | on-screen text | worker, `tbd-subtitles` (CPU, no decoding), in the visual lane | `outputs/text_track` |
 | text_translate | on-screen text | worker, `tbd-subtitles-llm` (`claude` children first; mistral.rs for the rest) | `outputs/text_translate`, translation cache `visual/translations/` |
 | text_review | on-screen text | job runner | `outputs/text_review` |
 | text_mask | on-screen text | worker, `tbd-subtitles` (CPU; FFmpeg region crops) | `outputs/text_mask`, one `frames` row per frame of each occurrence, `visual/masks/` |
@@ -94,10 +94,22 @@ the other on-screen text steps with translation off, write empty outputs and loa
 - **Cancel:** the job's cancel token is checked before each step and watched by the running
   worker's watchdog, which kills the worker's process group; the job ends as cancelled and its
   finished steps stay valid, so the next run resumes after them.
+- **What runs at once:** the runner walks the steps in this order on one main walk, with two
+  lanes beside it. The shot scan runs on a thread of its own beside the audio steps after it, and
+  is joined before the visual lane starts (or before the first step that reads it). The visual
+  lane, `text_detect`, `text_read` and `text_track` in order, reads only the probe, the shot scan
+  and itself; it starts on a thread of its own when the main walk reaches `adjudicate`, the first
+  step that waits on Claude, and the main walk waits for it before `text_translate`, the first
+  step that reads it. Each lane step resumes, commits and reports as a main-walk step does, under
+  its own step span in the job's log. A step that fails on any thread reports its failure, sets
+  the cancel token so the other threads' workers stop, and is the job's error; a step stopped
+  only by that failure reports none.
 - **GPU lock:** a GPU worker first takes an exclusive lock on `gpu.lock` in the app data folder,
-  so a command-line run and the window never load models onto the card together; the kernel
-  frees the lock when its holder dies. `text_inpaint` and `localized_video` (for NVENC) hold it
-  too.
+  so a command-line run and the window never load models onto the card together, and the visual
+  lane's GPU steps and the main walk's take it one at a time too; the kernel frees the lock when
+  its holder dies. `text_inpaint` and `localized_video` (for NVENC) hold it too. A step waiting
+  for it says which step of the app holds it ("text_detect of this job is using it"), or that
+  another run of the app does.
 - **Binaries:** ONNX Runtime, ggml and candle never share a process. `tbd-subtitles` hosts the
   ONNX Runtime, FFmpeg and `claude` workers; `tbd-subtitles-ggml`, built beside it with the
   `crispasr` feature, hosts Whisper. `tbd-subtitles-llm`, built with `mistralrs`, hosts the local

@@ -3,7 +3,8 @@
 //! **Role:** turn the step states of a running job, or the steps a failed job had finished, into
 //! one row per stage: kept from an earlier run, still to run, running (its share done and seconds
 //! so far), done (in its seconds) or failed, each with its steps' own lines; the shot scan, which
-//! runs in the background until the cues join it, shows as such on its line.
+//! runs in the background until the lane or the cues join it, and a visual lane step running
+//! beside a step of the main walk, show as such on their lines.
 //!
 //! **Position:** called by the queue's stage list for the selected job; reads
 //! `job_queue::models` and `core::steps`.
@@ -12,8 +13,8 @@
 //!
 //! **Invariants:** always nine rows in run order, whose steps read in order are `StepName::ALL`; a
 //! step this run does not do is kept, never to run; a failed step makes its stage failed, and a
-//! running one its stage running, but for the shot scan, which never holds its stage open; a
-//! failed job's list keeps exactly the steps its failure counts as kept.
+//! running one its stage running, but for a step in the background, which never holds its stage
+//! open; a failed job's list keeps exactly the steps its failure counts as kept.
 
 use std::time::Instant;
 
@@ -35,7 +36,8 @@ pub(crate) enum StageState {
         share: f32,
         seconds: f64,
     },
-    /// A step running in the background, which its stage does not wait for: the shot scan.
+    /// A step running in the background, which its stage does not wait for: the shot scan, or a
+    /// visual lane step beside a step of the main walk.
     Background,
     /// Done in this run, in `seconds` when known.
     Done {
@@ -68,7 +70,9 @@ pub(crate) fn running(progress: &JobProgress, now: Instant) -> Vec<StageRow> {
         match &row.state {
             StepState::Pending if row.stale => StageState::Pending,
             StepState::Pending | StepState::Skipped => StageState::Kept,
-            StepState::Running { .. } if step == StepName::ShotScan => StageState::Background,
+            StepState::Running { .. } if progress.runs_in_background(step) => {
+                StageState::Background
+            }
             StepState::Running {
                 started,
                 done,
@@ -139,16 +143,16 @@ fn rows(state_of: impl Fn(StepName) -> StageState) -> Vec<StageRow> {
         .collect()
 }
 
-/// A stage's state from its steps', leaving out a shot scan still to run or running in the
-/// background: failed when one failed, running when one runs or some are done while others wait,
+/// A stage's state from its steps', leaving out a shot scan still to run and any step running in
+/// the background: failed when one failed, running when one runs or some are done while others wait,
 /// kept when all are kept, done when none waits (in the sum of their seconds, when every one is
 /// known), else to run.
 fn stage_state(steps: &[StepLine]) -> StageState {
     let states: Vec<StageState> = steps
         .iter()
         .filter(|line| {
-            line.step != StepName::ShotScan
-                || !matches!(line.state, StageState::Pending | StageState::Background)
+            line.state != StageState::Background
+                && (line.step != StepName::ShotScan || line.state != StageState::Pending)
         })
         .map(|line| line.state)
         .collect();

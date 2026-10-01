@@ -1,16 +1,18 @@
 # Step runner
 
 `run_job`: one video through every step, in the order `StepName::ALL` gives, skipping what is still
-valid, running the shot scan beside the other steps, committing each step's outputs with its
-record, and writing the report at the end.
+valid, running the shot scan beside the audio steps and the visual lane beside adjudication,
+committing each step's outputs with its record, and writing the report at the end.
 
 ## Contents
 
 ```text
 crates/pipeline/src/runner/
-├── mod.rs    `run_job`, `JobOptions`, `JobOutcome`, the CUDA environment, `worker_inputs`, `stamp`
+├── lane.rs   the visual lane: where the main walk starts and joins it, and its thread
+├── mod.rs    `run_job`, `JobOptions`, `JobOutcome`, the CUDA environment, `worker_inputs`
 ├── rerun.rs  the job record and `--rerun` cleared in one transaction; a record forgotten to rerun
-└── tests/    unit tests for the cleared steps, the per-frame rows and a forgotten record
+├── walk.rs   `Steps`: one step's resume check, run, commit and events, and the job's first failure
+└── tests/    unit tests for reruns, a forgotten record, a step's run and failure, and the lane
 ```
 
 ## How it works
@@ -30,19 +32,35 @@ next open. No file outside the database holds the job record. `Progress::JobStar
 steps this run will do (`resume::stale_steps`), and `Progress::JobDuration` the video's length once
 the probe is stored.
 
-It then walks the steps, checking `JobOptions::cancel` before each: a valid step
-(`resume::is_valid` over a fresh snapshot) is skipped; any other has its fingerprint taken, its
-record and the rows of the per-frame table it owns removed (`rerun::forget`), and runs through `tasks::in_process` on a `StepIo` of the store
-or through `workers::run_worker` with the stored values `worker_inputs` gives it (every
+It then walks the steps, checking `JobOptions::cancel` before each. Every step, wherever it runs,
+goes through `walk::Steps`: a valid step (`resume::is_valid` over a fresh snapshot) is skipped;
+any other has its fingerprint taken, its record and the rows of the per-frame table it owns
+removed (`rerun::forget`), and runs through `tasks::in_process` on a `StepIo` of the store or
+through `workers::run_worker` with the stored values `worker_inputs` gives it (every
 `graph::reads` value, less the optional ones the job lacks), as `graph::placement` says. Either
 way the outputs the step wrote come back as an uncommitted `StepWrite`, and `stamp` commits them
 with its `StepRecord` (fingerprint, finish time, measure) in one transaction; a step that wrote
-none still commits its record. A step that fails, or is cancelled, is reported as
-`Progress::StepFailed` and ends the job with its error. A worker gets the cancel token, which its
-watchdog watches, and a GPU worker first takes the machine-wide lock `JobOptions::gpu_lock`. The
-shot scan runs on a scoped thread, commits its own outputs there, and is joined before the first
-step that reads it; when the walk ends with an error the runner sets the cancel token, so the
-scan stops instead of running to its end. The CUDA environment, found once through
+none still commits its record. A worker gets the cancel token, which its watchdog watches, and a
+GPU worker first takes the machine-wide lock `JobOptions::gpu_lock`, which also keeps the GPU
+steps of the lane and the main walk apart.
+
+Two threads run beside the main walk, each in a `std::thread::scope`. The shot scan starts on
+the main walk, then runs and commits on a thread of its own. The visual lane (`lane.rs`,
+`graph::VISUAL_LANE`) walks `text_detect`, `text_read` and `text_track` in order on another:
+`lane::plan` tells the main walk, at each step, to join the shot scan (before the lane starts and
+before any step that reads the scan), to start the lane (at `graph::VISUAL_LANE_STARTS_AT`,
+`adjudicate`, whether that step runs or is skipped), to join the lane (before the first main
+step that reads one of its steps, `text_translate`), and to leave the lane's steps to it. Each
+lane step runs in a `step` span made on the runner's thread as a child of the caller's job span,
+so its lines group under the job. Threads still running when the walk ends are joined there; the
+steps run and skipped by every thread are merged in run order.
+
+A step that fails reports `Progress::StepFailed`, becomes the job's first failure when it is the
+first, and sets the cancel token, so the other threads' workers are killed and no further step
+starts; a step stopped only by that cancel reports nothing, and the walk then ends with the first
+failure rather than "cancelled". A step the owner cancels reports `StepFailed` as cancelled. When
+the walk ends with an error the runner sets the cancel token, so the scan and the lane stop
+instead of running to their end. The CUDA environment, found once through
 `inference::cuda_runtime` beside the binaries or in the runtime folder, goes to GPU workers only.
 The sign library `JobOptions::library` names (`None` for none) reaches the fingerprints
 (`resume::is_valid`, `resume::fingerprint`), the in-process tasks through `tasks::Job::library`,
@@ -62,7 +80,7 @@ file, the report, the quality check, the steps run and skipped, and the run.
   progress}`;
   `inference::cuda_runtime` and `inference::model_store`; `job_model`; `stages::output`;
   `worker_channel::address`; `tracing` for the `step{step}` span each step runs in (its workers'
-  and programs' lines, and the shot scan's thread, log inside it), its debug lines (the job,
+  and programs' lines, the shot scan's thread and the lane's steps log inside it), its debug lines (the job,
   reruns asked for and cleared, where each step runs, the CUDA runtime) and the report's path at
   info.
 - Used by: the app's `process` and `fix` subcommands (`apps/tbd_subtitles/src/cli/`) and the
@@ -80,11 +98,26 @@ file, the report, the quality check, the steps run and skipped, and the run.
   - a step about to run loses its record and the rows of its per-frame table alone
     (`forgetting_a_step_removes_its_record_and_keeps_its_documents`,
     `forgetting_a_step_that_owns_a_per_frame_table_clears_its_rows_alone`);
-  - one worker loads the GPU at a time; the shot scan, which runs beside it, loads none;
+  - one worker loads the GPU at a time; the shot scan, which runs beside it, loads none, and the
+    lane's GPU steps take the lock as the main walk's do;
   - a step starts only after every step it reads has finished, and none starts once the job is
-    cancelled;
-  - the shot scan's thread stays alive until its worker is reaped, since a child dies with the
-    thread that started it (`crates/child_process/src/lib.rs`).
+    cancelled: the lane starts at adjudication after the shot scan is joined and is joined
+    before translation, and the main walk runs none of its steps
+    (`the_lane_starts_at_adjudication_and_is_joined_before_translation`,
+    `the_main_walk_runs_every_step_but_the_lanes`,
+    `the_shot_scan_is_joined_before_the_lane_starts_and_before_its_readers`,
+    `every_main_step_that_reads_the_lane_comes_after_its_join` in `tests/lane.rs`);
+  - the lane runs its steps in order and stops the lane and the job at its first failure
+    (`the_lane_runs_its_steps_in_order_on_its_thread`,
+    `a_failed_lane_step_stops_the_lane_and_the_job`);
+  - a failed step reports once, stops the job and is its error; a step stopped by another's
+    failure reports nothing; an owner's stop is reported
+    (`a_failed_step_reports_once_stops_the_job_and_is_its_failure`,
+    `a_step_stopped_by_another_steps_failure_reports_nothing`,
+    `a_step_the_owner_stopped_reports_the_stop`,
+    `a_walk_stopped_by_another_steps_failure_ends_with_that_failure` in `tests/walk.rs`);
+  - the shot scan's and the lane's threads stay alive until their workers are reaped, since a
+    child dies with the thread that started it (`crates/child_process/src/lib.rs`).
 
 ## Related documentation
 

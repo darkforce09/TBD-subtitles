@@ -9,8 +9,8 @@
 //! **Signals and state:** none; reads the borrowed view.
 //!
 //! **Invariants:** until the video's length is known the bar is empty and the time left reads
-//! "Working out the time left…"; between two steps the card keeps the last step started, never
-//! the shot scan running in the background.
+//! "Working out the time left…"; the card names the main walk's step, never the shot scan or a
+//! visual lane step running in the background (`JobProgress::shown_step`).
 
 use eframe::egui::{Align2, FontFamily, FontId, RichText, Sense, Ui, vec2};
 use job_model::StepName;

@@ -15,7 +15,8 @@
 //! **Invariants:** NVML exists on the host and not in the development container; without it the
 //! GPU fields are `None`, never zero, and the memory and CPU fields are still measured; GPU use
 //! is the whole device's, the desktop's share included; a step's CPU and memory are the whole
-//! job's while it ran, so the shot scan running alongside counts in the other step's window too;
+//! job's while it ran, so the shot scan and the visual lane running alongside count in the other
+//! step's window too;
 //! dropping the sampler stops its thread.
 
 use std::collections::BTreeMap;

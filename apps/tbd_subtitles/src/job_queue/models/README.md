@@ -32,9 +32,11 @@ steps is the list's length once the list is known. A `JobProgress`
 holds the work directory, the video's length, the steps the job's settings leave idle (which add
 no time left) and a row per step: whether this run does it, and pending, still valid, running (since when, how far, its last line), done (its time) or failed;
 it answers which steps are finished and so kept (done, or valid from an earlier run),
-which step runs now (beside the shot scan, the later one), which one the window names (the running
-step, else the last one started, never the shot scan, which runs in the background) and which
-failed. `Rates` are each step's seconds per
+which step runs now (the main walk's, beside the shot scan and the visual lane), which steps run
+in the background (`runs_in_background`: the shot scan always, a visual lane step while a main
+walk step runs, from `pipeline::graph::in_visual_lane`), which one the window names (the main
+walk's running step, else a lane step running alone, else the last one done or failed; never the
+shot scan, nor a lane step done before the main walk reaches the lane's join) and which failed. `Rates` are each step's seconds per
 second of video.
 
 A `QueueItem` names its video by the file name without the extension, and without a leading group
@@ -57,12 +59,16 @@ and the watch folders found missing; `job_queue::services::watch_scan` changes i
 
 ## Boundaries
 
-- Depends on: `job_model::StepName`; `crate::job_report::models::summary::RowSummary` in
-  `view.rs`; `std`.
+- Depends on: `job_model::StepName`; `pipeline::graph` for the visual lane in `progress.rs`;
+  `crate::job_report::models::summary::RowSummary` in `view.rs`; `std`.
 - Used by: `crate::job_queue::{services, ui}` and `crate::application`.
 - Rules: nothing here names egui or eframe
   (`dependency_boundaries_and_external_test_placement_are_enforced` in
   `apps/tbd_subtitles/src/tests/architecture_rules.rs`); a failed step is never counted as kept
   (`a_failed_step_is_named_and_not_kept` in `tests/progress.rs`); between two steps the window
   names the last one started, never the shot scan, which is not finished while it runs
-  (`the_step_shown_is_the_last_started_and_never_the_shot_scan` in `tests/progress.rs`).
+  (`the_step_shown_is_the_last_started_and_never_the_shot_scan` in `tests/progress.rs`); a lane
+  step beside a main step runs in the background and the window names the main step, a lane step
+  running alone is named, and a lane step done before the join is not named between main steps
+  (`a_lane_step_beside_a_main_step_runs_in_the_background`,
+  `a_lane_step_done_before_the_join_is_not_named_between_main_steps`).

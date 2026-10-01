@@ -73,7 +73,8 @@ pub(super) fn steps_section(
     let _ = writeln!(
         md,
         "\nTotal {:.1} min of step time for {}; scaled to a 120-minute video, {scaled:.1} min (budget 30 min). \
-         The shot scan runs alongside separation and speech recognition, so wall time is lower. \
+         The shot scan runs alongside separation and speech recognition, and text detection, \
+         reading and tracking alongside adjudication, so wall time is lower. \
          Peak RAM {} MiB; peak VRAM {} MiB.",
         total / 60.0,
         clock(video_s),

@@ -30,7 +30,8 @@ started within the interval), and one gone since then loses the ticks of its las
 most 250 ms of its life. The busiest thread's share is the largest per-thread delta.
 
 The runner opens a step's window just before the step runs and closes it right after; each sample
-is folded into every window open at the time (the shot scan's overlaps the steps beside it) and
+is folded into every window open at the time (the shot scan's and the visual lane's overlap the
+steps beside them) and
 into the job's own, keeping sums, counts and peaks, never the samples. Closing a window gives the
 step's `StepUse`: mean GPU, NVENC and NVDEC use, the peak whole-job PSS, the mean and peak CPU cores,
 and the busiest thread's mean share, which the runner puts into the step's `StepMeasure`. Stopping
@@ -52,7 +53,7 @@ the sampler gives the run's peak PSS for `meta/last_run`.
   - `reset_peak_ram` runs before an in-process step, so its peak is that step's alone, and a
     refused reset records no peak (`crates/pipeline/src/tasks/mod.rs`);
   - GPU use is the whole device's, the desktop's share included, and a step's CPU and memory are
-    the whole job's while it ran, the shot scan's alongside included;
+    the whole job's while it ran, the shot scan's and the visual lane's alongside included;
   - a name with spaces or parentheses parses
     (`a_name_with_spaces_and_parentheses_parses_from_its_last_parenthesis` in
     `tests/process_tree.rs`), a new pid counts in full and a gone one not at all

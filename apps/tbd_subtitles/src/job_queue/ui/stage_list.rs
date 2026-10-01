@@ -5,7 +5,8 @@
 //! **Role:** draw the stage rows `stage_progress` built: a check and the time a stage took, "so
 //! far" on a ring while it runs, "failed" on a red cross, a grey empty ring for a stage to come;
 //! each step's line says "already done", "done" with its time when known, a bar while it runs,
-//! "running in the background" for the shot scan, "failed" or "to run".
+//! "running in the background" for the shot scan and a visual lane step beside the main walk,
+//! "failed" or "to run".
 //!
 //! **Position:** called by `progress_view` for a running or failed job.
 //!

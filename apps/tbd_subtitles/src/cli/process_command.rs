@@ -312,24 +312,26 @@ pub(super) fn print_outcome(outcome: &JobOutcome) {
     );
 }
 
-/// One line per event on stderr.
-/// The step and tenth of its work last printed, so a step that reports in steps of any size
-/// prints once per tenth.
-static PRINTED_TENTH: std::sync::Mutex<Option<(StepName, usize)>> = std::sync::Mutex::new(None);
+/// The tenth of its work each step last printed, so a step that reports in steps of any size
+/// prints once per tenth, and steps reporting at once (the shot scan and the visual lane beside
+/// the main walk) never reprint each other's tenths.
+static PRINTED_TENTHS: std::sync::Mutex<std::collections::BTreeMap<StepName, usize>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 /// Whether `done` of `total` reaches a tenth of `step`'s work not yet printed, or finishes it.
 pub(super) fn enters_tenth(step: StepName, done: usize, total: usize) -> bool {
     let tenth = (done * 10).checked_div(total).unwrap_or(10);
-    let mut printed = PRINTED_TENTH
+    let mut printed = PRINTED_TENTHS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let new = done == total || *printed != Some((step, tenth));
+    let new = done == total || printed.get(&step) != Some(&tenth);
     if new {
-        *printed = Some((step, tenth));
+        printed.insert(step, tenth);
     }
     new
 }
 
+/// One line per event on stderr.
 pub(super) fn print(event: Progress) {
     match event {
         Progress::JobStarted {

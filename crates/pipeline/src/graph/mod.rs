@@ -1,16 +1,22 @@
 //! The step graph: what each step reads, where it runs, whether it needs the GPU, which of the
-//! settings it depends on, which stored values it reads, and which steps depend on it.
+//! settings it depends on, which stored values it reads, which steps depend on it, and which
+//! steps form the visual lane that runs beside the main walk.
 //!
 //! **Role:** the one table the runner, the resume check and the workers consult; the order is
-//! `StepName::ALL`; which per-frame tables each step writes and reads; the documents each step writes are named by `work_dir::store::keys`.
+//! `StepName::ALL`; which per-frame tables each step writes and reads; the documents each step
+//! writes are named by `work_dir::store::keys`.
 //!
-//! **Position:** used by `runner`, `resume` and `workers`.
+//! **Position:** used by `runner`, `resume` and `workers`, and by the app's job queue for the
+//! visual lane.
 //!
 //! **Signals and state:** none.
 //!
-//! **Invariants:** a step reads only steps before it; every GPU step runs in a worker; the
-//! Whisper steps run in the ggml binary and nothing else does; a step's revision changes
-//! whenever its code changes what it writes, so older outputs are not reused.
+//! **Invariants:** a step reads only steps before it; the visual lane's steps read only the
+//! probe, the shot scan and earlier lane steps, and the lane's start point comes after the shot
+//! scan and before every lane step, so the lane runs beside the main walk from there; every GPU
+//! step runs in a worker; the Whisper steps run in the ggml binary and nothing else does; a
+//! step's revision changes whenever its code changes what it writes, so older outputs are not
+//! reused.
 
 use std::time::Duration;
 
@@ -170,6 +176,32 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
         Output => &[Cues, TextTypeset, TextVerify],
         LocalizedVideo => &[ProbeDecode, TextVerify, Output],
     }
+}
+
+/// The visual lane: the steps the runner walks on a thread of their own beside the main walk,
+/// since they read only the probe, the shot scan and each other.
+pub const VISUAL_LANE: [StepName; 3] = [
+    StepName::TextDetect,
+    StepName::TextRead,
+    StepName::TextTrack,
+];
+
+/// Where the visual lane starts: the first step that waits on Claude, whose wait leaves the GPU and
+/// the CPU idle. The lane's steps read only the probe, the shot scan and each other, all finished
+/// by then.
+pub const VISUAL_LANE_STARTS_AT: StepName = StepName::Adjudicate;
+
+/// Where the main walk waits for the visual lane: the first step that reads a lane step.
+pub const VISUAL_LANE_JOINS_AT: StepName = StepName::TextTranslate;
+
+/// Whether `step` runs in the visual lane rather than the main walk.
+pub fn in_visual_lane(step: StepName) -> bool {
+    VISUAL_LANE.contains(&step)
+}
+
+/// Whether `step` reads a step of the visual lane, so the main walk waits for the lane before it.
+pub fn reads_visual_lane(step: StepName) -> bool {
+    inputs(step).iter().any(|input| in_visual_lane(*input))
 }
 
 /// Steps whose code changed what they write, with their revision; every other step is at 1.

@@ -93,3 +93,42 @@ fn the_step_shown_is_the_last_started_and_never_the_shot_scan() {
         "the shot scan still running is not finished"
     );
 }
+
+#[test]
+fn a_lane_step_beside_a_main_step_runs_in_the_background() {
+    let mut p = JobProgress::new(Instant::now());
+    set(&mut p, StepName::TextDetect, running());
+    assert!(!p.runs_in_background(StepName::TextDetect), "it runs alone");
+    assert_eq!(p.shown_step(), Some(StepName::TextDetect));
+    set(&mut p, StepName::Adjudicate, running());
+    assert!(p.runs_in_background(StepName::TextDetect));
+    assert!(p.runs_in_background(StepName::ShotScan));
+    assert!(!p.runs_in_background(StepName::Adjudicate));
+    assert_eq!(p.shown_step(), Some(StepName::Adjudicate));
+    assert_eq!(p.current_step(), Some(StepName::Adjudicate));
+}
+
+#[test]
+fn a_lane_step_done_before_the_join_is_not_named_between_main_steps() {
+    let mut p = JobProgress::new(Instant::now());
+    set(
+        &mut p,
+        StepName::Adjudicate,
+        StepState::Done { wall_s: 120.0 },
+    );
+    set(
+        &mut p,
+        StepName::TextDetect,
+        StepState::Done { wall_s: 200.0 },
+    );
+    assert_eq!(p.shown_step(), Some(StepName::Adjudicate));
+    set(&mut p, StepName::TextRead, running());
+    assert_eq!(
+        p.shown_step(),
+        Some(StepName::TextRead),
+        "only the lane runs"
+    );
+    set(&mut p, StepName::TextRead, StepState::Done { wall_s: 30.0 });
+    set(&mut p, StepName::TextTranslate, running());
+    assert_eq!(p.shown_step(), Some(StepName::TextTranslate));
+}

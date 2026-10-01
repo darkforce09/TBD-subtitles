@@ -15,6 +15,10 @@ fn running(p: &mut JobProgress, step: StepName, started: Instant, done: usize, t
     }
 }
 
+/// The pilot's seconds of the audio steps the visual lane runs beside, all shorter than the lane,
+/// whose time counts instead.
+const BESIDE_LANE: f64 = 52.9 + 2.9 + 3.5 + 8.9 + 5.6 + 7.8;
+
 #[test]
 fn nothing_is_estimated_before_the_video_length_is_known() {
     let p = JobProgress::new(Instant::now());
@@ -30,8 +34,8 @@ fn a_new_job_has_the_pilot_audio_time_and_initial_visual_time_left() {
     let pilot: f64 = PILOT.iter().map(|(_, s)| s).sum();
     let initial_visual = PILOT_VIDEO_S * 1.25;
     assert!(
-        (left - pilot - initial_visual).abs() < 0.01,
-        "{left} vs audio {pilot} and visual {initial_visual}"
+        (left - pilot - initial_visual + BESIDE_LANE).abs() < 0.01,
+        "{left} vs audio {pilot} and visual {initial_visual}, the lane beside adjudication"
     );
     assert_eq!(share, 0.0);
 }
@@ -146,13 +150,13 @@ fn idle_steps_add_no_time_left_even_while_stale() {
     let (left, _) = estimate(&progress, &rates, now).expect("known duration");
     let reading = PILOT_VIDEO_S * (0.2 + 0.15 + 0.25 + 0.2 + 0.01 + 0.01);
     assert!(
-        (left - audio - reading).abs() < 0.01,
+        (left - audio - reading + BESIDE_LANE).abs() < 0.01,
         "the replacement steps add nothing: {left}"
     );
     progress.idle = idle_steps(&settings(true, true));
     let (left, _) = estimate(&progress, &rates, now).expect("known duration");
     assert!(
-        (left - audio - PILOT_VIDEO_S * 1.25).abs() < 0.01,
+        (left - audio - PILOT_VIDEO_S * 1.25 + BESIDE_LANE).abs() < 0.01,
         "the localized video adds its steps: {left}"
     );
 }
@@ -251,4 +255,43 @@ fn stored_job(job: &std::path::Path, record: &JobRecord, steps: &[(StepName, f64
     store
         .put_output(StepName::ProbeDecode, None, &probe)
         .expect("the probe");
+}
+
+#[test]
+fn the_lane_and_the_main_walk_beside_it_count_the_longer_of_the_two() {
+    let start = Instant::now();
+    let mut p = JobProgress::new(start);
+    p.duration_s = Some(1000.0);
+    let mut rates = Rates::default();
+    for (step, seconds) in [
+        (StepName::Separation, 100.0),
+        (StepName::Adjudicate, 150.0),
+        (StepName::Alignment, 50.0),
+        (StepName::TextDetect, 120.0),
+        (StepName::TextRead, 40.0),
+        (StepName::TextTrack, 20.0),
+        (StepName::TextTranslate, 30.0),
+    ] {
+        rates.per_step.insert(step, seconds / 1000.0);
+    }
+    for row in &mut p.steps {
+        row.stale = rates.per_step.contains_key(&row.step);
+    }
+    let (left, _) = estimate(&p, &rates, start).expect("estimate");
+    assert!(
+        (left - (100.0 + 200.0 + 30.0)).abs() < 0.01,
+        "the main walk's 200 s beside outlast the lane's 180 s: {left}"
+    );
+    if let Some(row) = p.row_mut(StepName::Separation) {
+        row.state = StepState::Done { wall_s: 100.0 };
+    }
+    let now = start + Duration::from_secs(100);
+    running(&mut p, StepName::Adjudicate, start, 0, 0);
+    running(&mut p, StepName::TextDetect, start, 1, 2);
+    let (left, share) = estimate(&p, &rates, now).expect("estimate");
+    assert!(
+        (left - (160.0 + 30.0)).abs() < 0.01,
+        "the lane's 100 + 40 + 20 s outlast adjudication's 50 and alignment's 50: {left}"
+    );
+    assert!(share > 0.0 && share < 1.0);
 }

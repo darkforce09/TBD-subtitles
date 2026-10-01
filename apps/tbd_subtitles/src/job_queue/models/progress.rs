@@ -1,7 +1,8 @@
 //! A running job's progress: every step it will do, where each stands, and the video's length.
 //!
 //! **Role:** hold one row per step with its state, and answer which step runs, which one the
-//! window names, which failed, and which are finished and so kept.
+//! window names, which run in the background (the shot scan, and the visual lane beside the main
+//! walk), which failed, and which are finished and so kept.
 //!
 //! **Position:** held by a running `QueueItem`; changed by `job_queue::services::progress_tracking`;
 //! read by the time left, the views and the application when the job ends.
@@ -15,6 +16,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use job_model::StepName;
+use pipeline::graph;
 
 /// Where one step stands.
 #[derive(Debug, Clone, PartialEq)]
@@ -107,29 +109,59 @@ impl JobProgress {
             .collect()
     }
 
-    /// The step running now; beside the shot scan, the later step.
+    /// The step running now: the main walk's, beside the shot scan and the visual lane; else a
+    /// step running in the background.
     pub(crate) fn current_step(&self) -> Option<StepName> {
-        self.steps
-            .iter()
-            .rev()
-            .find(|row| matches!(row.state, StepState::Running { .. }))
+        let running = || {
+            self.steps
+                .iter()
+                .rev()
+                .filter(|row| matches!(row.state, StepState::Running { .. }))
+        };
+        running()
+            .find(|row| !self.runs_in_background(row.step))
+            .or_else(|| running().next())
             .map(|row| row.step)
     }
 
-    /// The step the window names as at work: the running step, else the last one started, never
-    /// the shot scan, which runs in the background; none before the first starts.
+    /// The step the window names as at work: the main walk's running step, else a visual lane
+    /// step running alone, else the last one done or failed; never the shot scan, nor a lane
+    /// step done before the main walk reaches the lane's join, which run in the background; none
+    /// before the first starts.
     pub(crate) fn shown_step(&self) -> Option<StepName> {
+        let shown = |row: &&StepRow| row.step != StepName::ShotScan;
+        if let Some(row) = self.steps.iter().rev().filter(shown).find(|row| {
+            matches!(row.state, StepState::Running { .. }) && !self.runs_in_background(row.step)
+        }) {
+            return Some(row.step);
+        }
+        let before_join = self
+            .steps
+            .iter()
+            .find(|row| row.step == graph::VISUAL_LANE_JOINS_AT)
+            .is_some_and(|row| row.state == StepState::Pending);
         self.steps
             .iter()
             .rev()
-            .filter(|row| row.step != StepName::ShotScan)
-            .find(|row| {
-                matches!(
-                    row.state,
-                    StepState::Running { .. } | StepState::Done { .. } | StepState::Failed(_)
-                )
+            .filter(shown)
+            .find(|row| match row.state {
+                StepState::Done { .. } => !(before_join && graph::in_visual_lane(row.step)),
+                StepState::Failed(_) => true,
+                _ => false,
             })
             .map(|row| row.step)
+    }
+
+    /// Whether `step`, while it runs, runs in the background of the step the window names: the
+    /// shot scan always, a visual lane step while a step of the main walk runs.
+    pub(crate) fn runs_in_background(&self, step: StepName) -> bool {
+        step == StepName::ShotScan
+            || (graph::in_visual_lane(step)
+                && self.steps.iter().any(|row| {
+                    matches!(row.state, StepState::Running { .. })
+                        && row.step != StepName::ShotScan
+                        && !graph::in_visual_lane(row.step)
+                }))
     }
 
     /// The first step that failed, if one did.

@@ -87,7 +87,10 @@ queue starts it (a busy full run keeps the queue on meanwhile). A busy job is ne
 run, never queued twice, and `queue.json` saves it as waiting, so a new window tries it again. The runner's events move each step from pending to running (with its progress
 and last line) to done or failed; the time left is each step's measured seconds per second of
 video, from the earlier jobs in the work folder or the pilot's, over the steps still to run, a
-running step judged by its own pace once it reports one. The queue is written to `queue.json`
+running step judged by its own pace once it reports one, and the visual lane and the main-walk
+steps beside it counted as the longer of the two. Steps running beside the main walk (the shot
+scan, and the visual lane while a main step runs) show as in the background, and the card names
+the main walk's step. The queue is written to `queue.json`
 after every change: a job running when the window closed waits again next time.
 
 ## Public surface
@@ -98,8 +101,8 @@ after every change: a job running when the window closed waits again next time.
 
 ## Boundaries
 
-- Depends on: `pipeline` (`run_job`, `JobOptions`, `Progress`, `CancelToken`, and `work_dir` for
-  the job databases it reads), `job_model`, `inference` (the app data folder, the model-call target),
+- Depends on: `pipeline` (`run_job`, `JobOptions`, `Progress`, `CancelToken`, `graph` for the
+  visual lane, and `work_dir` for the job databases it reads), `job_model`, `inference` (the app data folder, the model-call target),
   `crate::core` (`background`, `format`, `steps`, `ui`), `crate::job_report::models::summary`
   (a finished row's verdict and count), `serde` and `serde_json`; `eframe::egui` in `ui/` only.
 - Used by: `crate::application` (`actions::{queue, review, runner}`, `feature_views`, `window`,

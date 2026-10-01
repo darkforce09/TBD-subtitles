@@ -336,3 +336,42 @@ fn the_stroke_masks_own_the_frames_rows_that_composition_and_the_video_read() {
     assert_eq!(reads_rows(LocalizedVideo), &[Table::Frames]);
     assert!(reads_rows(TextInpaint).is_empty());
 }
+
+#[test]
+fn the_visual_lane_reads_only_the_probe_the_shot_scan_and_itself() {
+    use StepName::*;
+    for (index, step) in VISUAL_LANE.iter().enumerate() {
+        for input in inputs(*step) {
+            assert!(
+                matches!(input, ProbeDecode | ShotScan) || VISUAL_LANE[..index].contains(input),
+                "the lane's {step} reads {input}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_visual_lane_starts_after_the_shot_scan_and_before_its_steps() {
+    let start = position(VISUAL_LANE_STARTS_AT);
+    assert!(position(StepName::ShotScan) < start);
+    assert!(!in_visual_lane(VISUAL_LANE_STARTS_AT));
+    for step in VISUAL_LANE {
+        assert!(
+            start < position(step),
+            "{step} comes before the lane starts"
+        );
+        assert!(
+            !inputs(step).contains(&VISUAL_LANE_STARTS_AT),
+            "{step} reads the lane's start"
+        );
+    }
+}
+
+#[test]
+fn the_visual_lane_joins_at_the_first_step_that_reads_it() {
+    let first = StepName::ALL
+        .into_iter()
+        .find(|step| !in_visual_lane(*step) && reads_visual_lane(*step));
+    assert_eq!(first, Some(VISUAL_LANE_JOINS_AT));
+    assert!(position(VISUAL_LANE_STARTS_AT) < position(VISUAL_LANE_JOINS_AT));
+}

@@ -90,12 +90,13 @@ list and the line editor side by side.
   Check Lines keeps its count of lines to check, or a green check once none is left.
 - **Job cards:** a running job's card says what its [stage](/documentation/glossary.md#stage)
   does ("Settling the words"), the [step](/documentation/glossary.md#step) at work ("Now: Language
-  model settles the words · step 9 of 29"), a bar of the share done, the time left ("about 4 min
-  left", "Working out the time left…" until the length is known; steps the job's settings leave
-  idle add none) and the time so far. Under it nine groups: Read the video, Separate the voices,
+  model settles the words · step 9 of 29", the main walk's step), a bar of the share done, the
+  time left ("about 4 min left", "Working out the time left…" until the length is known; idle
+  steps add none) and the time so far. Under it nine groups: Read the video, Separate the voices,
   Hear the speech, Settle the words, Time the words, Lay out the subtitles, Translate on-screen
-  text, Write the subtitles and Write the localized video. Each shows its time and state; the
-  running group opens to its steps. "Show all 29 steps" opens every group.
+  text, Write the subtitles and Write the localized video, each with its time and state; the
+  running group opens to its steps, "Show all 29 steps" every group. Background steps (the shot
+  scan; text detection, reading and tracking beside a main step) never hold their group open.
   A waiting job's card gives its place, when it starts, its path, Run Next and Remove from List. A
   failed job's card names the stage and step in plain words ("Failed at Hear the speech", "Listen
   with Whisper stopped with an error."), the raw message, the finished steps kept and when Try
@@ -412,9 +413,8 @@ about the lines worth a listen ([Fix It](/documentation/features/fix_it.md)).
 | Ctrl+Enter | Check Lines | Looks Right on an unedited line; Keep Change on a Fix It change |
 | Esc | Check Lines | leave the text box; then stop the clip |
 
-Space, Delete and the arrows belong to the text box while typing and do nothing while a menu is
-open; in Check Lines the arrows move through the lines, not the sidebar, and Delete removes
-nothing.
+Space, Delete and the arrows belong to the text box while typing and do nothing while a menu
+is open; in Check Lines the arrows move through the lines, not the sidebar; Delete removes nothing.
 
 ## Data
 

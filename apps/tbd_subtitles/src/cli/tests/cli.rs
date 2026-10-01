@@ -353,6 +353,21 @@ fn step_progress_prints_once_per_tenth_whatever_the_report_size() {
 }
 
 #[test]
+fn steps_reporting_at_once_each_print_once_per_tenth() {
+    use job_model::StepName;
+    let mut printed = (0, 0);
+    for done in (0..=1_000).step_by(10) {
+        if process_command::enters_tenth(StepName::TextDetect, done, 1_000) {
+            printed.0 += 1;
+        }
+        if process_command::enters_tenth(StepName::Adjudicate, done / 2, 500) {
+            printed.1 += 1;
+        }
+    }
+    assert_eq!(printed, (11, 11));
+}
+
+#[test]
 fn process_uses_the_sign_library_unless_told_not_to() {
     assert!(!process_args(&["process", "a.mp4"]).no_library);
     assert!(process_args(&["process", "a.mp4", "--no-library"]).no_library);

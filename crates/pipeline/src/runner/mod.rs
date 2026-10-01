@@ -1,36 +1,40 @@
 //! The job runner: one video through every step, skipping what is still valid, the shot scan
-//! alongside the GPU steps, each step's measure recorded, and the report written at the end.
+//! alongside the audio steps, the visual lane alongside adjudication, each step's measure
+//! recorded, and the report written at the end.
 //!
 //! **Role:** open or create the job's work directory and database, put this run's job record and
 //! clear the steps asked to run again, walk `StepName::ALL`, run each stale step in process or in
 //! its worker, and commit its outputs with its record.
 //!
 //! **Position:** called by the app's `process` subcommand and its window; uses `resume`,
-//! `workers`, `tasks`, `report` and `rerun`.
+//! `workers`, `tasks`, `report` and `rerun`, `walk` for each step's run and `lane` for the visual
+//! lane.
 //!
 //! **Signals and state:** holds the job's `JobStore` (and so `job.redb` and `job.lock`) until the
 //! run returns; sends each worker the stored values its step reads; names the sign library to the
-//! workers of the steps that read it; commits the outputs a step
-//! wrote with its step record, in one transaction, for in-process and worker steps alike, with what
-//! the job's processes and the GPU used while the step ran (`measure::job_sampler`); puts the run's
-//! start, end and peak memory as `meta/last_run` when the walk ends; emits progress events.
+//! workers of the steps that read it; commits the outputs a step wrote with its step record, in
+//! one transaction, for in-process and worker steps alike, with what the job's processes and the
+//! GPU used while the step ran (`measure::job_sampler`); runs the shot scan and the visual lane
+//! on scoped threads beside the main walk; puts the run's start, end and peak memory as
+//! `meta/last_run` when the walk ends; emits progress events.
 //!
 //! **Invariants:** a step record exists only beside the outputs it was committed with, and a step
 //! about to run again loses its record first, so a killed job resumes from the last finished step;
 //! one worker loads the GPU at a time (the shot scan uses none); a step starts only after every
-//! step it reads has finished.
+//! step it reads has finished; a failure on any thread stops the others and is the job's error.
 
+mod lane;
 pub mod rerun;
+mod walk;
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::OnceLock;
+use std::time::UNIX_EPOCH;
 
 use inference::cuda_runtime::CudaRuntime;
 use job_model::StepName;
-use job_model::job::{JobRecord, JobRun, JobSettings, StepMeasure, StepRecord};
-use job_model::outputs::ProbeDecoded;
+use job_model::job::{JobRecord, JobRun, JobSettings, StepMeasure};
 use job_model::report::QcReport;
 use worker_channel::address::Address;
 
@@ -46,6 +50,9 @@ use crate::work_dir::{self, JobStore, WorkDir};
 use crate::workers::{self, Binaries, StepWrite, WorkerData};
 use crate::{report, resume};
 
+use lane::LaneState;
+use walk::{Begun, Steps, Tally, now_ns};
+
 /// How to run a job.
 #[derive(Debug, Clone)]
 pub struct JobOptions {
@@ -58,7 +65,7 @@ pub struct JobOptions {
     /// The folder the models are read from.
     pub models_dir: PathBuf,
     /// Stops the job: no further step starts and the running worker is killed. The runner also
-    /// sets it when a step fails, so the shot scan running alongside stops too.
+    /// sets it when a step fails, so the shot scan and the visual lane running alongside stop too.
     pub cancel: CancelToken,
     /// The machine-wide GPU lock file (`gpu.lock` in the app data folder).
     pub gpu_lock: PathBuf,
@@ -205,74 +212,75 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
         })
     };
 
-    let (mut ran, mut skipped) = (Vec::new(), Vec::new());
+    let steps = Steps::new(
+        &store,
+        &record,
+        library.as_ref(),
+        &measured,
+        progress,
+        &options.cancel,
+    );
+    // The span of the caller's job, which the lane's step spans hang from.
+    let job_span = tracing::Span::current();
+    let mut tally = Tally::default();
     std::thread::scope(|scope| -> Result<()> {
-        let mut shots = None;
+        let (mut shots, mut lane) = (None, None);
+        let mut lane_state = LaneState::Waiting;
         let walked = (|| -> Result<()> {
             for step in StepName::ALL {
-                if options.cancel.is_cancelled() {
-                    return Err(PipelineError::cancelled(format!("step {step}")));
+                steps.check_cancel(step)?;
+                let plan = lane::plan(step, lane_state);
+                if plan.join_shots
+                    && let Some(handle) = shots.take()
+                {
+                    steps.join_shots(handle)?;
+                }
+                if plan.spawn_lane {
+                    lane = Some(lane::spawn(scope, &steps, &job_span));
+                    lane_state = LaneState::Running;
+                }
+                if plan.join_lane
+                    && let Some(handle) = lane.take()
+                {
+                    tally.merge(lane::join(handle)?);
+                    lane_state = LaneState::Joined;
+                }
+                if !plan.run_here {
+                    continue;
                 }
                 // Everything this step logs, its workers' and programs' lines too, is under its span.
                 let step_span = tracing::info_span!("step", step = %step);
                 let _in_step = step_span.enter();
-                if graph::inputs(step).contains(&StepName::ShotScan)
-                    && let Some(handle) = shots.take()
-                {
-                    let scanned = join(handle)?;
-                    finish(StepName::ShotScan, scanned, progress);
-                }
-                let read = store.read()?;
-                if resume::is_valid(step, &record, &read, &work, library.as_ref()) {
-                    skipped.push(step);
-                    progress(Progress::StepSkipped(step));
-                    announce_duration(step, &read, progress);
+                if step != StepName::ShotScan {
+                    steps.run(step, &mut tally)?;
                     continue;
                 }
-                let fingerprint = resume::fingerprint(step, &record, &read, library.as_ref())?;
-                drop(read);
-                rerun::forget(&store, step)?;
-                ran.push(step);
-                progress(Progress::StepStarted(step));
-                if step == StepName::ShotScan {
-                    let snapshot = record.clone();
-                    let measured = &measured;
-                    let store = &store;
+                if let Begun::Started { fingerprint } = steps.begin(step, &mut tally)? {
+                    let steps = &steps;
                     let span = step_span.clone();
                     // The scan commits its own outputs, so a later step's outputs never wait on
                     // a transaction only this thread's join would end.
                     shots = Some(scope.spawn(move || {
                         let _in_step = span.enter();
-                        let (measure, outputs) = measured(StepName::ShotScan, &snapshot)?;
-                        stamp(store, StepName::ShotScan, fingerprint, measure, outputs)
+                        steps.complete(StepName::ShotScan, fingerprint)
                     }));
-                    continue;
                 }
-                let stamped = measured(step, &record)
-                    .and_then(|(measure, outputs)| {
-                        stamp(&store, step, fingerprint, measure, outputs)
-                    })
-                    .inspect_err(|error| {
-                        progress(Progress::StepFailed {
-                            step,
-                            message: error.to_string(),
-                        })
-                    })?;
-                finish(step, stamped, progress);
-                announce_duration(step, &store.read()?, progress);
             }
             if let Some(handle) = shots.take() {
-                let scanned = join(handle)?;
-                finish(StepName::ShotScan, scanned, progress);
+                steps.join_shots(handle)?;
+            }
+            if let Some(handle) = lane.take() {
+                tally.merge(lane::join(handle)?);
             }
             Ok(())
         })();
-        if walked.is_err() {
-            // The scope waits for the shot scan; stop it rather than wait out a long scan.
+        walked.map_err(|error| {
+            // The scope waits for the shot scan and the lane; stop them rather than wait them out.
             options.cancel.cancel();
-        }
-        walked
+            steps.job_error(error)
+        })
     })?;
+    let (ran, skipped) = tally.in_run_order();
 
     let run = JobRun {
         started_ns,
@@ -292,15 +300,6 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
         skipped,
         run,
     })
-}
-
-/// Tell the listener the video's length once the probe is there.
-fn announce_duration(step: StepName, read: &StoreRead, progress: ProgressSink) {
-    if step == StepName::ProbeDecode
-        && let Ok(Some(probe)) = read.output::<ProbeDecoded>(StepName::ProbeDecode, None)
-    {
-        progress(Progress::JobDuration(probe.probe.duration_s));
-    }
 }
 
 /// The stored values `step`'s worker receives: every value it reads, less the optional ones the
@@ -328,45 +327,4 @@ fn locate_cuda(binaries: &Binaries) -> Result<Vec<(String, String)>> {
     let runtime =
         CudaRuntime::locate(binaries.main.parent(), &runtime_dir).context("CUDA runtime")?;
     Ok(runtime.worker_env())
-}
-
-fn join(handle: std::thread::ScopedJoinHandle<'_, Result<StepRecord>>) -> Result<StepRecord> {
-    handle
-        .join()
-        .map_err(|_| PipelineError::new("step shot_scan", "the scan thread panicked"))?
-}
-
-/// `step`'s record, with the fingerprint captured before it ran, so concurrent edits remain stale;
-/// the outputs the step wrote are committed with it, in one transaction.
-fn stamp(
-    store: &Arc<JobStore>,
-    step: StepName,
-    fingerprint: String,
-    measure: StepMeasure,
-    outputs: Option<StepWrite>,
-) -> Result<StepRecord> {
-    let stamped = StepRecord {
-        fingerprint,
-        finished_ns: now_ns(),
-        measure,
-    };
-    outputs
-        .unwrap_or_else(|| StepWrite::new(store.clone()))
-        .commit(step, &stamped)?;
-    Ok(stamped)
-}
-
-/// Tell the listener `step` finished, with its measure; its record is already committed.
-fn finish(step: StepName, stamped: StepRecord, progress: ProgressSink) {
-    progress(Progress::StepFinished {
-        step,
-        measure: stamped.measure,
-    });
-}
-
-/// Now, in nanoseconds since the Unix epoch.
-fn now_ns() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos())
 }

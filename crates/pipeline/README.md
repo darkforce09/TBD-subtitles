@@ -48,8 +48,9 @@ fingerprint, documents and named files are intact is skipped; any other runs, in
 activity, the diff sheet, cue building, the on-screen text review, the quality check and the
 output) or in a worker of `tbd-subtitles` (FFmpeg, ONNX Runtime and the `claude` CLI),
 `tbd-subtitles-ggml` (Whisper) or `tbd-subtitles-llm` (the on-screen translation). The
-shot scan runs on a scoped thread beside the other steps and is joined before the first step that
-reads it. Every step's outputs are committed with its step record (fingerprint, finish time and
+shot scan runs on a scoped thread beside the audio steps and is joined before the first step that
+reads it; the visual lane (text detection, reading and tracking) runs on another beside
+adjudication and the audio steps after it, and is joined before translation. Every step's outputs are committed with its step record (fingerprint, finish time and
 measure) in one transaction, and a step about to run again loses its record first, so a killed
 job resumes from the last finished step. The step's code lives in `tasks`, which both
 binaries share, so the same body runs in the runner or in a worker. A worker reports to the runner
@@ -141,7 +142,7 @@ passes in `JobOptions`, recorded in the job record (`crates/job_model/src/job/se
   - a step reads only earlier steps, every GPU step runs in a worker, and only the Whisper steps
     run in the ggml binary, so ONNX Runtime and ggml never share a process
     (`crates/pipeline/src/graph/tests/graph.rs`);
-  - one worker runs at a time besides the shot scan, which loads no GPU, and a step record exists
+  - one GPU worker runs at a time, the visual lane's included, and a step record exists
     only beside the outputs it was committed with, so a killed job resumes from the last finished
     step (the header of `crates/pipeline/src/runner/mod.rs`);
   - a changed setting, video or upstream step reruns exactly the steps that read it, and a missing

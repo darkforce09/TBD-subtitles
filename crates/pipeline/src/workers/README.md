@@ -10,7 +10,7 @@ outputs uncommitted and its stderr, and turning what it reports into the step's 
 crates/pipeline/src/workers/
 ├── channel/     a step's inputs down the worker's stdin, its outputs into the job database
 ├── frames.rs    `read_frames`: a worker's stdout frames as progress events, outputs and its `WorkerReport`
-├── gpu_lock.rs  the machine-wide GPU lock: one GPU worker at a time across every app process
+├── gpu_lock.rs  the machine-wide GPU lock: one GPU worker at a time, naming this process's holder
 ├── mod.rs       `Binaries`, `WorkerData`, `WorkerRun` and `run_worker`
 └── tests/       unit tests for the worker frames, the verdict, a missing binary and the GPU lock
 ```
@@ -24,8 +24,13 @@ step reads. It starts `<binary> worker <step> <job dir>` through `child_process:
 the step's timeout from `graph`, the environment the runner passes (the CUDA runtime for GPU
 steps) and the job's cancel token, which the child's watchdog watches: a cancelled worker is killed with its process
 group and the step fails as cancelled. A GPU step first takes `gpu_lock`, an exclusive `flock` on
-`gpu.lock` in the app data folder, waiting (and saying so once) while another process of the app
-holds it; the kernel drops the lock when its holder dies. It reads the device's memory first and
+`gpu.lock` in the app data folder, on a descriptor of its own, waiting (and saying so once) while
+another holder has it: another process of the app, or another GPU step of this one (the visual
+lane's and the main walk's). A process-wide table, changed under the same mutex as the `flock`
+calls, names the step and job holding each lock this process holds, so the waiting line
+(`gpu_lock::waiting_message`) says "waiting for the GPU: text_detect of this job is using it",
+"… of another job …", or "another run of the app is using it" when no step of this process holds
+it; the kernel drops the lock when its holder dies. It reads the device's memory first and
 starts a `measure::gpu_monitor::Monitor` on the worker's pid. A step with inputs gets a piped
 stdin, which `channel::inputs::send_inputs` fills from one read snapshot on a thread of its own;
 without inputs the worker's stdin is `/dev/null`. The runner passes every value `graph::reads`
@@ -75,8 +80,12 @@ inputs and outputs.
   the app's `process` and `fix` subcommands (`apps/tbd_subtitles/src/cli/`) and its window
   (`apps/tbd_subtitles/src/application/actions/runner.rs`) for `Binaries`.
 - Rules:
-  - one GPU worker runs at a time on the machine, and a cancelled wait never takes the lock
-    (`a_held_lock_waits_until_released`, `a_cancelled_wait_gives_up` in `tests/gpu_lock.rs`);
+  - one GPU worker runs at a time on the machine, two steps of one process included, the waiter
+    learns which step of this process holds the lock, and a cancelled wait never takes the lock
+    (`a_held_lock_waits_until_released_and_names_its_holder`, `a_released_lock_names_no_holder`,
+    `a_cancelled_wait_gives_up` in `tests/gpu_lock.rs`);
+  - the waiting line names a holder of this process, of this job or another, and otherwise
+    another run of the app (`the_waiting_line_names_a_holder_of_this_process`);
   - a missing binary fails with where to look (`a_missing_binary_fails_naming_it` in
     `tests/workers.rs`);
   - a progress frame becomes an advance and a model call frame a model call, and a model call
