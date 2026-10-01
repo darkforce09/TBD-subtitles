@@ -15,8 +15,8 @@ crates/inference/src/onnx/
 ├── parakeet_ctc/  Parakeet-CTC-0.6B: CTC log-probabilities and BPE tokens for forced alignment
 ├── parakeet_tdt/  Parakeet-TDT-0.6B-v2 through parakeet-rs: words with times from 16 kHz chunks
 ├── separation/    the separation models, their STFT and the streaming overlap-add
-├── session.rs     opening a model on CUDA without a silent CPU fall-back, and describing its inputs
-└── tests/         checks against the downloaded models, run on the host when asked for
+├── session.rs     opening a model on CUDA within a memory cap, never on the CPU; describing it
+└── tests/         the CUDA provider options; model checks run on the host when asked for
 ```
 
 ## How it works
@@ -26,6 +26,14 @@ CUDA execution provider marked `error_on_failure`: when the CUDA libraries canno
 open fails instead of running on the CPU. `ort` finds ONNX Runtime through `ORT_DYLIB_PATH`, and
 ONNX Runtime finds its CUDA provider and the CUDA libraries through `LD_LIBRARY_PATH`; both come
 from `crate::cuda_runtime::CudaRuntime::worker_env`, set by the process that starts the worker.
+
+Every CUDA session registers the same provider, `session::cuda_provider`: its memory arena is
+capped at `SESSION_MEMORY_LIMIT` (4.5 GiB) and grows by what each allocation requests, not by
+powers of two. Without the cap the arena and the cuDNN convolution search size themselves to the
+card's free memory: separation held 7,264 MiB with 7,360 MiB free. The search keeps ONNX
+Runtime's exhaustive default and its maximum workspace, so it chooses the same algorithms
+whenever they fit within the cap, and a worker with its CUDA context stays within the 5.5 GB per
+GPU worker that the project allows.
 
 ## Boundaries
 
@@ -38,6 +46,8 @@ from `crate::cuda_runtime::CudaRuntime::worker_env`, set by the process that sta
 - Rules:
   - one `ort` version in the whole dependency tree (the coding standards; no gate holds it);
   - a CUDA session never falls back to the CPU (`error_on_failure` in `session.rs`; review);
+  - every CUDA session's arena is capped at `SESSION_MEMORY_LIMIT` (`cuda_provider` in
+    `session.rs`; `tests/session.rs`);
   - the model checks in `tests/models.rs` are `#[ignore]` because they need the downloaded models
     and the host's GPU.
 

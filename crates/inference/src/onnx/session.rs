@@ -9,12 +9,14 @@
 //! **Signals and state:** one ONNX Runtime environment per process, created on first use.
 //!
 //! **Invariants:** a CUDA session either registers the CUDA provider or fails; it never runs on
-//! the CPU while claiming the GPU.
+//! the CPU while claiming the GPU. Each CUDA session's memory arena stays within
+//! [`SESSION_MEMORY_LIMIT`] and grows by what is requested, so a worker, with its CUDA context,
+//! stays within the 5.5 GB VRAM cap per GPU worker whatever the card has free.
 
 use std::fmt;
 use std::path::Path;
 
-use ort::ep;
+use ort::ep::{self, ArenaExtendStrategy};
 use ort::session::Session;
 use ort::session::builder::GraphOptimizationLevel;
 
@@ -49,6 +51,23 @@ pub enum Device {
     Cpu,
 }
 
+/// The most VRAM one CUDA session's memory arena may take: 4.5 GiB. The largest measured model,
+/// separation, peaks near 4.3 GB; with the CUDA context the worker stays within its 5.5 GB cap.
+pub const SESSION_MEMORY_LIMIT: usize = 4608 * 1024 * 1024;
+
+/// The CUDA execution provider every CUDA session registers.
+///
+/// The arena is capped at [`SESSION_MEMORY_LIMIT`] and grows by what each allocation requests
+/// rather than by powers of two. The cuDNN convolution search keeps ONNX Runtime's exhaustive
+/// default and its maximum workspace: the limit bounds the workspace the search may take, so the
+/// same algorithms are chosen whenever they fit, and the choice no longer depends on how much
+/// VRAM happens to be free.
+pub fn cuda_provider() -> ep::CUDA {
+    ep::CUDA::default()
+        .with_memory_limit(SESSION_MEMORY_LIMIT)
+        .with_arena_extend_strategy(ArenaExtendStrategy::SameAsRequested)
+}
+
 /// Open `model` on `device` with full graph optimisation.
 pub fn open(model: &Path, device: Device) -> Result<Session, OnnxError> {
     let context = || format!("opening {}", model.display());
@@ -58,7 +77,7 @@ pub fn open(model: &Path, device: Device) -> Result<Session, OnnxError> {
         .map_err(|e| OnnxError::new(context(), e))?;
     if device == Device::Cuda {
         builder = builder
-            .with_execution_providers([ep::CUDA::default().build().error_on_failure()])
+            .with_execution_providers([cuda_provider().build().error_on_failure()])
             .map_err(|e| OnnxError::new(context(), e))?;
     }
     builder
@@ -78,3 +97,7 @@ pub fn describe(session: &Session) -> Vec<String> {
         .map(|o| format!("output {}: {:?}", o.name(), o.dtype()));
     inputs.chain(outputs).collect()
 }
+
+#[cfg(test)]
+#[path = "tests/session.rs"]
+mod tests;
