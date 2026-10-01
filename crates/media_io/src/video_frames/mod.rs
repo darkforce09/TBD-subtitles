@@ -1,14 +1,15 @@
 //! Bounded video decoding with source presentation timestamps.
 //!
-//! **Role:** stream a video's frames from FFmpeg as raw pixels (rgb24 scaled to a size, or every
-//! frame at its native size in a chosen pixel format for the encoder), each paired with its
-//! presentation interval from the container's packet table, without retaining the video; `still`
-//! decodes a single frame of the same timeline and `region` a run of cropped frames.
+//! **Role:** stream a video's frames from FFmpeg as raw pixels (rgb24 scaled to a size, every
+//! frame at its native size in a chosen pixel format for the encoder, or full-resolution 8-bit
+//! YUV 4:2:0 in recycled buffers), each paired with its presentation interval from the
+//! container's packet table, without retaining the video; `still` decodes a single frame of the
+//! same timeline and `region` a run of cropped frames.
 //! **Position:** media input for text detection, text replacement and the localize stage that
 //! feeds the localized-video encoder.
 //! **Signals and state:** the packet timeline (`packets.rs`, two bounded ffprobe runs) before
-//! decoding; then one streaming FFmpeg decoder and its stdout pipe. The stream holds the
-//! timeline, one frame at a time and the count of frames handed out.
+//! decoding; then one streaming FFmpeg decoder and its stdout pipe. A stream holds the timeline,
+//! one frame at a time or a pool of recycled buffers, and the count of frames handed out.
 //! **Invariants:** no frame-rate conversion. The decoder yields exactly one frame per timeline
 //! entry: a missing, partial or surplus frame is an error, never a shifted timestamp. Every
 //! timestamp uses the common container origin, preserving the video offset relative to audio.
@@ -16,11 +17,14 @@
 
 mod native;
 pub mod packets;
+pub mod pipe;
 pub mod region;
 pub mod still;
+pub mod yuv_stream;
 
 pub use native::PixelFormat;
 pub use packets::timeline;
+pub use yuv_stream::{YuvOptions, YuvStream};
 
 use std::io::{ErrorKind, Read};
 use std::path::Path;

@@ -30,8 +30,6 @@ oar-ocr = { version = "=0.9.2", default-features = false, features = ["cuda"] }
 ndarray = "0.17"
 # The detection benchmark's parallel post-processing and colour conversion.
 rayon = "1"
-# The detection benchmark's pipe size (`F_SETPIPE_SZ`).
-libc = { version = "0.2", default-features = false }
 # The detection benchmark's box overlays on full-resolution frames.
 imageproc = { version = "0.26", default-features = false }
 # The detection benchmark's GPU and NVDEC utilisation, read from the driver's NVML.

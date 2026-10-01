@@ -13,7 +13,7 @@ crates/stages/src/onscreen_text/replace/
 ├── inpaint/   the inpainting contract and the pass that fills every plate's erased strokes
 ├── mask/      stroke masks, lettering style, per-frame placement and background plates
 ├── mod.rs     the `RegionSource` contract and which occurrences Claude found (`found_by_claude`)
-├── source.rs  `FfmpegRegions`: full-resolution region crops decoded by FFmpeg
+├── source.rs  `FfmpegRegions`: full-resolution YUV region crops, converted in the stream's colour
 ├── verify/    the read-back check: a local OCR approves each lettered replacement from its frames
 └── tests/     region decoding checks for `FfmpegRegions` and Claude-found ids
 ```
@@ -36,6 +36,16 @@ the decoded frame timeline from zero; every path in a document is relative to th
 An occurrence whose id ends in `-c` and a number was found by Claude on a keyframe: its one quad
 is Claude's loose box, which the mask step pads and refits to the ink and the compose step ranks
 below the detector's own occurrences of one sign.
+
+`source::FfmpegRegions` is the production `RegionSource`, which the mask and verify steps
+read. It reads the timeline once and takes the stream's matrix and range from the probe
+(`Coefficients::of`). Each `frames` call starts one `media_io` `RegionStream`: FFmpeg seeks to the
+span's first frame and crops `yuv420p` to the even-aligned rectangle around the region, half the
+bytes of rgb24. Rust then trims each crop to the region and converts it to rgb24 in the stream's
+own colour. The decode and conversion run on their own thread through a bounded `FrameQueue`, with
+the YUV buffers recycled from a pool, so FFmpeg keeps decoding while the visitor works. A visitor
+that returns an error ends the decoder. The crops agree with FFmpeg's own rgb24 conversion to
+within a few levels, so the mask, inpaint and verify steps' revisions count the change.
 
 ## Boundaries
 

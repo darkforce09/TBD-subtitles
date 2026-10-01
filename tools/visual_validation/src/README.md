@@ -27,7 +27,7 @@ Commands use production backends and write explicit outputs. `detect_bench/` mea
   `crates/inference`, `crates/job_model`, `crates/media_io`, `crates/subtitle_formats`,
   `crates/child_process` and `crates/worker_channel` (the `frames` table name); the crates.io
   crates `clap`, `anyhow`, `image`, `serde`, `serde_json`, `ureq`, and for the benchmark
-  `oar-ocr`, `ndarray`, `rayon`, `libc` and `nvml-wrapper`; FFmpeg.
+  `oar-ocr`, `ndarray`, `rayon` and `nvml-wrapper`; FFmpeg.
 - Used by: the `visual_validation` binary, run through `cargo run -p visual_validation`.
 - Rules: source videos are read-only and annotation failures never become passing verdicts
   (`invalid_annotations_fail_closed_with_a_written_verdict`,

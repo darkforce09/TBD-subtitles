@@ -9195,7 +9195,6 @@ dependencies = [
  "imageproc 0.26.2",
  "inference",
  "job_model",
- "libc",
  "media_io",
  "ndarray",
  "nvml-wrapper",

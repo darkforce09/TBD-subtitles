@@ -79,7 +79,7 @@ Annotations contain source frame rate, height and expected occurrences with text
 - Depends on: the production crates `crates/inference`, `crates/job_model`, `crates/stages`,
   `crates/media_io`, `crates/pipeline`, `crates/worker_channel`, `crates/subtitle_formats` and
   `crates/child_process`; the crates.io crates `image`, `serde`, `serde_json`, `clap`, `anyhow`,
-  `ureq`, and for `detect-bench` `oar-ocr`, `ndarray`, `rayon`, `libc` and `nvml-wrapper`;
+  `ureq`, and for `detect-bench` `oar-ocr`, `ndarray`, `rayon` and `nvml-wrapper`;
   FFmpeg, and the app's release binaries for `run`'s workers.
 - Used by: development validation on owner-provided media.
 - Rules: no models are converted, missing readable occurrences fail

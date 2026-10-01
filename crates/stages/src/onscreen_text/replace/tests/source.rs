@@ -1,6 +1,7 @@
 use std::process::Command;
 
-use media_io::video_frames::{Decode, FrameStream};
+use media_io::video_frames::{Decode, FrameStream, PixelFormat};
+use media_io::yuv::{Matrix, Range, Yuv420, to_rgb};
 
 use super::*;
 
@@ -32,8 +33,9 @@ fn scripted(timeline: Vec<(f64, f64)>) -> FfmpegRegions {
         },
         video: PathBuf::from("/videos/v.mkv"),
         fps: 24.0,
-        timeline,
+        timeline: timeline.into(),
         size: (64, 36),
+        colour: Coefficients::of(&stream(64, 36)),
     }
 }
 
@@ -78,17 +80,6 @@ fn a_span_outside_the_timeline_or_a_rectangle_outside_the_frame_is_refused() {
 }
 
 #[test]
-fn the_seek_margin_follows_the_gap_to_the_previous_frame() {
-    let regions = scripted(vec![(0.0, 0.05), (0.05, 0.15), (0.15, 0.2), (0.2, 0.2)]);
-    assert_eq!(regions.seek_rate(0), 24.0);
-    assert!((regions.seek_rate(1) - 20.0).abs() < 1e-9);
-    assert!((regions.seek_rate(2) - 10.0).abs() < 1e-9);
-    assert!((regions.seek_rate(3) - 20.0).abs() < 1e-9);
-    let clipped = scripted(vec![(0.0, 0.0), (0.0, 0.04)]);
-    assert_eq!(clipped.seek_rate(1), 24.0, "a zero gap falls back");
-}
-
-#[test]
 fn an_unreported_frame_rate_falls_back_to_24() {
     let mut unknown = stream(64, 36);
     unknown.frame_rate_den = 0;
@@ -114,22 +105,56 @@ fn every_crop_of_a_span_is_the_same_rectangle_of_the_source_frame() {
         .unwrap();
     assert!(made.success());
     let programs = Programs::default();
-    let mut frames =
-        FrameStream::open(&programs, &video, (64, 36), 0.0, 24.0, Decode::Exact).unwrap();
+    let colour = Coefficients::new(Matrix::Bt601, Range::Limited);
+    let mut frames = FrameStream::open_native(
+        &programs,
+        &video,
+        (64, 36),
+        0.0,
+        24.0,
+        PixelFormat::Yuv420p,
+        Decode::Exact,
+    )
+    .unwrap();
     let mut whole = Vec::new();
     while let Some(frame) = frames.next_frame().unwrap() {
-        whole.push(RgbImage::from_raw(64, 36, frame.rgb).unwrap());
+        let picture = Yuv420::planar(&frame.rgb, 64, 36).unwrap();
+        let mut rgb = vec![0; 64 * 36 * 3];
+        assert!(to_rgb(&picture, &colour, &mut rgb));
+        whole.push(RgbImage::from_raw(64, 36, rgb).unwrap());
     }
     frames.finish().unwrap();
+    let mut ffmpeg_rgb =
+        FrameStream::open(&programs, &video, (64, 36), 0.0, 24.0, Decode::Exact).unwrap();
+    let mut reference = Vec::new();
+    while let Some(frame) = ffmpeg_rgb.next_frame().unwrap() {
+        reference.push(RgbImage::from_raw(64, 36, frame.rgb).unwrap());
+    }
+    ffmpeg_rgb.finish().unwrap();
     let mut regions = FfmpegRegions::open(&programs, &video, &stream(64, 36)).unwrap();
     assert_eq!(regions.timeline().len(), 12);
     assert_eq!(regions.frame_size(), (64, 36));
+    assert_eq!(
+        regions.colour, colour,
+        "an untagged small stream is BT.601 limited"
+    );
     let area = rect(7, 5, 19, 13);
     let mut seen = Vec::new();
     regions
         .frames(area, 3, 8, &mut |index, crop| {
             let expected = image::imageops::crop_imm(&whole[index as usize], 7, 5, 19, 13);
             assert!(crop == expected.to_image(), "frame {index} differs");
+            let ffmpeg = image::imageops::crop_imm(&reference[index as usize], 7, 5, 19, 13);
+            let worst = crop
+                .as_raw()
+                .iter()
+                .zip(ffmpeg.to_image().as_raw())
+                .map(|(ours, theirs)| ours.abs_diff(*theirs))
+                .max();
+            assert!(
+                worst <= Some(2),
+                "frame {index} is {worst:?} levels from rgb24"
+            );
             seen.push(index);
             Ok(())
         })

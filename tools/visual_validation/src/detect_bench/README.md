@@ -50,7 +50,7 @@ the default 960.
 - Depends on: `crates/inference` (`cuda_runtime`, `model_store`), `crates/media_io`
   (`Programs`, `yuv`, `probe`), `crates/pipeline` (`measure::gpu_monitor`,
   `measure::process_tree::clock_ticks`), `crates/child_process`; the crates.io crates
-  `oar-ocr`, `ndarray`, `rayon`, `libc`, `nvml-wrapper`, `image`, `clap` and `anyhow`; FFmpeg.
+  `oar-ocr`, `ndarray`, `rayon`, `nvml-wrapper`, `image`, `clap` and `anyhow`; FFmpeg.
 - Used by: `tools/visual_validation/src/main.rs` (the `detect-bench` command).
 - Rules: the source video is only read; a failed configuration reports its error in its row
   rather than ending the bench; no box

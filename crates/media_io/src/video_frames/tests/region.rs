@@ -1,7 +1,11 @@
 use std::path::PathBuf;
+use std::time::Duration;
+
+use child_process::Run;
 
 use super::*;
-use crate::video_frames::{Decode, FrameStream};
+use crate::video_frames::{Decode, FrameStream, timeline};
+use crate::yuv::{Matrix, Range};
 
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("region-frames-{name}-{}", std::process::id()));
@@ -43,49 +47,56 @@ fn cropped(frame: &[u8], (x, y, width, height): (u32, u32, u32, u32)) -> Vec<u8>
     crop
 }
 
-#[test]
-fn the_arguments_seek_half_a_frame_early_and_crop_after_conversion() {
-    let args = region_args(Path::new("/videos/a b.mkv"), (5, 3, 20, 11), 1.0, 25.0, 7);
-    let expected: Vec<String> = [
-        "-nostdin",
-        "-hide_banner",
-        "-v",
-        "error",
-        "-seek_timestamp",
-        "0",
-        "-ss",
-        "0.980000",
-        "-noautorotate",
-        "-i",
-        "/videos/a b.mkv",
-        "-map",
-        "0:v:0",
-        "-an",
-        "-sn",
-        "-dn",
-        "-vf",
-        "scale=iw:ih,format=rgb24,crop=20:11:5:3",
-        "-frames:v",
-        "7",
-        "-fps_mode",
-        "passthrough",
-        "-pix_fmt",
-        "rgb24",
-        "-f",
-        "rawvideo",
-        "pipe:1",
-    ]
-    .map(String::from)
-    .to_vec();
-    assert_eq!(args, expected);
-    let clamped = region_args(Path::new("v.mkv"), (0, 0, 2, 2), 0.0, 24.0, 1);
-    assert_eq!(clamped[7], "0.000000", "the seek clamps at the start");
+/// The colour FFmpeg's rgb24 conversion gives an untagged standard-definition stream.
+fn untagged() -> Coefficients {
+    Coefficients::new(Matrix::Bt601, Range::Limited)
+}
+
+fn request(region: (u32, u32, u32, u32), first: u64, count: u64) -> RegionRequest {
+    RegionRequest {
+        frame_size: (64, 36),
+        fps: 24.0,
+        region,
+        first,
+        count,
+        colour: untagged(),
+    }
 }
 
 #[test]
-fn the_deadline_grows_with_the_frame_count() {
-    assert_eq!(deadline(1), Duration::from_secs_f64(120.25));
-    assert_eq!(deadline(2400), Duration::from_secs(720));
+fn an_odd_region_is_cropped_on_even_edges_and_trimmed_back() {
+    let odd = RegionCrop::around((7, 5, 19, 13), (64, 36)).unwrap();
+    assert_eq!(odd.decoded, (6, 4, 20, 14));
+    assert_eq!(
+        odd.trim,
+        Rect {
+            x: 1,
+            y: 1,
+            width: 19,
+            height: 13
+        }
+    );
+    let even = RegionCrop::around((8, 4, 20, 10), (64, 36)).unwrap();
+    assert_eq!(even.decoded, (8, 4, 20, 10));
+    assert_eq!((even.trim.x, even.trim.y), (0, 0));
+    let corner = RegionCrop::around((63, 35, 1, 1), (64, 36)).unwrap();
+    assert_eq!(corner.decoded, (62, 34, 2, 2));
+    assert_eq!((corner.trim.x, corner.trim.y), (1, 1));
+    let odd_frame = RegionCrop::around((60, 0, 5, 4), (65, 36)).unwrap();
+    assert_eq!(
+        odd_frame.decoded,
+        (60, 0, 5, 4),
+        "clamped to an odd frame's edge"
+    );
+    for region in [
+        (0, 0, 0, 4),
+        (0, 0, 4, 0),
+        (60, 0, 5, 4),
+        (0, 33, 4, 4),
+        (u32::MAX, 0, 2, 2),
+    ] {
+        assert!(RegionCrop::around(region, (64, 36)).is_err(), "{region:?}");
+    }
 }
 
 #[test]
@@ -95,75 +106,134 @@ fn an_invalid_request_is_refused_before_anything_runs() {
         ..Programs::default()
     };
     let video = Path::new("v.mkv");
-    for (crop, time, fps, count) in [
-        ((0, 0, 0, 4), 0.0, 24.0, 1),
-        ((0, 0, 4, 4), -1.0, 24.0, 1),
-        ((0, 0, 4, 4), f64::NAN, 24.0, 1),
-        ((0, 0, 4, 4), 0.0, 0.0, 1),
-        ((0, 0, 4, 4), 0.0, 24.0, 0),
+    let timeline: Arc<[(f64, f64)]> = (0..12)
+        .map(|i| (i as f64 / 24.0, (i + 1) as f64 / 24.0))
+        .collect::<Vec<_>>()
+        .into();
+    let odd_edge = RegionRequest {
+        frame_size: (65, 36),
+        ..request((60, 0, 5, 4), 0, 1)
+    };
+    let no_rate = RegionRequest {
+        fps: 0.0,
+        ..request((0, 0, 4, 4), 0, 1)
+    };
+    for bad in [
+        request((0, 0, 0, 4), 0, 1),
+        request((0, 0, 80, 8), 0, 1),
+        request((0, 0, 4, 4), 0, 0),
+        request((0, 0, 4, 4), 10, 5),
+        request((0, 0, 4, 4), 12, 1),
+        odd_edge,
+        no_rate,
     ] {
-        assert!(matches!(
-            RegionStream::open(&programs, video, crop, time, fps, count),
-            Err(MediaError::Parse(_))
-        ));
+        assert!(
+            matches!(
+                RegionStream::open(&programs, video, timeline.clone(), bad),
+                Err(MediaError::Parse(_))
+            ),
+            "{bad:?}"
+        );
     }
 }
 
 #[test]
 #[ignore = "needs FFmpeg"]
-fn a_region_run_is_the_same_rectangle_of_the_streamed_frames() {
+fn yuv_region_crops_match_the_rgb24_route_within_two_levels() {
     let dir = scratch("match");
     let video = pattern(&dir);
     let programs = Programs::default();
     let mut stream =
         FrameStream::open(&programs, &video, (64, 36), 0.0, 24.0, Decode::Exact).unwrap();
-    let timeline = stream.timeline().to_vec();
+    let timeline: Arc<[(f64, f64)]> = stream.timeline().to_vec().into();
     let mut frames = Vec::new();
     while let Some(frame) = stream.next_frame().unwrap() {
         frames.push(frame.rgb);
     }
     stream.finish().unwrap();
     assert_eq!(frames.len(), 12);
-    let crop = (5, 3, 21, 11);
-    for (first, count) in [(5usize, 4u64), (0, 12), (11, 1)] {
-        let mut region =
-            RegionStream::open(&programs, &video, crop, timeline[first].0, 24.0, count).unwrap();
+    let mut levels = [0usize; 256];
+    for (region, first, count) in [
+        ((7, 5, 19, 13), 5u64, 4u64),
+        ((0, 0, 64, 36), 0, 12),
+        ((5, 3, 21, 11), 11, 1),
+        ((63, 35, 1, 1), 2, 3),
+    ] {
+        let mut crops = RegionStream::open(
+            &programs,
+            &video,
+            timeline.clone(),
+            request(region, first, count),
+        )
+        .unwrap();
         let mut index = first;
-        while let Some(rgb) = region.next_frame().unwrap() {
-            assert_eq!(rgb.len(), 21 * 11 * 3);
-            assert!(
-                rgb == cropped(&frames[index], crop),
-                "frame {index} differs"
-            );
+        while let Some(crop) = crops.next_frame().unwrap() {
+            assert_eq!(crop.index, index);
+            assert_eq!(crop.rgb.len(), (region.2 * region.3 * 3) as usize);
+            let reference = cropped(&frames[index as usize], region);
+            for (ours, theirs) in crop.rgb.iter().zip(&reference) {
+                levels[usize::from(ours.abs_diff(*theirs))] += 1;
+            }
             index += 1;
         }
-        region.finish().unwrap();
-        assert_eq!(index, first + count as usize);
+        crops.finish().unwrap();
+        assert_eq!(index, first + count);
     }
+    let samples: usize = levels.iter().sum();
+    let worst = levels.iter().rposition(|n| *n > 0).unwrap_or(0);
+    let beyond_two: usize = levels[3..].iter().sum();
+    println!("differences by level: {:?}; max {worst}", &levels[..=worst]);
+    assert!(worst <= 3, "max difference {worst}");
+    assert!(
+        beyond_two * 100 <= samples,
+        "{beyond_two} of {samples} beyond two levels"
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
 #[ignore = "needs FFmpeg"]
-fn a_run_past_the_end_or_wider_than_the_frame_is_an_error() {
-    let dir = scratch("short");
+fn crops_run_ahead_through_the_queue_in_index_order() {
+    let dir = scratch("queue");
     let video = pattern(&dir);
     let programs = Programs::default();
-    let time_s = 10.0 / 24.0;
-    let mut region = RegionStream::open(&programs, &video, (0, 0, 8, 8), time_s, 24.0, 5).unwrap();
+    let timeline: Arc<[(f64, f64)]> = timeline(&programs, &video, 0.0, 24.0).unwrap().into();
+    let mut whole = Vec::new();
+    let mut crops = RegionStream::open(
+        &programs,
+        &video,
+        timeline.clone(),
+        request((7, 5, 19, 13), 3, 6),
+    )
+    .unwrap();
+    while let Some(crop) = crops.next_frame().unwrap() {
+        whole.push(crop);
+    }
+    crops.finish().unwrap();
+    let mut queue = RegionStream::open(
+        &programs,
+        &video,
+        timeline.clone(),
+        request((7, 5, 19, 13), 3, 6),
+    )
+    .unwrap()
+    .spawn();
     let mut read = 0;
-    while region.next_frame().unwrap().is_some() {
+    while let Some(crop) = queue.recv().unwrap() {
+        assert_eq!(crop.index, whole[read].index);
+        assert!(crop.rgb == whole[read].rgb);
         read += 1;
     }
-    assert_eq!(read, 2);
-    match region.finish() {
-        Err(MediaError::Parse(message)) => {
-            assert_eq!(message, "region decode ended after 2 of 5 frames")
-        }
-        other => panic!("expected a short run, got {other:?}"),
-    }
-    let mut outside = RegionStream::open(&programs, &video, (0, 0, 80, 8), 0.0, 24.0, 1).unwrap();
-    assert!(outside.next_frame().unwrap().is_none());
-    assert!(matches!(outside.finish(), Err(MediaError::Exit { .. })));
+    queue
+        .finish(|| MediaError::Parse("the decode thread panicked".into()))
+        .unwrap();
+    assert_eq!(read, 6);
+    let mut early = RegionStream::open(&programs, &video, timeline, request((0, 0, 8, 8), 0, 12))
+        .unwrap()
+        .spawn();
+    assert!(early.recv().unwrap().is_some());
+    early
+        .finish(|| MediaError::Parse("the decode thread panicked".into()))
+        .unwrap();
     std::fs::remove_dir_all(dir).unwrap();
 }

@@ -44,9 +44,11 @@ something unreadable, or the video has no usable audio track.
   `crates/pipeline/`, `apps/tbd_subtitles/`, `tools/stack_spike/`, `tools/stack_spike_ggml/` and
   `tools/visual_validation/`.
 - `video_frames::{FrameStream, VideoFrame, Decode, PixelFormat, timeline}` (`FrameStream::open`,
-  `open_native`, `timeline`, `next_frame`, `finish`), `video_frames::still::still` and
-  `video_frames::region::RegionStream`: for the visible-text and localize stages in
-  `crates/stages/`.
+  `open_native`, `timeline`, `next_frame`, `finish`), `video_frames::{YuvStream, YuvOptions}`
+  (full-resolution yuv420p or NVDEC nv12 frames from any index, `spawn` onto a `FrameQueue`),
+  `video_frames::pipe` (the enlarged frame pipe), `video_frames::still::still` and
+  `video_frames::region::{RegionStream, RegionRequest, RegionCrop, RegionFrame}`: for the
+  visible-text and localize stages in `crates/stages/` and the detection benchmark.
 - `encode::{Encoder, EncodeSpec, VideoColour, EncoderProcess, available_encoder, encode_args,
   is_constant_frame_rate}`: for the localize stage in `crates/stages/src/localize/`.
 - `yuv::{Yuv420, YuvFrame, Coefficients, Matrix, Range, to_rgb, to_rgb_parallel,

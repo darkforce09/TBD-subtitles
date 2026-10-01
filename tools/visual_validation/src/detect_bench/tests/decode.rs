@@ -33,9 +33,3 @@ fn frame_sizes_follow_the_pixel_format() {
     assert_eq!(Route::Rgb24Wide.frame_bytes((1920, 1080)), 6_220_800);
     assert_eq!(Route::NvdecNv12Wide.frame_bytes((1920, 1080)), 3_110_400);
 }
-
-#[test]
-fn the_wide_pipe_never_exceeds_one_mebibyte() {
-    let size = wide_pipe();
-    assert!(size > 0 && size <= WIDE_PIPE);
-}

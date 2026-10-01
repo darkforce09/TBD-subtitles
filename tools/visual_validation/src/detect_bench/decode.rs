@@ -6,13 +6,13 @@
 //! YUV 4:2:0 conversion of one frame; and hold every sample-step frame of the clip in memory at
 //! full resolution or as a proxy.
 //! **Position:** the decode section of `detect-bench` and the frame source of its detector
-//! sections; runs FFmpeg as a child through `child_process`.
+//! sections; runs FFmpeg as a child through `child_process`, and enlarges its pipe through
+//! `media_io::video_frames::pipe`.
 //! **Signals and state:** one FFmpeg child and its stdout pipe per route.
 //! **Invariants:** the source is only read; the pipe is enlarged on the read end before reading,
 //! never past the system's `pipe-max-size`; a route that fails reports its error in its row.
 
 use std::io::{ErrorKind, Read};
-use std::os::fd::AsRawFd;
 use std::path::Path;
 use std::process::ChildStdout;
 use std::time::{Duration, Instant};
@@ -21,13 +21,11 @@ use anyhow::{Context, Result};
 use child_process::{Run, Running};
 use image::RgbImage;
 use media_io::Programs;
+use media_io::video_frames::pipe;
 
 use super::table::{Table, optional};
 use super::usage::Sampler;
 use media_io::yuv::{self, Coefficients, Matrix, Range, Yuv420};
-
-/// The pipe size asked for on the enlarged routes.
-const WIDE_PIPE: usize = 1 << 20;
 
 /// The part of the video measured.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -127,34 +125,14 @@ pub fn ffmpeg_args(
     args
 }
 
-/// The size the enlarged routes ask for: 1 MiB, or the system's `pipe-max-size` when smaller.
-fn wide_pipe() -> usize {
-    std::fs::read_to_string("/proc/sys/fs/pipe-max-size")
-        .ok()
-        .and_then(|text| text.trim().parse::<usize>().ok())
-        .map_or(WIDE_PIPE, |max| max.min(WIDE_PIPE))
-}
-
-/// Resize `pipe` to `bytes` when given; the pipe's size afterwards.
-fn size_pipe(pipe: &ChildStdout, bytes: Option<usize>) -> Result<usize> {
-    let fd = pipe.as_raw_fd();
-    if let Some(bytes) = bytes {
-        // SAFETY: `fd` is the open read end of the child's stdout pipe, owned by `pipe`.
-        let set = unsafe { libc::fcntl(fd, libc::F_SETPIPE_SZ, bytes as libc::c_int) };
-        anyhow::ensure!(
-            set >= 0,
-            "F_SETPIPE_SZ: {}",
-            std::io::Error::last_os_error()
-        );
-    }
-    // SAFETY: as above; F_GETPIPE_SZ only reads the pipe's capacity.
-    let size = unsafe { libc::fcntl(fd, libc::F_GETPIPE_SZ) };
-    anyhow::ensure!(
-        size >= 0,
-        "F_GETPIPE_SZ: {}",
-        std::io::Error::last_os_error()
-    );
-    Ok(size as usize)
+/// Enlarge `pipe` through `media_io` when `wide`; the pipe's size afterwards.
+fn size_pipe(pipe: &ChildStdout, wide: bool) -> Result<usize> {
+    let size = if wide {
+        pipe::enlarge(pipe)
+    } else {
+        pipe::capacity(pipe)
+    };
+    Ok(size?)
 }
 
 /// Start FFmpeg with `args` and take its stdout.
@@ -211,7 +189,7 @@ fn decode(
     route: Route,
 ) -> Result<Decoded> {
     let (decoder, mut pipe) = spawn(programs, route.args(video, clip, size))?;
-    let pipe_bytes = size_pipe(&pipe, route.wide().then(wide_pipe))?;
+    let pipe_bytes = size_pipe(&pipe, route.wide())?;
     let mut buffer = vec![0u8; route.frame_bytes(size)];
     let mut first = Vec::new();
     let mut frames = 0u64;
@@ -355,7 +333,7 @@ pub fn samples(
     };
     let filter = format!("select=not(mod(n\\,{step})),scale={}:{}", size.0, size.1);
     let (decoder, mut pipe) = spawn(programs, ffmpeg_args(input, video, clip, &filter, "rgb24"))?;
-    size_pipe(&pipe, Some(wide_pipe()))?;
+    size_pipe(&pipe, true)?;
     let mut frames = Vec::new();
     loop {
         let mut buffer = vec![0u8; Route::Rgb24.frame_bytes(size)];
