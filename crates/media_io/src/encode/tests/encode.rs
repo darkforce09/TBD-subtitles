@@ -74,7 +74,7 @@ const NVENC: [&str; 12] = [
     "-c:v",
     "hevc_nvenc",
     "-preset",
-    "p6",
+    "p4",
     "-tune",
     "hq",
     "-rc",

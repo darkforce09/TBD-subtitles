@@ -27,7 +27,7 @@ fails), which a real video never is.
 spec's pixel format, size and constant rate (`-framerate N/D`), shifted by `-itsoffset` to the time
 the source's first frame presents. Input 1 is the source: `-map 1:a?` copies every audio stream,
 `-map_chapters 1` and `-map_metadata 1` keep its chapters and tags, and `-sn -dn` leave out
-subtitle and data streams. NVENC runs `-preset p6 -tune hq -rc vbr -cq 19 -b:v 0` with the `main`
+subtitle and data streams. NVENC runs `-preset p4 -tune hq -rc vbr -cq 19 -b:v 0` with the `main`
 or `main10` profile; libx264 runs `-preset slow -crf 16`, with `high10` for 10-bit frames; rgb24
 frames are encoded as `yuv420p`. When the source's bit rate is known, `-maxrate` caps the peak
 rate at 1.25 times it for NVENC and 1.5 times it for libx264, with a buffer of twice the peak, so

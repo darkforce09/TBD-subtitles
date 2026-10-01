@@ -358,7 +358,7 @@ YUV buffers       frames             frames they cover                          
   the source's (`H264_PEAK_SHARE`) and at the level's maximum. With the encoder setting at NVENC,
   `h264_nvenc` encodes it with `-repeat_headers 1` (headers in-band on every IDR) and closed
   groups of pictures; a 10-bit H.264 source always takes x264. The presets are x264
-  `-preset slow` and NVENC `p7 -tune hq` until the host's encode-bench sets them.
+  `-preset veryfast` and NVENC `p4 -tune hq`, as the host's encode-bench measured them.
 - **Join:** FFmpeg's concat demuxer reads a list file of the pieces, beside the source for its
   audio, chapters and metadata: `-f concat -safe 0 -i <list> -i <source> -map 0:v -map 1:a?
   -map_chapters 1 -map_metadata 1 -c copy`. An MP4 edit list or a B-frame delay can put the
@@ -372,7 +372,7 @@ YUV buffers       frames             frames they cover                          
   the source's, apart from the in-band headers `dump_extra` adds.
 - **Whole-video encode:** raw frames go through a pipe into a second FFmpeg that muxes Matroska:
   the new video, every audio stream of the source copied, its chapters and metadata, and no
-  subtitle or data stream (`-sn -dn`). The encoder is `hevc_nvenc` (`-preset p6 -tune hq -rc vbr -cq 19`, `main` or
+  subtitle or data stream (`-sn -dn`). The encoder is `hevc_nvenc` (`-preset p4 -tune hq -rc vbr -cq 19`, `main` or
   `main10`) when FFmpeg lists it and a one-frame test encode runs, else libx264 (`-preset slow
   -crf 16`). The peak rate is capped at 1.25 times the source video's bit rate for NVENC and 1.5
   times for libx264 (`-maxrate`, `-bufsize` twice that); the rate is the stream's own, else the

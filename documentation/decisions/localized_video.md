@@ -68,3 +68,26 @@ it in place.
 **Supersedes:** the whole-video HEVC encode part of
 [2026-09-30 — Writing is replaced in a localized video, re-encoded beside the source](/documentation/decisions/stack_and_pipeline.md#2026-09-30--writing-is-replaced-in-a-localized-video-re-encoded-beside-the-source),
 which now applies only when the segments cannot be used.
+
+### 2026-10-01 — The encode-bench sets x264 veryfast and NVENC p4 for segments, and p4 for the whole-video HEVC
+
+**Context:** The segment encode shipped with x264 `slow` and NVENC `p7`, and the whole-video HEVC
+encode with NVENC `p6`, until the host measured them. The encode-bench timed every preset on a
+60-second clip of Dressrosa 11 and 28 (from 600 s), comparing each encode with the source frame
+by frame. x264 `veryfast` ran at 423 and 363 frames a second against `slow`'s 200 and 174, within
+0.05 and 0.10 dB of it (39.64 against 39.69, 38.46 against 38.56) in files no larger. NVENC `p4`
+ran segments at 398 and 389 frames a second against `p7`'s 255 and 246, within 0.02 and 0.19 dB.
+The whole-video HEVC at `p4` ran at 346 and 349 frames a second against `p6`'s 159 and 158, at
+the same size and within 0.02 dB (42.58 against 42.59, 37.31 against 37.33).
+
+**Decision:** The owner chose x264 `veryfast` (`X264_SEGMENT_PRESET`) and NVENC `p4`
+(`NVENC_SEGMENT_PRESET`) for segments, and NVENC `p4` (`HEVC_NVENC_PRESET`) for the whole-video
+HEVC encode. The whole-video libx264 fallback keeps `slow`.
+
+**Consequences:** Re-encoded segments take about half the time, and the whole-video fallback less
+than half, for at most 0.2 dB. Segments encoded with either preset still join the copied source
+and pass `verify_join` on FFmpeg 8.1.
+
+**Supersedes:** the presets `slow`, `p7` and `p6` named in the entry of 2026-10-01 — The localized
+video re-encodes only the segments with replaced writing, as H.264 matching the source, and copies
+the rest; the rest of that entry holds.

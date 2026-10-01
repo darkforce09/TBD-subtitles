@@ -71,7 +71,7 @@ fn an_x264_segment_matches_the_source_and_repeats_its_headers() {
         joined(&segment_args(&spec)),
         "-hide_banner -v error -y -f rawvideo -pix_fmt yuv420p -s 1920x1080 \
          -framerate 24000/1001 -i pipe:0 -map 0:v:0 -an -sn -dn -vf setsar=1/1 \
-         -c:v libx264 -preset slow -crf 16 -profile:v main -level 4.0 \
+         -c:v libx264 -preset veryfast -crf 16 -profile:v main -level 4.0 \
          -x264-params stitchable=1:repeat-headers=1:open-gop=0:ref=4:bframes=3:b-pyramid=none \
          -forced-idr 1 -maxrate 5400000 -bufsize 10800000 -pix_fmt yuv420p \
          -color_primaries bt709 -colorspace bt709 -color_range tv -f matroska \
@@ -86,7 +86,7 @@ fn an_nvenc_segment_puts_its_headers_in_band_with_dump_extra() {
     let args = joined(&segment_args(&spec));
     assert!(
         args.contains(
-            "-c:v h264_nvenc -preset p7 -tune hq -rc vbr -cq 19 -b:v 0 -profile:v main \
+            "-c:v h264_nvenc -preset p4 -tune hq -rc vbr -cq 19 -b:v 0 -profile:v main \
              -level 4.0 -bf 3 -b_ref_mode disabled -refs 4 -forced-idr 1 \
              -bsf:v dump_extra=freq=keyframe -maxrate 5400000 -bufsize 10800000"
         ),

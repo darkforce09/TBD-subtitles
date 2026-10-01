@@ -212,6 +212,9 @@ pub fn encode_args(spec: &EncodeSpec) -> Vec<String> {
 /// needs a little more to survive a second generation.
 const HEVC_PEAK_SHARE: f64 = 1.25;
 const H264_PEAK_SHARE: f64 = 1.5;
+/// NVENC's preset for the whole-video HEVC encode: the encode-bench measured `p4` at the same
+/// quality and size as `p6` and `p7`, over twice as fast.
+pub const HEVC_NVENC_PRESET: &str = "p4";
 
 /// The video codec's arguments: constant quality capped near the source's bit rate when it is
 /// known, 10-bit profiles for 10-bit frames, and 4:2:0 output for rgb24 frames.
@@ -222,7 +225,7 @@ fn codec_args(encoder: Encoder, format: PixelFormat, source_bit_rate: Option<u64
             "-c:v",
             "hevc_nvenc",
             "-preset",
-            "p6",
+            HEVC_NVENC_PRESET,
             "-tune",
             "hq",
             "-rc",

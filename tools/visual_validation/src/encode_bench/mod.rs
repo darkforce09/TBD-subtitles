@@ -25,15 +25,12 @@ use media_io::encode::segments::{
     H264Source, NVENC_SEGMENT_PRESET, SegmentSpec, X264_SEGMENT_PRESET, probe_h264_source,
     segment_args, segment_encoder,
 };
-use media_io::encode::{Encoder, available_encoder};
+use media_io::encode::{Encoder, HEVC_NVENC_PRESET, available_encoder};
 use media_io::video_frames::PixelFormat;
 use stages::localize::frame_format;
 
 use args::{Clip, NVENC_PRESETS, RawInput, X264_PRESETS, hevc_args};
 use measure::{Row, Source, header, measure, render};
-
-/// The whole-video HEVC encode's production preset.
-const HEVC_WHOLE_PRESET: &str = "p6";
 
 /// The `encode-bench` command's arguments.
 #[derive(clap::Args, Debug, Clone, PartialEq)]
@@ -133,7 +130,7 @@ pub fn run(options: &Options) -> Result<()> {
         print!("{}", render(&row, clip.duration_s));
     }
 
-    println!("\n## Whole-video HEVC encode (production: NVENC `{HEVC_WHOLE_PRESET}`)\n");
+    println!("\n## Whole-video HEVC encode (production: NVENC `{HEVC_NVENC_PRESET}`)\n");
     print!("{}", header());
     let input = RawInput {
         size: source.size,

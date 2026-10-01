@@ -96,8 +96,8 @@ how it runs: [video inpainting pipeline](/documentation/architecture/video_inpai
   and the copied pieces' packets equal the source's apart from the in-band headers. Any failure
   falls back to the whole-video encode, with its reason in the record and the report.
 - **What it keeps:** frames without replaced writing keep the source's bitstream exactly.
-- **What the host measures:** the encode-bench sets the x264 and NVENC presets (`-preset slow` and
-  `p7 -tune hq` until then; the whole-video HEVC keeps `p6`); `localized_video` time and size
+- **What the host measures:** the encode-bench set the x264 and NVENC presets (`veryfast` and `p4`
+  for segments, `p4` for the whole-video HEVC); `localized_video` time and size
   against the baseline on Dressrosa 11 and 28; playback in VLC and mpv across every join (no
   stall, no corrupt frame, audio in sync); the frame count equal to the source's
   ([runbook](/documentation/runbooks/measuring_full_resolution_screening.md)).

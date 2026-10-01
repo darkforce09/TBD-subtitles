@@ -64,7 +64,7 @@ re-encoded pieces replace are removed. Each re-encoded piece is a separate FFmpe
 frames (`segment_args`): x264 `stitchable=1:repeat-headers=1`, closed GOPs, no B-pyramid, the
 source's profile, level and reference count, `-forced-idr 1`, the sample aspect ratio and colour
 tags, a peak rate of `H264_PEAK_SHARE` times the source's capped by the level (`peak_rate`), preset
-`X264_SEGMENT_PRESET`; or NVENC `p7 -tune hq` with `dump_extra` putting its headers in-band.
+`X264_SEGMENT_PRESET`; or NVENC `NVENC_SEGMENT_PRESET -tune hq` with `dump_extra` putting its headers in-band.
 
 `join_pieces` writes `pieces.ffconcat`, each piece with the duration its frames take at the
 constant rate (rounded to the microsecond at each piece's start, so nothing accumulates), and runs
