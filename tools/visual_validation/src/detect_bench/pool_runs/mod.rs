@@ -39,6 +39,8 @@ pub struct Setup {
     pub frame: (u32, u32),
     /// Device memory in use before the bench touched CUDA, in MiB.
     pub baseline_mib: u64,
+    /// Whether screening also runs the proxy pass, as production does.
+    pub proxy: bool,
 }
 
 impl Setup {
@@ -55,7 +57,9 @@ impl Setup {
             cache_dir: self.cache_dir.clone(),
             frame_width: self.frame.0,
             frame_height: self.frame.1,
-            tensorrt_fp16: run.fp16,
+            proxy: self.proxy,
+            screen_fp16: run.fp16,
+            confirm_fp16: run.fp16,
             vram_cap_mib: self.vram_cap_mib,
         }
     }

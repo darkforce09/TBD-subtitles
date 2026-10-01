@@ -45,6 +45,23 @@ pub const SCREEN_SESSIONS: usize = 2;
 /// screening sessions are closed before these open.
 pub const CONFIRM_POOL_MIB: usize = 1_536;
 
+/// The width every screened frame is also shrunk to, for writing too large for the mobile
+/// detector at full resolution: a glyph a third of the frame tall is found at this width.
+pub const PROXY_WIDTH: u32 = 640;
+
+/// The GPU memory pool of each proxy screening session, in MiB.
+pub const PROXY_POOL_MIB: usize = 512;
+
+/// The proxy size of a `width` × `height` frame: `PROXY_WIDTH` wide, the height in proportion and
+/// even, never larger than the frame.
+pub fn proxy_size(width: u32, height: u32) -> (u32, u32) {
+    if width <= PROXY_WIDTH {
+        return (width, height);
+    }
+    let scaled = (u64::from(PROXY_WIDTH) * u64::from(height) / u64::from(width.max(1))) as u32;
+    (PROXY_WIDTH, (scaled & !1).max(2))
+}
+
 /// The confirming sessions: one, since a single server detector on a full-resolution frame keeps
 /// the GPU busy and a second does not fit beside it within the worker's VRAM cap.
 pub const CONFIRM_SESSIONS: usize = 1;

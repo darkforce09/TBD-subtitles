@@ -177,3 +177,26 @@ Peak VRAM is still the larger of the two phases.
 **Supersedes:** "on both sessions, each opening its confirmation session" in the entry of
 2026-10-01 — The server detector confirms each occurrence at full resolution on the sample
 nearest its middle; the rest of that entry holds.
+
+### 2026-10-01 — Screening adds a 640-wide pass for writing too large at full resolution
+
+**Context:** On Dressrosa 11 at 359 s the 海 painted on a wall is about 300 pixels tall. Full-
+resolution screening missed it on every sample, on CUDA and on TensorRT alike, while the old
+640-wide proxy found it: the mobile detector finds text at the sizes it was trained on, and a
+glyph a third of the frame tall is beyond them until the frame is shrunk. The server detector
+that confirms finds it at full resolution (a 324 × 271 box at score 0.86 on every still), so only
+screening misses it.
+
+**Decision:** Every screened sample, probes included, is screened twice in the same worker: at
+full resolution and shrunk to 640 wide (`PROXY_WIDTH`, height in proportion), each proxy pixel the
+mean of the source pixels it covers, on a second mobile session per screening thread
+(`PROXY_POOL_MIB`). The proxy regions are scaled back to frame pixels and added only where the
+full-resolution regions cover less than half of their bounding box. Confirmation stays at full
+resolution. The owner chose this over training the detector.
+
+**Consequences:** The 海 wall is found on CUDA and TensorRT; writing found at both sizes is not
+doubled. Screening takes about 10 to 15 % longer (on the 海 clip, CUDA 37.3 to 33.9 frames a
+second, TensorRT FP16 164 to 141) and each screening thread holds one more small session.
+
+**Supersedes:** "there is no downscaled proxy" in the entry of 2026-10-01 — The detector screens
+full-resolution frames, padded to a multiple of 32, on two sessions; the rest of that entry holds.

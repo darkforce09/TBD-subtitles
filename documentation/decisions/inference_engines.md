@@ -73,3 +73,23 @@ inference crate's header say the same.
 
 **Supersedes:** 2026-09-25 — Rust only; FFmpeg as the one external program, for its last
 sentence only, that models are never converted by us; the rest of it stands.
+
+### 2026-10-01 — On TensorRT, screening runs at FP16 and confirmation at FP32
+
+**Context:** The detect-bench compared TensorRT FP16 and FP32 with CUDA on Dressrosa 11 and 28.
+For screening, FP16 ran at about 250 frames a second against CUDA's 44 and FP32's 113, and on
+eleven stretches with real signs its boxes matched CUDA's in number (within a few per stretch) and
+in the box images the owner looked at. For confirmation, FP16 found 35 to 70 % fewer boxes than
+CUDA on those sign stretches (62 against 121 on Dressrosa 28 at 188 s), while FP32 matched CUDA
+within a few boxes (124 against 121) at 9.8 stills a second against CUDA's 7.3.
+
+**Decision:** The pool's options carry the precision per role: `screen_fp16` for the screening and
+proxy sessions, `confirm_fp16` for the confirming one. Production builds FP16 screening engines and
+an FP32 confirming engine. Whether TensorRT becomes the default engine waits on the determinism
+check of the measuring runbook.
+
+**Consequences:** One more engine is cached per frame size and precision. Confirmation keeps
+CUDA's recall at a third faster; screening keeps FP16's speed.
+
+**Supersedes:** the single FP16 switch for both roles in the entry of 2026-10-01 — TensorRT runs
+the PP-OCRv5 detectors; the rest of that entry holds.

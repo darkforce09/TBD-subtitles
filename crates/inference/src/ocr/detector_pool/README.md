@@ -11,6 +11,7 @@ crates/inference/src/ocr/detector_pool/
 ├── batch.rs     the fixed input shape, frame checks and BGR ImageNet normalisation into staging
 ├── in_order.rs  `InOrder`: screening results released in sequence order
 ├── mod.rs       `DetectorPool`, `PoolOptions`, `SearchMode` and the `TextScreening` implementation
+├── proxy.rs     the proxy pass: frames shrunk to 640 wide, regions scaled back and merged
 ├── queue.rs     the shared task queue: probes first, then screening, then confirmations
 ├── regions.rs   DB post-processing per image on rayon, boxes clipped to the frame
 ├── session/     one session: its spec, providers, TensorRT cache key, warm-up and reopen
@@ -24,10 +25,11 @@ crates/inference/src/ocr/detector_pool/
 scan ──submit(ScreenJob)──▶ queue (Probe before Screen, then by seq)
                                  │ next task
        ┌─────────────────────────┴─────────────────────────┐
-  thread 1: screen session                          thread 2: screen session
+  thread 1: screen + proxy sessions                 thread 2: screen + proxy sessions
   normalise frames (+ black slots) → staging        (the same)
-  run → probability maps, read in place
-  regions per image (rayon) → ScreenResult{seq} ──▶ recv() in finishing order ──▶ InOrder
+  run → probability maps → regions per image (rayon)
+  shrink to 640 wide → proxy run → regions scaled up, merged where not covered
+  → ScreenResult{seq} ──▶ recv() in finishing order ──▶ InOrder
 scan ──confirm(jobs)──▶ every thread closes its screen session
                         then opens a confirm session on its first confirmation
                         ──▶ results gathered back into the order given
@@ -51,6 +53,17 @@ the larger of the two phases, never their sum. Only the first `confirm_sessions`
 session opens on its thread's first confirmation, with batch 1 and `confirm_pool_mib`
 (`CONFIRM_POOL_MIB`). Every task taken from the queue gets one
 answer, an error included, so neither `recv` nor `confirm` waits forever.
+
+With `proxy` on (production), each screening thread also opens a proxy session of the mobile
+detector at `proxy_size` (640 wide, the height in proportion, padded to a multiple of 32) with
+`PROXY_POOL_MIB`. Every batch screened at full resolution is shrunk there (`proxy.rs`: each proxy
+pixel the mean of the source pixels it covers) and screened again; the proxy regions are scaled
+back to frame pixels and added to the image's regions only where the full-resolution regions
+cover less than half of their bounding box (`COVERED_SHARE`), so writing too large for the
+detector at full resolution is found and writing found at both sizes is not doubled. The proxy
+session closes with the screening session. On TensorRT the screening and proxy engines are built
+at `screen_fp16` (FP16 in production) and the confirming engine at `confirm_fp16` (FP32); a
+thread holding both screening sessions splits its workspace between them.
 
 `notes()` names the engine, the search mode, the session count and both input shapes, and, per
 thread, whether each session runs with the CUDA graph and NHWC or refused them, and for TensorRT

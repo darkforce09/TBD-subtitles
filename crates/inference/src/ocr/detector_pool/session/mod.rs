@@ -29,7 +29,7 @@ use super::batch::{InputShape, fill_black};
 use crate::ocr::OcrError;
 use crate::ocr::pool::EngineIdentity;
 
-pub use engine_cache::{TENSORRT_FOLDER, check_identity, workspace_mib};
+pub use engine_cache::{MIN_WORKSPACE_MIB, TENSORRT_FOLDER, check_identity, workspace_mib};
 pub(crate) use ort_detector::OrtOpener;
 
 /// Black batches run after opening: the first runs the convolution search or builds the
@@ -41,6 +41,8 @@ pub const WARMUP_RUNS: usize = 2;
 pub enum Role {
     /// The mobile detector screening batches of frames.
     Screen,
+    /// The mobile detector screening the same batches shrunk to the proxy width.
+    Proxy,
     /// The server detector confirming single frames.
     Confirm,
 }
@@ -49,6 +51,7 @@ impl Role {
     pub fn label(self) -> &'static str {
         match self {
             Role::Screen => "screen",
+            Role::Proxy => "proxy",
             Role::Confirm => "confirm",
         }
     }

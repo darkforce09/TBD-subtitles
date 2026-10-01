@@ -27,7 +27,7 @@ pub const TENSORRT_FOLDER: &str = "tensorrt";
 /// of the worker's memory cap.
 const CONTEXT_MIB: usize = 512;
 /// The smallest workspace the builder is given, in MiB.
-const MIN_WORKSPACE_MIB: usize = 256;
+pub const MIN_WORKSPACE_MIB: usize = 256;
 
 /// An error unless every field of `identity` is filled.
 pub fn check_identity(identity: &EngineIdentity) -> Result<(), OcrError> {

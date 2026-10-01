@@ -61,6 +61,7 @@ fn a_run_becomes_the_pool_options_it_names() {
         vram_cap_mib: 6656,
         frame: (1920, 1080),
         baseline_mib: 900,
+        proxy: true,
     };
     let shape = ScreenShape {
         batch: 8,
@@ -76,7 +77,8 @@ fn a_run_becomes_the_pool_options_it_names() {
     assert_eq!(options.search, SearchMode::Deterministic);
     assert_eq!(options.shape, shape);
     assert_eq!(options.sessions, 1);
-    assert!(!options.tensorrt_fp16);
+    assert!(!options.screen_fp16 && !options.confirm_fp16);
+    assert!(options.proxy);
     assert_eq!(options.cache_dir, PathBuf::from("/tmp/bench/tensorrt"));
     assert_eq!((options.frame_width, options.frame_height), (1920, 1080));
     assert_eq!(options.vram_cap_mib, 6656);

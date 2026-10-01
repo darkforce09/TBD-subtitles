@@ -1,9 +1,11 @@
 //! The detector pool: PP-OCRv5 sessions on our own ONNX Runtime sessions, side by side.
 //!
 //! **Role:** implement `TextScreening` with one thread per session. Each thread owns a mobile
-//! detector session that screens padded full-resolution batches of a fixed shape; once screening
-//! ends, the threads close those sessions and the first `confirm_sessions` of them open server
-//! detector sessions, batch 1, that confirm single frames. Sessions run on the CUDA provider, or on TensorRT before CUDA.
+//! detector session that screens padded full-resolution batches of a fixed shape and, with the
+//! proxy pass on, a second mobile session that screens the same batches shrunk to the proxy
+//! width, for writing too large to find at full resolution; once screening ends, the threads close
+//! those sessions and the first `confirm_sessions` of them open server detector sessions, batch 1,
+//! that confirm single frames. Sessions run on the CUDA provider, or on TensorRT before CUDA.
 //!
 //! **Position:** opened by the `text_detect` step in its GPU worker; the detection scan in
 //! `stages` submits jobs and confirms through the `TextScreening` trait.
@@ -20,6 +22,7 @@
 
 mod batch;
 mod in_order;
+mod proxy;
 mod queue;
 mod regions;
 mod session;
@@ -35,8 +38,8 @@ use job_model::onscreen::DetectorEngine;
 
 use super::OcrError;
 use super::pool::{
-    CONFIRM_POOL_MIB, CONFIRM_SESSIONS, ConfirmJob, ConfirmResult, EngineIdentity, SCREEN_SESSIONS,
-    ScreenJob, ScreenResult, ScreenShape, TextScreening,
+    CONFIRM_POOL_MIB, CONFIRM_SESSIONS, ConfirmJob, ConfirmResult, EngineIdentity, PROXY_POOL_MIB,
+    SCREEN_SESSIONS, ScreenJob, ScreenResult, ScreenShape, TextScreening, proxy_size,
 };
 use batch::InputShape;
 use queue::Queue;
@@ -94,15 +97,20 @@ pub struct PoolOptions {
     /// The frames' own size; every frame of the run has it.
     pub frame_width: u32,
     pub frame_height: u32,
-    /// Whether TensorRT builds FP16 engines.
-    pub tensorrt_fp16: bool,
+    /// Whether each screening thread also screens its batches shrunk to the proxy width.
+    pub proxy: bool,
+    /// Whether TensorRT builds FP16 engines for the screening and proxy sessions.
+    pub screen_fp16: bool,
+    /// Whether TensorRT builds an FP16 engine for the confirming sessions.
+    pub confirm_fp16: bool,
     /// The worker's GPU memory cap, in MiB, that TensorRT's workspace is sized within.
     pub vram_cap_mib: usize,
 }
 
 impl PoolOptions {
     /// The production options for frames of `width` × `height` on `engine`: the initial shape,
-    /// two sessions, the fast search, FP16 engines cached under the app's data folder.
+    /// two sessions screening at full resolution and at the proxy width, the fast search, FP16
+    /// screening and FP32 confirming engines cached under the app's data folder.
     pub fn new(
         engine: DetectorEngine,
         identity: EngineIdentity,
@@ -121,42 +129,73 @@ impl PoolOptions {
             cache_dir: data.join(TENSORRT_FOLDER),
             frame_width: width,
             frame_height: height,
-            tensorrt_fp16: true,
+            proxy: true,
+            screen_fp16: true,
+            confirm_fp16: false,
             vram_cap_mib: DEFAULT_VRAM_CAP_MIB,
         })
     }
 
+    /// The proxy size of the run's frames.
+    fn proxy_size(&self) -> (u32, u32) {
+        proxy_size(self.frame_width, self.frame_height)
+    }
+
     /// The session `role` opens with, its model under `models_root`.
     fn spec(&self, role: Role, models_root: &Path) -> SessionSpec {
-        let (model, batch, pool_mib, sessions) = match role {
+        let frame = (self.frame_width, self.frame_height);
+        let (model, batch, size, pool_mib, fp16) = match role {
             Role::Screen => (
                 SCREEN_MODEL,
                 self.shape.batch,
+                frame,
                 self.shape.pool_mib,
-                self.sessions,
+                self.screen_fp16,
+            ),
+            Role::Proxy => (
+                SCREEN_MODEL,
+                self.shape.batch,
+                self.proxy_size(),
+                PROXY_POOL_MIB,
+                self.screen_fp16,
             ),
             Role::Confirm => (
                 CONFIRM_MODEL,
                 1,
+                frame,
                 self.confirm_pool_mib,
-                self.confirm_sessions,
+                self.confirm_fp16,
             ),
         };
         let tensorrt = (self.engine == DetectorEngine::TensorRt).then(|| TensorRtSpec {
             identity: self.identity.clone(),
             cache_root: self.cache_dir.clone(),
-            fp16: self.tensorrt_fp16,
-            workspace_mib: session::workspace_mib(self.vram_cap_mib, sessions, pool_mib),
+            fp16,
+            workspace_mib: self.workspace_mib(role),
         });
         SessionSpec {
             role,
             model: models_root.join(model),
-            input: InputShape::for_frames(batch, self.frame_width, self.frame_height),
+            input: InputShape::for_frames(batch, size.0, size.1),
             pool_mib,
             engine: self.engine,
             search: self.search,
             tensorrt,
         }
+    }
+
+    /// The TensorRT workspace of one `role` session: its thread's share of the memory cap less
+    /// the pools that thread holds, split between the screening and proxy sessions when both run.
+    fn workspace_mib(&self, role: Role) -> usize {
+        let cap = self.vram_cap_mib;
+        if role == Role::Confirm {
+            return session::workspace_mib(cap, self.confirm_sessions, self.confirm_pool_mib);
+        }
+        if !self.proxy {
+            return session::workspace_mib(cap, self.sessions, self.shape.pool_mib);
+        }
+        let held = self.shape.pool_mib + PROXY_POOL_MIB;
+        (session::workspace_mib(cap, self.sessions, held) / 2).max(session::MIN_WORKSPACE_MIB)
     }
 
     fn check(&self) -> Result<(), OcrError> {
@@ -180,13 +219,20 @@ impl PoolOptions {
     }
 
     /// The notes that hold for the whole run.
-    fn notes(&self, screen: &SessionSpec, confirm: &SessionSpec) -> BTreeMap<String, String> {
-        let engine = match (self.engine, self.tensorrt_fp16) {
-            (DetectorEngine::Cuda, _) => "CUDA".to_owned(),
-            (DetectorEngine::TensorRt, fp16) => format!(
-                "TensorRT ({}), then CUDA for the nodes TensorRT does not take; ONNX Runtime does \
-                 not report that split",
-                if fp16 { "FP16" } else { "FP32" }
+    fn notes(
+        &self,
+        screen: &SessionSpec,
+        proxy: Option<&SessionSpec>,
+        confirm: &SessionSpec,
+    ) -> BTreeMap<String, String> {
+        let precision = |fp16: bool| if fp16 { "FP16" } else { "FP32" };
+        let engine = match self.engine {
+            DetectorEngine::Cuda => "CUDA".to_owned(),
+            DetectorEngine::TensorRt => format!(
+                "TensorRT (screening {}, confirming {}), then CUDA for the nodes TensorRT does not \
+                 take; ONNX Runtime does not report that split",
+                precision(self.screen_fp16),
+                precision(self.confirm_fp16)
             ),
         };
         let shape = |spec: &SessionSpec| {
@@ -198,6 +244,10 @@ impl PoolOptions {
             ("search mode".to_owned(), self.search.label().to_owned()),
             ("screen sessions".to_owned(), self.sessions.to_string()),
             ("screen shape".to_owned(), shape(screen)),
+            (
+                "proxy shape".to_owned(),
+                proxy.map_or_else(|| "none: full resolution only".to_owned(), shape),
+            ),
             (
                 "confirm sessions".to_owned(),
                 self.confirm_sessions.to_string(),
@@ -239,6 +289,9 @@ impl DetectorPool {
     ) -> Result<DetectorPool, OcrError> {
         options.check()?;
         let screen = options.spec(Role::Screen, models_root);
+        let proxy = options
+            .proxy
+            .then(|| options.spec(Role::Proxy, models_root));
         let confirm = options.spec(Role::Confirm, models_root);
         let queue = Arc::new(Queue::new(options.sessions));
         let report = Arc::new(Mutex::new(Report::default()));
@@ -255,6 +308,7 @@ impl DetectorPool {
                 open_lock: Arc::clone(&open_lock),
                 report: Arc::clone(&report),
                 screen: screen.clone(),
+                proxy: proxy.clone().map(|spec| (spec, options.proxy_size())),
                 confirm: confirm.clone(),
                 confirms: thread < options.confirm_sessions,
                 frame,
@@ -289,7 +343,7 @@ impl DetectorPool {
             confirmed,
             threads,
             report,
-            notes: options.notes(&screen, &confirm),
+            notes: options.notes(&screen, proxy.as_ref(), &confirm),
             shape: options.shape,
             sessions: options.sessions,
             screen_input: screen.input,

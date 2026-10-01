@@ -95,7 +95,9 @@ fn options(sessions: usize, batch: usize) -> PoolOptions {
         cache_dir: PathBuf::from("tensorrt"),
         frame_width: WIDTH,
         frame_height: HEIGHT,
-        tensorrt_fp16: true,
+        proxy: false,
+        screen_fp16: true,
+        confirm_fp16: false,
         vram_cap_mib: DEFAULT_VRAM_CAP_MIB,
     }
 }
@@ -359,4 +361,71 @@ fn confirming_sessions_are_at_least_one_and_at_most_the_threads() {
     let mut too_many = options(2, 1);
     too_many.confirm_sessions = 3;
     assert!(open(FakeOpener::default(), too_many).is_err());
+}
+
+#[test]
+fn the_proxy_pass_opens_and_closes_beside_screening_and_merges_its_regions() {
+    let opener = FakeOpener::default();
+    let events = Arc::clone(&opener.events);
+    let mut with_proxy = options(1, 1);
+    with_proxy.proxy = true;
+    let mut pool = open(opener, with_proxy).unwrap();
+    pool.submit(job(
+        0,
+        Priority::Screen,
+        vec![frame(Some([8, 8, 40, 24]), false)],
+    ))
+    .unwrap();
+    let result = pool.recv().unwrap();
+    assert_eq!(result.regions[0].len(), 1, "the proxy's copy is covered");
+    let still = ConfirmJob {
+        seq: 1,
+        frame: frame(None, false),
+    };
+    assert_eq!(pool.confirm(vec![still]).unwrap().len(), 1);
+    let events = events.lock().unwrap().clone();
+    assert_eq!(
+        events,
+        [
+            "open screen",
+            "open proxy",
+            "close screen",
+            "close proxy",
+            "open confirm"
+        ]
+    );
+    assert!(pool.notes()["proxy shape"].starts_with("1 × 3 × 64 × 64"));
+}
+
+#[test]
+fn screening_and_confirming_take_their_own_precision_and_the_proxy_its_size() {
+    let mut options = options(2, 4);
+    options.engine = DetectorEngine::TensorRt;
+    options.proxy = true;
+    options.frame_width = 1920;
+    options.frame_height = 1080;
+    let proxy = options.spec(Role::Proxy, Path::new("models"));
+    assert_eq!(proxy.model, Path::new("models/pp-ocrv5/det_mobile.onnx"));
+    assert_eq!(proxy.input.dims(), [4, 3, 384, 640]);
+    assert_eq!(proxy.pool_mib, crate::ocr::pool::PROXY_POOL_MIB);
+    assert!(proxy.tensorrt.unwrap().fp16);
+    assert!(
+        options
+            .spec(Role::Screen, Path::new("m"))
+            .tensorrt
+            .unwrap()
+            .fp16
+    );
+    assert!(
+        !options
+            .spec(Role::Confirm, Path::new("m"))
+            .tensorrt
+            .unwrap()
+            .fp16
+    );
+    let alone = PoolOptions {
+        proxy: false,
+        ..options.clone()
+    };
+    assert!(options.workspace_mib(Role::Screen) < alone.workspace_mib(Role::Screen));
 }

@@ -21,7 +21,9 @@ sessions finish, and the scan applies them in its own order. `confirm` runs the 
 one frame per occurrence on `CONFIRM_SESSIONS` sessions, and answers in the order asked.
 `ScreenShape::INITIAL`, `SCREEN_SESSIONS` and `CONFIRM_POOL_MIB` are the starting values the
 host's pool-by-batch sweep replaces; `CONFIRM_SESSIONS` is one, since one server detector at full
-resolution keeps the GPU busy and a second does not fit beside it. `EngineIdentity` names the card, driver and TensorRT build a
+resolution keeps the GPU busy and a second does not fit beside it. `PROXY_WIDTH`,
+`PROXY_POOL_MIB` and `proxy_size` give the size and memory of the proxy pass that screens every
+batch again shrunk to 640 wide. `EngineIdentity` names the card, driver and TensorRT build a
 cached engine was made for; the caller reads it from the driver.
 
 ## Boundaries

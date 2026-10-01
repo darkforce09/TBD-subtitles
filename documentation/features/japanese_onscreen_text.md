@@ -124,8 +124,12 @@ builds from the detector exports when that engine is chosen.
 
 Detection samples the full-resolution stream at two frames per second and at every shot
 boundary, so writing visible for fewer frames than the sample step that falls between two samples
-and touches no cut is missed; there is no downscaled proxy, so small or faint writing has the
-source's pixels, and the owner accepts the extra noise that brings. A sample whose luma, in
+and touches no cut is missed. Each sample is screened twice: at full resolution, so small or
+faint writing has the source's pixels (the owner accepts the extra noise that brings), and shrunk
+to 640 wide, where writing too large for the mobile detector at full resolution (a single glyph a
+third of the frame tall) is found; a 640-wide box is kept only where the full-resolution boxes
+cover less than half of it
+([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--screening-adds-a-640-wide-pass-for-writing-too-large-at-full-resolution)). A sample whose luma, in
 32 × 32 blocks, matches the last screened sample's within a mean difference of 4 reuses its
 detections. The rest are converted to RGB, padded with black rows to a multiple of 32 lines
 (1,088 for a 1080p source, never stretched), and screened in batches on two detector sessions in

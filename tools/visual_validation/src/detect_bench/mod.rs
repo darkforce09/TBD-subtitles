@@ -100,6 +100,9 @@ pub struct Options {
     /// Skip section 8: confirmation through the pool.
     #[arg(long)]
     pub no_pool_confirm: bool,
+    /// Screen at full resolution only, without the production proxy pass at 640 wide.
+    #[arg(long)]
+    pub no_proxy_pass: bool,
     /// The batches the CUDA and TensorRT sweeps run, comma-separated.
     #[arg(long, value_delimiter = ',', default_values_t = [2usize, 4, 8])]
     pub sweep_batches: Vec<usize>,
@@ -247,6 +250,7 @@ pub fn run(options: &Options) -> Result<()> {
         vram_cap_mib: options.vram_cap_mib,
         frame: size,
         baseline_mib,
+        proxy: !options.no_proxy_pass,
     };
     let ocr = models.join("pp-ocrv5");
     if oar_ocr_child {

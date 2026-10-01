@@ -1,8 +1,10 @@
 //! One session thread of the pool: its screening session, then its confirming session.
 //!
-//! **Role:** open and warm up the thread's screening session, run the screening jobs the queue
-//! hands it, close the session when screening ends, open a confirming session the first time a
-//! confirmation reaches the thread when it is one of the confirming threads, and send every result back with its job's number.
+//! **Role:** open and warm up the thread's screening session (and, with the proxy pass on, its
+//! proxy session), run the screening jobs the queue hands it at full resolution and at the proxy
+//! width, merged, close both sessions when screening ends, open a confirming session the first
+//! time a confirmation reaches the thread when it is a confirming thread, and send every result
+//! back with its job's number.
 //!
 //! **Position:** spawned by `DetectorPool::open`, one per session; drains `queue.rs`.
 //!
@@ -19,6 +21,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use super::batch::{InputShape, check_frames, normalize_into};
+use super::proxy;
 use super::queue::{Queue, Task};
 use super::regions::{PostProcess, Regions};
 use super::session::{SessionOpener, SessionSpec, WarmSession, open_warm};
@@ -40,6 +43,8 @@ pub struct Context {
     pub open_lock: Arc<Mutex<()>>,
     pub report: Arc<Mutex<Report>>,
     pub screen: SessionSpec,
+    /// The proxy session's spec and the proxy frame size, when the proxy pass is on.
+    pub proxy: Option<(SessionSpec, (u32, u32))>,
     pub confirm: SessionSpec,
     /// Whether this thread opens a confirming session once screening ends.
     pub confirms: bool,
@@ -87,6 +92,47 @@ fn detect(
     found.ok_or_else(|| "the detector run returned without its maps".into())
 }
 
+/// The regions of `frames` at full resolution, with those the proxy session finds on the frames
+/// shrunk to the proxy size added where the full-resolution ones do not cover them.
+fn screen_batch(
+    context: &Context,
+    sessions: &mut (WarmSession, Option<WarmSession>),
+    post: &PostProcess,
+    frames: &[PaddedFrame],
+) -> Result<Vec<Regions>, OcrError> {
+    let mut found = detect(
+        &mut sessions.0,
+        context.screen.input,
+        post,
+        frames,
+        context.frame,
+    )?;
+    if let (Some(session), Some((spec, size))) = (sessions.1.as_mut(), context.proxy.as_ref()) {
+        let small: Vec<PaddedFrame> = frames
+            .iter()
+            .map(|frame| proxy::shrink(frame, *size))
+            .collect();
+        let small_found = detect(session, spec.input, post, &small, *size)?;
+        for (regions, extra) in found.iter_mut().zip(small_found) {
+            proxy::merge(regions, proxy::scale_up(extra, *size, context.frame));
+        }
+    }
+    Ok(found)
+}
+
+/// Open the thread's screening session and, with the proxy pass on, its proxy session.
+fn open_screening(
+    context: &Context,
+    thread: usize,
+) -> Result<(WarmSession, Option<WarmSession>), OcrError> {
+    let screen = context.open(&context.screen, thread)?;
+    let proxy = match &context.proxy {
+        Some((spec, _)) => Some(context.open(spec, thread)?),
+        None => None,
+    };
+    Ok((screen, proxy))
+}
+
 /// `work`'s result, with a panic turned into an error.
 fn guarded<T>(work: impl FnOnce() -> Result<T, OcrError>) -> Result<T, OcrError> {
     catch_unwind(AssertUnwindSafe(work))
@@ -95,7 +141,7 @@ fn guarded<T>(work: impl FnOnce() -> Result<T, OcrError>) -> Result<T, OcrError>
 
 /// The body of session thread `thread`. `started` gets the screening session's opening result.
 pub fn run(context: Context, thread: usize, started: Sender<Result<(), OcrError>>) {
-    let mut screen = match guarded(|| context.open(&context.screen, thread)) {
+    let mut screen = match guarded(|| open_screening(&context, thread)) {
         Ok(session) => {
             let _ = started.send(Ok(()));
             Some(session)
@@ -118,14 +164,8 @@ pub fn run(context: Context, thread: usize, started: Sender<Result<(), OcrError>
             }
             Task::Screen(job) => {
                 let result = guarded(|| {
-                    let session = screen.as_mut().ok_or("the screening session is closed")?;
-                    detect(
-                        session,
-                        context.screen.input,
-                        &screening,
-                        &job.frames,
-                        context.frame,
-                    )
+                    let sessions = screen.as_mut().ok_or("the screening session is closed")?;
+                    screen_batch(&context, sessions, &screening, &job.frames)
                 })
                 .map(|regions| ScreenResult {
                     seq: job.seq,
