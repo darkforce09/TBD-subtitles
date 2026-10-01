@@ -30,8 +30,9 @@ it.
 and gives the `LD_LIBRARY_PATH` and `ORT_DYLIB_PATH` a GPU worker is started with. `onnx/`
 holds the ONNX Runtime session helper, the separation models, Parakeet-TDT and Parakeet-CTC, CED
 and LaMa; `ocr/` runs PP-OCRv5 detection and recognition with a manga-ocr second reading on the
-same ONNX Runtime; `ggml/` holds CrispASR's Whisper and Qwen3 aligner, built only with the
-`crispasr` feature and never in a binary that loads ONNX Runtime. `llm/` holds the `claude` CLI
+same ONNX Runtime, and the detector pool that screens full-resolution frames on CUDA or
+TensorRT; `ggml/` holds CrispASR's Whisper and Qwen3 aligner, built only with the `crispasr`
+feature and never in a binary that loads ONNX Runtime. `llm/` holds the `claude` CLI
 and mistral.rs backends, the call gate Fix It's runs share, and the call log.
 
 ## Public surface
@@ -47,7 +48,8 @@ and mistral.rs backends, the call gate Fix It's runs share, and the call log.
 - `onnx`: `session::open`, `Device`, `OnnxError`, `separation::{MdxNet, MelRoformer,
   OverlapAdd, WindowModel}`, `parakeet_tdt::ParakeetTdt`, `parakeet_ctc::ParakeetCtc`,
   `ced::Ced` and `lama::Lama`; for `crates/stages/`, `crates/pipeline/` and `tools/stack_spike/`.
-- `ocr`: `TextDetection`, `OcrDetector`, `OcrReader` and `OcrError`; for
+- `ocr`: `DetectorPool`, `PoolOptions`, `SearchMode`, the `pool` contract (`TextScreening` and
+  its jobs), `TextDetection`, `OcrDetector`, `OcrReader` and `OcrError`; for
   `crates/stages/src/onscreen_text/`, `crates/pipeline/` and `tools/visual_validation/`.
 - `ggml::crispasr::{Whisper, align_qwen3}` with the `crispasr` feature; for `crates/stages/`,
   `crates/pipeline/` and `tools/stack_spike_ggml/`.
@@ -58,9 +60,9 @@ and mistral.rs backends, the call gate Fix It's runs share, and the call log.
 
 ## Boundaries
 
-- Depends on: `ort`, `realfft`, `parakeet-rs` and `tokenizers` in `onnx/`; `ort`, `oar-ocr` and
-  `image` in `ocr/`; `crispasr` in `ggml/` (optional); `child_process` in `llm/claude_cli/`;
-  `mistralrs` and `tokio` in `llm/mistral_rs/` (optional); `ureq`, `sha2`, `lzma-rs`, `flate2`
+- Depends on: `ort`, `realfft`, `parakeet-rs` and `tokenizers` in `onnx/`; `ort`, `oar-ocr`,
+  `ndarray`, `rayon`, `sha2` and `image` in `ocr/`; `crispasr` in `ggml/` (optional);
+  `child_process` in `llm/claude_cli/`; `mistralrs` and `tokio` in `llm/mistral_rs/` (optional); `ureq`, `sha2`, `lzma-rs`, `flate2`
   and `tar` in `model_store/`; `job_model` for timed words, on-screen geometry and a model call's
   record; `tracing`.
 - Used by: `crates/stages/`, `crates/pipeline/`, `apps/tbd_subtitles/`,

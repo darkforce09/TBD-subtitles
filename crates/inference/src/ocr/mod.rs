@@ -1,14 +1,16 @@
 //! Local detection and reading of writing in video frames.
 //!
-//! **Role:** expose PP-OCRv5 detection and recognition with a manga-ocr second reading.
+//! **Role:** expose PP-OCRv5 detection and recognition with a manga-ocr second reading, and the
+//! detector pool that screens and confirms padded full-resolution frames.
 //! **Position:** inference backend used inside the isolated visual GPU workers.
 //! **Signals and state:** bounded ONNX predictors and a lazily opened manga reader. The mobile
-//! detector screens batches of equal-sized proxy frames at the 0.3 box score; the server
-//! detector inspects single full-resolution frames at 0.5.
+//! detector screens batches of equal-sized frames at the 0.3 box score; the server detector
+//! inspects single full-resolution frames at 0.5.
 //! **Invariants:** CUDA registration fails explicitly; uncertain readings retain low confidence;
 //! a screen returns one region list per image in input order; models are already exported and
 //! downloaded through the pinned model store.
 
+pub mod detector_pool;
 mod manga;
 pub mod pool;
 
@@ -21,6 +23,7 @@ use oar_ocr::core::config::OrtSessionConfig;
 use oar_ocr::domain::tasks::Detection;
 use oar_ocr::predictors::{TextDetectionPredictor, TextRecognitionPredictor};
 
+pub use detector_pool::{DetectorPool, PoolOptions, SearchMode};
 pub use manga::MangaReader;
 
 pub type OcrError = Box<dyn std::error::Error + Send + Sync>;
