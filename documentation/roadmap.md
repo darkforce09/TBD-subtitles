@@ -203,17 +203,19 @@ held or a step waits on something other than the GPU. The owner picks which item
       ([M6 baseline](/documentation/research/m6_baseline.md)). Every later target in M6, M7 and
       M8 is stated against it; an item is compared by resuming a copy of the baseline job from
       the first step it changes, since Claude's answers differ between runs from scratch.
-- [ ] Separation within the VRAM cap: the separation worker held 7.3 GB of the 7.4 GB free in
-      the baseline, its ONNX Runtime session having no memory limit and an exhaustive cuDNN
-      search; a limit within 5.5 GB as the detector sessions have, its time measured.
+- [x] Separation within the VRAM cap: every ONNX Runtime CUDA session caps its arena at 4.5 GiB;
+      the separation worker went from 7.3 GB to 4.2 GB with byte-identical stems and the same
+      wall time ([measurement](/documentation/research/m6_separation_limit_and_overlap.md)).
 - [ ] Full-resolution visual screening: samples and bisection probes screened at the source's
       resolution instead of the 360-line proxy; bounded by the GPU detector's speed and VRAM, with
       RAM holding the full-size frames between samples.
 - [ ] Hardware decoding (NVDEC) for the screen and the localized video, measured against FFmpeg's
       CPU decoder.
 - [ ] Bounded frame queues between the localized video's decoder, blend and encoder.
-- [ ] Overlapping steps that wait on different things: the screen, reading and tracking (which
-      need only the probe and the shot scan) while adjudication and the sound cues wait on Claude.
+- [x] Overlapping steps that wait on different things: the screen, reading and tracking (which
+      need only the probe and the shot scan) run as a lane beside adjudication; 111–139 s saved
+      per episode, 12–15 % of the whole job, limited by detection outlasting adjudication
+      ([measurement](/documentation/research/m6_separation_limit_and_overlap.md)).
 - [ ] A larger local translation model: a 7B-class model at 4-bit (about 4.5 GB, within the VRAM
       cap) as the trial; a 14B model (about 8–9 GB at 4-bit) only with CPU offload, and only if
       the 7B trial shows the gain.
