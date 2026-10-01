@@ -4,10 +4,10 @@
 
 The approved move of every job's step outputs from loose JSON files into one embedded `redb`
 database per job, with values archived by `rkyv`, and of approved signs into one library shared
-by every episode. The owner approved it; phases 1 to 4 are built: the decision, the pinned
+by every episode. The owner approved it, and all six phases are built: the decision, the pinned
 releases and the archived types; the worker channel, the job store, its ownership and `dump`;
-every step's documents in the store; and resume and reruns in the store. Phases 5 (the
-per-frame tables) and 6 (the library shared by episodes) are not built.
+every step's documents in the store; resume and reruns in the store; the per-frame tables; and
+the library shared by episodes.
 
 ## Why
 
@@ -265,7 +265,7 @@ and reruns Dressrosa 11 and 28 with identical `.ass` and `.localized.ass` files 
    one, so the rerun may replace that file. Dressrosa 11 and 28, their earlier documents stored
    once by a throwaway seeder outside the repository and rerun from `text_mask`, gave identical
    `.ass` and `.localized.ass` files and the same `text_verify` verdicts.
-5. **Per-frame tables (implemented, measurements outstanding).** `text_mask` sends one
+5. **Per-frame tables (done).** `text_mask` sends one
    `FrameRecord` row per frame of every occurrence that keeps its plates, each as one `Output`
    frame: the keyframe quad carried to the frame, the correlation of the keyframe writing there
    (the tracker's match for moving writing, the keyframe window against the frame's for still
@@ -283,16 +283,18 @@ and reruns Dressrosa 11 and 28 with identical `.ass` and `.localized.ass` files 
    [per-frame rows down stdin](#worker-channel). The `outputs`, `frames` and `readings` layouts
    are bumped (every table's layout is in every step's fingerprint, so an existing job reruns
    whole), and `text_mask`, `text_compose`, `text_verify` and `localized_video` carry new
-   revisions. To be measured on Dressrosa 11, 28 and a 60 fps video: time, RAM, VRAM, `job.redb`
-   size, and the `.ass`, `.localized.ass` and `text_verify` verdicts against phase 4.
-   <!-- measurements pending -->
-6. **Library (implemented; measurements pending).** `crates/pipeline/src/library/` owns
+   revisions. Dressrosa 11 and 28, rerun from `text_mask`, gave identical `.ass` and
+   `.localized.ass` files and the same `text_verify` verdicts; the tables hold at most 1,898 frame
+   rows per episode, `job.redb` stays under 20 MB, and a 60 fps copy of Dressrosa 11 adds time
+   only to detection and the localized video's encode
+   ([measurements](/documentation/research/per_frame_tables.md)).
+6. **Library (done).** `crates/pipeline/src/library/` owns
    `library.redb` beside the default work folder (above), `job_model::onscreen::LibrarySign` its
    values; `text_translate` and `text_compose` read it, `output` records approved signs, Check
    Text removes rejected ones, and Settings shows its size and clears it. With an empty library no
    fingerprint, document or file changes, so Dressrosa 11 and 28 keep their outputs. Reuse over a
-   batch of episodes, and the outputs of a second episode run against the first one's signs:
-   <!-- measurements pending -->
+   batch of episodes: over Dressrosa 11–15 the library recorded 23 approved signs and none
+   recurred, so no episode reused one ([measurements](/documentation/research/sign_library_reuse.md)).
 
 ## Boundaries
 

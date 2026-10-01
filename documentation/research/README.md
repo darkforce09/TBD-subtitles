@@ -12,11 +12,13 @@ episode.
 documentation/research/
 ├── localized_video_dressrosa_11.md  frozen record, 2026-09-30: writing replaced in a localized video on one episode
 ├── localized_video_polish_dressrosa_28.md  frozen record, 2026-09-30: the owner's review, one replacement per sign, read-back approval, open issues
+├── per_frame_tables.md             frozen record, 2026-10-01: per-frame tables on Dressrosa 11, 28 and a 60 fps copy
 ├── long_video_120min.md             frozen record, 2026-09-26: a 128.9-minute video, time and memory
 ├── pilot_dressrosa_11.md            frozen record, 2026-09-26: the first end-to-end run, its fixes, resume
 ├── redb_large_transaction_memory.md  frozen record, 2026-09-30: redb memory and commit time for a 432,000-row transaction
 ├── redb_multi_process.md            frozen record, 2026-09-30: redb 4.3.0 with a second process, rkyv read in place
 ├── rust_ml_stack.md                 frozen record, 2026-09-25: Rust crates and model files per capability
+├── sign_library_reuse.md           frozen record, 2026-10-01: sign library reuse over Dressrosa 11–15
 ├── speech_recognition_landscape.md  frozen record, 2026-09-25: benchmarks, prices, options, why local
 ├── stack_spike_dressrosa_11.md      frozen record, 2026-09-26: every stack piece measured on one episode
 └── visual_scan_dressrosa_11.md      frozen record, 2026-09-29: the sampled visual scan on one episode
