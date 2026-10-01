@@ -37,7 +37,7 @@ text_review ─▶ text_mask ─▶ text_inpaint ─▶ text_compose ─▶ text
 | `text_verify` | worker, `tbd-subtitles` (ONNX Runtime, GPU lock; FFmpeg region crops) | `outputs/probe_decode`, `outputs/text_review`, `outputs/text_compose` and its patches, the `frames` rows, the source video | `outputs/text_verify`, one `readings` row per frame read |
 | `text_typeset` | worker, `tbd-subtitles` (CPU) | `outputs/text_review` | `outputs/text_typeset`, `outputs/text_typeset/ass` |
 | `output` | job runner | `outputs/cues`, `outputs/text_typeset/ass`, `outputs/text_typeset`, `outputs/text_verify` | `<video>.ass` (or the chosen format), `<video>.localized.ass`, `outputs/output` |
-| `localized_video` | worker, `tbd-subtitles` (FFmpeg decoder and encoder, GPU lock) | `outputs/probe_decode`, `outputs/text_verify` and its patches, the `frames` rows, the source video | `<video>.localized.mkv`, `visual/localized_video.json` |
+| `localized_video` | worker, `tbd-subtitles` (FFmpeg decoder and encoder, GPU lock) | `outputs/probe_decode`, `outputs/text_verify` and its patches, the `frames` rows, its own earlier `outputs/localized_video`, the source video | `<video>.localized.mkv`, `outputs/localized_video` |
 
 The three replacement steps and the read-back check pass one `ReplacementDocument`
 ([contract](/crates/job_model/src/onscreen/localize.rs)) from step to step, each adding to it:
@@ -256,8 +256,8 @@ run.
 - **Verdict per occurrence:** it stays baked only when every frame passes; otherwise it falls
   back with “The finished picture still shows Japanese” when any frame showed Japanese, else
   “The English does not read back cleanly”.
-- **Output:** `outputs/text_verify` is the replacement document with the final statuses at its
-  top level (so its JSON also reads as a plain `ReplacementDocument`) and `checks`: per checked
+- **Output:** `outputs/text_verify` is a `VerifiedReplacements`: the replacement document with
+  the final statuses (at the top level of the JSON `dump` prints) and `checks`: per checked
   occurrence the number of frames read and whether all passed. Each frame read is a row of the
   `readings` table, keyed by the occurrence id and the frame: the Japanese found, the English
   read, the similarity and the pass. The localized video, the output step and the report read the
@@ -268,9 +268,9 @@ run.
   0.6 sits in an empty gap; every Japanese reading that counted (leftover furigana over 幹部塔,
   スクラップ場, 旧王台地 and ピカ像) was 0.7 or more confident, while the stray glyphs the detector
   finds in textures and outlines were one character or 0.6 and below. Five of the 25 fall back.
-  Rerun end to end with the residue rule no longer rejecting, composition bakes 28 (スクラップ場
+  Rerun end to end with the residue rule rejecting nothing, composition bakes 28 (スクラップ場
   at 12:55 and 正義 join) and the step approves 22 in 48 s (150 frames, 1.5 GB RAM, 1.8 GB VRAM);
-  幹部塔 at 12:55 falls back again, now because its furigana stays readable. Dressrosa 11's 15
+  幹部塔 at 12:55 falls back because its furigana stays readable. Dressrosa 11's 15
   baked replacements, the Rebecca name card and the 海 wall among them, all pass (70 frames,
   22 s, all 0.9 or more). The `visual_validation` tool's `verify-probe` prints
   every frame's lines, readings, confidences and verdict for a finished job.

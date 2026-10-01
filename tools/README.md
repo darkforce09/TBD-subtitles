@@ -2,9 +2,10 @@
 
 The Rust programs that look after this repository rather than the subtitles: the gate runner that
 checks the project laws a program can check, the fail-closed check library it is built on, the
-AppImage builder that packs the app for a desktop, and the stack spike harness that measures the
-ML stack on a real video, with its ggml and language-model workers. Nothing here ships with the
-app; the AppImage builder only packs it.
+AppImage builder that packs the app for a desktop, the stack spike harness that measures the
+ML stack on a real video, with its ggml and language-model workers, the visual validation tool
+that checks on-screen text against annotated pilots, and the probe that tests redb across
+processes. Nothing here ships with the app; the AppImage builder only packs it.
 
 ## Contents
 
@@ -42,8 +43,9 @@ cargo gates [<gate>] ──> repo_gates ──> verification_core ──> crates
 the CUDA 13 runtime through `crates/inference`, and runs the stack under test on one video.
 
 `appimage_builder` is a binary crate. `cargo appimage` (an alias in `.cargo/config.toml`) builds
-the app's two release binaries, gathers the CUDA, cuDNN and ONNX Runtime libraries through
-`crates/inference` and a pinned static FFmpeg, and packs them behind the pinned AppImage runtime
+the app's three release binaries (the app and its ggml and local language-model workers),
+gathers the CUDA, cuDNN and ONNX Runtime libraries through `crates/inference` and a pinned
+static FFmpeg, and packs them behind the pinned AppImage runtime
 as `dist/TBD-subtitles-x86_64.AppImage`; the ELF fix-ups and the squashfs image are Rust, with no
 packaging program.
 
@@ -54,9 +56,16 @@ process.
 `redb_process_probe` is a binary crate that tests redb rather than the repository: it opens one
 database file from two processes (it starts itself again as the second), read-write and
 read-only, idle, writing and killed, and prints what redb did as a Markdown table; it also reads
-an rkyv archive in place from a redb value. It depends on no workspace crate.
+an rkyv archive in place from a redb value and measures the RAM one large write transaction
+holds. It depends on no workspace crate.
 
-All eight crates are members of the one Cargo workspace. The gate crates may run `git` and
+`visual_validation` is a binary crate that runs the production on-screen text steps on pilot
+clips and stills, through `crates/pipeline`, `crates/stages` and `crates/inference`, and checks a
+job's stored documents against hand annotations in `visual_validation/pilots/`; its `evaluate`,
+`inspect` and probe commands read a job's documents and per-frame rows from its job database
+(`job.redb`), the same store the app writes.
+
+All nine crates are members of the one Cargo workspace. The gate crates may run `git` and
 `cargo` as child processes; the AppImage builder also runs the app it built and the FFmpeg it
 bundles, to check them; the app never runs `git` or `cargo`.
 
@@ -77,15 +86,20 @@ tests need `git` on the `PATH`: some build a temporary git checkout, and some ju
 
 ## Boundaries
 
-- Depends on: `crates/child_process` (through `verification_core`); `crates/inference`,
+- Depends on: `crates/child_process` (through `verification_core`, and directly in
+  `stack_spike`, `appimage_builder` and `visual_validation`); `crates/inference`,
   `crates/media_io`, `crates/stages` and `crates/job_model` in the stack spike tools, and
-  `crates/pipeline` (its measurements) in `stack_spike`; `crates/inference` in
-  `appimage_builder`; the crates.io crates `clap`, `anyhow`, `regex`, `syn`, `proc-macro2`,
-  `toml`, `object`, `backhand`, `png`, `redb` and `rkyv`; the `git` and `cargo` programs.
+  `crates/pipeline` (its measurements) in `stack_spike`; `crates/inference` and
+  `crates/app_icon` in `appimage_builder`; `crates/inference`, `crates/job_model`,
+  `crates/stages`, `crates/media_io`, `crates/pipeline`, `crates/worker_channel` and
+  `crates/subtitle_formats` in `visual_validation`; the crates.io crates `clap`, `anyhow`,
+  `regex`, `syn`, `proc-macro2`, `toml`, `object`, `backhand`, `png`, `image`, `ureq`, `serde`,
+  `serde_json`, `redb` and `rkyv`; the `git` and `cargo` programs, and FFmpeg in the tools that
+  read video.
 - Used by: people and agents before a commit, through `cargo gates`; a developer measuring the
   stack, through `stack-spike`; a developer packaging the app, through `cargo appimage`; a
-  developer checking redb across processes, through `redb-process-probe`; no product crate
-  depends on anything here.
+  developer checking redb across processes, through `redb-process-probe`; a developer validating
+  on-screen text, through `visual_validation`; no product crate depends on anything here.
 - Rules:
   - a tool depends only on the workspace crates the tool table in
     `tools/repo_gates/src/layout.rs` lists for it (`cargo gates crate-layering`, and the

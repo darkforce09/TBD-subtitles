@@ -90,7 +90,7 @@ list and the line editor side by side.
   Check Lines keeps its count of lines to check, or a green check once none is left.
 - **Job cards:** a running job's card says what its [stage](/documentation/glossary.md#stage)
   does ("Settling the words"), the [step](/documentation/glossary.md#step) at work ("Now: Language
-  model settles the words · step 9 of 28"), a bar of the share done, the time left ("about 4 min
+  model settles the words · step 9 of 29"), a bar of the share done, the time left ("about 4 min
   left", "Working out the time left…" until the length is known; steps the job's settings leave
   idle add none) and the time so far. Under it nine groups: Read the video, Separate the voices,
   Hear the speech, Settle the words, Time the words, Lay out the subtitles, Translate on-screen
@@ -430,8 +430,8 @@ nothing.
   records for progress and the time left; `outputs/qc`, `outputs/output`, `corrections/fix`,
   `report.md` and the visual rows for the Overview; the sheet, the re-adjudication, the re-decodes,
   `outputs/probe_decode`, `corrections/lines` and `audio/vocals_16k.f32` for Check Lines; and
-  `outputs/text_review`, `outputs/text_typeset`, `outputs/text_verify`, `outputs/localized_video`,
-  the crops, masks and plates for Check Text. Line review writes `corrections/lines` and Check Text
+  `outputs/text_review`, `outputs/text_typeset`, `outputs/text_verify` with its `readings` rows,
+  `outputs/localized_video`, the crops, masks and plates for Check Text. Line review writes `corrections/lines` and Check Text
   `corrections/text`, each change in one write transaction that rereads the row; Fix It writes
   `corrections/lines` with its record `corrections/fix` and, while it runs, `fix/calls/`. A job a
   terminal run owns shows as busy. Each finished row's verdict and lines to check come from

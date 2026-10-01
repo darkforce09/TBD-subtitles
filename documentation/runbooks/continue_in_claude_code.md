@@ -19,56 +19,55 @@ with the prompt to paste. Update the prompt whenever the roadmap's next step cha
 
 2. Paste the prompt below as the first message.
 
-   **Expected:** Claude reads the documents and shows the M2 plan, with questions on clip playback
-   and "open in VLC", before building anything.
+   **Expected:** Claude reads the documents and shows the M6 plan, with the measurement each item
+   is judged by, before building anything.
 
 ## Prompt
 
 ```text
 You're continuing TBD-subtitles: a Rust desktop app that makes English SDH subtitles for videos on
-my PC. The repo is /run/media/system/Disk_2/Projects/TBD-subtitles. M0 (workspace, gates), M0.5
-(stack spike) and the M1 pipeline are done: `tbd-subtitles process <video>` runs 18 resumable
-steps (GPU steps in workers of `tbd-subtitles` and `tbd-subtitles-ggml`) and I accepted the
-Dressrosa 11 pilot. Now do milestone M2, the desktop GUI.
+my PC, translates the Japanese writing on screen and can replace it inside a localized copy of the
+video. The repo is /run/media/system/Disk_2/Projects/TBD-subtitles. M0 to M3 are done and
+accepted; M4 (on-screen text) and M5 (in-place replacement) are implemented and under validation,
+not accepted. The binary storage foundation is built: each job keeps every step's output and
+record in one job.redb (redb, values archived with rkyv) that one process owns, workers stream
+their outputs to the runner over framed pipes, the per-frame `frames` and `readings` tables hold
+each sign's frames and read-back results, and approved signs are shared between episodes in
+library.redb. `tbd-subtitles process <video>` runs 29 resumable steps in `tbd-subtitles`,
+`tbd-subtitles-ggml` and `tbd-subtitles-llm`. Now do milestone M6, the 24 GB workstation scaling.
 
 1. Read first: CLAUDE.md (the laws are binding: Rust only, no scripts; FFmpeg/ffprobe/claude CLI
-   as the only external programs; a README in every folder from the templates; Conventional
-   Commits straight to main with explicit paths; no silent deferrals). Then
-   documentation/roadmap.md (M1's open item and M2), documentation/features/gui.md,
-   documentation/decisions/ (the 2026-09-26 entries), documentation/architecture/pipeline.md,
-   documentation/architecture/system_overview.md, documentation/research/pilot_dressrosa_11.md,
-   documentation/standards/coding_standards.md and
-   documentation/runbooks/development_environment.md (steps 7 and 12–13: open the window, build
-   both app binaries, run a job on the host).
+   as the only external programs; peak RAM within 24 GB and 5.5 GB of VRAM per GPU worker; a
+   README in every folder from the templates; Conventional Commits straight to main with explicit
+   paths; no silent deferrals). Then documentation/roadmap.md (M4 to M6),
+   documentation/optimizations/memory_profiles.md, documentation/decisions/foundations.md (the
+   24 GB entry) and documentation/decisions/storage.md,
+   documentation/architecture/system_overview.md, documentation/architecture/pipeline.md,
+   documentation/architecture/binary_storage_plan.md,
+   documentation/research/visual_scan_dressrosa_11.md,
+   documentation/research/per_frame_tables.md, documentation/standards/coding_standards.md and
+   documentation/runbooks/development_environment.md (steps 12 and 13: build the three app
+   binaries, run a job on the host, print its rows with `tbd-subtitles dump`).
 
-2. What exists: the eframe window (glow renderer) with a queue panel and the feature folders
-   job_queue/, job_report/, line_review/ and settings/ (models/, services/, ui/; the rules are
-   held by apps/tbd_subtitles/src/tests/architecture_rules.rs). The job runner is
-   `pipeline::run_job` with `Progress` events, a `job.redb` database and `report.md` per job;
-   the CLI in apps/tbd_subtitles/src/cli/process_command.rs shows how it is called.
-
-3. Environment: you run in the claude-desktop distrobox (no CUDA driver, old FFmpeg, no display).
+2. Environment: you run in the claude-desktop distrobox (no CUDA driver, old FFmpeg, no display).
    Build in the container; run the window and every job on the host with distrobox-host-exec.
 
-4. M2 scope (roadmap and gui.md): the job queue (add files or folders, reorder, cancel, retry,
-   one job at a time on a background thread, per-step progress and time left); the job report
-   view (QC summary, flagged lines with timestamps, the subtitle path); review of flagged lines
-   (see every engine's hypothesis, pick or edit the text, re-align, rewrite the file);
-   settings (settings.toml: model folder, work folder, engines, language-model backend, output
-   format, GPU check) that the CLI reads too; missing models listed and downloaded with progress.
-   gui.md asks to open the video in VLC and to play clips through libmpv, but the app may run
-   only FFmpeg, ffprobe and claude: ask me how to handle clip playback and "open in VLC" before
-   building them. The M2 acceptance ends with the batch: queue Dressrosa 12–48 in the window
-   and run them, each report passing QC. Also close M1's last item, the 120-minute test (ask me
-   which file to use).
+3. M6 scope (roadmap): native 1080p visual screening across the CPU's threads; audio
+   recognition and visual screening at the same time; bounded in-memory frame ring buffers for
+   decoding and encoding; a resident plate, mask and patch cache for the localized video; one
+   spectrogram cache shared by the audio steps; a larger local translation model. Each use of the
+   memory headroom is measured on a real episode before it is kept (the 24 GB decision), and
+   Dressrosa 11 and 28 keep identical subtitle files and the same approved replacements unless a
+   change is meant to alter them.
 
-5. Tests for the pure logic (queue editing, progress and time left, settings parsing, review
-   edits). Before every commit: cargo fmt --all --check, cargo clippy --workspace --all-targets
+4. Before every commit: cargo fmt --all --check, cargo clippy --workspace --all-targets
    -- -D warnings, cargo test --workspace, cargo gates --with-untracked. Update READMEs and docs
-   in the same commit; tick roadmap boxes as work lands.
+   in the same commit; tick roadmap boxes as work lands; rebuild the AppImage (cargo appimage)
+   after any change I should see in the app.
 
-6. Show me your M2 plan first. Ask before downloading anything new or adding a crate that links a
-   native library. Stop before the batch so I can try the window myself.
+5. Show me your M6 plan first, with the measurement each item is judged by. Ask before
+   downloading anything new (a larger Qwen model among them) or adding a crate that links a
+   native library.
 
 Never modify the videos; keep work files out of the media folder, and log every change to the
 media folder in its README.md. Ignore AGENTS.md in the media folder.
@@ -77,7 +76,7 @@ media folder in its README.md. Ignore AGENTS.md in the media folder.
 ## Verify
 
 After the session: `git log --oneline` shows its commits, the roadmap boxes it finished are
-ticked, and CLAUDE.md's "Current state" line names the next step.
+ticked, and CLAUDE.md's "Current state" paragraph names the next step.
 
 ## Troubleshooting
 

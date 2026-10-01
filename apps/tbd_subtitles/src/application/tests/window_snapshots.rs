@@ -489,7 +489,7 @@ fn first_run_scene(root: &Path, out: &Path) {
     shoot(&mut harness, out, "first_run");
 }
 
-/// The Settings window on each of its four tabs, over the finished list with Dressrosa 15
+/// The Settings window on each of its tabs, over the finished list with Dressrosa 15
 /// selected; the machine checks are set by hand, as the mockup shows them, and none runs.
 fn settings_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
     use crate::settings::models::machine::{Check, CheckState};

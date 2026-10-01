@@ -14,7 +14,8 @@ that holds it; the rest are held in review.
   alias such as `cargo gates`.
 - External programs: FFmpeg and ffprobe, run as child processes; the `claude` CLI as an optional
   language-model backend. Nothing else is run by the app. Repository tooling under `tools/` may
-  also run `git` and `cargo`. Every child process goes through `crates/child_process/`.
+  also run `git`, `cargo`, FFmpeg (to verify a bundled build) and the app's own built binaries
+  (to smoke-test them). Every child process goes through `crates/child_process/`.
 - Models are downloaded already exported (ONNX, GGUF, safetensors) from pinned URLs with
   checksums; no code converts or exports models.
 
@@ -30,11 +31,11 @@ that holds it; the rest are held in review.
 
 ## Layering
 
-- Product crates, lowest first: `job_model` and `child_process`; then `media_io`,
-  `subtitle_formats` and `inference`; then `stages`; then `pipeline`; then the app
-  `tbd_subtitles`. A crate depends only on crates of a lower layer, never a sibling; a tool
-  depends only on the crates listed for it (`cargo gates crate-layering`, whose table is
-  `tools/repo_gates/src/layout.rs`).
+- Product crates, lowest first: `job_model`, `child_process`, `app_icon` and `worker_channel`;
+  then `media_io`, `subtitle_formats` and `inference`; then `stages`; then `pipeline`; then the
+  app binaries `tbd_subtitles`, `tbd_subtitles_ggml` and `tbd_subtitles_llm`. A crate depends
+  only on crates of a lower layer, never a sibling; a tool depends only on the crates listed for
+  it (`cargo gates crate-layering`, whose table is `tools/repo_gates/src/layout.rs`).
 - Inside the app, `src/` holds `main.rs`, the composition modules `application/` and `cli/`,
   the shared `core/`, and one folder per feature with `mod.rs`, `models/`, `services/`, `ui/` and,
   when it returns events, `events.rs`. `models/` and `services/` never name egui or eframe; `ui/`
@@ -69,8 +70,24 @@ that holds it; the rest are held in review.
   only).
 - Never `unwrap()` or `expect()` on input from files, processes, models or the user.
 - Every child process has a timeout and a cancellation path; its stderr is drained on its own
-  thread; a killed job leaves its finished stages valid for resume.
+  thread; a killed job leaves its committed steps valid for resume and stores nothing of the step
+  it was running.
 - A check that could not run reports that it did not run; it never reports success.
+
+## Job data
+
+- A step reads and writes its documents only through its `StepIo`
+  (`crates/pipeline/src/tasks/io.rs`), so they live in the job's `job.redb` as `rkyv` archives of
+  the `job_model` types; there is no JSON read path and no migration.
+- Whoever changes a type stored in a table bumps that table's version in `LAYOUT_VERSIONS`
+  (`crates/pipeline/src/work_dir/store/tables.rs`), and whoever adds a document a step writes lists
+  it in `keys::output_parts` and gives it a record kind (the tests in
+  `crates/pipeline/src/work_dir/store/tests/`).
+- A worker never opens the job's database: it receives its inputs and returns its outputs as frames
+  of the worker channel (`crates/worker_channel/`).
+- A file a row names (audio, crops, masks, plates, patches, the subtitle files and the localized
+  video) is written under a temporary name, renamed once whole, and synced before the row that
+  names it commits.
 
 ## Whitespace
 
@@ -81,7 +98,7 @@ that holds it; the rest are held in review.
 
 - Stream media; never hold a whole 44.1 kHz track in memory.
 - Load a model once per worker process and process every chunk of the job with it.
-- Record every stage's duration and peak memory in the job report.
+- Record every step's duration and peak memory in its step record and the job report.
 
 ## Related documentation
 

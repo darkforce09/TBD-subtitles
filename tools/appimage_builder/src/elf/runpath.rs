@@ -3,7 +3,7 @@
 //! **Role:** overwrite the RUNPATH (or RPATH) string in `.dynstr` with a shorter one such as
 //! `$ORIGIN` or `$ORIGIN/../lib`, padding the rest of the old string with NUL bytes.
 //!
-//! **Position:** part of `elf`; `main` calls it on the ggml worker and the ggml libraries it
+//! **Position:** part of `elf`; `main` calls it on both workers and the libraries of theirs it
 //! copies into the AppDir.
 //!
 //! **Signals and state:** writes the one file it is given; holds nothing.

@@ -1,7 +1,7 @@
 //! The detail pane's header: the selected job's name as the page title, the line under it, and
-//! on the right the Overview | Check Lines switch of a finished job (with its count of lines to
-//! check, or a check once none is left) or the Cancel of a running one; and the hint while no job
-//! is selected.
+//! on the right the Overview | Check Lines | Check Text switch of a finished job (with its count
+//! of lines to check, or a check once none is left) or the Cancel of a running one; and the hint
+//! while no job is selected.
 //!
 //! **Role:** draw the header from the borrowed state and ask for the tab or the cancel as
 //! actions.
@@ -9,10 +9,12 @@
 //! **Position:** called by `feature_views::jobs_ui` above the selected job's body; writes a
 //! finished job's line from its report, any other job's from `job_queue::services::status_text`.
 //!
-//! **Signals and state:** none; the tab shown is derived from the loaded line review.
+//! **Signals and state:** none; the tab shown is derived from the open text review and the loaded
+//! line review.
 //!
-//! **Invariants:** Check Lines shows exactly while a line review of the selected job is loaded; a
-//! running job that is stopping shows "Stopping…" in place of Cancel.
+//! **Invariants:** Check Text shows exactly while the selected job's text review is open, else
+//! Check Lines while a line review of it is loaded; a running job that is stopping shows
+//! "Stopping…" in place of Cancel.
 
 use std::time::Instant;
 

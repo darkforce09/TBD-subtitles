@@ -30,7 +30,8 @@ translation and review, which read the on-screen text corrections.
 building and nothing before it, and a changed output format reruns only the output. `revision`
 is 1 except for the explicitly versioned steps in `REVISIONS`; a revision change invalidates
 outputs produced under the previous contract. `timeout` is 180 minutes for separation, 120 for
-Whisper, adjudication and the sound cues, 360 for the first four visual steps, and 60 for the rest.
+Whisper recognition, adjudication and the sound cues, 360 for every visual step but review and
+typesetting (the localized video among them), and 60 for the rest.
 `reads` lists every stored value a step reads, as the addresses its worker receives down stdin:
 the job record, every document (`work_dir::store::keys::output_parts`) of every step it reads, the
 line corrections for the review and the quality check, the text corrections for reading,
@@ -48,8 +49,9 @@ files its rows name is `work_dir::store::files`.
 - Depends on: `job_model` (`StepName`, `JobSettings`), `serde_json`, `worker_channel::address`,
   and `crate::work_dir::store::keys` for the rows a step writes.
 - Used by: `crate::runner`, `crate::resume`, `crate::workers` and `crate::tasks`; the `worker`
-  subcommands in `apps/tbd_subtitles/src/cli/worker_command.rs` and
-  `apps/tbd_subtitles_ggml/src/main.rs`, which check a step's placement.
+  subcommands in `apps/tbd_subtitles/src/cli/worker_command.rs`,
+  `apps/tbd_subtitles_ggml/src/main.rs` and `apps/tbd_subtitles_llm/src/main.rs`, which check a
+  step's placement or name their binary.
 - Rules:
   - a step reads only steps before it (`every_step_reads_only_earlier_steps` in
     `tests/graph.rs`);
@@ -64,9 +66,15 @@ files its rows name is `work_dir::store::files`.
   - only the settings a step reads reach its fingerprint
     (`only_the_settings_a_step_reads_reach_its_fingerprint`);
   - alignment and review read both transcripts (`alignment_and_review_read_both_transcripts`);
-  - the output reads the composition, for the localized subtitle file's placement; the visual
-    review reads the shots; typesetting reads the review alone and leaves no localized events
-    (`the_output_reads_the_composition_and_the_text_review_reads_the_shots`);
+  - the output and the localized video read the checked replacements; the visual review reads
+    the shots; typesetting reads the review alone and leaves no localized events
+    (`the_output_and_the_localized_video_read_the_checked_replacements`);
+  - the read-back check runs right after composition, before the outputs, in an OCR worker
+    (`the_read_back_check_runs_between_composition_and_the_outputs_in_an_ocr_worker`);
+  - typesetting runs in a CPU worker, and only inpainting and encoding of the replacement steps
+    take the GPU lock
+    (`visual_typesetting_runs_in_a_cancellable_worker_without_a_gpu_runtime_or_lock`,
+    `replacement_steps_keep_onnx_runtime_and_the_gpu_lock_to_inpainting_and_encoding`);
   - a change to what a step writes raises its revision (the module header;
     `changed_steps_carry_their_revision_and_the_rest_are_at_one`).
 

@@ -14,7 +14,7 @@ apps/tbd_subtitles/src/job_report/
 ├── events.rs  `ReportEvent` and `LinesToCheck`: open, show, copy, Check Lines, Try Again, Fix It, Stop
 ├── mod.rs     the module tree
 ├── models/    `JobReport`, `LineGroup`, `Problem`, `Remedy`, `FixResult`, `LineCounts`, `RowSummary`
-├── services/  a job's files read into a `JobReport` or `RowSummary`; its counts; Fix It's result, thread
+├── services/  a job's database read into a `JobReport` or `RowSummary`; its counts; Fix It's result, thread
 └── ui/        the Overview: the file card with Fix It's result, the localized video, the lines card, Details and Step times
 ```
 
@@ -62,7 +62,8 @@ opens it with every line shown, at the line nearest the first stretch of speech 
 ## Boundaries
 
 - Depends on: `job_model` (`JobRecord`, `OutputRecord`, `Corrections`, `FixRecord`, `QcReport`,
-  `QcCheck`, `TimingSource`), `pipeline::work_dir::{job_id, WorkDir}`, `pipeline::fix_it`,
+  `QcCheck`, `TimingSource`), `pipeline::work_dir` (`job_id`, `WorkDir`, `read_stored`, `JobStore`,
+  `put_fix_record`, `update_corrections`), `pipeline::fix_it`, `inference::llm::call_gate`,
   `stages::output::subtitle_path`, `stages::fix_it`, `crate::core`,
   `crate::settings::models::claude_models`; `eframe` in `ui/` only.
 - Used by: `crate::application` (`actions::report`, `actions::fix_it`, `feature_views`,

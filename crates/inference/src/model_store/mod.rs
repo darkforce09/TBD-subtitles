@@ -3,8 +3,8 @@
 //! **Role:** name where model files and runtime libraries live, download the pinned ones that
 //! are missing, and tell a caller whether a model is complete on disk.
 //!
-//! **Position:** called by the stack spike tool's `fetch` command and by the app's model
-//! download; `cuda_runtime` reads the runtime folder it fills. Uses `manifest.rs`, `download.rs`
+//! **Position:** called by the app's model download, the pipeline, the AppImage builder and the
+//! stack spike tool's `fetch` command; `cuda_runtime` reads the runtime folder it fills. Uses `manifest.rs`, `download.rs`
 //! and `archive.rs`.
 //!
 //! **Signals and state:** reads `XDG_DATA_HOME` and `HOME`; writes under

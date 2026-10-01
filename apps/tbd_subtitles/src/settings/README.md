@@ -1,9 +1,10 @@
 # Settings
 
 The feature for the app's settings: the models folder and its downloads, the work folder, the
-glossary, the engines per stage, the language-model backend, the cut score, the output format and
-the watch folders, kept in `~/.config/tbd-subtitles/settings.toml`, and the check of this
-machine. The window's Settings window edits them in five tabs, each change written as it is made,
+glossary, the engines per stage, the language-model backend, the cut score, the output format,
+the watch folders and the on-screen text, kept in `~/.config/tbd-subtitles/settings.toml`, the
+sign library's size and clearing, and the check of this machine. The window's Settings window
+edits them in six tabs, each change written as it is made,
 and a banner under the toolbar says when a model is missing; the `process` subcommand reads the
 same file.
 
@@ -45,8 +46,8 @@ path; a folder that is not there is kept); watching them belongs to the automati
 ## Boundaries
 
 - Depends on: `job_model::job`, `stages::adjudication::glossary`, `pipeline::{models, work_dir,
-  measure}`, `inference::{model_store, cuda_runtime}`, `child_process`, `crate::core`, `serde`,
-  `toml`, `anyhow` and `eframe` (in `ui/` only).
+  measure, library}`, `inference::{model_store, cuda_runtime, llm::claude_cli}`, `child_process`,
+  `crate::core`, `serde`, `toml`, `anyhow` and `eframe` (in `ui/` only).
 - Used by: `apps/tbd_subtitles/src/cli/process_command.rs` and `crate::application`.
 - Rules: the folder keeps `models/mod.rs`, `services/mod.rs` and `ui/mod.rs`
   (`module_roots_and_documentation_describe_the_entire_source_tree`); `models/` and `services/`

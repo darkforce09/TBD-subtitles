@@ -59,11 +59,15 @@ exactly one frame per timeline entry; a cancel flag stops the loop and kills the
 
 - Depends on: `media_io::video_frames` (`FrameStream::open_native`, `PixelFormat`),
   `media_io::encode` (`EncodeSpec`, `EncoderProcess`, `available_encoder`, `VideoColour`,
-  `is_constant_frame_rate`), `job_model::onscreen` (`ReplacementDocument`, `PixelRect`) and `image`
-  for the patch PNGs.
+  `is_constant_frame_rate`), `job_model::onscreen` (`ReplacementDocument`, `Plate`, `PixelRect`),
+  `job_model::outputs::VideoStream` and `image` for the patch PNGs.
 - Used by: `crates/pipeline/src/tasks/localized.rs`, which chooses the output path, guards an
-  existing file and renames the finished part file into place; the read-back check
-  (`onscreen_text::replace::verify`) uses the schedule and `still`.
+  existing file, folds the `frames` rows into the `Motion` and renames the finished part file into
+  place; `crates/pipeline/src/tasks/replace.rs` and `crates/pipeline/src/tasks/verify.rs` (the
+  `Motion`, `frame_format` and the `Conversion`); composition
+  (`onscreen_text::replace::compose`, one patch per shift of `Motion`); the read-back check
+  (`onscreen_text::replace::verify`), which uses the schedule, `Motion` and `still`; and
+  `tools/visual_validation/`.
 - Rules: the source is only read; one frame and the active patches are held at a time, with the
   cache bounded by `CACHE_BYTES`; a variable frame rate is refused rather than drifting out of sync.
 

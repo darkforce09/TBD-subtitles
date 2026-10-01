@@ -66,9 +66,11 @@ Once every plate has its patch, the occurrence is `Baked`.
 
 ## Boundaries
 
-- Depends on: `job_model` replacement and text contracts, the sibling `geometry` homographies,
+- Depends on: `job_model` replacement and text contracts, `onscreen_text`'s `geometry`
+  homographies and `png` writes, `crate::localize::motion::Motion` for the per-frame shifts,
   `image` for PNG files, `tiny-skia` for rasterizing and `ttf-parser` for the variable font.
-- Used by: `pipeline::tasks::replace` for the text-compose step.
+- Used by: `pipeline::tasks::replace` for the text-compose step, which folds the `frames` rows
+  into the `Motion` it passes.
 - Rules: only `Pending` occurrences change; a fallback leaves no patch paths and no patch folder;
   source images are only read; one plate's images are held at a time; output is deterministic.
 

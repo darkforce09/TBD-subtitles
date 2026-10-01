@@ -15,7 +15,9 @@ crates/inference/src/llm/mistral_rs/
 
 - Depends on: `mistralrs` from the pinned git tag `v0.9.4` with `cuda` (Qwen3.5 GGUF support is
   not on crates.io), `tokio` to drive its async API, `serde_json`.
-- Used by: `tools/stack_spike_llm/` (the local language-model item), with the feature on.
+- Used by: the on-screen text translation in `crates/pipeline/src/tasks/onscreen.rs`, for the
+  occurrences Claude leaves (behind the pipeline feature `mistralrs`, which the local-model worker
+  `apps/tbd_subtitles_llm/` turns on), and `tools/stack_spike_llm/`, with the feature on.
 - Rules:
   - answers are schema-constrained, temperature 0, thinking off; an answer that is not JSON is an
     `LlmError` (review);

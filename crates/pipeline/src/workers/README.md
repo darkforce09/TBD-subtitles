@@ -72,7 +72,8 @@ inputs and outputs.
   record kinds).
 - Used by: `crate::runner` for every step placed in a worker, which commits the `StepWrite` a
   worker leaves; `tools/visual_validation/src/pilot.rs`;
-  `apps/tbd_subtitles/src/cli/process_command.rs` for `Binaries`.
+  the app's `process` and `fix` subcommands (`apps/tbd_subtitles/src/cli/`) and its window
+  (`apps/tbd_subtitles/src/application/actions/runner.rs`) for `Binaries`.
 - Rules:
   - one GPU worker runs at a time on the machine, and a cancelled wait never takes the lock
     (`a_held_lock_waits_until_released`, `a_cancelled_wait_gives_up` in `tests/gpu_lock.rs`);

@@ -3,7 +3,8 @@
 //! **Role:** write a PCM stream or any run of samples to a raw `.f32` file, and read one back in
 //! fixed-size chunks.
 //!
-//! **Position:** used by the decode and separation stages and the stack spike tool.
+//! **Position:** written by the decode and separation stages and the stack spike tool; read by
+//! the VAD, ASR and sound-event stages, the alignment task and the stack spike tools.
 //!
 //! **Signals and state:** one open file per writer or reader.
 //!

@@ -6,8 +6,9 @@
 //! (`sound.rs`), give a cue still too short a neighbour to share or room to grow (`short.rs`),
 //! and hand back the finished track.
 //!
-//! **Position:** called by the cue step in the job runner, from `aligned.json`,
-//! `sound_cues.json`, `shots.json` and the probe's frame rate; the result is `cues.json`.
+//! **Position:** called by the cue step in the job runner, with the reviewed words, the sound
+//! cues, the shot changes and the probe's frame rate read from the job's store; the step stores
+//! the result as `outputs/cues`.
 //!
 //! **Signals and state:** none; pure.
 //!

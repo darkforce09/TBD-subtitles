@@ -7,7 +7,7 @@ Command-line composition for the local visual translation worker.
 ```text
 apps/tbd_subtitles_llm/src/
 ├── logging.rs  worker diagnostics to stderr, model exchanges to the runner as frames
-└── main.rs  command parsing and pipeline worker dispatch
+└── main.rs     command parsing and pipeline worker dispatch
 ```
 
 ## How it works

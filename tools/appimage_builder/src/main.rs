@@ -2,15 +2,15 @@
 //!
 //! **Role:** builds TBD-subtitles as one self-contained AppImage: the three release binaries, the
 //! CUDA, cuDNN and ONNX Runtime libraries the GPU workers load, each worker's own libraries,
-//! a static FFmpeg, the desktop entry and icon, packed as a zstd squashfs image behind the pinned
-//! AppImage runtime, in `dist/`.
+//! a static FFmpeg, the Noto Sans JP font with its license, the desktop entry and icon, packed as
+//! a zstd squashfs image behind the pinned AppImage runtime, in `dist/`.
 //!
 //! **Position:** a repository tool, run by a developer; `gpu_runtime`, `build`, `ffmpeg` and
 //! `runtime` gather the parts, `app_dir` lays them out, `elf` walks and fixes up the libraries,
-//! and `squashfs` packs the image. Depends on `child_process` and `inference`.
+//! and `squashfs` packs the image. Depends on `app_icon`, `child_process` and `inference`.
 //!
 //! **Signals and state:** runs `cargo`, `git`, the built app and the bundled FFmpeg; downloads
-//! into the runtime folder and `target/appimage/cache/`; lays out `target/appimage/AppDir/`;
+//! into the runtime and models folders and `target/appimage/cache/`; lays out `target/appimage/AppDir/`;
 //! prints each step and its time to stderr.
 //!
 //! **Invariants:** every step fails closed: a missing library, a wrong hash, an FFmpeg without

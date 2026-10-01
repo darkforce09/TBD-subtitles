@@ -1,4 +1,4 @@
-//! Sound events found in the stems, as kept in `sound_events.json`: candidates for sound cues and
+//! Sound events found in the stems, as kept in `outputs/sound_events`: candidates for sound cues and
 //! the music and singing stretches.
 
 use serde::{Deserialize, Serialize};

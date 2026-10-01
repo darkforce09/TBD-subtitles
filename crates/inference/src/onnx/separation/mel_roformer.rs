@@ -5,7 +5,7 @@
 //! index `2 × freq + channel`; the model's complex mask is multiplied onto the spectrum and the
 //! result turned back into samples. Windows overlap with a Hamming weight and an 8-second step.
 //!
-//! **Position:** a [`WindowModel`] for `overlap_add.rs`; opened by the separation stage.
+//! **Position:** a [`WindowModel`] for `overlap_add.rs`; opened by the separation step's task.
 //!
 //! **Signals and state:** one ONNX session and one STFT; counts model seconds for the report.
 //!

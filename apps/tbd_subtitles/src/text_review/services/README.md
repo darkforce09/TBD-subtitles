@@ -1,16 +1,17 @@
 # Text review services
 
-Background file operations and bounded original/rendered preview playback.
+Background reads and writes of the job's database and the sign library, and bounded
+original/rendered preview playback.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/text_review/services/
-├── tests/        correction, retry, artifact and replacement regression tests
 ├── localized.rs  the localized video's rows and files, replacements, keyframe plates and pictures
 ├── mod.rs        service exports
 ├── player.rs     cancellable FFmpeg comparison playback
-└── session.rs    the job's rows read in one snapshot; corrections changed in one transaction
+├── session.rs    the job's rows read in one snapshot; corrections changed in one transaction
+└── tests/        correction, retry, artifact and replacement regression tests
 ```
 
 ## How it works

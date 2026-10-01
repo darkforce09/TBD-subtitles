@@ -32,9 +32,16 @@ the patch and mask of its first plate, and the jobs that recorded it, the first 
 
 ## Boundaries
 
-- Depends on: `serde` and `std`.
-- Used by: inference, stages, pipeline, subtitle formats and the desktop window.
-- Rules: untranslated text carries no invented English; edits have finite valid timing and size.
+- Depends on: `serde`, `rkyv` and `std`; `sha2` for an occurrence's observation fingerprint.
+- Used by: `crates/inference/` (the OCR's quads), `crates/stages/`, `crates/pipeline/`, the
+  desktop window and `tools/visual_validation/`.
+- Rules: untranslated text carries no invented English; edits have finite valid timing and size
+  (`edits_reject_invalid_timing_and_sizes`,
+  `edit_validation_rejects_nonfinite_and_out_of_range_fields` in `tests/contracts.rs`); a mask's
+  runs decode back to the mask and stay inside its plate
+  (`a_mask_encodes_into_runs_and_decodes_back`, `runs_outside_the_mask_are_clipped` in
+  `tests/frames.rs`); the check's document also reads as a plain replacement document
+  (`the_file_reads_back_whole_and_as_a_plain_replacement_document` in `tests/verify.rs`).
 
 ## Related documentation
 

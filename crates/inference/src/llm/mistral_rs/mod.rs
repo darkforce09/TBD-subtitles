@@ -3,7 +3,8 @@
 //! **Role:** load a GGUF model from the models folder once, and answer each request with JSON
 //! constrained to the request's schema, thinking switched off.
 //!
-//! **Position:** a [`LanguageModel`] for the adjudication stage, behind the `mistralrs` feature;
+//! **Position:** a [`LanguageModel`] for on-screen text translation in the local-model worker,
+//! behind the `mistralrs` feature;
 //! mistral.rs is async, so the backend owns a Tokio runtime and blocks on each request.
 //!
 //! **Signals and state:** the model on the GPU and the runtime; `HF_HUB_OFFLINE` is expected so

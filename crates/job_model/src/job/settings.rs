@@ -3,13 +3,15 @@
 //!
 //! **Role:** name every choice that changes a job's output, with the measured defaults.
 //!
-//! **Position:** built by the app from the owner's settings and the command line; stored in
-//! `job.json`; each step's fingerprint covers the part it reads (`pipeline::graph::settings`).
+//! **Position:** built by the app from the owner's settings and the command line; stored in the
+//! job record, `meta/job_record` of the job's database; each step's fingerprint covers the part it
+//! reads (`pipeline::graph::settings`).
 //!
 //! **Signals and state:** none; plain data.
 //!
 //! **Invariants:** the JSON names stay stable, and a field added later carries a serde default, so
-//! an older `job.json` still parses and its finished steps stay valid.
+//! older JSON still parses; a changed field changes the rkyv layout, which bumps the layout
+//! version of the `meta` table.
 
 use serde::{Deserialize, Serialize};
 

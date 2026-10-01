@@ -62,8 +62,8 @@ third FFmpeg decodes the frame at its start on a thread (about 150 ms), shown be
 
 - Depends on: `job_model::outputs` (the sheet, re-decodes, adjudication, corrections),
   `job_model::report`, `crate::job_report::models::finding_group` (the groups), `media_io::preview`,
-  `child_process`, `pipeline::work_dir::{job_id, read_stored}`, `crate::core`; `eframe` in
-  `ui/` only.
+  `child_process`, `pipeline::work_dir::{job_id, read_stored, JobStore, update_corrections}`,
+  `crate::core`; `eframe` in `ui/` only.
 - Used by: `crate::application` (`actions::review`, `actions::report`, `feature_views`,
   `shortcuts`).
 - Rules: the folder keeps `models/mod.rs`, `services/mod.rs` and `ui/mod.rs`, `models/` and

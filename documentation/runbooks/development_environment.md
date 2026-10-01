@@ -36,8 +36,9 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
   `/run/media/system/Disk_2/Projects`; 124 GB free on that disk).
 - Test videos: `/run/media/system/Main_storage/Media/one_pace/` (3.3 TB free). Read-only for the
   project; see that folder's README.md.
-- Models: `~/.local/share/tbd-subtitles/models/`. Job work directories:
-  `~/.local/share/tbd-subtitles/work/<job id>/`, or under `--work-root` on a larger disk.
+- Models: `~/.local/share/tbd-subtitles/models/`. Job work directories, each with its database
+  `job.redb`: `~/.local/share/tbd-subtitles/work/<job id>/`, or under `--work-root` on a larger
+  disk. The sign library shared by every job: `~/.local/share/tbd-subtitles/library.redb`.
 
 ## Steps
 
@@ -143,9 +144,11 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
     **Expected:** `decode: Ok in <s> s (<x>× realtime)`; `stack-spike report --video …` prints the
     table. A GPU item with less than 5632 MiB of VRAM free is recorded as not run.
 
-12. Build the app's two binaries: `tbd-subtitles`, then its Whisper worker `tbd-subtitles-ggml`
-    under the CUDA 13.4 toolkit (about 3 minutes the first time). Both land in `target/release/`,
-    where the runner finds the worker beside the app.
+12. Build the app's three binaries: `tbd-subtitles`, its Whisper worker `tbd-subtitles-ggml`
+    under the CUDA 13.4 toolkit (about 3 minutes the first time), and its local translation
+    worker `tbd-subtitles-llm` under the CUDA 13.3 compiler as in step 10 (about 30 minutes the
+    first time). All three land in `target/release/`, where the runner finds the workers beside
+    the app.
 
     ```bash
     cargo build --release -p tbd_subtitles
@@ -155,8 +158,14 @@ Rule: build and test anywhere; run anything that touches the GPU, and FFmpeg, on
     env PATH="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.4/bin:$PATH" CUDACXX="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.4/bin/nvcc" CUDAToolkit_ROOT="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.4" CUDAARCHS=86 cargo build --release -p tbd_subtitles_ggml --features crispasr
     ```
 
-    **Expected:** `Finished release profile` twice; `ldd target/release/tbd-subtitles-ggml` lists
-    `libcrispasr.so.1`. Without `--features crispasr` the worker builds but refuses every step.
+    ```bash
+    env PATH="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.3-build/bin:$PATH" CUDA_ROOT="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.3-build" CUDA_PATH="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.3-build" CUDA_COMPUTE_CAP=86 LIBRARY_PATH="$HOME/.local/share/tbd-subtitles/runtime/cuda-13.4/lib" cargo build --release -p tbd_subtitles_llm --features mistralrs
+    ```
+
+    **Expected:** `Finished release profile` three times; `ldd target/release/tbd-subtitles-ggml`
+    lists `libcrispasr.so.1`. Without `--features crispasr` the Whisper worker builds but refuses
+    every step, and without `--features mistralrs` the translation worker reports that it has no
+    mistral.rs backend.
 
 13. Generate subtitles for a video on the host, with nothing else using the GPU.
 

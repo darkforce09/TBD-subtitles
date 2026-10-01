@@ -3,8 +3,8 @@
 //! **Role:** the one way the app and the repository tools start a child process: FFmpeg, ffprobe,
 //! the `claude` CLI, the app's own GPU workers, and `git` or `cargo` in the tools.
 //!
-//! **Position:** the bottom layer, beside `job_model`; `media_io`, `inference`, `pipeline` and
-//! `tools/verification_core` call it. It calls only `std`, `libc` and the `tracing` facade.
+//! **Position:** the bottom layer, beside `job_model`; `media_io`, `inference`, `pipeline`, the
+//! app and the repository tools call it. It calls only `std`, `libc` and the `tracing` facade.
 //!
 //! **Signals and state:** reads the `PATH` environment variable in [`which`]; spawns processes;
 //! holds no state between runs.

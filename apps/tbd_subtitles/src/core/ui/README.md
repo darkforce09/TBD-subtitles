@@ -29,11 +29,12 @@ apps/tbd_subtitles/src/core/ui/
 
 `theme::install` runs once when the window opens (and in each test harness). It installs the
 fonts first: `fonts::install` adds the pinned Noto Sans JP fallback from the AppImage or model
-store so Japanese OCR results remain readable, then reads `/usr/share/fonts/adwaita-sans-fonts/AdwaitaSans-Regular.ttf`
-and `/usr/share/fonts/adwaita-mono-fonts/AdwaitaMono-Regular.ttf`, and `fonts::definitions` puts
-them in front of egui's own fonts: Adwaita Sans once at weight 400 as the proportional font and
-twice more with the `wght` axis set to 600 and 700 as the families `semibold` and `bold`, Adwaita
-Mono as the monospace font ahead of egui's Hack. The Phosphor icon font (crate `egui-phosphor`,
+store so Japanese OCR results remain readable, then reads
+`/usr/share/fonts/adwaita-sans-fonts/AdwaitaSans-Regular.ttf` and
+`/usr/share/fonts/adwaita-mono-fonts/AdwaitaMono-Regular.ttf`, and `fonts::definitions` puts them
+in front of egui's own fonts: Adwaita Sans once at weight 400 as the proportional font and twice
+more with the `wght` axis set to 600 and 700 as the families `semibold` and `bold`, Adwaita Mono
+as the monospace font ahead of egui's Hack. The Phosphor icon font (crate `egui-phosphor`,
 regular weight) is a fallback of the proportional, `semibold`, `bold` and monospace families, so
 icon glyphs draw inside their text; alone it is the family `phosphor`, in which every icon is
 drawn (`icons::font`), since Adwaita Sans has glyphs of its own at some of the icon font's

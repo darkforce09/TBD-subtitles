@@ -13,11 +13,12 @@ tools/appimage_builder/src/gpu_runtime/
 ## How it works
 
 `ensure_unpacked` installs any pinned CUDA or ONNX Runtime archive the user's runtime folder
-lacks, through `inference::model_store`. `bundle` starts from the library lists
-`inference::cuda_runtime` requires, adds the libraries loaded with `dlopen` (NVRTC's builtins and
-every cuDNN library), walks their NEEDED closure inside the three runtime folders, and copies each
+lacks, and the CUDA 13.3 compiler archives the local worker's build uses, through
+`inference::model_store`. `bundle` starts from the library lists
+`inference::cuda_runtime` requires, adds the libraries loaded with `dlopen` (NVRTC's builtins,
+nvJitLink and every cuDNN library), walks their NEEDED closure inside the three runtime folders, and copies each
 library with its soname symlinks into the matching bundled folder. It then asks
-`CudaRuntime::locate` to find the bundle, and returns every bundled name so the ggml walk leaves
+`CudaRuntime::locate` to find the bundle, and returns every bundled name so the workers' library walks leave
 them out.
 
 ## Boundaries

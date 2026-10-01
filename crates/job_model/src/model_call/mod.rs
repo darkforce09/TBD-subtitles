@@ -4,7 +4,7 @@
 //! **Role:** the record a backend makes of each call, carried from a worker process to the app
 //! as its JSON in one `ModelCall` frame of the worker channel.
 //!
-//! **Position:** built by `inference::llm::claude_cli`; parsed by `pipeline::workers` and the app's
+//! **Position:** built by `inference::llm::call_log`; parsed by `pipeline::workers` and the app's
 //! log buffer.
 //!
 //! **Signals and state:** none; plain data.

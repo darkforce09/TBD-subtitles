@@ -104,6 +104,6 @@ process ends."), the video's path and Remove from List; its row has the waiting 
   `a_job_that_failed_before_its_first_step_shows_no_stages`,
   `a_failed_job_shows_the_steps_it_ran_as_done_with_their_times`,
   `a_job_another_process_runs_waits_busy_and_starts_once_that_process_ends`) and
-  `tests/rendering.rs`
+  `apps/tbd_subtitles/src/application/tests/rendering.rs`
   (`a_cancelled_job_keeps_its_finished_steps_and_can_be_retried`,
   `a_failed_job_records_its_step_and_the_steps_it_kept`).

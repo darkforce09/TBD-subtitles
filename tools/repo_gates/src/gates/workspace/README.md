@@ -18,10 +18,12 @@ tools/repo_gates/src/gates/workspace/
 with `toml`, reads the package name, and looks the crate up in `tools/repo_gates/src/layout.rs`:
 
 - a product crate (`PRODUCT_LAYERS`) may depend only on product crates of a strictly lower layer:
-  `job_model` and `child_process` at 0; `media_io`, `subtitle_formats` and `inference` at 1;
-  `stages` at 2; `pipeline` at 3; `tbd_subtitles` at 4;
-- a tool (`TOOL_DEPENDENCIES`) may depend only on the workspace crates listed for it:
-  `verification_core` on `child_process`, `repo_gates` on `verification_core`;
+  `job_model`, `child_process`, `app_icon` and `worker_channel` at 0; `media_io`,
+  `subtitle_formats` and `inference` at 1; `stages` at 2; `pipeline` at 3; the three app
+  binaries `tbd_subtitles`, `tbd_subtitles_ggml` and `tbd_subtitles_llm` at 4;
+- a tool (`TOOL_DEPENDENCIES`) may depend only on the workspace crates listed for it, such as
+  `verification_core` on `child_process`, `repo_gates` on `verification_core`, and
+  `redb_process_probe` on none; the table holds every tool under `tools/`;
 - a crate in neither table fails, so a new crate is placed before it passes.
 
 Every dependency table counts (normal, dev and build, `[target.*]` tables included), and a

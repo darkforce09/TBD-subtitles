@@ -7,8 +7,6 @@ answers in before the next frame.
 
 ```text
 apps/tbd_subtitles/src/application/actions/
-├── text.rs        asynchronous text review and correction runs
-├── tests/         correction completion across navigation
 ├── automation.rs   videos from any source into the queue and the history; hand-offs, watch folders, auto-start, job-end notices, the service menu
 ├── fix_it/         Fix It: its view and steps, start (one, Fix All, after a job) and Stop, end, finish
 ├── log_console.rs  the log window: open, read lines and calls, views, filters, clear, log file
@@ -17,7 +15,9 @@ apps/tbd_subtitles/src/application/actions/
 ├── report.rs       the selected job's report, the finished rows' summaries, and the Overview's requests
 ├── review.rs       the line review: open (on a group), edit, save or keep and queue a run, clips, stills
 ├── runner.rs       starting the next job of each lane with its options, and the runners' events
-└── settings.rs     the settings page as the window opens, edits written at once, tabs, downloads
+├── settings.rs     the settings page as the window opens, edits written at once, tabs, downloads
+├── tests/          Check Text saves, drafts and previews across navigation
+└── text.rs         Check Text: open, load off the window thread, edit, save and queue a run, preview
 ```
 
 ## How it works
@@ -28,7 +28,8 @@ and a chosen path go through `settings::services::page_editing::apply`, written 
 refused with an error under their field; a settings file that could not be read is kept as
 `settings.toml.broken` before the first write, which an info toast says; what the edit made
 stale is refreshed and nothing else:
-the models list when the models folder or an engine changed, a folder's size when that folder
+the models list when the models folder, an engine, on-screen translation or Replace text in the
+video changed, a folder's size when that folder
 changed, never the machine checks; after every edit the cap on Fix It's Claude calls
 (`claude_gate`) is the saved "Claude calls at once". `Open` shows a tab of the Settings window
 (the tab bar, the banner's Details…, This Computer's link to Models); the other actions open the desktop's chooser
@@ -83,8 +84,8 @@ Fix It after each job starts on (`fix_after_run`).
 `report.rs` reads the selected finished job's report when it is selected or a job ends, and with
 it the job's row summary; `refresh_summaries` reads the summary of every finished row when the
 window opens, and of a video's rows after each of its runs and each saved or taken-back
-correction (a row whose files cannot be read has none). It applies the Overview's events: Open in
-Player, Show in Folder and Open Full Report through `open_with_desktop`, the copied path's toast,
+correction (a row whose job database cannot be read has none). It applies the Overview's events:
+Open in Player, Show in Folder and Open Full Report through `open_with_desktop`, the copied path's toast,
 Check Lines on the lines to check, on a group (the list narrowed to it), or on every line at the
 one nearest the first speech with no subtitle (Show Nearby Lines); Try Again beside a failed
 language-model call, which is Try Again from `StepName::Adjudicate`: every model call and the
@@ -161,6 +162,17 @@ the window's attention asked for, only while the window is away. `install_right_
 Dolphin's service menu as the window opens and turns how that went into the Automation tab's
 `RightClickEntry`, logged.
 
+`text.rs` opens Check Text on the selected finished job: `text_review::services::session::load`
+reads the job's rows on a thread, and `poll_text` takes the session in, keeping the unsaved draft,
+the selected occurrence and the preview's picture and mask switch when the same video's session
+is read again. It applies the view's events: selecting an occurrence (its replaced plate and
+erase mask decoded off the window thread), the draft, the preview's play, stop and seek over
+`text_review::services::player`, and Save, Undo, Retry and the discarding of orphaned
+corrections, each written on a thread through `session::save`. A save carries its own video, so
+switching videos or leaving Check Text while it runs neither drops it nor changes the new
+session; once written it queues one review run of its video (`queue_editing::queue_review`), and
+a failed one says why in a red toast naming its video.
+
 `log_console.rs` opens and closes the log window; opening reads every line and model call the
 process's log buffer still holds that the console has not, and `poll_log` reads the new ones
 before each frame while the window is open, never while it is closed, so nothing logged meanwhile
@@ -173,8 +185,10 @@ line); Open Log File opens the log file in the desktop's text editor through `op
 
 - Depends on: `crate::settings` (events, models, services); `crate::job_queue` (events, models,
   services); `crate::job_report` (events, `models::finding_group`, services); `crate::line_review`
-  (events, models, services); `crate::log_console` (events, models); `pipeline` (`JobOptions`, `CancelToken`, `workers::Binaries`); `media_io::preview`
-  (`Clip`); `crate::core::{format, portal, service_menu, single_instance, steps, toast}`;
+  (events, models, services); `crate::log_console` (events, models); `crate::text_review`
+  (models, services); `pipeline` (`JobOptions`, `CancelToken`, `progress::Progress`,
+  `workers::Binaries`, `models::required`, `work_dir::{job_id, read_job}`, `library::Library`,
+  `fix_it`); `media_io::preview` (`Clip`); `crate::core::{format, portal, service_menu, single_instance, steps, toast}`;
   `crate::application` (`TbdSubtitlesApp`, `Action`, `Environment`, `HandOffs`,
   `background::{Chooser, Opening}`).
 - Used by: `crate::application`, in `apply` and `poll`.

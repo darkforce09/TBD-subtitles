@@ -58,7 +58,7 @@ pub struct Episode<'a> {
     pub lines: &'a [Line],
     pub corrections: &'a Corrections,
     pub qc: &'a QcReport,
-    /// The words as the subtitles time them now (`reviewed.json`).
+    /// The words as the subtitles time them now (`outputs/review`).
     pub timing: &'a Aligned,
     /// The main engine's words, to tell what was heard where speech has no subtitle.
     pub heard: &'a EngineTranscript,

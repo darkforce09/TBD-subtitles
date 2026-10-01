@@ -74,7 +74,7 @@ in line (`2nd`) and counts with their noun (`2 corrections`).
 `steps` groups the twenty-nine pipeline steps into the nine stages the window shows, from
 "Read the video" to "Write the localized video", each with its title and what it does while
 running ("Settling the words"), and gives every step a plain title ("Listen with Whisper") in
-place of its file name; `stage_of` finds a step's stage.
+place of its `snake_case` name; `stage_of` finds a step's stage.
 
 `toast` holds the toasts shown now, oldest first: each has a kind (Success, Info, Working or
 Error), its text, an optional button with what it does, and the time it goes away (4.2 s unless

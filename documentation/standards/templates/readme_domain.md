@@ -48,69 +48,93 @@ span them. Name each child's part in one clause; the child's own README holds th
 
 ## Worked sample
 
-Written from `apps/tbd_subtitles/src/job_queue/`, the application module that uses it and the
-architecture tests in `apps/tbd_subtitles/src/tests/architecture_rules.rs`. The sample sits in a
-fenced block, so no gate reads it as a README; the folder's own README.md is written from the same
-code and may differ.
+Written from `apps/tbd_subtitles/src/job_queue/`, the application module that uses it, its tests
+and the architecture tests in `apps/tbd_subtitles/src/tests/architecture_rules.rs`, and shortened:
+the folder's own README.md describes every row state, menu and rule. The sample sits in a fenced
+block, so no gate reads it as a README; the folder's own README.md is written from the same code
+and may differ.
 
 ````markdown
 # Job queue
 
-The window's queue of videos waiting for subtitles: the panel on the left that lists them, and the
-rules for adding and removing them.
+The feature that runs the videos' jobs: the toolbar across the top of the window, the sidebar of
+videos on the left, the selected job's cards, progress and stages on the right, the edits of the
+queue, the threads that run the jobs, the time left, the watch folders and the queue kept across
+windows.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/job_queue/
-├── events.rs  what the queue panel asks the application to do
-├── mod.rs     the module tree of the feature
-├── models/    the borrowed view of the queue the panel draws from
-├── services/  adding videos to the queue and taking them out, with their unit tests
-└── ui/        the queue panel
+├── events.rs  `JobQueueEvent`: every request of the toolbar, the sidebar and its menus
+├── mod.rs     the module tree
+├── models/    the queue and its jobs, the sidebar's rows, a job's progress, the watch folders
+├── services/  edits, sidebar rows and status lines, the runners, progress, time left, queue.json
+└── ui/        the toolbar, the sidebar, its rows and menus, the empty card, the drop overlay, job cards
 ```
 
 ## How it works
 
-The queue itself belongs to the application state; this feature never holds it. Each frame the
-application lends the panel a `JobQueueView`, a read-only borrow of the queued videos in run order.
-`ui::queue_panel_ui` draws one row per video, its file name with the full path on hover, and a
-remove button; a click pushes `JobQueueEvent::Remove(index)` instead of changing anything. After
-the frame the application turns each event into an action and applies it through
-`services::queue_editing`: `add_videos` appends the videos not already queued and skips empty
-paths, keeping the order given, and `remove_video` ignores an index past the end.
-
 ```text
-application ──JobQueueView──▶ ui::queue_panel_ui ──JobQueueEvent──▶ application
-     │                                                                   │
-     └──────────────── services::queue_editing ◀───── Action ────────────┘
+toolbar, sidebar, row menu ──▶ JobQueueEvent ──▶ application (actions::queue, actions::runner)
+                                    ├── queue_editing: add, remove/restore, move, try again, run again
+                                    ├── Start: next waiting full run + JobOptions ──▶ job_runner
+                                    └── Cancel: the job's CancelToken
+line review Save ──▶ queue_editing ──▶ next waiting review run ──▶ review_lanes
+either runner's thread ──run_job──▶ RunnerEvent::Progress / Ended ──▶ progress_tracking ──▶ queue
+                                                                  └──▶ queue_store (queue.json)
+queue ──▶ sidebar_rows (one row per video) ──▶ status_text ──▶ sidebar
 ```
+
+The panels change nothing while a frame is drawn: each click is a `JobQueueEvent` the application
+applies after the frame. Pressing Start runs the waiting full runs in order, one at a time, on
+their runner's long-lived thread. A correction run, queued when the owner saves a correction, runs
+at once on one of four review lanes unless a run of the same video is running. The sidebar shows
+one row per video in Now, Up Next and Done, each with a status line built by `status_text`; a
+finished row gives its verdict and lines to check from the job's records. The runner's events move
+each step from pending to running to done or failed; `time_left` judges what is left from each
+step's measured pace. `folder_watcher` scans the watch folders and hands the window each video that
+has finished arriving, and the queue is written to `queue.json` after every change.
 
 ## Public surface
 
-- `events::JobQueueEvent`: the one event, `Remove(index)`, which `application/events.rs` turns
-  into `Action::RemoveFromQueue`.
-- `models::view::JobQueueView`: the per-frame borrow `application/feature_views.rs` builds.
-- `services::queue_editing::{add_videos, remove_video}`: the queue changes the application applies
-  after each frame.
-- `ui::queue_panel_ui`: the panel `application/feature_views.rs` draws in the left side panel.
+- `events::JobQueueEvent`: what the toolbar, the sidebar and the row menus ask the application to
+  do.
+- `models::{queue, progress, sidebar, view, watch}`: the queue the application owns and the views
+  it lends the panels.
+- `ui::{toolbar_ui, sidebar_ui, row_order, empty_state_ui, drop_overlay_ui, progress_view_ui}`: the
+  panels `application/feature_views.rs` draws.
+- `services`: the edits, the runners and lanes, progress tracking, the queue file and the watch
+  folders, for the application; `services::video_files` also for the `process` subcommand.
 
 ## Boundaries
 
-- Depends on: `eframe::egui` in `ui/` only; `crate::core::ui` for the muted text colour.
-- Used by: the `application` module alone.
+- Depends on: `pipeline` (`run_job`, `JobOptions`, `Progress`, `CancelToken`, `work_dir`),
+  `job_model`, `inference` (the app data folder), `crate::core`, `crate::job_report::models`
+  (a finished row's verdict and count), `serde` and `serde_json`; `eframe::egui` in `ui/` only.
+- Used by: `crate::application` (its actions, `feature_views`, `window`, `shortcuts`); the
+  `process` subcommand in `apps/tbd_subtitles/src/cli/process_command.rs`, which expands folders
+  through `services::video_files`.
 - Rules:
-  - `models/` and `services/` never import egui or eframe; the feature never imports `application`
-    or `cli`; no module but `application` imports this feature's `ui`
-    (`dependency_boundaries_and_external_test_placement_are_enforced` in
+  - `models/` and `services/` never name egui or eframe, and the feature imports neither
+    `application` nor `cli` (`dependency_boundaries_and_external_test_placement_are_enforced` in
     `apps/tbd_subtitles/src/tests/architecture_rules.rs`);
-  - the feature keeps its `models/`, `services/` and `ui/` folders, each with a `mod.rs`
-    (`module_roots_and_documentation_describe_the_entire_source_tree`, same file);
-  - the panel changes no state while a frame is drawn: every change is an event the application
-    applies after the frame.
+  - one full run runs at a time, up to four correction runs of different videos run at once, and
+    none while a model is missing (`started_jobs_run_one_after_another_and_the_queue_is_kept`,
+    `four_correction_runs_run_at_once_but_never_two_of_one_video`,
+    `no_job_starts_while_a_model_is_missing` in
+    `apps/tbd_subtitles/src/application/tests/rendering.rs`);
+  - a running job is never removed, and only waiting full runs move
+    (`a_running_job_cannot_be_removed`, `waiting_jobs_move_among_themselves` in
+    `services/tests/queue_editing.rs`);
+  - a correction run shows on its video's row (`correction_runs_fold_into_their_videos_row` in
+    `services/tests/sidebar_rows.rs`);
+  - a failed job records its step and the steps it kept
+    (`a_failed_job_records_its_step_and_the_steps_it_kept`, in the application's
+    `tests/rendering.rs`).
 
 ## Related documentation
 
-- [Desktop GUI](/documentation/features/gui.md) — the queue, progress and review the window is
-  built to show.
+- [Desktop GUI](/documentation/features/gui.md) — the queue and progress behaviour.
+- [Automation](/documentation/features/automation.md) — the watch folders.
 ````

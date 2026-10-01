@@ -12,9 +12,9 @@ program name the `cargo gates` gate that holds them; the rest are held in review
 - A document about one part of the code sits at the code's path with `apps/`, `crates/` and
   `src/` left out: the app's feature folder `apps/tbd_subtitles/src/job_queue/` is documented in
   a `tbd_subtitles/job_queue/` folder under `documentation/`, created with its first document.
-- Topics that span the code have their own folders: `architecture/`, `research/`, `features/`,
-  `runbooks/`, `standards/`, and the decision log in `decisions/`; `glossary.md`, `roadmap.md`
-  and `vision_and_goals.md` sit at the top.
+- Topics that span the code have their own folders: `architecture/`, `optimizations/`,
+  `research/`, `features/`, `runbooks/`, `standards/`, and the decision log in `decisions/`;
+  `glossary.md`, `roadmap.md` and `vision_and_goals.md` sit at the top.
 
 ## Files
 

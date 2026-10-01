@@ -54,25 +54,26 @@ besides exempt ones and at most three files.>
 
 ## Worked sample
 
-Written from `documentation/runbooks/`, a folder of two runbooks. It keeps How it works, although
-two files would let it leave the section out, because a new runbook's writer needs the rules it
-states. The sample sits in a fenced block, so no gate reads it as a README; the folder's own
-README.md is written from the same files and may differ.
+Written from `documentation/runbooks/`, a folder of three runbooks. It keeps How it works,
+although three files would let it leave the section out, because a new runbook's writer needs the
+rules it states. The sample sits in a fenced block, so no gate reads it as a README; the folder's
+own README.md is written from the same files and may differ.
 
 ````markdown
 **Status:** live
 
 # Runbooks
 
-Step-by-step procedures: setting up and checking the development environment, and handing the
-project to the next working session.
+Step-by-step procedures: setting up and checking the development environment, packaging the app
+as an AppImage, and handing the project to the next working session.
 
 ## Contents
 
 ```text
 documentation/runbooks/
+├── building_the_appimage.md     package the app as a self-contained AppImage with `cargo appimage`
 ├── continue_in_claude_code.md   the prompt that starts the next session in the Claude Code GUI
-└── development_environment.md   host and container, GPU, paths, toolchain, FFmpeg, and their checks
+└── development_environment.md   host and container, GPU, paths, toolchain, FFmpeg, build and check
 ```
 
 ## How it works
@@ -87,12 +88,15 @@ the runbook is fixed in the same commit as the change that broke it.
 
 - [The app](/apps/tbd_subtitles/) — the binary the environment runbook builds and launches.
 - [Repository gates](/tools/repo_gates/) — the `cargo gates` checks the runbooks cite.
+- [AppImage builder](/tools/appimage_builder/) — the `cargo appimage` packager the AppImage
+  runbook runs.
 
 ## Boundaries
 
 - Depends on: the host and container facts in [CLAUDE.md](/CLAUDE.md), and the runbook template.
 - Used by: people and AI sessions setting up, building or handing over the project; CLAUDE.md and
-  the app's README link the environment runbook.
+  the app's README link the environment runbook, and the AppImage builder's README links the
+  AppImage runbook.
 - Rules: each step holds one command and its expected result; every cited `cargo gates` command
   exists (`cargo gates link-check`); each runbook stays within 500 lines
   (`cargo gates markdown-placement`).

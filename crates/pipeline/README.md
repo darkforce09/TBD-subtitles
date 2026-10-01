@@ -2,9 +2,9 @@
 
 The `pipeline` crate: runs one video through every step of the pipeline, in the order
 `StepName::ALL` gives, skipping each step whose output is still valid, running each model step as a
-[worker process](/documentation/glossary.md#worker-process) of one of the app's two binaries, and
+[worker process](/documentation/glossary.md#worker-process) of one of the app's three binaries, and
 recording the time and peak memory of every step. The app's `process` and `worker` subcommands and
-the ggml worker binary call it.
+the ggml and local-model worker binaries call it.
 
 ## Contents
 
@@ -63,10 +63,10 @@ Run these from the repository root:
 
 ```bash
 cargo build -p pipeline   # the library, with stages, inference and the crates beneath it
-cargo test -p pipeline    # 88 unit tests: graph, resume, job store, record kinds, worker channel
+cargo test -p pipeline    # 152 unit tests: graph, resume, store, record kinds, channel, library
 ```
 
-A whole job runs through the app: build both binaries and run
+A whole job runs through the app: build the three binaries and run
 `tbd-subtitles process <video>` on the host, as the
 [development environment runbook](/documentation/runbooks/development_environment.md) says. The
 worker binaries must sit beside the running binary.
@@ -80,6 +80,10 @@ passes in `JobOptions`, recorded in the job record (`crates/job_model/src/job/se
 - the work root: `JobOptions::work_root`, by default `<data home>/tbd-subtitles/work` from
   `work_dir::default_root`, where the data home is `XDG_DATA_HOME` or `~/.local/share` (read by
   `crates/inference/src/model_store/mod.rs`); the models and the CUDA runtime folder sit beside it;
+- the sign library: `JobOptions::library`, which the app sets to
+  `<data home>/tbd-subtitles/library.redb` from `library::default_path` (`None` runs without
+  one); the runner names it to the workers that read it in
+  `TBD_SUBTITLES_LIBRARY` (`library::LOCATION_VARIABLE`, read in `src/library/mod.rs`);
 - `LD_LIBRARY_PATH`, which `inference::cuda_runtime` extends, with `ORT_DYLIB_PATH`, for every GPU
   worker;
 - the Cargo feature `crispasr`, off by default: it builds the Whisper tasks, and only
@@ -94,8 +98,9 @@ passes in `JobOptions`, recorded in the job record (`crates/job_model/src/job/se
 - `tasks::{in_process, StepIo, Job}`: one step's task on its stored inputs and outputs, for the
   runner and `tools/visual_validation/`; `resume::{fingerprint, is_valid, stale_steps}` and
   `runner::worker_inputs` for the same tool.
-- `tasks::worker_main`: the body of the `worker` subcommand of both binaries
-  (`apps/tbd_subtitles/src/cli/worker_command.rs`, `apps/tbd_subtitles_ggml/src/main.rs`).
+- `tasks::worker_main`: the body of the `worker` subcommand of all three binaries
+  (`apps/tbd_subtitles/src/cli/worker_command.rs`, `apps/tbd_subtitles_ggml/src/main.rs`,
+  `apps/tbd_subtitles_llm/src/main.rs`).
 - `graph::{placement, Placement, Binary}`: which binary a step's worker runs in, which the
   `worker` subcommands check before they start.
 - `progress::{Progress, ProgressSink}`, `workers::Binaries`, `work_dir::default_root` and
@@ -126,10 +131,10 @@ passes in `JobOptions`, recorded in the job record (`crates/job_model/src/job/se
   `unicode-normalization` (the sign library's crop hash and key), `libc` (`getrusage`),
   `nvml-wrapper` and `tracing`
   (debug lines on reruns, placement, the CUDA runtime, the GPU lock and the report); at run time
-  the app's two binaries as workers, and through them FFmpeg and the `claude` CLI.
-- Used by: `apps/tbd_subtitles/` (the `process`, `dump` and `worker` subcommands),
-  `apps/tbd_subtitles_ggml/` (its `worker` subcommand), `tools/stack_spike/` (the measures) and
-  `tools/visual_validation/` (the visual pilot's steps).
+  the app's three binaries as workers, and through them FFmpeg and the `claude` CLI.
+- Used by: `apps/tbd_subtitles/` (the `process`, `fix`, `dump` and `worker` subcommands and the
+  window), `apps/tbd_subtitles_ggml/` and `apps/tbd_subtitles_llm/` (their `worker` subcommands),
+  `tools/stack_spike/` (the measures) and `tools/visual_validation/` (the visual pilot's steps).
 - Rules:
   - the crate sits in layer 3 and depends only on lower layers (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);

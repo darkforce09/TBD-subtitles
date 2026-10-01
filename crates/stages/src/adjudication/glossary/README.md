@@ -26,16 +26,18 @@ crates/stages/src/adjudication/glossary/
 ## Producers and consumers
 
 - Producers: people; no tool writes these files.
-- Consumers: `mod.rs`, which embeds `one_piece.json` at compile time; the app's `process`
-  subcommand in `apps/tbd_subtitles/src/cli/process_command.rs`, which puts the chosen glossary
-  (`one_piece`, `none` or a file) into `JobSettings::glossary`, from where the pipeline's
-  language-model steps pass it to the prompts and the checks; and the stack spike tool in
-  `tools/stack_spike/`, which borrows it through `as_strs`.
+- Consumers: `mod.rs`, which embeds `one_piece.json` at compile time; the app's job settings in
+  `apps/tbd_subtitles/src/settings/services/job_settings.rs`, which put the chosen glossary
+  (`one_piece`, `none` or a file, from the settings or the `process` subcommand's `--glossary`)
+  into `JobSettings::glossary`, from where the pipeline's language-model steps pass it to the
+  prompts and the checks; the stack spike tool in `tools/stack_spike/`, which borrows it through
+  `as_strs`; and the visual validation pilot in `tools/visual_validation/`.
 
 ## Boundaries
 
 - Depends on: `serde_json`, to read the array.
-- Used by: `apps/tbd_subtitles/src/cli/process_command.rs` and `tools/stack_spike/`.
+- Used by: `apps/tbd_subtitles/src/settings/services/job_settings.rs`, `tools/stack_spike/` and
+  `tools/visual_validation/`.
 - Rules:
   - the built-in glossary parses and holds the main names
     (`the_built_in_glossary_parses_and_holds_the_main_names` in `tests/glossary.rs`);

@@ -66,10 +66,10 @@ fingerprint, and gets its own row of time and peak memory in the job report.
 | text_track | on-screen text | worker, `tbd-subtitles` (CPU, no decoding) | `outputs/text_track` |
 | text_translate | on-screen text | worker, `tbd-subtitles-llm` (`claude` children first; mistral.rs for the rest) | `outputs/text_translate`, translation cache `visual/translations/` |
 | text_review | on-screen text | job runner | `outputs/text_review` |
-| text_mask | on-screen text | worker, `tbd-subtitles` (CPU; FFmpeg region crops) | `outputs/text_mask`, `visual/masks/` |
+| text_mask | on-screen text | worker, `tbd-subtitles` (CPU; FFmpeg region crops) | `outputs/text_mask`, one `frames` row per frame of each occurrence, `visual/masks/` |
 | text_inpaint | on-screen text | worker, `tbd-subtitles` (ONNX Runtime) | `outputs/text_inpaint`, `visual/plates/` |
 | text_compose | on-screen text | worker, `tbd-subtitles` (CPU) | `outputs/text_compose`, `visual/patches/` |
-| text_verify | on-screen text | worker, `tbd-subtitles` (ONNX Runtime; FFmpeg region crops) | `outputs/text_verify` |
+| text_verify | on-screen text | worker, `tbd-subtitles` (ONNX Runtime; FFmpeg region crops) | `outputs/text_verify`, one `readings` row per frame read back |
 | text_typeset | on-screen text | worker, `tbd-subtitles` (CPU) | `outputs/text_typeset`, `outputs/text_typeset/ass` |
 | qc | 10 | job runner | `outputs/qc` |
 | output | 11 | job runner | `<video base name>.srt` (or `.vtt`, `.ass`), `<video base name>.localized.ass`, `outputs/output` |
@@ -83,9 +83,14 @@ the other on-screen text steps with translation off, write empty outputs and loa
 - **Resume:** a step is skipped when its step record holds its current fingerprint, its
   documents are stored and the files its rows name exist. The fingerprint hashes the step's name
   and code revision, the settings it reads, the stored table layouts, the video's path, size and
-  modification time (for the steps that read the video), and the fingerprint and
-  finish time of every step it reads. A step that runs again therefore re-runs every step after
+  modification time (for the steps that read the video), the fingerprint and finish time of
+  every step it reads, the owner's corrections it reads and, for `text_translate` and
+  `text_compose`, the [sign library](/documentation/architecture/binary_storage_plan.md#library-shared-by-episodes)
+  signs their occurrences match. A step that runs again therefore re-runs every step that reads
   it, and `--rerun <step>` clears that step and every step that reads it in one transaction.
+- **Commit:** a worker sends its documents to the runner as `Output` frames, which go straight
+  into the step's write transaction; the runner commits them with the step record, or stores
+  nothing of a step that fails or is cancelled.
 - **Cancel:** the job's cancel token is checked before each step and watched by the running
   worker's watchdog, which kills the worker's process group; the job ends as cancelled and its
   finished steps stay valid, so the next run resumes after them.
@@ -153,8 +158,9 @@ the other on-screen text steps with translation off, write empty outputs and loa
 
 - Words two or more engines agree on are **locked**: the language model may change their case,
   punctuation and glossary spelling only.
-- **Orphans:** speech the backbone missed but two or more other engines heard (two words or more,
-  inside detected speech) becomes a new utterance.
+- **Orphans:** speech another engine heard in a chunk where the backbone heard no word yields no
+  utterance and is dropped; recovering it is planned in
+  [audio accuracy](/documentation/optimizations/audio_accuracy.md).
 - Low-confidence agreed words are marked for attention; sound-event candidates are listed with
   their times.
 

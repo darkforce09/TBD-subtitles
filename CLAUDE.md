@@ -48,9 +48,10 @@ tool-disabled Claude (the run's Sonnet) once per keyframe with the whole-frame s
 crops, and loads local Qwen3.5-4B only for what Claude leaves; manga-ocr and validated reference
 wording remain. Settings, queue progress, Overview, Check Text,
 actual ASS comparison previews, corrections and logs are integrated into the existing window and
-job. Visual corrections reuse valid audio stages. Annotated pilot coverage, the single
-20–30-minute episode benchmark (target: detection under six minutes for 50,000 frames), complete
-GUI/VLC checks and owner acceptance remain outstanding; do not call M4 complete. The AppImage
+job. Visual corrections reuse valid audio stages. The episode benchmark is measured: detection
+takes 3.9 minutes per 50,000 frames on Dressrosa 11 against the six-minute target
+([visual scan](/documentation/research/visual_scan_dressrosa_11.md)). Annotated pilot coverage,
+complete GUI/VLC checks and owner acceptance remain outstanding; do not call M4 complete. The AppImage
 builds and passes the host startup smoke check. The owner accepts missed faint text, false
 detections and writing shorter than the half-second sample step that no sample or cut lands on. See
 [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md) and the
@@ -73,6 +74,14 @@ approved replacements; the 海 wall regressed and other issues are open
 playback and owner acceptance remain; do not call M5 complete. See
 the [video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md).
 
+The binary storage foundation is done: each job keeps every step's output and record, its
+corrections and the per-frame `frames` and `readings` tables in one `job.redb` (redb, values
+archived with rkyv) that one process owns; workers stream their outputs to the runner over framed
+pipes (`crates/worker_channel`), `tbd-subtitles dump` prints any row as JSON, and approved signs
+are shared between episodes in `library.redb`
+([binary storage](/documentation/architecture/binary_storage_plan.md)). Next is M6, the 24 GB
+workstation scaling in the [roadmap](/documentation/roadmap.md).
+
 ## 1. Project laws
 
 1. **No silent deferrals.** Do the whole ask. Only the owner defers work, in so many words
@@ -83,7 +92,8 @@ the [video inpainting pipeline](/documentation/architecture/video_inpainting_pip
    A repository task is a Rust program (`cargo run -p <tool> -- …`), never a script.
 3. **External programs:** the app runs FFmpeg and ffprobe only, as child processes (no custom
    decoder, no linking libav); the headless `claude` CLI is an optional language-model backend.
-   Repository tooling under `tools/` may also run `git` and `cargo`.
+   Repository tooling under `tools/` may also run `git`, `cargo`, FFmpeg (to verify a bundled
+   build) and the app's own built binaries (to smoke-test them).
 4. **Inference runtimes:** pure-Rust engines (candle, burn, mistral.rs, earshot) come first. Rust
    crates that bind a native runtime (ONNX Runtime through `ort`, ggml through whisper-rs or
    transcribe-cpp) are used only where no pure-Rust option is competitive
@@ -94,8 +104,8 @@ the [video inpainting pipeline](/documentation/architecture/video_inpainting_pip
    20–30-minute episode for M4 acceptance. The pipeline targets the owner's machine: peak RAM
    within 24 GB (32 GB installed, 8 GB left to the desktop) and each GPU worker within 5.5 GB of
    VRAM. Memory stays bounded: audio and frames are streamed or held in bounded windows, and
-   visual steps keep crops and per-frame records in the job's database rather than extracting
-   the whole video.
+   visual steps keep representative crops as files and per-frame records in the job's database
+   rather than extracting the whole video.
 6. **Resumable steps.** Each step commits its output and its record in one transaction, and is
    skipped while its record's revision and input fingerprint are current. One process owns a
    job's `job.redb`; values are `rkyv` archives; no JSON fallback, importer or migration
@@ -136,20 +146,23 @@ TBD-subtitles/
 ├── rust-toolchain.toml    Rust 1.95.0 for the whole workspace
 ├── apps/
 │   ├── tbd_subtitles/     the binary: cli/, application/ (eframe shell), core/, and the feature
-│   │                      folders job_queue/, job_report/, line_review/, text_review/, settings/
+│   │                      folders job_queue/, job_report/, line_review/, text_review/,
+│   │                      log_console/, settings/
 │   ├── tbd_subtitles_ggml/ the ggml worker binary: the Whisper steps (feature `crispasr`)
 │   └── tbd_subtitles_llm/  the mistral.rs worker binary: local on-screen translation
 ├── crates/                layers, lowest first:
 │   ├── job_model/         0  stage names and the serde and rkyv contracts between stages
 │   ├── child_process/     0  external programs with deadlines, group kills, drained pipes,
 │   │                         streamed stdin
+│   ├── app_icon/          0  the app's icon, painted in code as RGBA pixels
 │   ├── worker_channel/    0  the frames workers and the runner exchange on pipes
 │   ├── media_io/          1  ffprobe, FFmpeg PCM and timestamped RGB streaming, region crops,
 │   │                         shot changes, the localized-video encode
 │   ├── subtitle_formats/  1  cue model, SRT/VTT/ASS writers, import
 │   ├── inference/         1  onnx, ggml, candle, llm backends, model store, CUDA runtime
 │   ├── stages/            2  one module folder per pipeline stage
-│   └── pipeline/          3  step graph, resume, work directory, workers, tasks, runner, report
+│   └── pipeline/          3  step graph, resume, job store (job.redb), workers and their channel,
+│                             tasks, runner, report, sign library
 ├── tools/
 │   ├── appimage_builder/  `cargo appimage`: packages the app as a self-contained AppImage
 │   ├── redb_process_probe/ how redb behaves when a second process opens a job database
@@ -218,6 +231,7 @@ BtbN autobuild is gone: re-pin it in `tools/appimage_builder/src/ffmpeg/`. Detai
 | What is decided? | [Decisions](/documentation/decisions/) |
 | What comes next? | [Roadmap](/documentation/roadmap.md) |
 | How does the pipeline work? | [Pipeline](/documentation/architecture/pipeline.md) |
+| Where does a job keep its data? | [Binary storage](/documentation/architecture/binary_storage_plan.md) |
 | What optimizations and accuracy steps are planned? | [Optimizations](/documentation/optimizations/README.md) |
 | Which Rust crates and models? | [Rust ML stack](/documentation/research/rust_ml_stack.md) |
 | How should subtitles look? | [Subtitle style rules](/documentation/architecture/subtitle_style_rules.md) |

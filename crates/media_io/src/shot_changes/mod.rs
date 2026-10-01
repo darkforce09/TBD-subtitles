@@ -1,4 +1,11 @@
 //! FFmpeg's `scdet` scan of a small scaled copy of the video: the times of the shot changes.
+//!
+//! **Role:** run the scan and read every scene change FFmpeg reports, with its score.
+//! **Position:** called by the pipeline's shot scan step; the cue and on-screen text stages use
+//! the cuts it returns.
+//! **Signals and state:** one FFmpeg child process under a deadline; no state between calls.
+//! **Invariants:** every change at or above the lowest reported score is kept with its score, in
+//! time order; the stages choose the score that counts as a cut.
 
 use std::path::Path;
 use std::time::Duration;

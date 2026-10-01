@@ -27,9 +27,12 @@ database, where it is `outputs/cues`.
 ## Boundaries
 
 - Depends on: `serde` and `rkyv` for the derives.
-- Used by: `crates/subtitle_formats/src/writers/srt/`; `crates/stages/src/cues/`, which builds
-  the track; `crates/stages/src/qc/`, which checks it; `crates/pipeline/src/tasks/layout.rs`,
-  which stores and writes it.
+- Used by: `crates/subtitle_formats/src/writers/` (all three writers);
+  `crates/stages/src/cues/`, which builds the track; `crates/stages/src/qc/`, which checks it;
+  `crates/stages/src/onscreen_text/`, which reads the dialogue for reference wording and
+  translation; `crates/pipeline/src/tasks/layout.rs` and `crates/pipeline/src/tasks/onscreen.rs`,
+  which store and write it; `crates/pipeline/src/work_dir/store/kinds.rs`, its record kind; and
+  `tools/visual_validation/src/pilot.rs`.
 - Rules:
   - a zero frame rate is refused (`a_zero_rate_is_refused` in `tests/cue.rs`);
   - film and NTSC frames round to the nearest millisecond, and seconds snap to frame boundaries

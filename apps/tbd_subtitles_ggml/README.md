@@ -24,9 +24,10 @@ The job runner in `crates/pipeline/` finds this binary beside its own
 `Binary::Ggml` (`asr_whisper`, the second speech engine, and `redecode_whisper`, its re-decode of
 unsure utterances), then hands it to `pipeline::tasks::worker_main`, which installs the worker
 channel before ggml loads (descriptor 1 then points at stderr, so whisper.cpp's prints reach the
-step log), loads the job, runs the step, writes its output into the job's
-[work directory](/documentation/glossary.md#work-directory), and sends its progress, measure and
-end or failure as frames on stdout for the runner to read.
+step log), reads the job record and the step's inputs from the frames the runner writes to its
+stdin, runs the step, and sends its output, progress, measure and end or failure as frames on
+stdout; the runner stores them in the job's
+[work directory](/documentation/glossary.md#work-directory), which the worker never opens.
 
 ```text
 tbd-subtitles (job runner) ──▶ tbd-subtitles-ggml worker <step> <job dir>

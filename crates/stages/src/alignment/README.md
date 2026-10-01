@@ -67,7 +67,8 @@ marks the line settled, and the pipeline's review step calls it.
   `job_model::outputs` (`Line`, `Utterance`, `TimedWord`, `TimeSpan`, and the `Aligned` types it
   returns); the CTC grid and tokenizer come from the caller.
 - Used by: `crates/pipeline/src/tasks/alignment.rs` (the alignment step, with
-  `inference::onnx::parakeet_ctc`), `tools/stack_spike/` (CTC alignment) and
+  `inference::onnx::parakeet_ctc`), `crates/pipeline/src/tasks/review.rs` (`blocks` and
+  `run::realign_utterance`, for the review step), `tools/stack_spike/` (CTC alignment) and
   `tools/stack_spike_ggml/` (the checks, for the Qwen3 aligner).
 - Rules:
   - tokens keep their order, never overlap and each gets a frame; too short a grid is no
@@ -88,8 +89,10 @@ marks the line settled, and the pipeline's review step calls it.
   - a failed block falls back to utterances, then to the backbone, and every word gets a time in
     order (`a_failed_block_falls_back_to_utterances_then_to_the_backbone`,
     `every_word_gets_a_time_in_order` in `tests/run.rs`);
-  - a corrected line is timed alone between its neighbours and settled, or keeps the backbone's
-    times (`a_corrected_line_is_timed_alone_between_its_neighbours`,
+  - a corrected line is timed alone between its neighbours and settled, or keeps its earlier
+    aligned times where its words stayed, else the backbone's
+    (`a_corrected_line_is_timed_alone_between_its_neighbours`,
+    `a_corrected_line_the_aligner_fails_keeps_its_earlier_aligned_times_where_its_words_stayed`,
     `a_corrected_line_the_aligner_fails_keeps_the_backbone_times`).
 
 ## Related documentation

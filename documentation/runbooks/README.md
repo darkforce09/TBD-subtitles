@@ -25,6 +25,8 @@ matching the code, the runbook is fixed in the same commit as the change that br
 
 - [The app](/apps/tbd_subtitles/) — the binary the environment runbook builds and launches.
 - [Repository gates](/tools/repo_gates/) — the `cargo gates` checks the environment runbook runs.
+- [AppImage builder](/tools/appimage_builder/) — the `cargo appimage` packager the AppImage
+  runbook runs.
 
 ## Boundaries
 

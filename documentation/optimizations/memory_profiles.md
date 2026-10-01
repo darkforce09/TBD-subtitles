@@ -2,123 +2,143 @@
 
 # Workstation memory architecture: the 24 GB target
 
-How the pipeline optimizes directly for the owner's 32 GB DDR5-6000 workstation, allocating
-a **24 GB RAM target** with a **5.5 GB worker VRAM boundary** to unlock native-resolution visual
-screening, 44.1 kHz studio separation, uncompressed video ring buffers, and true audio/visual concurrency.
+How the pipeline uses the owner's machine: an i7-14700K (28 threads), 32 GB of DDR5-6000 and an
+RTX 3070 with 8 GB. Peak RAM stays within **24 GB**, leaving 8 GB to the desktop, and each GPU
+worker within **5.5 GB of VRAM**
+([decision](/documentation/decisions/foundations.md#2026-09-30--the-pipeline-targets-the-owners-32-gb-machine-24-gb-of-ram)).
+These are the throughput items of milestone M6; each is built only when the owner picks it, and
+each is kept only when a measurement on a real episode shows it pays.
 
-## Philosophy: target the actual machine
+## Target the actual machine
 
-The early milestones established an 8 GB RAM limit to enforce lean, leak-free design. However,
-iterating through intermediate 8 GB and 16 GB stepping stones creates throwaway code: downsampling,
-aggressive chunking, and disk thrashing methods built for 8 GB are discarded at 24 GB in favor
-of fundamentally superior algorithms.
+The 8 GB limit kept the first milestones lean. The app runs on one machine, so it is designed for
+that machine directly, with no stepping stones at 8 or 16 GB. Two things do not change:
 
-With the owner's machine equipped with **32 GB of DDR5-6000 RAM (approx. 90 GB/s bandwidth)**
-and an **i7-14700K (28 threads)**:
-
-1. **Step 1:** Complete the `redb` and `rkyv` binary storage foundation.
-2. **Step 2:** Scale directly to the **24 GB target architecture**, bypassing intermediate throwaway steps.
-3. **The VRAM boundary stays strict:** Worker VRAM remains capped at **5.5 GB** (respecting the physical
-   8 GB limit of the RTX 3070 with display server overhead). GPU stages continue running in separate
-   processes under the shared GPU lock.
+- **VRAM decides what fits on the card.** The detector, LaMa, the speech models and the local
+  translation model are limited by the GPU, not by RAM; extra RAM buys them nothing except
+  larger batches and room to hold frames.
+- **One GPU step at a time.** GPU steps run in their own worker processes under the machine-wide
+  GPU lock ([pipeline](/documentation/architecture/pipeline.md)), so two GPU steps never share the
+  card. Steps can overlap only where one of them waits on something other than the GPU.
 
 ```text
-[Hardware Budget Allocation: 32 GB Host]
-├── Host OS, Desktop, Display Server, Browser -> ~8 GB reserved
-└── TBD-subtitles Peak Pipeline Target         -> 24 GB RAM / 5.5 GB VRAM
+[32 GB host]
+├── desktop, display server, browser   about 8 GB
+└── TBD-subtitles, every process        24 GB RAM at peak; each GPU worker 5.5 GB VRAM at most
 ```
 
----
+The [binary storage](/documentation/architecture/binary_storage_plan.md) that these items build on
+is in place: `job.redb` per job with its per-frame `frames` and `readings` tables, the worker
+channel, and the sign library shared by episodes.
 
-## 1. Video capabilities at 24 GB
+## 1. Baseline first
 
-### Full-resolution 1080p visual screening (no 640 proxy)
+Every target in M6, M7 and M8 is stated against one baseline, measured before any item is built:
+Dressrosa 11 and 28 run from scratch with the current build on the host. The job report already
+gives each step's wall time, load time, peak RAM, peak child RAM and peak VRAM. The baseline adds
+what the report lacks:
 
-Downscaling frames to a 640-pixel proxy blurs fine kanji strokes, small background signs, and distant credits.
-- **At 24 GB:** `text_detect` screens frames at **native 1080p resolution** utilizing the 28 threads
-  of the i7-14700K with batch sizes of 8 to 16.
-- Faint, intricate writing and far-off signs are detected with high confidence.
+- how busy the GPU is during each step (NVML utilisation, sampled like the VRAM), so the idle
+  stretches are known rather than guessed;
+- the localized video's time split into decoding, blending and encoding;
+- the whole job's peak RAM across all its processes at once.
 
-### Zero-stall uncompressed video frame ring buffers (3–4 GB)
+The job report of Dressrosa 12 from scratch shows where the time goes today: `localized_video`
+234 s, `text_detect` 187 s, `adjudicate` 125 s (Claude calls, GPU idle), `separation` 92 s,
+`asr_whisper` 65 s, `text_translate` 44 s; 14.5 minutes of step time in all, peak RAM 1.6 GB
+and peak VRAM 4.3 GB. The baseline replaces such single readings with a recorded snapshot in
+[research](/documentation/research/README.md).
 
-In `localized_video`, decoding, compositing, and encoding currently lock-step on tiny pipes.
-- **At 24 GB:** an in-memory ring buffer of **3 to 4 GB** holds up to 1,000 raw 1080p frames.
-- NVDEC hardware decoding, Rust alpha-blending, and NVENC encoding run completely asynchronously
-  at maximum saturation with zero pipe stalling.
+## 2. Full-resolution visual screening
 
-### Resident plate, mask, and patch cache (6–8 GB)
+`text_detect` screens a proxy 360 lines high (640 pixels wide for 16:9) decoded with the loop
+filter skipped: about two samples per second, both frames around every shot cut, and the frames
+bisection probes between samples ([text detection](/crates/stages/src/onscreen_text/detect/README.md)).
+Only the keyframe of each occurrence is detected again at full resolution. Small or faint
+writing that does not survive the downscale is never found; the owner wants it found.
 
-[`CACHE_BYTES`](/crates/stages/src/localize/README.md) expands from 512 MB to **6–8 GB**.
-- Every single uncompressed RGBA plate, inpaint mask, and tiny-skia patch stays resident in RAM.
-- Disk read operations during localized video creation drop to zero.
+- **What changes:** samples and bisection probes are screened at the source resolution. The
+  mobile PP-OCRv5 detector runs on the GPU through CUDA, so its speed and the batch it can take
+  are bounded by GPU throughput and VRAM, not by CPU threads. RAM holds full-resolution frames
+  between samples (about 6 MB per 1080p RGB frame) and allows larger batches.
+- **What it costs:** a frame of six times the pixels per detector call, and a decoder that now
+  delivers full-size frames; on Dressrosa 11 the proxy decoder was already the busiest process
+  ([visual scan](/documentation/research/visual_scan_dressrosa_11.md)).
+- **Measured:** occurrences found at full resolution against the proxy on Dressrosa 11 and 28,
+  detection wall time, peak VRAM of the detector worker and peak RAM, against the baseline.
 
-### Dense optical flow fields across scenes
+## 3. Faster decoding and encoding
 
-- Stores dense pixel-by-pixel motion vector fields ($1920 \times 1080$) for entire 10-to-20-second
-  shots in RAM.
-- English replacement text locks to physical 3D planes with sub-pixel perspective accuracy, eliminating
-  wobble and jitter during handheld camera moves.
+- **Hardware decoding.** Frames for the screen and the localized video are decoded by FFmpeg on
+  the CPU today; only the shot scan can ask for NVDEC, and runs without it, because its frames
+  are scaled on the CPU either way. NVDEC with the frames downloaded for Rust, or scaled on the
+  GPU for the proxy, is measured against the CPU decoder on the host.
+- **Overlapped localized video.** `localized_video` runs three processes in a chain: the FFmpeg
+  decoder, the blend, and the FFmpeg encoder, joined by pipes far smaller than one frame. A
+  bounded queue of frames between them lets each run ahead of the next; its size is set from
+  the measured stalls and stays bounded.
+- **Measured:** decode, blend and encode time of `localized_video` and frames per second of the
+  screen against the baseline. Re-encoding only what changed is the M8 item in
+  [visual and video](visual_and_video.md#3-re-encoding-only-what-changed).
 
-### Temporal multi-frame inpainting (pixel borrowing)
+## 4. Overlapping steps that wait on different things
 
-- Rather than single-image LaMa hallucinating textures, multi-frame video inpainting models inspect
-  a 10-to-30-frame window.
-- The model borrows real anime background pixels from preceding or future frames where the text was
-  not yet visible, producing invisible, artifact-free plate erasure.
+Steps run one after another, except the shot scan, which runs beside the steps after it. Some
+steps leave the GPU idle while they wait: `adjudicate`, `readjudicate` and `sound_cues` wait on
+Claude, and `text_translate` waits on Claude for most of its time while it holds the GPU lock in
+case the local model loads. `text_detect`, `text_read` and `text_track` need only the probe and
+the shot scan, so they can run while the audio chain waits on Claude.
 
----
+- **What changes:** the runner starts a step whose inputs are ready while another step waits on
+  Claude or FFmpeg, within the GPU lock (two GPU steps still never overlap) and within 24 GB.
+- **Measured:** whole-job wall time, peak RAM of all processes together and VRAM per worker on
+  Dressrosa 11 and 28 against the baseline; the subtitle files and approved replacements stay
+  the same.
 
-## 2. Audio capabilities at 24 GB
+## 5. A larger local translation model
 
-### Studio-quality 44.1 kHz and 48 kHz separation
+The local model translates only the on-screen writing Claude leaves unanswered; on Dressrosa 11
+that was two occurrences. It is Qwen3.5-4B at 4-bit (2.7 GB of weights) in its own mistral.rs
+worker.
 
-Downsampling to 16 kHz cuts off frequencies above 8 kHz, blurring crisp consonant sounds (*s, sh, ch, th, f, t*).
-- **At 24 GB:** vocal separation runs at full native **44.1 kHz or 48 kHz stereo**.
-- ASR engines hear distinct consonant transients rather than muffled low-frequency approximations,
-  eliminating the root cause of phonetic mishears.
+- **The trial:** a 7B-class model at 4-bit, about 4.5 GB of weights, which fits within the 5.5 GB
+  VRAM cap with its context.
+- **Not on the card:** a 14B model at 4-bit is about 8 to 9 GB, over the cap; it runs only with
+  part of it offloaded to the CPU and its RAM, and is tried only if the 7B trial shows larger
+  models translate better.
+- **Measured:** translation quality on the occurrences Claude leaves and with Claude turned off,
+  load and translation time, peak VRAM and RAM, against Qwen3.5-4B.
 
-### Multi-model separation ensemble (RoFormer + Demucs)
+## What the headroom does not buy
 
-- In loud battle sequences with overlapping brass horns and explosions, an ensemble of
-  **Mel-Band RoFormer + HTDemucs v4** processes the audio.
-- Blending their spectrogram masks in memory eliminates vocal attenuation and guarantees zero voice dropouts.
+These ideas came up and are left out, each for a reason in the code:
 
-### Zero chunk-boundary phase distortion
-
-- Feeds continuous **5-to-10-minute audio windows** into separation networks instead of 10-to-30-second slices.
-- Eliminates phase artifacts and volume dips at cross-fade boundaries.
-
-### Global episode acoustic memory and speaker diarization
-
-- Computes an episode-wide **Speaker Acoustic Index**, learning the voice signatures of major characters.
-- Muffled dialogue is matched against character acoustic profiles, automating speaker-change tags (`SPK`)
-  and disambiguating unclear words.
-
-### Resident spectrogram tensor cache
-
-- The 30-minute episode's Mel spectrogram tensor is computed once into a shared memory block.
-- VAD, sound events, alignment, and ASR query the resident tensor with zero redundant CPU computation.
-
----
-
-## 3. Full pipeline concurrency
-
-- With 24 GB of RAM, the **audio recognition pipeline** (Parakeet, Whisper, Canary) and the
-  **visual screening pipeline** (1080p PP-OCRv5) run **simultaneously in parallel**.
-- Local translation upgrades to **Qwen 7B or 14B** models.
-- Total episode processing wall-clock time drops by **35% to 45%**.
+- **A shared mel-spectrogram cache.** Voice detection, sound events, alignment and the speech
+  engines each compute their own features with their own settings inside their own worker
+  process (law 7); the features are cheap next to the models, and one shared tensor would have
+  to cross process boundaries.
+- **A resident cache of plates, masks and patches.** `localized_video` time is decoding and
+  encoding, not disk reads; its patches are already held in memory within 512 MiB, and the
+  plate, mask and patch folders of Dressrosa 11 take tens of megabytes.
+- **Separation at 44.1 kHz for the speech engines.** Separation already reads 44.1 kHz stereo;
+  it writes 16 kHz stems because Parakeet, Whisper, the aligner and the sound-event model take
+  16 kHz input only, so no engine hears above 8 kHz whatever the RAM.
+- **Separation windows of several minutes.** The exported separation models take a fixed window
+  (11 s for Mel-Band RoFormer); the overlap-add already weights every window.
 
 ## Boundaries
 
-- Depends on: [`pipeline.md`](/documentation/architecture/pipeline.md),
-  [`binary_storage_plan.md`](/documentation/architecture/binary_storage_plan.md), and
-  the 32 GB host hardware environment.
-- Used by: roadmap milestone M6, `stages::localize`, and worker runners.
-- Rules: VRAM remains strictly within 5.5 GB; video source files remain read-only; memory allocations
-  are bounded and leak-free.
+- Depends on: [pipeline](/documentation/architecture/pipeline.md),
+  [binary storage](/documentation/architecture/binary_storage_plan.md), and the owner's 32 GB
+  host.
+- Used by: roadmap milestone M6.
+- Rules: peak RAM within 24 GB; each GPU worker within 5.5 GB of VRAM; memory bounded, never grown
+  with the video; source videos read-only; an item is kept only when its measurement against the
+  baseline shows it pays.
 
 ## Related documentation
 
-- [Roadmap](/documentation/roadmap.md) — milestone M6.
-- [Audio accuracy](audio_accuracy.md) — ensembling and vocabulary biasing.
-- [Visual and video](visual_and_video.md) — homography tracking and fast re-encoding.
+- [Roadmap](/documentation/roadmap.md#m6--24-gb-workstation-throughput) — milestone M6.
+- [Audio accuracy](audio_accuracy.md) — separation ensembles and the speech engines.
+- [Visual and video](visual_and_video.md) — following moving writing and re-encoding only what
+  changed.

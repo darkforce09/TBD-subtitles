@@ -4,10 +4,10 @@
 //! can place a time between frames, and convert frames to seconds and milliseconds.
 //!
 //! **Position:** built by the cue stage (`crates/stages/src/cues/`), checked by the quality
-//! check, written by `crate::writers`; stored as `cues.json` in the job's work directory, and
-//! archived with rkyv for the job database.
+//! check, written by `crate::writers`; archived with rkyv as `outputs/cues` in the job database,
+//! and shown as JSON by `tbd-subtitles dump`.
 //!
-//! **Signals and state:** none; plain values, written as JSON and archived with rkyv.
+//! **Signals and state:** none; plain values, archived with rkyv and shown as JSON.
 //!
 //! **Invariants:** a frame rate never has a zero numerator or denominator; a cue's times are
 //! frame indices, so every time sits on a frame boundary.

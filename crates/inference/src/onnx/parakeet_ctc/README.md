@@ -16,7 +16,9 @@ crates/inference/src/onnx/parakeet_ctc/
 
 - Depends on: `crate::onnx::session` (CUDA), `ort`, `realfft`, `tokenizers` (the model's
   `tokenizer.json`).
-- Used by: `tools/stack_spike/` (the CTC alignment item).
+- Used by: the alignment step in `crates/pipeline/src/tasks/alignment.rs`, which hands the grid
+  and tokens to `crates/stages/src/alignment/`; the model list in
+  `crates/pipeline/src/models/mod.rs`; and `tools/stack_spike/` (the CTC alignment item).
 - Rules:
   - the blank is token 1024 and every grid row is a log-softmax (`log_probs`);
   - the frontend gives `floor(samples / 160)` frames with zero-mean bands

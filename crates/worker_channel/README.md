@@ -47,7 +47,7 @@ Run these from the repository root:
 
 ```bash
 cargo build -p worker_channel   # the library alone
-cargo test -p worker_channel    # 22 unit tests over in-process pipes; well under a second
+cargo test -p worker_channel    # 23 unit tests over in-process pipes; well under a second
 ```
 
 The tests never call `worker::install`, which would rewire the test process's own stdout; they
@@ -67,8 +67,9 @@ None: the crate reads no setting, file or feature.
 - `progress`: `Progress` with `encode` and `decode`, and `ENCODED_LEN`, the `Progress` payload,
   for `crates/pipeline/`.
 - `worker`: `install`, `send`, `progress`, `model_call`, `output`, `measure`, `failed`, `done`,
-  `read_input`, `read_inputs` and `read_documents`, for `crates/pipeline/src/tasks/mod.rs` (`worker_main`) and the model-call layers
-  of `apps/tbd_subtitles/src/core/log_buffer/worker_channel.rs` and
+  `read_input`, `read_inputs` and `read_documents`, for `crates/pipeline/src/tasks/`
+  (`worker_main`, `StepIo`, the row stream) and the model-call layers of
+  `apps/tbd_subtitles/src/core/log_buffer/worker_channel.rs` and
   `apps/tbd_subtitles_llm/src/logging.rs`.
 - No binary.
 
@@ -76,9 +77,11 @@ None: the crate reads no setting, file or feature.
 
 - Depends on: `std` and `rustix` 1 (`std`, `stdio`: `dup2_stdout`); no workspace crate. Linux
   only, through `std::os::fd`.
-- Used by: `crates/pipeline/` (the runner's frame reader, its inputs and outputs, and
-  `worker_main`), `apps/tbd_subtitles/src/cli/dump_command.rs` (`address::{Table, Key}`),
-  `apps/tbd_subtitles/` and `apps/tbd_subtitles_llm/` (their model-call layers).
+- Used by: `crates/pipeline/` (the runner's frame reader, its inputs and outputs, `worker_main`,
+  and the job store's tables and keys), `apps/tbd_subtitles/src/cli/dump_command.rs` and the
+  window's Check Text (`address::{Table, Key}`), `apps/tbd_subtitles/` and
+  `apps/tbd_subtitles_llm/` (their model-call layers), and `tools/visual_validation/`
+  (`address`).
 - Rules:
   - the crate sits in layer 0 and depends on no workspace crate (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);

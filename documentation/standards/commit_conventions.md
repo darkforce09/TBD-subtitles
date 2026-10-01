@@ -11,8 +11,8 @@ Conventional Commits: `type(scope): lowercase summary`, at most 72 characters, n
 
 - **Types:** `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `chore`.
 - **Scopes:** the area touched — `gui`, `pipeline`, `media-io`, `inference`, `stages`,
-  `subtitle-formats`, `job-model`, `repo-gates`, `docs`, `workspace`. Omit the scope when the
-  change spans the repository.
+  `subtitle-formats`, `job-model`, `child-process`, `worker-channel`, `repo-gates`, `docs`,
+  `workspace`. Omit the scope when the change spans the repository.
 - **Body:** two to four wrapped lines on what changed and why.
 - **Trailer:** AI-authored commits end with a `Co-Authored-By:` line naming the model.
 

@@ -3,8 +3,8 @@
 //! **Role:** choose the video encoder this FFmpeg can run, build the command line that reads raw
 //! frames on stdin and muxes them with the source's audio, chapters and metadata into Matroska,
 //! and drive that FFmpeg through [`EncoderProcess`].
-//! **Position:** media output for the localized-video step; called by the pipeline with frames
-//! from `video_frames::FrameStream::open_native`.
+//! **Position:** media output for the localized-video step; called by the localize stage in
+//! `stages` with frames from `video_frames::FrameStream::open_native`.
 //! **Signals and state:** `available_encoder` runs two bounded FFmpeg probes (the encoder list and
 //! a one-frame NVENC test); the encoder process holds its stdin pipe and a count of frames
 //! written.

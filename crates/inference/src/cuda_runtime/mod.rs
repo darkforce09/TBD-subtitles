@@ -3,10 +3,11 @@
 //!
 //! **Role:** find the folder holding cudart, cuBLAS, cuFFT, cuRAND, NVRTC and cuDNN for CUDA 13,
 //! check the libraries ONNX Runtime's CUDA provider loads are all there, and give the
-//! `LD_LIBRARY_PATH` value and build variables that make ORT, ggml-cuda and candle find them.
+//! `LD_LIBRARY_PATH` and `ORT_DYLIB_PATH` values that make ORT, ggml-cuda and candle find them.
 //!
-//! **Position:** called by whoever starts a GPU worker (the stack spike tool, and the job runner)
-//! before the spawn; reads the folder `model_store` fills.
+//! **Position:** called by whoever starts a GPU worker (the job runner, the stack spike and
+//! visual validation tools) before the spawn, and by the app's settings and the AppImage builder
+//! to check a runtime; reads the folder `model_store` fills.
 //!
 //! **Signals and state:** reads `LD_LIBRARY_PATH` and the file system; holds nothing.
 //!

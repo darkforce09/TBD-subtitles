@@ -28,8 +28,9 @@ so the file's size and layout never change.
 ## Boundaries
 
 - Depends on: `object` (ELF reading), `anyhow`, the standard library's file system.
-- Used by: `main.rs` (the app's host-only check and the ggml worker's libraries),
-  `gpu_runtime` (the runtime libraries' closure and copies) and `build` (the CrispASR check).
+- Used by: `main.rs` (the app's host-only check and both workers' libraries),
+  `gpu_runtime` (the runtime libraries' closure and copies) and `build` (the check that each
+  worker links its GPU backend).
 - Rules:
   - a new RUNPATH longer than the old is refused and the file is left as it was
     (`rewrites_a_runpath_in_place_and_refuses_a_longer_one`);

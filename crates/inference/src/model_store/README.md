@@ -25,7 +25,9 @@ install_archive(archive, runtime) ──▶ fetch_verified ──▶ runtime/.ar
 ```
 
 - `mod.rs` places both folders under `$XDG_DATA_HOME/tbd-subtitles/` (default
-  `~/.local/share/tbd-subtitles/`): `models/` and `runtime/`. `is_complete` checks sizes only;
+  `~/.local/share/tbd-subtitles/`): `models/` and `runtime/`. `app_data_dir` is that folder
+  itself, where the pipeline also keeps the job work folders, the sign library and the GPU lock,
+  and `claude_cli` its shared call slots. `is_complete` checks sizes only;
   hashes are checked when a file is downloaded, and only a matching file is renamed into place.
 - `download.rs` writes `<file>.part`, resumes it with an HTTP `Range` request, hashes as it
   writes, and deletes the `.part` on a size or hash mismatch. Its progress callback returns
@@ -42,9 +44,18 @@ install_archive(archive, runtime) ──▶ fetch_verified ──▶ runtime/.ar
 ## Boundaries
 
 - Depends on: `ureq` (https with rustls), `sha2`, `lzma-rs`, `flate2`, `tar`; `std` for the files.
-- Used by: `crates/inference/src/cuda_runtime/` (the folder names); the app's settings page
-  (`apps/tbd_subtitles/src/settings/services/model_downloads.rs`); `tools/stack_spike/` (the
-  `fetch` command and the model folders).
+- Used by:
+  - `crates/inference/src/cuda_runtime/` (the folder names) and
+    `crates/inference/src/llm/claude_cli/shared_slots.rs` (`app_data_dir`);
+  - the app: its settings page downloads models and runtime archives
+    (`apps/tbd_subtitles/src/settings/services/model_downloads.rs`), and its environment, fonts,
+    queue history, single-instance socket and service menu use the folders;
+  - `crates/pipeline/` (the work, models and runtime folders, the sign library, the missing-model
+    check, and the model pins and file hashes in step fingerprints) and `crates/stages/src/onscreen_text/`
+    (`MODEL_FILES`);
+  - `tools/stack_spike/` (the `fetch` command and the model folders), `tools/stack_spike_ggml/`,
+    `tools/stack_spike_llm/`, `tools/appimage_builder/` (the runtime archives, the pinned FFmpeg
+    archive and the bundled font) and `tools/visual_validation/`.
 - Rules:
   - a file at its final path matches its pinned size and hash (`fetch_verified`; the
     `a_file_already_in_place_is_hashed_and_kept` test);

@@ -5,8 +5,9 @@
 //! from a 16 kHz mono stem in the work directory) and decode its picture to RGBA frames of a
 //! given size and rate.
 //!
-//! **Position:** called by the app's line review, which runs the commands through
-//! `child_process` and draws the frames.
+//! **Position:** called by the app's line and text review, which run the commands through
+//! `child_process` and draw the frames, and by on-screen text detection for `frame_size`;
+//! `visual.rs` builds Check Text's original and ASS-rendered pictures.
 //!
 //! **Signals and state:** none; the commands are only built here.
 //!

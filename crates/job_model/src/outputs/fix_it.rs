@@ -1,4 +1,4 @@
-//! Fix It's record, `fix.json`: what the model worked out about the video, every line it was
+//! Fix It's record, `corrections/fix`: what the model worked out about the video, every line it was
 //! asked about with each change it proposed, what the guard and the judge made of it, what the
 //! calls cost, and the problems before the first run.
 //!
@@ -12,7 +12,7 @@
 //! **Signals and state:** none; plain data.
 //!
 //! **Invariants:** a line is changed only when its verdict writes a correction; `applied` is set
-//! only for a correction that reached `review.json`; a record whose `adjudication` differs from
+//! only for a correction that reached the line corrections (`corrections/lines`); a record whose `adjudication` differs from
 //! the job's re-adjudication is not current, and nothing in it counts.
 
 use std::collections::BTreeMap;

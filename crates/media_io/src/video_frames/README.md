@@ -53,8 +53,9 @@ exactly `count` crops arrived and FFmpeg exited cleanly. Its deadline grows with
 ## Boundaries
 
 - Depends on: `child_process` and the parent media types.
-- Used by: the visible-text stages (detection, and region crops for replacement), the
-  localized-video encoder, and the validation harness.
+- Used by: the on-screen text stages in `crates/stages/src/onscreen_text/` (the detection stream
+  and stills, and region crops for replacement) and the localize stage in
+  `crates/stages/src/localize/` (native frames for the encoder).
 - Rules: source videos are read-only; frame buffers have a checked size; no decoder is linked.
 
 ## Related documentation

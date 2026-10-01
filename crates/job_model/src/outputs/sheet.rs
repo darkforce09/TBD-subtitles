@@ -1,4 +1,4 @@
-//! The diff sheet's utterances, as kept in `sheet.json`: the backbone engine's words cut at
+//! The diff sheet's utterances, as kept in `outputs/diff_sheet`: the backbone engine's words cut at
 //! pauses, every other engine's hypothesis, and the line the language model reads.
 
 use serde::{Deserialize, Serialize};

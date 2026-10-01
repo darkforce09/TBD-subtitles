@@ -5,7 +5,7 @@
 //! found, once.
 //!
 //! **Position:** part of `elf`; `gpu_runtime` walks the CUDA, cuDNN and ONNX Runtime libraries
-//! with it, and `main` walks the ggml worker.
+//! with it, and `main` walks the app and both workers.
 //!
 //! **Signals and state:** reads the files it visits; holds nothing.
 //!

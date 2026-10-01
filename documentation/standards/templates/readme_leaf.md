@@ -44,43 +44,58 @@ files. Leave the section out when the folder holds at most three files.>
 
 ## Worked sample
 
-Written from `crates/job_model/src/stage/`, a leaf of two source files and a `tests/` folder, so
-it leaves out How it works. The sample sits in a fenced block, so no gate reads it as a README; the
-folder's own README.md is written from the same code and may differ.
+Written from `crates/job_model/src/stage/`, a leaf of three source files and a `tests/` folder. It
+may leave out How it works and keeps a short one to say how stages and steps relate. The sample
+sits in a fenced block, so no gate reads it as a README; the folder's own README.md is written from
+the same code and may differ.
 
 ````markdown
-# Stage names
+# Stage and step names
 
-The one list of the pipeline's [stages](/documentation/glossary.md#stage), in run order, with the
-name each carries on the command line, in file names and in JSON, and which of them run in a
-[worker process](/documentation/glossary.md#worker-process).
+Every [stage](/documentation/glossary.md#stage) of the pipeline and every step the stages are made
+of, in run order, with the one name each carries on the command line, in the job database's keys
+and in JSON.
 
 ## Contents
 
 ```text
 crates/job_model/src/stage/
-├── mod.rs         the module tree and the re-export of the stage name
-├── stage_name.rs  every stage in run order, with its command-line and JSON name
-└── tests/         unit tests for the stage names
+├── mod.rs         the module tree and the re-exports of the stage and step names
+├── stage_name.rs  every stage in run order, with its name and whether it runs in a worker
+├── step_name.rs   every step in run order, with its name and the stage it belongs to
+└── tests/         unit tests for the stage and step names, JSON and rkyv
 ```
+
+## How it works
+
+`StageName::ALL` lists the thirteen stages in run order; `runs_in_worker` says which of them run
+in a [worker process](/documentation/glossary.md#worker-process). A stage runs as one or more
+steps: `StepName::ALL` lists the twenty-nine steps the job runner runs, resumes and times, and
+`StepName::stage` gives each its stage. `as_str` holds each name; `Display` and serde's
+`snake_case` spell the same ones, and `FromStr` answers `UnknownStage` or `UnknownStep` with the
+text it was given. Where each step runs is the pipeline's step graph, not this module.
 
 ## Boundaries
 
-- Depends on: `serde`, whose derive gives each stage its snake_case JSON name.
-- Used by: `crates/job_model/src/lib.rs`, which re-exports `StageName`; the app's command line in
-  `apps/tbd_subtitles/src/cli/`, whose `worker` subcommand parses a stage name and accepts only the
-  stages that run in a worker process.
+- Depends on: `serde` (`Serialize`, `Deserialize`), `rkyv` (the archived names) and `std`.
+- Used by: `crates/job_model/src/lib.rs`, which re-exports `StageName` and `StepName`;
+  `crates/pipeline/` (the step graph, the resume check, the workers, the job store and the
+  report); the `worker` and `process` subcommands in `apps/tbd_subtitles/src/cli/` and the worker
+  binaries in `apps/tbd_subtitles_ggml/` and `apps/tbd_subtitles_llm/`, which parse step names;
+  the window's queue and report, which group steps by stage.
 - Rules:
-  - `StageName::ALL` lists every stage once, in run order, and each name parses back to its own
-    stage (`every_stage_is_listed_once_and_parses_back_to_itself` in `tests/stage_name.rs`);
-  - the JSON names equal the command-line names, so a resumed job reads what an earlier run wrote
-    (`json_names_match_the_command_line_names`);
-  - sound events run before adjudication, which chooses the sound cues
-    (`sound_events_come_before_adjudication_which_chooses_the_cues`);
-  - only separation, speech recognition, sound events, adjudication and alignment run in a worker
-    process (`only_model_stages_run_in_a_worker`).
+  - `ALL` lists every stage once, and each name parses back to its own stage
+    (`every_stage_is_listed_once_and_parses_back_to_itself` in `tests/stage_name.rs`);
+  - the JSON name equals the command-line name (`json_names_match_the_command_line_names`);
+  - only the seven model and visual stages run in a worker (`only_model_stages_run_in_a_worker`);
+  - the steps of a stage are contiguous and the stages follow `StageName::ALL`
+    (`steps_follow_the_stage_order` in `tests/step_name.rs`);
+  - every name round-trips through rkyv, and archived step names keep the run order
+    (`every_step_name_round_trips`, `archived_step_names_keep_the_run_order` in
+    `tests/archive.rs`).
 
 ## Related documentation
 
-- [Pipeline](/documentation/architecture/pipeline.md) — what each stage does, in order.
+- [Pipeline](/documentation/architecture/pipeline.md#steps-and-processes) — every step, where it
+  runs and what it writes.
 ````

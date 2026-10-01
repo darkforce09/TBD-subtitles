@@ -73,7 +73,8 @@ file compacted, then measured) on a thread; the answer or the library's error co
 
 - Depends on: `crate::settings::models`; `crate::core::{background::Wake, format}`; `toml` and
   `serde`; `job_model::job`; `stages::adjudication::glossary`; `pipeline::{models, work_dir,
-  measure}`; `inference::{model_store, cuda_runtime}`; `child_process`; `anyhow`.
+  measure}`; `pipeline::library::Library` in `sign_library.rs`; `inference::{model_store,
+  cuda_runtime, llm::claude_cli}`; `child_process`; `anyhow`.
 - Used by: the `process` subcommand in `apps/tbd_subtitles/src/cli/process_command.rs`;
   `crate::application`; `crate::settings::ui` (`model_list`, `system_check::CUDA_RUNTIME`,
   `page_editing::{PROCESSES, FIX_CALLS, CUT_SCORES}`).

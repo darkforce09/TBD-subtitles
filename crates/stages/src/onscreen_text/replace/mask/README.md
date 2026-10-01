@@ -159,8 +159,9 @@ extraction, and an occurrence that falls back after writing files loses its fold
 ## Boundaries
 
 - Depends on: the parent's `RegionSource`, `job_model` replacement contracts, `image` and
-  `imageproc`, and the sibling `geometry` module.
-- Used by: `pipeline::tasks::replace` for the stroke-mask step; `diagnose` by the
+  `imageproc`, and the `geometry` and `png` modules of `onscreen_text`.
+- Used by: `pipeline::tasks::replace` for the stroke-mask step, which stores each `FrameRecord`
+  the `FrameSink` receives as a `frames` row; `diagnose` by the
   `visual_validation` tool's `mask-probe`.
 - Rules: source pixels are only read; only the current run's first frame, its union mask and the
   frame being examined are held, with a log of a few bytes per frame from which the rows are sent

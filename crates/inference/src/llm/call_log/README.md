@@ -25,8 +25,8 @@ After every call a backend calls `log_call`, which numbers the call `<pid>-<n>` 
   call's number in its `call` field. It never holds the prompt or the answer.
 
 The app routes the exchange to its log window only: its stderr and log-file outputs drop the
-`model_exchange` target, and a worker process writes the exchange to its stdout, where the job
-runner picks it up.
+`model_exchange` target, and a worker process sends the exchange to the job runner as a
+`ModelCall` frame on the worker channel.
 An image request keeps its text; every base64 image block in the logged message is replaced by its
 size, so a keyframe request never puts megabytes of pixels into the log window.
 
@@ -34,6 +34,11 @@ size, so a keyframe request never puts megabytes of pixels into the log window.
 
 - Depends on: `job_model::model_call`, `serde_json` and `tracing`.
 - Used by: `crates/inference/src/llm/claude_cli/`; the stages that set purposes
-  (`crates/stages/src/adjudication/` and `crates/stages/src/fix_it/`).
+  (`crates/stages/src/adjudication/`, `crates/stages/src/fix_it/` and
+  `crates/stages/src/onscreen_text/`, whose local-model translation calls `log_call` itself);
+  `crates/pipeline/src/fix_it/cache.rs` (`current_purpose`); and the subscribers that route
+  `EXCHANGE_TARGET`, in `apps/tbd_subtitles/src/core/` (logging and the log buffer),
+  `apps/tbd_subtitles/src/job_queue/services/progress_log.rs` and
+  `apps/tbd_subtitles_llm/src/logging.rs`.
 - Rules: the summary never holds the prompt or the answer, and a purpose belongs to its thread
   (`a_purpose_belongs_to_its_thread` in `tests/call_log.rs`).

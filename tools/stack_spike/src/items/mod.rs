@@ -1,9 +1,10 @@
 //! The stack items the spike measures, each run inside its own worker process.
 //!
-//! **Role:** list the items in run order, say which need the GPU, and dispatch each to its module.
+//! **Role:** list the items in run order, say which need the GPU and which run in another
+//! binary, and dispatch each to its module.
 //!
-//! **Position:** `Item::run` is called by the worker (`measure/worker.rs`); `needs_gpu` by the
-//! parent (`measure/mod.rs`).
+//! **Position:** `Item::run` is called by the worker (`measure/worker.rs`); `needs_gpu` and
+//! `worker_binary` by the parent (`measure/mod.rs`).
 //!
 //! **Signals and state:** none; each item reads the video and the work folder.
 //!

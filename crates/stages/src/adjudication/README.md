@@ -64,8 +64,9 @@ adjudicated      ◀─ merge ◀─ readjudicate ◀─ with_alternatives ◀�
   `crates/pipeline/src/tasks/speech.rs` and the second pass for `crates/pipeline/src/tasks/llm.rs`.
 - `sound_cues::{choose, settle, check_choice}`: the sound-cue choice, for
   `crates/pipeline/src/tasks/sounds.rs`.
-- `glossary::{one_piece, parse, as_strs}`: the glossary, for the app's `process` subcommand and the
-  stack spike tool.
+- `glossary::{one_piece, parse, as_strs}`: the glossary, for the app's job settings
+  (`apps/tbd_subtitles/src/settings/services/job_settings.rs`), the stack spike tool and the visual
+  validation pilot.
 - `prompt` and `summary`: the rules and the run summary, for the stack spike tools.
 
 ## Boundaries
@@ -74,11 +75,12 @@ adjudicated      ◀─ merge ◀─ readjudicate ◀─ with_alternatives ◀�
   batch, the round of words heard again, or the sound window), `crate::diff_sheet::{align, sheet}`,
   `job_model::outputs` (`Line`, `Findings`, `Redecode`, `SoundCandidate`, `SoundCue`,
   `SoundCues`), `serde`, `serde_json`.
-- Used by: `crates/pipeline/src/tasks/` (`llm.rs`, `speech.rs`, `sounds.rs`),
+- Used by: `crates/pipeline/src/tasks/` (`llm.rs`, `speech.rs`, `sounds.rs`, and `layout.rs` for the
+  checks and the re-decodes at the quality check),
   `crates/stages/src/fix_it/` (the checks, for its guard), `crates/pipeline/src/fix_it/` (the
   re-decoded alternatives),
-  `apps/tbd_subtitles/src/cli/process_command.rs` (the glossary), `tools/stack_spike/` and
-  `tools/stack_spike_llm/`.
+  `apps/tbd_subtitles/src/settings/services/job_settings.rs` (the glossary), `tools/stack_spike/`,
+  `tools/stack_spike_llm/` and `tools/visual_validation/` (the glossary).
 - Rules:
   - the model never sees a timing (the header in `mod.rs`);
   - invented and dropped words are caught, and joined or hyphenated agreed words are not taken for

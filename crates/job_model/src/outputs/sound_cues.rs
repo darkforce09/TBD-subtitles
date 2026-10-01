@@ -1,12 +1,12 @@
 //! The sound-cue candidates and the ones the language model chose and worded, as kept in
-//! `sound_cues.json`.
+//! `outputs/sound_cues`.
 //!
 //! **Role:** carry the sound candidates and the chosen cues from the sound-cue step to the cue
 //! layout and the quality check.
 //!
 //! **Position:** written by the sound-cue step of the adjudication stage; read by the cues stage.
 //!
-//! **Signals and state:** none; plain data, written as JSON and archived with rkyv.
+//! **Signals and state:** none; plain data, archived with rkyv and printed as JSON.
 //!
 //! **Invariants:** every cue names the candidate it was chosen from and keeps its time.
 

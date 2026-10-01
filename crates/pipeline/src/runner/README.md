@@ -23,9 +23,12 @@ models folder and the digest of the stored line corrections) and `rerun::start` 
 `meta/job_record` in the same write transaction that clears every step `JobOptions::rerun` names
 and every step `graph::dependents` gives for them: their documents in `outputs` and their records
 in `step_records`, and the rows of the per-frame table each of them owns (`graph::writes_rows`:
-every `frames` row when `text_mask` is among them, every `readings` row when `text_verify` is). The files those rows named become unnamed and go on the database's next open.
-No file outside the database holds the job record. `Progress::JobStarted` names the steps this run will do
-(`resume::stale_steps`), and `Progress::JobDuration` the video's length once the probe is stored.
+every `frames` row when `text_mask` is among them, every `readings` row when `text_verify` is); a
+cleared `localized_video` keeps only the path of the video it wrote, as its earlier one, so its
+rerun may replace that file. The files those rows named become unnamed and go on the database's
+next open. No file outside the database holds the job record. `Progress::JobStarted` names the
+steps this run will do (`resume::stale_steps`), and `Progress::JobDuration` the video's length once
+the probe is stored.
 
 It then walks the steps, checking `JobOptions::cancel` before each: a valid step
 (`resume::is_valid` over a fresh snapshot) is skipped; any other has its fingerprint taken, its
@@ -56,15 +59,21 @@ At the end `report::write` renders `report.md` from the record and the stored st
   and programs' lines, and the shot scan's thread, log inside it), its debug lines (the job,
   reruns asked for and cleared, where each step runs, the CUDA runtime) and the report's path at
   info.
-- Used by: `apps/tbd_subtitles/src/cli/process_command.rs` and the window's job queue, through
-  the re-export at the crate root; `tools/visual_validation/` (`worker_inputs`).
+- Used by: the app's `process` and `fix` subcommands (`apps/tbd_subtitles/src/cli/`) and the
+  window's job queue, through the re-export at the crate root; `tools/visual_validation/`
+  (`worker_inputs`).
 - Rules:
   - a step's record is committed with its outputs, and removed before the step runs again, so a
     killed job resumes from the last finished step (the module header);
   - `--rerun` clears a step and every step that reads it, their per-frame rows with the steps
     that write them, in one transaction, and keeps the owner's corrections
     (`a_rerun_clears_its_steps_and_their_dependents_in_one_transaction_and_puts_the_record`,
-    `per_frame_rows_stay_when_no_step_that_writes_them_is_cleared` in `tests/rerun.rs`);
+    `per_frame_rows_stay_when_no_step_that_writes_them_is_cleared` in `tests/rerun.rs`), and a
+    cleared localized video keeps the video it wrote as its earlier one
+    (`a_cleared_localized_video_keeps_the_video_it_wrote_as_its_earlier_one`);
+  - a step about to run loses its record and the rows of its per-frame table alone
+    (`forgetting_a_step_removes_its_record_and_keeps_its_documents`,
+    `forgetting_a_step_that_owns_a_per_frame_table_clears_its_rows_alone`);
   - one worker loads the GPU at a time; the shot scan, which runs beside it, loads none;
   - a step starts only after every step it reads has finished, and none starts once the job is
     cancelled;

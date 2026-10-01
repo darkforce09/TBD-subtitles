@@ -54,8 +54,8 @@ the enlarged picture read, which the `visual_validation` tool's `verify-probe` p
 ## Boundaries
 
 - Depends on: `job_model::onscreen` (replacement documents, readings), `inference::ocr`
-  (PP-OCRv5), the sibling `compose` placement helpers and `detect::crop`, `localize::patches` and
-  `localize::still`, and `image`.
+  (PP-OCRv5), the sibling `compose` placement helpers and `detect::crop`, `localize::patches`,
+  `localize::still`, `localize::colour::Conversion` and `localize::motion::Motion`, and `image`.
 - Used by: `pipeline::tasks::verify`, in a `tbd-subtitles` ONNX Runtime worker under the GPU
   lock; the `visual_validation` tool's `verify-probe`.
 - Rules: only baked occurrences are checked, and only a failed check changes one; files and the

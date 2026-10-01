@@ -3,7 +3,7 @@
 //!
 //! **Role:** group the twenty-nine steps into the nine stages the window shows, each with its title
 //! ("Settle the words") and what it does while it runs ("Settling the words"), and give every
-//! step a plain title in place of its file name.
+//! step a plain title in place of its `snake_case` name.
 //!
 //! **Position:** used by the features' views and status text; depends on `job_model::StepName`.
 //!

@@ -1,4 +1,4 @@
-//! The typed output of each stage, one JSON file per step in the job's work directory.
+//! The typed output of each stage, one document per step in the job's database (`outputs/<step>`).
 
 pub mod adjudication;
 pub mod aligned;

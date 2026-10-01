@@ -87,8 +87,11 @@ buffer limit fails explicitly.
 
 ## Boundaries
 
-- Depends on: `job_model`, `media_io`, `inference`, `subtitle_formats` and pure Rust geometry and font libraries.
-- Used by: `pipeline::tasks::onscreen`.
+- Depends on: `job_model`, `media_io`, `inference`, `subtitle_formats`, `crate::localize` (in
+  `replace/`) and pure Rust geometry and font libraries.
+- Used by: `crates/pipeline/src/tasks/onscreen.rs` (detection to typesetting),
+  `crates/pipeline/src/tasks/replace.rs` and `crates/pipeline/src/tasks/verify.rs` (the
+  replacement steps), and `tools/visual_validation/` (crops, masks and the read-back probe).
 - Rules: source videos remain read-only; no model conversion or full-video image extraction; an uncertain mask never covers foreground artwork; stages read no step document from the job folder, the caller passes it; every PNG a document names is written through `png.rs`, synced before the stage returns.
 
 ## Related documentation

@@ -5,7 +5,7 @@
 //! `[batch, 4, dim_f, dim_t]` (left real, left imaginary, right real, right imaginary), and the
 //! model's output spectrum is turned back into samples and scaled by the model's compensation.
 //!
-//! **Position:** a [`WindowModel`] for `overlap_add.rs`; opened by the separation stage.
+//! **Position:** a [`WindowModel`] for `overlap_add.rs`; opened by the separation step's task.
 //!
 //! **Signals and state:** one ONNX session and one STFT; counts model seconds for the report.
 //!

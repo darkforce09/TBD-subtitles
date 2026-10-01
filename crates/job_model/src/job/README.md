@@ -29,22 +29,26 @@ the step's measure.
 `JobSettings` is everything that changes a job's output: the separation model (`roformer` or
 `mdx_net`), the Whisper model (`large_v3` or `large_v3_turbo`), the audio track, the glossary, the
 `claude` model and how many processes run at once, the lowest shot-change score that counts as a
-cut, and the subtitle file's format (`srt`, `vtt` or `ass`). `JobSettings::with_glossary` gives
-the defaults: RoFormer, large-v3, the English track, `sonnet` with 8 processes, a cut score of 20
-and SRT. The records are rkyv archives in the job's database; a changed type bumps its table's
-layout version, and the steps run again (there is no migration).
+cut, the subtitle file's format (`srt`, `vtt` or `ass`) and the on-screen text settings
+(`TextSettings`: translation, the Claude fallback, the reference folder and the localized video).
+`effective_output_format` is ASS whenever on-screen text is on. `JobSettings::with_glossary` gives
+the defaults: RoFormer, large-v3, the English track, `sonnet` with 8 processes, a cut score of 20,
+SRT, and on-screen text and the localized video on (`TextSettings::new_job`). The records are rkyv archives in the job's database; a changed type
+bumps its table's layout version, and the steps run again (there is no migration).
 
 ## Boundaries
 
-- Depends on: `serde`, `rkyv`; `crate::stage::StepName`, the key of `StepRecords`.
+- Depends on: `serde`, `rkyv`; `crate::stage::StepName`, the key of `StepRecords`;
+  `crate::onscreen::TextSettings`.
 - Used by: `crates/pipeline/` (the runner, the resume check, the step graph, the workers, the
   progress and the report); `crates/stages/src/qc/markdown.rs`, which renders the step timings;
-  the app's `process` subcommand in `apps/tbd_subtitles/src/cli/process_command.rs`, which builds
-  the settings.
+  the app's `process` subcommand in `apps/tbd_subtitles/src/cli/process_command.rs` and its
+  window's settings, which build the settings.
 - Rules:
   - a record round-trips through JSON, and the step records do with their steps keyed by step
     name (`a_record_round_trips_through_json`,
-    `step_records_round_trip_through_json_by_step_name` in `tests/record.rs`);
+    `step_records_round_trip_through_json_by_step_name` in `tests/record.rs`), and a record
+    without its optional fields parses (`a_record_without_its_optional_fields_parses`);
   - every type round-trips through rkyv, and archived step records are found by archived step
     name (`tests/archive.rs`).
 

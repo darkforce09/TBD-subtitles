@@ -56,10 +56,11 @@ tbd-subtitles [COMMAND] ──▶ Cli::parse
 file means the defaults), and `process_command::settings` turns the result into a `JobSettings`
 through `crate::settings::services::job_settings`: the glossary (the built-in
 `stages::adjudication::glossary::one_piece`, none, or a JSON file of names), the separator, the
-Whisper model, the shot-cut score, the language model and the output format, plus the audio
-track, which only the command line names. `run` expands each folder into every video under it
-without a subtitle file (`job_queue::services::video_files::videos_under`), keeps each video
-once, checks every path before the first job starts, finds the job runner's two binaries beside the running one
+Whisper model, the shot-cut score, the language model and how many of its processes run at once,
+the output format and the on-screen text settings, plus the audio track, which only the command
+line names. `run` expands each folder into every video under it without a subtitle file
+(`job_queue::services::video_files::videos_under`), keeps each video once, checks every path
+before the first job starts, finds the job runner's three binaries beside the running one
 (`Binaries::beside_current_exe`), runs the jobs in order and stops at the first that fails. Each
 [step](/documentation/architecture/pipeline.md) prints one line to stderr as it starts (`>`), is
 skipped as still valid (`=`), advances, and finishes (`✓`, with its time and peak RAM and VRAM).
@@ -151,12 +152,15 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
 
 - Synopsis: `tbd-subtitles worker <STEP> <JOB_DIR>`.
 - Does: runs `<STEP>` over the job in `<JOB_DIR>` in this process through
-  `pipeline::tasks::worker_main`, writing the step's output to the work directory and sending
-  its progress, model calls, measure and end or failure to the job runner as frames of the worker
-  channel on stdout; anything else printed to stdout goes to stderr. Every step is accepted but
-  `asr_whisper` and `redecode_whisper`, which are refused as belonging to `tbd-subtitles-ggml`.
-- Exit codes: 0 the step finished; 1 the job cannot be loaded or the step failed; 2 on a usage
-  error, including a Whisper step or a name that is no step.
+  `pipeline::tasks::worker_main`, reading the job record and the step's inputs from the runner's
+  frames on stdin and sending the step's output, its progress, model calls, measure and end or
+  failure to the job runner as frames of the worker channel on stdout; it never opens the job's
+  database, and anything else printed to stdout goes to stderr. Every step is accepted but
+  `asr_whisper` and `redecode_whisper`, which are refused as belonging to `tbd-subtitles-ggml`;
+  `text_translate` parses but fails as a step of `tbd-subtitles-llm`.
+- Exit codes: 0 the step finished; 1 the job cannot be loaded, the step belongs to
+  `tbd-subtitles-llm`, or the step failed; 2 on a usage error, including a Whisper step or a name
+  that is no step.
 - Example: `target/release/tbd-subtitles worker separation ~/.local/share/tbd-subtitles/work/<job>`
 
 ## Boundaries

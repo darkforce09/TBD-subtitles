@@ -1,5 +1,5 @@
-# The TBD-subtitles binary: the eframe desktop window, the `process` command line, and the `worker`
-# subcommands that run each GPU stage in its own process. It composes the library crates.
+# The TBD-subtitles binary: the eframe desktop window, the `process`, `fix` and `dump` commands, and
+# the `worker` subcommands that run its GPU steps each in its own process. It composes the library crates.
 [package]
 name = "tbd_subtitles"
 description = "Generates English subtitles for local videos: GUI, command line and GPU workers"
@@ -37,7 +37,7 @@ serde_json = "1"
 toml = { version = "0.9", default-features = false, features = ["parse", "display", "std", "serde"] }
 # Error context at the top of the binary only; the library crates return typed errors.
 anyhow = "1"
-# The subcommands `gui`, `process`, `fix` and `worker`, and videos with no subcommand.
+# The subcommands `gui`, `process`, `fix`, `dump` and `worker`, and videos with no subcommand.
 clap = { version = "4.6", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions", "color"] }
 # The desktop portal over D-Bus (pure Rust, zbus on async-io): the file and folder chooser,
 # opening a video in the desktop's default player, the desktop's light or dark colour scheme

@@ -13,7 +13,9 @@ crates/inference/src/onnx/ced/
 ## Boundaries
 
 - Depends on: `crate::onnx::session` (CUDA), `ort`.
-- Used by: `crates/stages/src/sound_events/` (as a `Tagger`) and `tools/stack_spike/`.
+- Used by: `crates/stages/src/sound_events/` (as a `Tagger`), the sound-event step in
+  `crates/pipeline/src/tasks/sounds.rs`, the model list in `crates/pipeline/src/models/mod.rs`,
+  and `tools/stack_spike/`.
 - Rules: the export holds its own feature extraction and its final sigmoid, so its output (named
   `logits`) is used as probabilities unchanged (review; the stack spike's notes showed a second
   sigmoid flattening every class to 0.5).

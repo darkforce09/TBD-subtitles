@@ -1,4 +1,4 @@
-//! Where the speech is and how the audio is cut for the speech engines, as kept in `vad.json`.
+//! Where the speech is and how the audio is cut for the speech engines, as kept in `outputs/vad`.
 
 use serde::{Deserialize, Serialize};
 

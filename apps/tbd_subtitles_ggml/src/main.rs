@@ -6,8 +6,9 @@
 //! **Position:** started by the job runner in `tbd-subtitles` as
 //! `tbd-subtitles-ggml worker <step> <job dir>`; the step's code is `pipeline::tasks`.
 //!
-//! **Signals and state:** reads the job's work directory and writes the step's output; sends its
-//! progress, measure and end or failure to the runner as frames of the worker channel on stdout.
+//! **Signals and state:** reads the job record and the step's inputs from the runner's frames on
+//! stdin; sends the step's output, its progress, measure and end or failure to the runner as
+//! frames of the worker channel on stdout.
 //!
 //! **Invariants:** only the Whisper steps run here; a build without the `crispasr` feature
 //! refuses them instead of pretending to run.

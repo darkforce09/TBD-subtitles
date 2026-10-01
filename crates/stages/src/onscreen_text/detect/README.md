@@ -47,7 +47,7 @@ thousand occurrences are held; beyond that the scan fails and asks for shorter j
 
 ## Boundaries
 
-- Depends on: `media_io` frame streams, stills and proxy sizing, `inference::ocr::TextDetection`, `job_model` contracts, and the sibling `geometry` module.
+- Depends on: `media_io` frame streams, stills and proxy sizing, `inference::ocr::TextDetection`, `job_model` contracts, and the sibling `geometry` and `png` modules (crops and stills written synced).
 - Used by: `pipeline::tasks::onscreen` for the scan and `tools/visual_validation` for `crop`.
 - Rules: source videos are only read; no full-video image extraction; pending proxies stay within four samples with their gaps and stills four at a time; limits fail explicitly; every occurrence gets exactly one crop and one keyframe image.
 

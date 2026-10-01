@@ -39,7 +39,8 @@ time order.
   `inference::onnx::ced` (the `Tagger` implementation), `job_model::outputs` (`SoundEvent`,
   `SoundCandidate`, `Utterance`, `Line`, `EngineTranscript`, `TimeSpan`).
 - Used by: `crates/pipeline/src/tasks/sounds.rs` (the sound-events step, and the candidates for
-  the sound-cue step) and `tools/stack_spike/` (the sound-event item).
+  the sound-cue step), `crates/stages/src/qc/` (`candidates::sound_tag`, for the coverage check)
+  and `tools/stack_spike/` (the sound-event item).
 - Rules:
   - a one-window spike is smoothed away (`a_one_window_spike_is_smoothed_away`); every class named
     exists in the rated set (`every_subtitle_class_exists_in_the_rated_set` in

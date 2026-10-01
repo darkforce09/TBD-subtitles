@@ -20,14 +20,18 @@ crates/stages/src/onscreen_text/replace/
 
 ## How it works
 
-The pipeline runs four steps in order, each reading the previous step's `ReplacementDocument`
-and writing its own. `mask::extract` decodes only the regions around each occurrence through a
-`RegionSource`, measures strokes and style, and writes masks and source plates under
-`visual/masks/`. `inpaint::inpaint` fills each plate's masked pixels through the `Inpaint` backend,
-which the pipeline runs as LaMa in an ONNX Runtime worker. `compose::compose` letters the English
-onto each filled plate. `verify::verify` rebuilds sampled frames of each baked occurrence as the
-localized video shows them and has PP-OCRv5 read them back, sending back to Japanese any whose
-finished picture still shows Japanese or whose English does not read back. Frame numbers index
+The pipeline runs four steps in order. The first reads the reviewed `TextDocument`; each later
+one reads the previous step's `ReplacementDocument`, and each returns its own for the pipeline to
+store. `mask::extract` decodes only the regions around each occurrence through a
+`RegionSource`, measures strokes and style, writes masks and source plates under
+`visual/masks/`, and hands every frame's placement to the caller as a `FrameRecord`, which the
+pipeline stores as the job's `frames` rows. `inpaint::inpaint` fills each plate's masked pixels
+through the `Inpaint` backend, which the pipeline runs as LaMa in an ONNX Runtime worker.
+`compose::compose` letters the English onto each filled plate at every shift the `frames` rows
+give (a `localize::motion::Motion` the pipeline folds from them). `verify::verify` rebuilds
+sampled frames of each baked occurrence as the localized video shows them and has PP-OCRv5 read
+them back, sending back to Japanese any whose finished picture still shows Japanese or whose
+English does not read back; the pipeline stores its readings as the `readings` rows. Frame numbers index
 the decoded frame timeline from zero; every path in a document is relative to the job directory.
 An occurrence whose id ends in `-c` and a number was found by Claude on a keyframe: its one quad
 is Claude's loose box, which the mask step pads and refits to the ink and the compose step ranks
@@ -36,8 +40,9 @@ below the detector's own occurrences of one sign.
 ## Boundaries
 
 - Depends on: `job_model` replacement and visible-text contracts, `media_io` and FFmpeg for
-  region decoding, `inference::ocr` for the read-back check, `image` and `imageproc`, the sibling
-  `geometry`, `glyphs` and `detect` modules, and `localize` for the finished picture.
+  region decoding, `inference::ocr` for the read-back check, `image` and `imageproc`, `tiny-skia`
+  and `ttf-parser` for the lettering, the sibling `geometry`, `png` and `detect` modules, and
+  `localize` for the per-frame shifts and the finished picture.
 - Used by: `pipeline::tasks::replace` for the mask, inpaint and compose steps and
   `pipeline::tasks::verify` for the read-back check; the `visual_validation` tool's `mask-probe`,
   `residue-probe` and `verify-probe`.

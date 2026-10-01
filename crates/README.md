@@ -1,9 +1,9 @@
 # Library crates
 
 The library crates of TBD-subtitles: the contracts between [stages](/documentation/glossary.md#stage),
-child processes, media input through FFmpeg, subtitle formats, the inference backends, the
-pipeline stages and the job runner. The app in `apps/tbd_subtitles/` composes them; the repository
-tools use `child_process` alone.
+child processes, the worker channel, the application icon, media input through FFmpeg, subtitle
+formats, the inference backends, the pipeline stages and the job runner. The three app binaries in
+`apps/` compose them, and the repository tools in `tools/` use the ones their table allows.
 
 ## Contents
 
@@ -11,10 +11,10 @@ tools use `child_process` alone.
 crates/
 ├── app_icon/          the application icon, painted in code as RGBA pixels at any square size
 ├── child_process/     running external programs with deadlines, process-group kills and drained pipes
-├── inference/         the model backends behind traits, and the model store
-├── job_model/         the serde contracts between stages: jobs, stage names, stage outputs, reports
-├── media_io/          FFmpeg and ffprobe as child processes: probe, PCM streaming, shot changes
-├── pipeline/          the job runner: stage order, resume, worker processes, progress events
+├── inference/         the model backends behind traits, the model store and the CUDA runtime lookup
+├── job_model/         the contracts between stages: stage and step names, job record, outputs, reports
+├── media_io/          FFmpeg and ffprobe as child processes: probe, PCM, frames, the localized video
+├── pipeline/          the job runner: step order, resume, job store, workers, sign library, report
 ├── stages/            one module folder per pipeline stage, from probing the video to the subtitle file
 ├── subtitle_formats/  the cue model, the SRT, WebVTT and ASS writers, and subtitle import
 └── worker_channel/    the frames a worker and the job runner exchange on pipes, and the worker's side
@@ -26,53 +26,56 @@ The crates form layers, and a crate depends only on crates of a strictly lower l
 
 | Layer | Crate | Workspace dependencies |
 |---|---|---|
-| 0 | `job_model` | none (`serde` only) |
-| 0 | `child_process` | none (`libc` only) |
+| 0 | `job_model` | none (`serde`, `rkyv` and `sha2`) |
+| 0 | `child_process` | none (`libc` and `tracing`) |
 | 0 | `app_icon` | none (the standard library only) |
 | 0 | `worker_channel` | none (`rustix` only) |
 | 1 | `media_io` | `child_process`, `job_model` |
 | 1 | `inference` | `child_process`, `job_model` |
 | 1 | `subtitle_formats` | `job_model` |
 | 2 | `stages` | `media_io`, `inference`, `subtitle_formats`, `job_model` |
-| 3 | `pipeline` | `stages`, `child_process`, `job_model`, `worker_channel` |
-| 4 | `tbd_subtitles` (the app) | `pipeline`, `job_model`, `worker_channel` |
+| 3 | `pipeline` | `stages`, `inference`, `media_io`, `subtitle_formats`, `child_process`, `job_model`, `worker_channel` |
+| 4 | `tbd_subtitles` (the app) | `pipeline`, `stages`, `inference`, `media_io`, `child_process`, `job_model`, `worker_channel`, `app_icon` |
+| 4 | `tbd_subtitles_ggml` (the Whisper worker) | `pipeline`, `job_model` |
+| 4 | `tbd_subtitles_llm` (the local-model worker) | `pipeline`, `inference`, `job_model`, `worker_channel` |
 
-The layers follow the flow of a job, which the stage code, not written yet, fills in: the app
-hands a job to `pipeline`, which walks the stages in the order `job_model::StageName::ALL` gives. A CPU stage runs
-in process; a stage that loads a GPU model or the language model runs as a
-[worker process](/documentation/glossary.md#worker-process), the app binary started again as
-`tbd-subtitles worker <stage> <job dir>` through `child_process`. Every stage reads its inputs from
-the job's [work directory](/documentation/glossary.md#work-directory) and writes one typed output
-there, in `job_model` types; `media_io`, `inference` and `subtitle_formats` do the media, model
-and file work beneath them.
-
-Two crates hold working code: `child_process`, complete and tested, and the stage names in
-`job_model`. Every other crate declares its module folders, each with a one-line header saying what
-it is for; their code is not written yet.
+The layers follow the flow of a job: the app hands a video to `pipeline`, which walks the
+twenty-nine steps in the order `job_model::StepName::ALL` gives. A CPU step runs in process; a
+step that loads a GPU model, runs the language model or does long visual work runs as a
+[worker process](/documentation/glossary.md#worker-process), one of the three app binaries started
+again as `<binary> worker <step> <job dir>` through `child_process`. Every step's documents and
+record live in the job's one database, `job.redb`, in the job's
+[work directory](/documentation/glossary.md#work-directory), as rkyv archives of `job_model`
+types; a worker never opens it, and takes its inputs and returns its outputs as frames of
+`worker_channel` on its pipes. The large media (audio streams, stills, masks, plates, patches)
+stay files the rows name. `stages` holds the work of each stage, and `media_io`, `inference` and
+`subtitle_formats` do the media, model and file work beneath it.
 
 ## Getting started
 
 Run these from the repository root:
 
 ```bash
-cargo build --workspace                    # every crate, the app and the repository tools
-cargo test -p child_process -p job_model   # the unit tests here: 20 and 5, about 3 s in all
+cargo build --workspace                    # every crate, the apps and the repository tools
+cargo test -p job_model -p child_process   # the unit tests of two bottom-layer crates: 115 and 40
 cargo gates crate-layering                 # each crate depends only on crates of a lower layer
 ```
 
 The `child_process` tests run `sh`, `cat`, `sleep` and `seq`, and one of them waits 2.5 s to
-prove a killed process group left no grandchild behind. The other crates build and run no tests.
+prove a killed process group left no grandchild behind. Each crate's README gives its own tests.
 
 ## Boundaries
 
-- Depends on: `serde` and `libc` from crates.io, and nothing else yet. `child_process` is the one
-  way these crates start a program.
-- Used by: the app in `apps/tbd_subtitles/`, through `pipeline` and `job_model`; the repository
-  tools, through `tools/verification_core/`, which depends on `child_process`.
+- Depends on: crates.io crates such as `serde`, `rkyv`, `redb`, `ort`, `image` and `libc`; at run
+  time FFmpeg and ffprobe for `media_io`, the `claude` CLI for `inference`, and the app's worker
+  binaries for `pipeline`. `child_process` is the one way these crates start a program.
+- Used by: the three app binaries in `apps/`; the repository tools in `tools/`, each within the
+  crates the tool table in `tools/repo_gates/src/layout.rs` allows it (`verification_core` uses
+  `child_process` alone).
 - Rules:
   - a crate depends only on crates of a lower layer, and a repository tool only on the crates the
-    tool table allows it, which for `tools/verification_core/` is `child_process` alone
-    (`cargo gates crate-layering`, with both tables in `tools/repo_gates/src/layout.rs`);
+    tool table allows it (`cargo gates crate-layering`, with both tables in
+    `tools/repo_gates/src/layout.rs`);
   - production files stay under 500 lines and test files under 1000 (`cargo gates file-length`).
 
 ## Related documentation

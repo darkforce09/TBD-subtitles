@@ -56,7 +56,8 @@ a loaded report's.
 
 ## Boundaries
 
-- Depends on: `job_model` (`StepName`, `StepMeasure`, `Corrections`, `QcReport`, `QcCheck`);
+- Depends on: `job_model` (`StepName`, `StepMeasure`, `Corrections`, `QcReport`, `QcCheck`,
+  `onscreen::TextSummary`);
   `pipeline::fix_it::FixStage` for the stage Fix It is in; `crate::core::format::plural`.
 - Used by: `crate::job_report::{services, ui}`, `crate::application`, and
   `crate::job_queue` for `summary::RowSummary`; `crate::line_review` for `finding_group::LineGroup`.

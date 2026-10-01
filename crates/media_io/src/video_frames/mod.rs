@@ -4,8 +4,8 @@
 //! frame at its native size in a chosen pixel format for the encoder), each paired with its
 //! presentation interval from the container's packet table, without retaining the video; `still`
 //! decodes a single frame of the same timeline and `region` a run of cropped frames.
-//! **Position:** media input for text detection, tracking, replacement, the localized-video
-//! encoder and validation tools.
+//! **Position:** media input for text detection, text replacement and the localize stage that
+//! feeds the localized-video encoder.
 //! **Signals and state:** the packet timeline (`packets.rs`, two bounded ffprobe runs) before
 //! decoding; then one streaming FFmpeg decoder and its stdout pipe. The stream holds the
 //! timeline, one frame at a time and the count of frames handed out.

@@ -91,7 +91,9 @@ failed is not.
   `crate::diff_sheet::{align, sheet}`, `job_model::outputs` (`FixRecord`'s parts, `Corrections`,
   `Line`, `Utterance`, `Aligned`, `EngineTranscript`), `job_model::report`, `serde`,
   `serde_json`.
-- Used by: `crates/pipeline/src/fix_it/`; the app's report (`items::asks_about`).
+- Used by: `crates/pipeline/src/fix_it/`; the app's report in
+  `apps/tbd_subtitles/src/job_report/services/` (`items::asks_about`, `items::Answered` and
+  `changed_words`).
 - Rules:
   - no word no engine heard reaches a change (`a_word_no_engine_heard_is_refused_and_the_line_stays`
     in `tests/fix_it.rs`);

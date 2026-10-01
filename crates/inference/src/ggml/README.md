@@ -15,7 +15,8 @@ crates/inference/src/ggml/
 ## Boundaries
 
 - Depends on: `crispasr` (git tag `v0.8.37`), only with the `crispasr` feature.
-- Used by: `crates/stages/` and `tools/stack_spike_ggml/`, with the feature on.
+- Used by: `crates/stages/`, `crates/pipeline/` (the ggml worker's Whisper step) and
+  `tools/stack_spike_ggml/`, with the feature on.
 - Rules: no two ggml-bundling crates in one binary, and no ggml in a binary that loads ONNX
   Runtime (the headers in `lib.rs` and `ggml/mod.rs`).
 

@@ -19,10 +19,11 @@ remain open.
 
 ## Where it lives
 
-- The nine visual steps: [on-screen text stages](/crates/stages/src/onscreen_text/), orchestrated
+- The ten visual steps: [on-screen text stages](/crates/stages/src/onscreen_text/), orchestrated
   by [visual pipeline tasks](/crates/pipeline/src/tasks/onscreen.rs) and, for the three
   replacement steps, [replacement tasks](/crates/pipeline/src/tasks/replace.rs) over the
-  [replacement stages](/crates/stages/src/onscreen_text/replace/).
+  [replacement stages](/crates/stages/src/onscreen_text/replace/), and for the read-back check,
+  its [task](/crates/pipeline/src/tasks/verify.rs).
 - The localized video: the [localize stage](/crates/stages/src/localize/) and its
   [task](/crates/pipeline/src/tasks/localized.rs), with FFmpeg's [encode](/crates/media_io/src/encode/)
   and LaMa in the [inference crate](/crates/inference/src/onnx/lama/). The architecture is in the
@@ -77,15 +78,15 @@ re-encode. Run Again with Current Settings explicitly adopts the current setting
 
 ### One combined job
 
-After dialogue cue construction, the job runs nine resumable visual steps before final quality
+After dialogue cue construction, the job runs ten resumable visual steps before final quality
 checking and output, and writes the localized video last:
 
 ```text
 Dialogue cues -> Detect -> Read -> Track -> Translate -> Review -> Mask -> Inpaint -> Compose
-  -> Typeset -> QC -> combined ASS (+ localized ASS) -> localized video
+  -> Verify -> Typeset -> QC -> combined ASS (+ localized ASS) -> localized video
 ```
 
-Mask, Inpaint, Compose and the localized video are described under
+Mask, Inpaint, Compose, Verify and the localized video are described under
 [replacement in the video](#replacement-in-the-video); with the localized video off they record
 that they are off and do nothing.
 
@@ -211,7 +212,7 @@ places nearby because it moves or only Claude found it:
    GPU worker.
 3. **Compose** letters the English in Noto Sans in the writing's place, colour and weight, fitted
    to its area; writing that sits together on one card keeps its size ratio.
-4. **Check** rebuilds a few frames of each lettered occurrence as the localized video will show
+4. **Verify** rebuilds a few frames of each lettered occurrence as the localized video will show
    them and reads them back with the local PP-OCRv5 on the GPU: Japanese still readable where the
    writing or its furigana was, or English that does not read back as the translation, leaves the
    occurrence in Japanese. No API call is made.
@@ -318,7 +319,9 @@ stages', and their large files in the same
 |---|---|
 | `meta/job_record`, `step_records/<step>` | Job settings, model location and step fingerprints/measurements, including visual processing. |
 | `outputs/text_detect` through `outputs/text_review`, and `outputs/text_typeset` | Typed `TextDocument` outputs: readings, tracks, provenance, warnings, source identity, presentation and rendered status, plus review warnings without a current occurrence. |
-| `outputs/text_mask`, `outputs/text_inpaint`, `outputs/text_compose`, `outputs/text_verify` | The `ReplacementDocument` each replacement step writes: per occurrence its frame span, status (pending, baked or fallback with its reason), measured lettering style, container and plates; the read-back check's `VerifiedReplacements` adds `checks`, what it read from each sampled finished frame. |
+| `outputs/text_mask`, `outputs/text_inpaint`, `outputs/text_compose`, `outputs/text_verify` | The `ReplacementDocument` each replacement step writes: per occurrence its frame span, status (pending, baked or fallback with its reason), measured lettering style, container and plates; the read-back check's `VerifiedReplacements` adds `checks`, per checked occurrence the frames read and whether all passed. |
+| `frames` | One `FrameRecord` per frame of every occurrence `text_mask` gave plates, keyed by occurrence and frame: the quad carried to the frame, its follow score, shift and scale, its erase mask as run-length rows and its plate. Composition, the read-back check and the localized video place each frame's lettering by it. |
+| `readings` | One `VerifyReading` per finished frame the read-back check read, keyed by occurrence and frame: the Japanese found, the English read, the similarity and the pass; Check Text shows each occurrence's telling one. |
 | `visual/masks/`, `visual/plates/`, `visual/patches/` | Per occurrence: [stroke masks](/documentation/glossary.md#stroke-mask) and source crops, inpainted [plates](/documentation/glossary.md#plate), and RGBA [patches](/documentation/glossary.md#patch) with a `preview.png` for Check Text. |
 | `visual/crops/` | Representative full-resolution crops from each keyframe, used by OCR, Claude image requests and review thumbnails. |
 | `visual/keyframes/` | One 1280-wide whole-frame still per keyframe frame, sent to Claude with the crops it holds. |
@@ -367,7 +370,7 @@ a smeared guess. The localized video carries no subtitle stream, so a player sho
   mismatched references. The targets are timing within one source frame and accepted tracking
   error within two pixels at 1080p; failed tracks require a flagged fallback.
 - The same milestone requires the complete GUI correction flow, VLC playback, a 20–30 minute episode
-  benchmark reporting added visual time and compliance with 8 GB RAM / 5.5 GB worker VRAM,
+  benchmark reporting added visual time and compliance with 24 GB RAM / 5.5 GB worker VRAM,
   packaging and host smoke checks, and explicit owner acceptance of the UI and playback.
   Acceptance remains open; unit tests and the harness do not establish these media-level results.
 - [M5 — In-place on-screen text](/documentation/roadmap.md#m5--in-place-on-screen-text): on

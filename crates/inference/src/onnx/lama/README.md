@@ -26,7 +26,8 @@ as they came in, since the graph's output drifts slightly there.
 ## Boundaries
 
 - Depends on: `crate::onnx::session` (CUDA), `ort`.
-- Used by: `crates/pipeline/src/tasks/replace.rs` (as the stages' `Inpaint` model).
+- Used by: `crates/pipeline/src/tasks/replace.rs` (as the stages' `Inpaint` model) and the model
+  list in `crates/pipeline/src/models/mod.rs` (`MODEL`).
 - Rules:
   - inputs are exactly `SIDE` × `SIDE`; fitting a plate to that side is the stage's work;
   - the model check `lama_fills_strokes_from_the_surrounding_gradient` is `#[ignore]` because it

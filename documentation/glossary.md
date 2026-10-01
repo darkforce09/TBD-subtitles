@@ -118,6 +118,19 @@ still that Claude sees with the crops. See: [Japanese on-screen text](/documenta
 
 One speech engine's transcript of a stretch of audio.
 
+### Job store
+
+The one handle a process holds on a job's database, `job.redb`: six tables (`meta`,
+`step_records`, `outputs`, `corrections`, `frames`, `readings`) whose values are `rkyv` archives
+of the `job_model` types. One process at a time owns the file; every caller in that process shares
+its handle, and a worker never opens it.
+
+In code: `JobStore` in `crates/pipeline/src/work_dir/store/mod.rs`; `tbd-subtitles dump` prints
+its rows as JSON.
+
+See: [Work directory](#work-directory),
+[binary storage](/documentation/architecture/binary_storage_plan.md)
+
 ### Localized video
 
 A copy of the source video, `<video>.localized.mkv` beside it, in which on-screen Japanese that
@@ -148,8 +161,9 @@ Opening and ending theme songs.
 
 ### Orphan
 
-Speech that the backbone engine missed but at least two other engines heard; recovered as a new
-utterance.
+Speech another engine heard in a chunk where the backbone engine heard no word. The diff sheet
+makes no utterance of it, so it is dropped; recovering it is planned in
+[audio accuracy](/documentation/optimizations/audio_accuracy.md).
 
 ### Patch
 
@@ -161,6 +175,19 @@ In code: `Plate::patch` in `crates/job_model/src/onscreen/localize.rs`, written 
 `crates/stages/src/onscreen_text/replace/compose/` under `visual/patches/`.
 
 See: [Plate](#plate), [Localized video](#localized-video)
+
+### Per-frame table
+
+A table of the job's database keyed by occurrence id and frame number, one row per frame:
+`frames` holds where `text_mask` placed each frame's writing and erase mask, `readings` what the
+read-back check read in each finished frame it sampled. A step reads such rows one at a time, never
+the table whole.
+
+In code: `FrameRecord` in `crates/job_model/src/onscreen/frames.rs`, `VerifyReading` in
+`crates/job_model/src/onscreen/verify.rs`, `graph::writes_rows` and `graph::reads_rows` in
+`crates/pipeline/src/graph/mod.rs`.
+
+See: [Job store](#job-store), [Plate](#plate)
 
 ### Plate
 
@@ -197,6 +224,19 @@ A cut between camera shots. Professional timing snaps cue starts and ends to nea
 ### Sign
 
 On-screen text (a signboard, letter, title card) and the subtitle that translates it.
+
+### Sign library
+
+`library.redb` in the app's data folder, shared by every episode: the signs whose replacement
+read back cleanly and that the owner did not reject, keyed by their normalised Japanese and a hash
+of their keyframe crop. A later episode's matching occurrence starts from the stored English and
+lettering style, and is still erased, lettered and read back in its own frames.
+
+In code: `Library` in `crates/pipeline/src/library/mod.rs`; `LibrarySign` in
+`crates/job_model/src/onscreen/library.rs`.
+
+See: [Sign](#sign),
+[library shared by episodes](/documentation/architecture/binary_storage_plan.md#library-shared-by-episodes)
 
 ### Sound cue
 
@@ -282,12 +322,27 @@ See: [automation](/documentation/features/automation.md#watch-folders)
 Word error rate: the share of words substituted, deleted or inserted against a reference
 transcript. Lower is better.
 
+### Worker channel
+
+The framed binary messages a worker process and the job runner exchange on pipes: the stored
+values a step reads go down the worker's stdin as `Input` frames, and its outputs, progress, model
+calls, measure and end come back as `Output`, `Progress`, `ModelCall`, `Measure`, `Done` or
+`Failed` frames, the outputs read straight into the job's database.
+
+In code: the `worker_channel` crate (`crates/worker_channel/`) and the runner's side in
+`crates/pipeline/src/workers/channel/`.
+
+See: [Worker process](#worker-process),
+[worker channel](/documentation/architecture/binary_storage_plan.md#worker-channel)
+
 ### Worker process
 
 A `worker <step>` subcommand of an app binary that runs one step in its own process and exits
 when done, freeing VRAM. The main binary `tbd-subtitles` hosts the ONNX Runtime, FFmpeg and
 `claude` workers; `tbd-subtitles-ggml` hosts Whisper, because ggml and ONNX Runtime cannot share
-a process.
+a process; `tbd-subtitles-llm` hosts the local translation model through mistral.rs. A worker
+takes its inputs and returns its outputs over the [worker channel](#worker-channel) and never
+opens the job's database.
 
 ### Work directory
 

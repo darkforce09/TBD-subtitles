@@ -1,16 +1,16 @@
 //! Every stage of the pipeline, in run order, with the name used on the command line and in JSON.
 //!
-//! **Role:** the one list of stages: the job runner walks it in order, the `worker` subcommand
-//! accepts the stages that run in a worker process, and the work directory names outputs by it.
+//! **Role:** the one list of stages: each step belongs to one of them (`StepName::stage`), and
+//! the job runner, the report and the window group the on-screen text steps by it.
 //!
-//! **Position:** used by `pipeline`, `stages` and the app's `worker` subcommand; depends on
-//! `serde` only.
+//! **Position:** used by `pipeline` and the app's window through `StepName::stage`; depends on
+//! `serde` and `rkyv`.
 //!
 //! **Signals and state:** none.
 //!
 //! **Invariants:** [`StageName::ALL`] lists every variant exactly once, in run order; each name
-//! parses back to its own variant; only the stages that load a GPU model or the language model run
-//! in a worker process.
+//! parses back to its own variant; only the stages that load a GPU model or the language model,
+//! the on-screen text and the localized video run in a worker process.
 
 use std::fmt;
 use std::str::FromStr;
@@ -80,7 +80,7 @@ impl StageName {
         StageName::LocalizedVideo,
     ];
 
-    /// The name on the command line, in file names and in JSON.
+    /// The name on the command line and in JSON.
     pub fn as_str(self) -> &'static str {
         match self {
             StageName::ProbeDecode => "probe_decode",

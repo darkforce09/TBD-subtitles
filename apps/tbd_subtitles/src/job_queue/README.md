@@ -98,7 +98,8 @@ after every change: a job running when the window closed waits again next time.
 
 ## Boundaries
 
-- Depends on: `pipeline` (`run_job`, `JobOptions`, `Progress`, `CancelToken`), `job_model`,
+- Depends on: `pipeline` (`run_job`, `JobOptions`, `Progress`, `CancelToken`, and `work_dir` for
+  the job databases it reads), `job_model`, `inference` (the app data folder, the model-call target),
   `crate::core` (`background`, `format`, `steps`, `ui`), `crate::job_report::models::summary`
   (a finished row's verdict and count), `serde` and `serde_json`; `eframe::egui` in `ui/` only.
 - Used by: `crate::application` (`actions::{queue, review, runner}`, `feature_views`, `window`,

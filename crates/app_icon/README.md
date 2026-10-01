@@ -44,7 +44,8 @@ None: the crate reads no setting.
 
 - Depends on: the standard library alone. No workspace crate and no crates.io crate.
 - Used by: `tools/appimage_builder/src/app_dir/icon.rs`, which encodes the pixels as the AppDir's
-  PNG.
+  PNG, and `apps/tbd_subtitles/src/application/mod.rs`, which hands them to the window as its
+  icon.
 - Rules:
   - the crate sits in layer 0 and depends on no workspace crate (`cargo gates crate-layering`,
     layer table in `tools/repo_gates/src/layout.rs`);

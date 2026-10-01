@@ -1,5 +1,6 @@
-# Media input through FFmpeg and ffprobe, run as child processes: probing, streaming PCM audio in
-# bounded chunks, and scanning shot changes. No libav is linked.
+# Media through FFmpeg and ffprobe, run as child processes: probing, streaming PCM audio and
+# timestamped video frames in bounded chunks, region crops, shot changes, preview frames and the
+# localized video's encode. No libav is linked.
 [package]
 name = "media_io"
 description = "FFmpeg and ffprobe as child processes: probe, PCM streaming, shot changes"

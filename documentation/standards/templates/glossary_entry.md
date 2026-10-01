@@ -38,22 +38,26 @@ the anchor:
 ## Worked sample
 
 Written from the glossary's entry for worker process, with In code and See lines added from the
-stage names in `crates/job_model/src/stage/stage_name.rs`, the app's command line in
-`apps/tbd_subtitles/src/cli/` and the decision log. The sample sits in a fenced block, so no gate
-reads its links or paths.
+step graph in `crates/pipeline/src/graph/mod.rs`, the app's command line in
+`apps/tbd_subtitles/src/cli/`, the worker binaries and the decision log. The sample sits in a
+fenced block, so no gate reads its links or paths.
 
 ````markdown
 ### Worker process
 
-A subcommand of the app binary that runs one GPU stage in its own process and exits when done,
-freeing VRAM and keeping native libraries apart. The stages that load no model run inside the job
-runner instead.
+A `worker <step>` subcommand of an app binary that runs one step in its own process and exits
+when done, freeing VRAM. The main binary `tbd-subtitles` hosts the ONNX Runtime, FFmpeg and
+`claude` workers; `tbd-subtitles-ggml` hosts Whisper, because ggml and ONNX Runtime cannot share
+a process; `tbd-subtitles-llm` hosts the local translation model through mistral.rs. A worker
+takes its inputs and returns its outputs over the [worker channel](#worker-channel) and never
+opens the job's database.
 
-In code: the `worker <STAGE> <JOB_DIR>` subcommand, declared in
-`apps/tbd_subtitles/src/cli/mod.rs` and run by `apps/tbd_subtitles/src/cli/worker_command.rs`;
-`StageName::runs_in_worker` in `crates/job_model/src/stage/stage_name.rs`, true for separation,
-ASR, sound events, adjudication and alignment.
+In code: `pipeline::graph::placement` in `crates/pipeline/src/graph/mod.rs`, which answers
+`Placement::Worker(Binary)` for a step that runs in a worker; `pipeline::tasks::worker_main`, which
+every binary's `worker` entry calls; the `worker <STEP> <JOB_DIR>` subcommand in
+`apps/tbd_subtitles/src/cli/worker_command.rs`, and the entries in
+`apps/tbd_subtitles_ggml/src/main.rs` and `apps/tbd_subtitles_llm/src/main.rs`.
 
-See: [Stage](#stage),
+See: [Step](#step), [Worker channel](#worker-channel),
 [Each GPU stage runs in its own worker process](/documentation/decisions/foundations.md#2026-09-25--each-gpu-stage-runs-in-its-own-worker-process).
 ````

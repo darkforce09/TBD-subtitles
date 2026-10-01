@@ -60,11 +60,13 @@ out when the folder has no child folders besides exempt ones and at most three f
 
 ## Worked sample
 
-The repository holds no data folder yet, so this sample is illustrative: it describes the model
-manifest the [system overview](/documentation/architecture/system_overview.md#models) plans for
-the inference crate's model store, with one TOML file per model. The folder, its files, its fields
-and its test do not exist; the sample shows the shape a data README takes, and the real README is
-written from the real folder when it is created. The sample sits in a fenced block, so no gate
+This sample is illustrative: it describes the model manifest of the
+[system overview](/documentation/architecture/system_overview.md#models) as a folder of one TOML
+file per model, while the model store keeps its manifest as Rust code in
+`crates/inference/src/model_store/manifest.rs`. The folder, its files, its fields and its test do
+not exist; the sample shows the shape a data README takes. The repository's real data folder, the
+series glossaries in `crates/stages/src/adjudication/glossary/`, has its own README written from
+its files. The sample sits in a fenced block, so no gate
 reads it as a README or checks its paths.
 
 ````markdown

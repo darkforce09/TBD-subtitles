@@ -5,9 +5,10 @@
 //! emit its summary (`info`) and its [`ModelExchange`] (`trace`, target [`EXCHANGE_TARGET`]).
 //!
 //! **Position:** called by each backend around every call; the purposes are set by the stages
-//! that ask (adjudication, sound cues, Fix It). The app's subscriber decides where the events go:
-//! the summary to stderr, the log file and the log window; the exchange to the log window only,
-//! through a worker's stdout when the call ran in a worker.
+//! that ask (adjudication, sound cues, Fix It, on-screen text). The app's subscriber decides
+//! where the events go: the summary to stderr, the log file and the log window; the exchange to
+//! the log window only, as a `ModelCall` frame on the worker channel when the call ran in a
+//! worker.
 //!
 //! **Signals and state:** a per-thread stack of purposes; a process-wide count of calls.
 //!

@@ -6,7 +6,7 @@
 //! read `structured_output`, token counts and cost from its JSON result.
 //!
 //! **Position:** a [`LanguageModel`] for the adjudication stage and Fix It, and the image backend
-//! of the visual translation stage (crops and keyframes); runs the program through
+//! of the visual translation stage (a keyframe and its crops per call); runs the program through
 //! `child_process` with a deadline, and with a cancel flag when one is given.
 //!
 //! **Signals and state:** runs in an empty working folder with only project settings, so the

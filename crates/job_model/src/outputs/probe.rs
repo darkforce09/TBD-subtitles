@@ -2,9 +2,10 @@
 //!
 //! **Role:** describe the video's streams for every step that decodes it.
 //!
-//! **Position:** returned by `media_io`; kept in `probe.json` by the probe-and-decode step.
+//! **Position:** returned by `media_io`; kept in `outputs/probe_decode` by the probe-and-decode
+//! step.
 //!
-//! **Signals and state:** none; plain data, written as JSON and archived with rkyv.
+//! **Signals and state:** none; plain data, archived with rkyv and printed as JSON.
 //!
 //! **Invariants:** a stream field ffprobe does not report is `None`, never a guessed value.
 

@@ -83,9 +83,10 @@ distrobox-host-exec env -u LD_LIBRARY_PATH dist/TBD-subtitles-x86_64.AppImage pr
 ```
 
 **Expected:** all 29 steps run (the Whisper steps on the GPU, through the bundled `ggml` worker
-and its bundled `libcrispasr.so.1`), ending with the subtitle file written beside a copy of the
-video and `report.md` in `/tmp/appimage-verify`. Comparing it to the [Dressrosa 11
-pilot](/documentation/research/pilot_dressrosa_11.md) subtitle file shows the same dialogue lines.
+and its bundled `libcrispasr.so.1`), ending with the subtitle file written beside the video, and
+`job.redb` and `report.md` in the job's folder under `/tmp/appimage-verify`. Comparing the
+subtitle file to the [Dressrosa 11 pilot](/documentation/research/pilot_dressrosa_11.md)'s shows
+the same dialogue lines.
 Visual translation writes a combined ASS and uses the bundled local-model worker; with Replace
 text in the video on, the job also writes `<name>.localized.mkv` (encoded with `hevc_nvenc` by the
 bundled FFmpeg when it reaches the driver, else libx264) and `<name>.localized.ass`; a `<name>.localized.mkv` another job wrote (under another

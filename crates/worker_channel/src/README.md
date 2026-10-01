@@ -45,7 +45,8 @@ crates/worker_channel/src/
   the runner's reader in `crates/pipeline/src/workers/frames.rs`, its inputs in
   `crates/pipeline/src/workers/channel/`, and their tests.
 - `address::{Table, Key, Address}`: the addresses of `Input` and `Output` values, and the tables
-  the `dump` subcommand names.
+  the `dump` subcommand names, for the job store, the runner, `dump`, Check Text and
+  `tools/visual_validation/`.
 - `progress::{Progress, ENCODED_LEN}`: the `Progress` payload, decoded by the runner.
 - `worker::{install, send, progress, model_call, output, measure, failed, done, Input,
   read_input, read_inputs, read_documents}`:
@@ -55,9 +56,10 @@ crates/worker_channel/src/
 ## Boundaries
 
 - Depends on: `std` (`std::io`, `std::os::fd`, `std::sync`) and `rustix::stdio::dup2_stdout`.
-- Used by: `crates/pipeline/src/tasks/mod.rs`, `crates/pipeline/src/workers/frames.rs`,
-  `crates/pipeline/src/workers/channel/`, `crates/pipeline/src/work_dir/store/`,
-  `apps/tbd_subtitles/src/cli/dump_command.rs`,
+- Used by: the `tasks`, `workers`, `graph`, `work_dir`, `runner`, `resume` and `fix_it` modules of
+  `crates/pipeline/src/`, `apps/tbd_subtitles/src/cli/dump_command.rs`,
+  `apps/tbd_subtitles/src/text_review/services/localized.rs`,
+  `tools/visual_validation/src/job_rows.rs`,
   `apps/tbd_subtitles/src/core/log_buffer/worker_channel.rs` and
   `apps/tbd_subtitles_llm/src/logging.rs`.
 - Rules:

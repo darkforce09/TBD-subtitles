@@ -4,7 +4,7 @@
 //! by row, with 4×4 supersampled edges.
 //!
 //! **Position:** the bottom layer, with no dependencies; the AppImage builder encodes the pixels
-//! as a PNG, and any binary that shows the icon takes them from here.
+//! as a PNG, and the app's window takes them as its icon.
 //!
 //! **Signals and state:** pure; returns bytes.
 //!

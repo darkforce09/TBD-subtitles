@@ -4,11 +4,13 @@
 //! finished steps, GPU steps as worker processes of the app's binaries, the time and peak memory
 //! of every step, progress events, and the job report.
 //!
-//! **Position:** layer 3; called by the app (`process`, `worker` and the window); calls
-//! `stages`, the backends in `inference`, `media_io`, `subtitle_formats` and `child_process`.
+//! **Position:** layer 3; called by the app (`process`, `fix`, `dump`, `worker` and the window)
+//! and its worker binaries; calls `stages`, the backends in `inference`, `media_io`,
+//! `subtitle_formats`, `child_process` and `worker_channel`.
 //!
-//! **Signals and state:** reads and writes the job's work directory; the output step writes the
-//! subtitle file beside the video; starts worker processes.
+//! **Signals and state:** owns the job's database, `job.redb`, and writes the large media files of
+//! the job's work directory; the output step writes the subtitle file beside the video; reads and
+//! records the sign library, `library.redb`; starts worker processes.
 //!
 //! **Invariants:** one GPU worker runs at a time; a killed job leaves every finished step valid
 //! for resume; ONNX Runtime, ggml and candle never load into one process.

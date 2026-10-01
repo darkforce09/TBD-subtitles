@@ -49,15 +49,16 @@ shot scan on its own thread. `StepWrite::put` keeps an archive a task in the run
 (`tasks::StepIo::in_process`), with the same refusal of the tables a step never writes, so an
 in-process step and a worker step commit their outputs the same way.
 
-The runner sends every worker the values `graph::reads` gives its step; the steps converted to the
-store (the probe, the shot scan, voice activity) read and write only through the channel, and the
-rest still write their JSON files beside it.
+The runner sends every worker the values `graph::reads` gives its step, and every step in a worker
+reads its stored documents and writes them only through the channel; the files a step keeps
+outside the database (audio streams, stills, masks, plates, patches) are the media its rows name.
 
 ## Boundaries
 
 - Depends on: `crate::work_dir::{JobStore, store}` (`StoreRead::with_bytes`, `StoreWrite`,
   `kinds`), `worker_channel` (`address::Address`, `frame`), `job_model` (`StepName`, `StepRecord`).
 - Used by: `crate::workers::run_worker` and `crate::workers::frames::read_frames`;
+  `crate::tasks::StepIo`, whose in-process sink is a `StepWrite`;
   `crate::runner::run_job` and `tools/visual_validation/src/pilot.rs`, which commit a finished
   step's `StepWrite`.
 - Rules:
@@ -71,7 +72,9 @@ rest still write their JSON files beside it.
     stream cut inside an output store nothing (`a_step_that_does_not_finish_stores_nothing`);
   - an unknown output is refused before the write transaction begins, and a dropped `StepWrite`
     stores nothing (`an_unknown_output_is_refused_before_the_step_write_begins`,
-    `a_step_write_dropped_without_commit_stores_nothing`).
+    `a_step_write_dropped_without_commit_stores_nothing`);
+  - a step that reads a per-frame table gets its rows after its documents, one frame per row in
+    key order (`per_frame_rows_follow_the_documents_one_frame_per_row_in_key_order`).
 
 ## Related documentation
 

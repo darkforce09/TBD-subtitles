@@ -55,7 +55,7 @@ total for a 120-minute video is within the [performance budget](/documentation/v
 ## M1 — Pipeline and the Dressrosa pilot
 
 - [x] Every stage of the [pipeline](/documentation/architecture/pipeline.md) as a resumable stage
-      with typed JSON output; `tbd-subtitles process <video>` runs them in order.
+      with typed output; `tbd-subtitles process <video>` runs them in order.
 - [x] QC report per job (layout checks, uncovered speech, flagged lines with timestamps).
 - [x] Pilot run: Dressrosa 11 → subtitle file installed next to the video
       ([pilot run](/documentation/research/pilot_dressrosa_11.md)).
@@ -117,16 +117,17 @@ the app is open.
 
 - [x] Implement translation for visible Japanese, including credits, decorative writing and visible lyrics.
 - [x] Six resumable visual steps in the normal job: detect, read, track, translate, review and typeset.
-- [x] Local PP-OCRv5 and manga-ocr; isolated Qwen worker; optional tool-disabled Claude image fallback.
+- [x] Local PP-OCRv5 and manga-ocr; tool-disabled Claude first, one call per keyframe; isolated Qwen worker for the rest.
 - [x] Conservative scene-validated reference wording; source geometry and timing are recalculated.
 - [x] Combined ASS with separate visual layout, flagged nearby fallbacks and source videos preserved.
 - [x] Settings, combined queue/progress, Overview counts and Check Text with actual ASS comparison,
       playback, frame stepping and keep/undo/reprocess corrections.
 - [ ] Annotated board, title and name-card pilots and Dressrosa 11, 16 and 39 scene acceptance.
-- [x] One full episode (roughly 20–30 minutes): measured visual time and 8 GB RAM / 5.5 GB VRAM limits
+- [x] One full episode (roughly 20–30 minutes): measured visual time, RAM and VRAM
       ([Dressrosa 11 visual scan](/documentation/research/visual_scan_dressrosa_11.md): 3.8–4.0 minutes of
-      visual processing, detection at 206–214 frames per second, 3.8 GB RAM and 1.9 GB VRAM at most).
-- [ ] Final repository checks, AppImage rebuild and host smoke test.
+      visual processing, detection at 206–214 frames per second, 3.8 GB RAM and 3.6 GB VRAM at most).
+- [x] Final repository checks, AppImage rebuild and host smoke test: the AppImage runs the visual
+      steps on the host ([localized video polish](/documentation/research/localized_video_polish_dressrosa_28.md)).
 - [ ] Owner acceptance of the complete GUI correction flow and VLC playback.
 
 Details: [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md).
@@ -137,7 +138,8 @@ translated Dressrosa signs in VLC and the complete desktop review workflow. The 
 single full episode for the memory/time benchmark; a two-hour visual benchmark is not required.
 Missed faint text and false detections are accepted limitations, as is writing shorter than the
 half-second sample step that no sample or cut lands on. The sampled scan with bisected boundaries
-and one Claude call per keyframe is built; its single-episode measurement is the open benchmark.
+and one Claude call per keyframe is built; on Dressrosa 11 its detection comes to 3.9 minutes per
+50,000 frames, within the six-minute target.
 
 ## M5 — In-place on-screen text
 
@@ -147,6 +149,9 @@ video beside the source. M4 stays open as it stands; M5 builds on its detection 
 - [x] Three resumable replacement steps between review and typesetting: stroke masks with
       per-frame following of moving writing, LaMa inpainting through ONNX Runtime in its own
       worker, and Noto Sans lettering in the measured style through tiny-skia.
+- [x] `text_verify`: sampled finished frames rebuilt and read back by the local PP-OCRv5; only a
+      replacement with no Japanese left and English that reads back stays in the video.
+- [x] One sign is one occurrence with its furigana, erased with its line and never lettered alone.
 - [x] A `localized_video` step after the output: every frame decoded, the patches blended and the
       video re-encoded with `hevc_nvenc` (libx264 fallback), its peak rate capped near the
       source's, audio and chapters copied, no subtitle stream: `<video>.localized.mkv`.
@@ -159,13 +164,19 @@ video beside the source. M4 stays open as it stands; M5 builds on its detection 
       `lama-inpaint` and `latin-fonts` models in the model manifest and the download list.
 - [x] Check Text's Subtitles | Localized video control, Show erase mask and replacement status;
       the Overview's localized-video card and replaced count; the job-end notification's line.
-- [x] One episode measured: Dressrosa 11, 4.9 minutes added, 707 MB against a 647 MB source,
-      15 of 21 candidates replaced
-      ([localized video on Dressrosa 11](/documentation/research/localized_video_dressrosa_11.md)).
+- [x] One episode measured: Dressrosa 11, 4.9 minutes added, 707 MB against a 647 MB source
+      ([localized video on Dressrosa 11](/documentation/research/localized_video_dressrosa_11.md));
+      with the read-back check, 7 of its 10 candidates are replaced, and 25 on Dressrosa 28
+      ([localized video polish](/documentation/research/localized_video_polish_dressrosa_28.md)).
 - [x] Outlined lettering on translucent name cards, numerals on signs and strokes a detector box
       clips separate cleanly: the Rebecca name and role cards are replaced on Dressrosa 11.
+- [x] AppImage rebuild and host run with the localized video on: Dressrosa 11 and 28 from the
+      AppImage on the host ([localized video polish](/documentation/research/localized_video_polish_dressrosa_28.md)).
+- [ ] The open issues of the [polish record](/documentation/research/localized_video_polish_dressrosa_28.md#open-issues):
+      the 海 wall on Dressrosa 11 no longer replaced (its joined pieces cannot be followed), 2段目
+      never detected, faint outlines of erased strokes, leftover furigana that block a
+      replacement, and huge moving writing that can time out.
 - [ ] Playback check of the localized video with its `.localized.ass` in VLC and mpv.
-- [ ] AppImage rebuild and host smoke test with the localized video on.
 - [ ] Owner acceptance of the localized video and its review in Check Text.
 
 Details: [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md#replacement-in-the-video),
@@ -174,67 +185,95 @@ Details: [Japanese on-screen text](/documentation/features/japanese_onscreen_tex
 **Acceptance:** the owner watches a localized Dressrosa episode with its `.localized.ass` in VLC
 and accepts it, and accepts the localized video's review in Check Text.
 
-## M6 — 24 GB workstation scaling (DDR5-6000 high-throughput architecture)
+## M6 — 24 GB workstation throughput
 
-Following the completion of the redb and rkyv binary storage foundation, scale directly to the
-owner's 32 GB DDR5-6000 workstation hardware (24 GB RAM target, 5.5 GB worker VRAM boundary),
-bypassing throwaway intermediate 8 GB/16 GB redesigns.
+Use the owner's machine (i7-14700K, 32 GB DDR5-6000, RTX 3070) directly: 24 GB of RAM at peak and
+5.5 GB of VRAM per GPU worker
+([decision](/documentation/decisions/foundations.md#2026-09-30--the-pipeline-targets-the-owners-32-gb-machine-24-gb-of-ram)).
+The GPU lock stays: two GPU steps never share the card, so the headroom helps where frames are
+held or a step waits on something other than the GPU. The owner picks which items to build.
 
-- [ ] Full 1080p native visual screening across 28 threads (no 640-pixel proxy information loss).
-- [ ] Concurrent audio recognition and visual screening execution (35–45% total wall-time reduction).
-- [ ] In-memory uncompressed video frame ring buffers (3–4 GB) for zero-stall decoding and encoding.
-- [ ] 6–8 GB resident plate, mask, and composed patch cache (zero disk reads during localization).
-- [ ] Resident in-memory Mel spectrogram tensor cache shared across VAD, CED, alignment, and ASR.
-- [ ] Upgraded local translation models (Qwen 7B / 14B) for near-human Japanese idiom translation.
+- [x] Binary storage: `job.redb` per job (step outputs and records, the worker channel, the
+      per-frame `frames` and `readings` tables) and the `library.redb` sign library, all six
+      phases ([binary storage plan](/documentation/architecture/binary_storage_plan.md)).
+- [ ] Baseline: Dressrosa 11 and 28 from scratch with the current build on the host; each step's
+      wall time, peak RAM and VRAM from the job report, plus GPU use per step through NVML, the
+      localized video's decode, blend and encode time, and the whole job's peak RAM; recorded as
+      a research snapshot. Every later target in M6, M7 and M8 is stated against it.
+- [ ] Full-resolution visual screening: samples and bisection probes screened at the source's
+      resolution instead of the 360-line proxy; bounded by the GPU detector's speed and VRAM, with
+      RAM holding the full-size frames between samples.
+- [ ] Hardware decoding (NVDEC) for the screen and the localized video, measured against FFmpeg's
+      CPU decoder.
+- [ ] Bounded frame queues between the localized video's decoder, blend and encoder.
+- [ ] Overlapping steps that wait on different things: the screen, reading and tracking (which
+      need only the probe and the shot scan) while adjudication and the sound cues wait on Claude.
+- [ ] A larger local translation model: a 7B-class model at 4-bit (about 4.5 GB, within the VRAM
+      cap) as the trial; a 14B model (about 8–9 GB at 4-bit) only with CPU offload, and only if
+      the 7B trial shows the gain.
 
-Details: [Memory profiles](/documentation/optimizations/memory_profiles.md).
+Details: [memory profiles](/documentation/optimizations/memory_profiles.md).
 
-**Acceptance:** Dressrosa 11 processes end-to-end in under 4 minutes wall time with zero disk
-thrashing; visual text screening runs at native 1080p; audio and visual screening run concurrently.
+**Acceptance:** the baseline is recorded. Each item built is measured against it on Dressrosa 11
+and 28 in a research snapshot: per-step and whole-job wall time, peak RAM within 24 GB, every GPU
+worker within 5.5 GB of VRAM, and the same subtitle files and approved replacements unless the item
+means to change them. The owner keeps each item whose measurement justifies it.
 
-## M7 — High-accuracy dialogue and audio ensembling
+## M7 — Dialogue accuracy and audio ensembling
 
-Advance dialogue accuracy from 95% to 99%+ by closing the diff-sheet backbone blind spot,
-biasing Whisper toward arc vocabulary, enabling self-learning series glossaries, and utilizing
-the 24 GB memory headroom for full-bandwidth separation.
+Miss fewer spoken lines and spell names right more often: recover speech the backbone engine
+missed, give Whisper and later episodes the names, add context across adjudication batches, and
+measure better separation, a third engine and speaker turns.
 
-- [ ] Full-bandwidth 44.1 kHz / 48 kHz stereo vocal separation preserving high-frequency consonant transients.
-- [ ] Multi-model separation ensemble (Mel-Band RoFormer + HTDemucs v4) eliminating vocal dropouts.
-- [ ] Symmetric orphan recovery in `diff_sheet`: preserve speech heard by secondary engines when
-      the backbone chunk has zero words.
-- [ ] Dynamic arc vocabulary prompt in Whisper (`initial_prompt` via CrispASR) to eliminate
-      phonetic English drift on character names, attacks, and locations.
-- [ ] Self-learning series dictionary in `library.redb`: confirmed name corrections in Check Lines
-      automatically propagate to subsequent queued episodes.
-- [ ] Conversational dialogue context windows in Claude adjudication (feeding the previous three
-      settled utterances).
-- [ ] Selective vocal stem normalization and consonant pre-emphasis for `UNSURE` re-decodes.
-- [ ] Third ASR engine acoustic voting (Qwen3-ASR or Canary) to break 1-vs-1 engine ties.
-- [ ] Global episode-wide acoustic memory for automated speaker diarization and character attribution.
+- [ ] Separation settings: more overlap between windows (a shorter step), measured on what the
+      vocal stem feeds: voice detection, alignment, the sound events and the re-decode. The stems
+      stay 16 kHz, the rate every model after separation takes.
+- [ ] Separation ensemble of the two built separators (Mel-Band RoFormer and MDX-Net Voc_FT);
+      HTDemucs v4 only with an exported ONNX model.
+- [ ] Orphan recovery in `diff_sheet`: speech another engine heard in a chunk where the backbone
+      heard no word becomes an utterance for adjudication, instead of being dropped.
+- [ ] The glossary as Whisper's initial prompt; needs Whisper driven through `whisper_full` or a
+      CrispASR release whose session API takes a prompt.
+- [ ] Learned glossary terms: a `terms` table in `library.redb`; spellings the owner keeps in
+      Check Lines or Fix It join the glossary of later jobs.
+- [ ] Context across first-pass adjudication batches: each batch of 60 also gets the last lines of
+      the batch before as `CONTEXT` lines.
+- [ ] Loudness normalisation and a raised consonant band for the `UNSURE` re-decodes.
+- [ ] A third speech engine (such as Qwen3-ASR or Canary) on disputed utterances only.
+- [ ] Speaker turns from a diarization model (Sortformer in parakeet-rs), given to adjudication.
 
-Details: [Audio accuracy](/documentation/optimizations/audio_accuracy.md).
+Details: [audio accuracy](/documentation/optimizations/audio_accuracy.md).
 
-**Acceptance:** zero spoken lines dropped across an entire episode; proper-noun errors reduced to
-under one per episode on Dressrosa benchmark episodes; speech recognition exhibits zero consonant clipping.
+**Acceptance:** against the baseline on Dressrosa 11 and 28, and on Dressrosa 11–48 for missed
+speech and names: every utterance Whisper heard in a chunk Parakeet left empty is on the sheet and
+becomes a cue or carries the language model's `DROP`; name disagreements, lines still unsure after
+the re-decode and Claude calls are counted before and after each item built; the novelty check
+finds no word an engine did not hear. The owner accepts the changed lines.
 
-## M8 — Advanced visual tracking and video acceleration
+## M8 — Visual tracking and video acceleration
 
-Achieve sub-pixel perspective stability on moving signs, eliminate inpainting flicker, and
-accelerate `localized_video` from minutes to seconds.
+Make replaced writing follow moving signs, keep the erased background steady, and re-encode only
+the segments of the localized video that change.
 
-- [ ] Planar homography and optical flow tracking: compute 3×3 perspective transformation matrices
-      per frame and store them in `job.redb`.
-- [ ] Motion-compensated plate warping: inpaint primary keyframes with LaMa and warp plates along
-      tracking vectors to eliminate background flicker.
-- [ ] Smart lossless segment re-encoding: cut video at GOP boundaries, re-encode only intervals
-      with active patches, and concatenate untouched footage losslessly (`localized_video` under 15 seconds).
-- [ ] Trajectory smoothing (Kalman filtering) and shot-boundary snapping for entrance/exit stability.
-- [ ] Multi-modal audio-visual synchronization: snap on-screen text appearances to sharp sound cues.
+- [ ] A 3×3 homography per frame of moving writing in its `frames` row, used by composition; it
+      addresses the 海 wall on Dressrosa 11, whose joined pieces cannot be followed by a shift and a
+      scale ([polish record](/documentation/research/localized_video_polish_dressrosa_28.md#open-issues)).
+- [ ] Keyframe inpaint and warped plates: LaMa fills one plate per shot, warped along the
+      homography to the other frames, with a new plate where the warp stops matching.
+- [ ] Re-encoding only what changed: segments with replaced writing, widened to keyframes, are
+      re-encoded as H.264 matching the source's profile, level and parameters, and joined to
+      stream-copied H.264; this replaces the HEVC encode of the whole video and needs a new decision.
+- [ ] Smoothing the per-frame placement of moving writing over time (a Kalman filter or similar),
+      and joining short fragments at fades to their occurrence; shot cuts already bound every
+      occurrence.
 
-Details: [Visual and video](/documentation/optimizations/visual_and_video.md).
+Details: [visual and video](/documentation/optimizations/visual_and_video.md).
 
-**Acceptance:** localized video encoding for a 30-minute episode finishes in under 20 seconds; moving
-text replacements exhibit zero jitter and zero background flicker.
+**Acceptance:** the 海 wall on Dressrosa 11 is replaced and approved by `text_verify`; against the
+baseline on Dressrosa 11 and 28, no approved replacement is lost, and LaMa calls and the localized
+video's time are recorded; a partially re-encoded localized video plays in VLC and mpv across every
+join with its audio in sync and the source's frame count; the owner accepts moving replacements in
+Check Text and in playback.
 
 ## Later
 

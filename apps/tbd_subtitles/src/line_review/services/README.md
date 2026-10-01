@@ -40,15 +40,15 @@ first), and `neighbour` the line before or after it.
 `review_editing` keeps a draft per line only while it differs from what the line has saved, so
 opening another line keeps it. `save` records where the text came from (an engine's tag, the
 settled text, or typed), drops `UNSURE`, refuses an empty text unless the line is dropped, and
-changes the file through `pipeline::work_dir::update_corrections`, under its lock and as it is
-on disk, so a Fix It change written meanwhile is kept; `looks_right` saves the line unchanged:
+changes the line corrections through `pipeline::work_dir::update_corrections`, which rereads them
+in one write transaction of the job's database, so a Fix It change written meanwhile is kept; `looks_right` saves the line unchanged:
 the language model's reading, or a Fix It change kept as the owner's (`kept_fix_it`), and
 `undo_change` saves the language model's reading in place of a Fix It change. Both mark the line Saved and return the next line of the list, which
 they open: the one after it when the list still shows it (the line itself when it is the last),
 else the one now in its place. `revert` keeps the line it takes back open, so its run's status
 shows: when its list (Checked) no longer shows it, the list becomes All, and only a search that
 no longer matches its text moves the editor on. Taking back the last correction removes the
-file; a line with no correction has nothing to take back (`revert` says so). `run_started`
+row; a line with no correction has nothing to take back (`revert` says so). `run_started`
 turns Saved and Failed lines to Updating and `run_ended` Updating ones to Updated or Failed
 (`start_runs` and `end_runs` do the same for a closed review's runs; `mark_fixed` marks the
 lines a Fix It run changed as Saved); `carry_over` keeps the open
@@ -69,7 +69,7 @@ frame carries a serial, so the view uploads each once.
 
 - Depends on: `crate::line_review::models`; `crate::core::background::Wake`;
   `crate::job_report::models::finding_group`; `job_model`; `media_io::preview`; `child_process`;
-  `pipeline::work_dir::{job_id, read_stored}` (the job's rows).
+  `pipeline::work_dir::{job_id, read_stored, update_corrections}` (the job's rows).
 - Used by: `crate::application` (`actions::review`, `actions::report`, `feature_views`,
   `shortcuts`); `crate::line_review::ui` (`line_filter`, `review_editing::{status, is_dirty,
   EDITABLE_FLAGS}`, `clip_player::PAD_S`).

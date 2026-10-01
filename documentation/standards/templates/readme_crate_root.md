@@ -58,81 +58,88 @@ default, whether it is required, and the file that reads it; or one line saying 
 
 ## Worked sample
 
-Written from `crates/child_process/`, its tests and a `cargo test -p child_process` run. The
-sample sits in a fenced block, so no gate reads it as a README; the folder's own README.md is
-written from the same code and may differ.
+Written from `crates/child_process/`, its `Cargo.toml`, its source and its tests, and shortened:
+the folder's own README.md lists every user and every rule. The sample sits in a fenced block, so
+no gate reads it as a README; the folder's own README.md is written from the same code and may
+differ.
 
 ````markdown
 # Child processes
 
-The `child_process` crate: the one way the app and the repository tools start an external
-program. Every run can carry a deadline, runs in its own process group, and has its pipes drained
-for its whole life, so a run always ends with an exit code or a stated reason why there is none.
+The `child_process` crate: the one way the app and the repository tools start an external program.
+Every child runs in its own process group under an optional deadline, with both pipes drained for
+its whole life, dies with the thread that started it, and its result tells a raw exit code apart
+from a signal, a timeout and a missing program.
 
 ## Contents
 
 ```text
 crates/child_process/
-├── Cargo.toml  the `child_process` library package; its only dependency is `libc`
-└── src/        the `Run` builder, spawning and reaping, pipe draining, `PATH` lookup and waits
+├── Cargo.toml  the `child_process` library package; its dependencies are `libc` and `tracing`
+└── src/        the `Run` builder, the process-group runner, the pipe drains and the lookup helpers
 ```
 
 ## How it works
 
-A caller builds a `Run` (program, arguments, working directory, environment, stdin, deadline) and
-ends it with `output`, which captures stdout and stderr apart, `merged_output`, which reads both
-from one shared pipe in the order the child wrote them, or `status`, which keeps only the exit
-code. `src/runner.rs` spawns the child through `setsid`, so it leads its own process group, and a
-missed deadline kills the whole group with `killpg`. `src/stream.rs` hands each pipe to its own
-thread from spawn to exit, so a child that fills one pipe never deadlocks the parent.
-`src/lookup.rs` holds `which`, `retry` and `wait_for`.
+A caller builds a `Run` with `Run::new(program)` and the builder methods `arg`, `args`, `cwd`,
+`env`, `env_remove`, `timeout`, `cancel_on`, and `stdin` or `stdin_piped`, then finishes it with
+`output` (stdout and stderr apart), `merged_output` (both on one shared pipe, as a shell's `2>&1`),
+`status` (the raw exit code alone) or `spawn`, which hands stdout to the caller as a stream in a
+`Running` child whose `wait` gives a `Finished`.
 
-A run that produced no exit code is a `RunError`, never a number: `ProgramAbsent` (not on the
-`PATH`), `Failed` (spawning or waiting failed), `Signalled` (killed by a signal) or `Timeout` (the
-deadline passed and the group was killed). An exit code passes through as the child returned it.
+Every call either returns the child's real exit code or a `RunError` saying why there is none:
+`ProgramAbsent`, `Failed`, `Signalled` (never turned into a `128+n` code), `Timeout` or
+`Cancelled`. Between fork and exec, `setsid` puts the child in a process group of its own and
+`prctl(PR_SET_PDEATHSIG, SIGKILL)` ties its life to the thread that started it; `killpg` kills the
+whole group at the deadline, so a forking program such as FFmpeg or `cargo` leaves nothing behind.
+Every child is also logged as `tracing` events under the `child_process` target: its start, each
+stderr line and its end, never its stdout.
 
 ## Getting started
 
-Run from the repository root:
+Run these from the repository root:
 
 ```bash
-cargo test -p child_process   # 20 unit tests; they start sh, cat and sleep, and take about 3 s
+cargo build -p child_process   # the library alone
+cargo test -p child_process    # the unit tests; they run sh, cat, sleep and seq, about 3 s
 ```
 
 ## Configuration
 
-`which` reads the `PATH` environment variable. The crate reads no file and has no Cargo feature;
-a child inherits the parent's environment apart from what `env` and `env_remove` change.
+The crate reads one setting, the `PATH` environment variable, in `which` (`src/lookup.rs`); an
+unset `PATH` answers `ProgramAbsent`. A child inherits this process's environment plus the `env`
+pairs and minus the `env_remove` names of its `Run`. Nothing else is read.
 
 ## Public surface
 
-- `Run`: the builder (`arg`, `args`, `cwd`, `env`, `env_remove`, `stdin`, `timeout`) and its three
-  endings (`output`, `merged_output`, `status`), plus `display` for diagnostics.
-- `Output` and `Merged`: what a finished run produced, on two pipes or on one.
-- `RunError`: why a run produced no exit code.
-- `which`, `retry` and `wait_for`: find a program on the `PATH`, retry a run with a fixed backoff
-  (never retrying an absent program), and poll a condition until a deadline.
+- The library `child_process`: `Run`, `Output`, `Merged` and `RunError`, the streamed child
+  `Running` with its result `Finished`, and the functions `which`, `retry` and `wait_for`, all at
+  the crate root. The runner and the pipe drains are private.
+- No binary.
 
 ## Boundaries
 
-- Depends on: `std` and `libc` 0.2, for `setsid`, `setpgid` and `killpg`; no workspace crate.
-- Used by: `tools/verification_core/`, whose `src/proc.rs` re-exports `Run`, `Output`, `Merged`
-  and `RunError` and calls `which` to run `git` and `cargo` for the gates. `media_io`,
-  `inference` and `pipeline` declare it in their `Cargo.toml` and call nothing yet.
+- Depends on: `std`, `libc` 0.2 without default features, and the `tracing` facade; no workspace
+  crate. Linux only, through `std::os::unix` process extensions and `prctl`.
+- Used by: `tools/verification_core/`, for `git` and `cargo` in the repository gates;
+  `crates/media_io/` (ffprobe and FFmpeg), `crates/inference/` (the `claude` CLI) and
+  `crates/pipeline/` (the app's worker processes); the app in `apps/tbd_subtitles/`; and the
+  tools `stack_spike`, `appimage_builder` and `visual_validation`.
 - Rules:
-  - the crate sits on the bottom layer and depends on no workspace crate
-    (`cargo gates crate-layering`);
+  - the crate sits in layer 0 and depends on no workspace crate (`cargo gates crate-layering`);
   - a signal is never an exit code (`signal_death_is_signalled_not_an_exit_code` in
-    `src/tests/runner.rs`);
-  - a timeout leaves no process of the group alive (`timeout_kills_the_whole_process_group`);
-  - a full pipe never deadlocks a run (`large_output_does_not_deadlock`,
-    `merged_output_times_out_without_deadlocking_on_a_full_pipe`);
-  - an absent program is never retried (`retry_does_not_retry_an_absent_program`).
+    `src/tests/runner.rs`), and a raw exit code passes through unchanged
+    (`captures_stdout_and_raw_code`);
+  - a timeout kills the whole process group (`timeout_kills_the_whole_process_group`), and a full
+    pipe never deadlocks a run (`large_output_does_not_deadlock`);
+  - a streamed child is killed at its deadline even while its reader blocks
+    (`a_deadline_kills_a_reader_blocked_child` in `src/tests/running.rs`), and dies with the
+    thread that started it (`a_child_dies_with_the_thread_that_started_it`).
 
 ## Related documentation
 
-- [System overview](/documentation/architecture/system_overview.md) — the external programs the
-  app starts and why FFmpeg's stderr is drained on its own thread.
-- [Repository tooling may run git and cargo](/documentation/decisions/foundations.md#2026-09-25--repository-tooling-may-run-git-and-cargo)
-  — which programs the app and the tools may start.
+- [Coding standards](/documentation/standards/coding_standards.md#errors-and-processes) — every
+  child process has a timeout and a drained stderr.
+- [Decisions](/documentation/decisions/) — the external programs the app and the repository tools
+  may start.
 ````

@@ -6,7 +6,8 @@
 //! place `inference::cuda_runtime` looks first.
 //!
 //! **Position:** called by `main` before the build (the ggml build needs nvcc from the same
-//! folder) and while laying out the AppDir; uses `inference::model_store` and `elf`.
+//! folder, and the local worker's build the CUDA 13.3 compiler unpacked beside it) and while
+//! laying out the AppDir; uses `inference::model_store` and `elf`.
 //!
 //! **Signals and state:** reads and fills `~/.local/share/tbd-subtitles/runtime`; writes the
 //! AppDir; prints download progress to stderr.

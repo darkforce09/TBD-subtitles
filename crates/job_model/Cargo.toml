@@ -1,5 +1,5 @@
-# The types every stage reads and writes: jobs, stage names, stage outputs and reports, written
-# as JSON and archived with rkyv. The contracts between stages live here, below every other crate.
+# The types every stage reads and writes: jobs, stage names, stage outputs and reports, archived
+# with rkyv for the job database. The contracts between stages live here, below every other crate.
 [package]
 name = "job_model"
 description = "Job, stage and report types shared by every TBD-subtitles crate"
@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 sha2 = "0.10"
-# Every contract type is written to and read from the job's work directory as JSON.
+# Every contract type also derives serde, so `tbd-subtitles dump` prints any record as JSON.
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 # Every contract type is also archived with rkyv for the job database; `unaligned` gives archived
 # types alignment 1 so a record is read in place from a redb value at any offset. The format is

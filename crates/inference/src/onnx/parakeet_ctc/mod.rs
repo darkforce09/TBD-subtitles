@@ -4,7 +4,8 @@
 //! frame over the model's 1025 tokens, and split text into the model's BPE tokens, so a Viterbi
 //! pass can place every token of a known transcript in time.
 //!
-//! **Position:** used by the alignment stage and the stack spike tool; runs the ONNX graph through
+//! **Position:** used by the alignment step's task, which hands the grid to the alignment stage,
+//! and by the stack spike tool; runs the ONNX graph through
 //! `session.rs` on CUDA and tokenises with the model's own `tokenizer.json`.
 //!
 //! **Signals and state:** one ONNX session, the log-mel frontend and the tokenizer.

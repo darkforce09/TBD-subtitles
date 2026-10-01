@@ -25,9 +25,10 @@ and the English track; `pcm_stream` for the audio at 16 kHz mono and 44.1 kHz st
 `shot_changes` for a second FFmpeg process that scans the cuts. The visible-text stages read
 `video_frames`: RGB frames paired with a presentation timeline taken from the packet table before
 decoding, single stills at a timeline time, and runs of full-resolution frames cropped to one
-region. The localized-video step reads every frame at its native size in a raw pixel format from
+region. The localize stage reads every frame at its native size in a raw pixel format from
 `video_frames` and writes the new video through `encode`, which pipes raw frames into FFmpeg and
-copies the source's audio, chapters and metadata beside them. `Programs` names the `ffmpeg` and
+copies the source's audio, chapters and metadata beside them. `preview` builds the FFmpeg command
+lines the app's line and text review run to play a clip's sound and picture. `Programs` names the `ffmpeg` and
 `ffprobe` to run: the bare names on the `PATH` by default, or the pair bundled at
 `<exe_dir>/ffmpeg/` when `Programs::beside`/`beside_current_exe` finds both there (`bundled` says
 which). Every failure is a `MediaError`: the program could not run, exited non-zero, printed
@@ -36,21 +37,26 @@ something unreadable, or the video has no usable audio track.
 ## Public surface
 
 - `probe::{probe, parse, english_track}`, `pcm_stream::{PcmStream, PcmRequest, PcmFormat,
-  write_f32_file, F32FileReader, F32FileWriter}`, `shot_changes::{scan, parse}`,
+  write_f32_file, read_f32_range, F32FileReader, F32FileWriter}`, `shot_changes::{scan, parse}`,
   `Programs` (with `beside` and `beside_current_exe`) and `MediaError`: for `crates/stages/`,
-  `crates/pipeline/`, `apps/tbd_subtitles/`, `tools/stack_spike/` and the `probe_decode` stage.
+  `crates/pipeline/`, `apps/tbd_subtitles/`, `tools/stack_spike/`, `tools/stack_spike_ggml/` and
+  `tools/visual_validation/`.
 - `video_frames::{FrameStream, VideoFrame, Decode, PixelFormat, timeline}` (`FrameStream::open`,
   `open_native`, `timeline`, `next_frame`, `finish`), `video_frames::still::still` and
-  `video_frames::region::RegionStream`: for the visible-text stages in `crates/stages/` and the
-  localized-video task in `crates/pipeline/`.
+  `video_frames::region::RegionStream`: for the visible-text and localize stages in
+  `crates/stages/`.
 - `encode::{Encoder, EncodeSpec, VideoColour, EncoderProcess, available_encoder, encode_args,
-  is_constant_frame_rate}`: for the localized-video task in `crates/pipeline/`.
+  is_constant_frame_rate}`: for the localize stage in `crates/stages/src/localize/`.
+- `preview::{Clip, track_sound, stem_sound, frame_size, frames}` and
+  `preview::visual::{VisualPreview, args}`: for the app's line and text review players, and
+  `frame_size` for on-screen text detection in `crates/stages/`.
 
 ## Boundaries
 
 - Depends on: `child_process` for FFmpeg and ffprobe, `job_model` for the output types,
   `serde_json` for ffprobe's JSON.
-- Used by: `tools/stack_spike/`; `crates/stages/` declares the crate as a dependency.
+- Used by: `crates/stages/`, `crates/pipeline/`, `apps/tbd_subtitles/`, `tools/stack_spike/`,
+  `tools/stack_spike_ggml/` and `tools/visual_validation/`.
 - Rules: no module holds a whole track in memory, and no module writes to the source video (the
   crate header in `lib.rs`).
 

@@ -2,9 +2,10 @@
 
 The language-model backends behind one trait: a system prompt, a user message and a JSON Schema
 in, a JSON value out. The adjudication stage uses them to settle the
-[diff sheet](/documentation/glossary.md#diff-sheet), and [Fix It](/documentation/glossary.md#fix-it)
-uses them to fix the lines the quality check flagged. Both backends are written: the `claude -p`
-CLI, and a local model through mistral.rs behind the `mistralrs` feature.
+[diff sheet](/documentation/glossary.md#diff-sheet), the on-screen text stages use them to translate
+visible Japanese, and [Fix It](/documentation/glossary.md#fix-it) uses them to fix the
+lines the quality check flagged. Both backends are written: the `claude -p` CLI, and a local model
+through mistral.rs behind the `mistralrs` feature.
 
 ## Contents
 
@@ -32,8 +33,12 @@ started, and a call the provider answers as busy is asked again after a pause.
 - Depends on: `serde_json`; `job_model::model_call` and `tracing` in `call_log/`;
   `child_process` in `claude_cli/`; `mistralrs` and `tokio` in
   `mistral_rs/` (optional).
-- Used by: `crates/stages/src/adjudication/`, `crates/stages/src/fix_it/`, `crates/pipeline/`,
-  `apps/tbd_subtitles/` (the call gate), `tools/stack_spike/` and `tools/stack_spike_llm/`.
+- Used by: `crates/stages/src/adjudication/`, `crates/stages/src/fix_it/`,
+  `crates/stages/src/onscreen_text/` (`vision.rs`, `translate.rs`), `crates/pipeline/` (the
+  adjudication and on-screen text tasks and Fix It), `apps/tbd_subtitles/` (the call gate, the
+  shared call limit, the Claude check in Settings and the exchange log target),
+  `apps/tbd_subtitles_llm/` (the exchange log target), `tools/stack_spike/` and
+  `tools/stack_spike_llm/`.
 - Rules: a backend never sees a word's time: the adjudication prompt carries each utterance's
   start and length only, and Fix It adds the gaps around a flagged line (the headers in
   `crates/stages/src/adjudication/mod.rs` and `crates/stages/src/fix_it/mod.rs`).

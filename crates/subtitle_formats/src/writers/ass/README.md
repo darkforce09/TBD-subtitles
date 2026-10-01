@@ -2,8 +2,9 @@
 
 [Advanced SubStation Alpha](/documentation/glossary.md#ass) (`.ass`): a script header, one
 bottom-centred dialogue style and `H:MM:SS.cc` times, one of the output formats the owner can
-choose in the settings and the format of the localized video's subtitle file. Positioned
-[sign](/documentation/glossary.md#sign) styles come with the Japanese on-screen text feature.
+choose in the settings and the format of the localized video's subtitle file. The positioned
+[sign](/documentation/glossary.md#sign) events are written by the typesetting step in
+`crates/stages/src/onscreen_text/typeset.rs`, not here.
 
 ## Contents
 
@@ -40,7 +41,8 @@ it never moves a cue.
 
 - Depends on: `crate::cue::{Cue, CueTrack, FrameRate}`.
 - Used by: `crates/pipeline/src/tasks/layout.rs`, the output step, when the job's output format is
-  ASS and for the localized video's subtitle file.
+  ASS and for the localized video's subtitle file; `tools/visual_validation/src/pilot.rs`, for
+  its preview script.
 - Rules:
   - a time is the cue's frame rounded to the nearest centisecond
     (`timestamps_use_hours_and_rounded_centiseconds` in `tests/ass.rs`);

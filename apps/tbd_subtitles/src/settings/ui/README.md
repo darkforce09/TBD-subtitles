@@ -1,15 +1,14 @@
 # Settings window and models banner
 
 The Settings window's content and the banner under the toolbar, drawn from the borrowed
-`SettingsPage`: the tab bar General | Automation | Engines | Models | This Computer, the open tab,
-the footer, and the banner while a model is missing or downloads. They return events and change
-nothing.
+`SettingsPage`: the tab bar General | Automation | Engines | On-screen Text | Models | This
+Computer, the open tab, the footer, and the banner while a model is missing or downloads. They
+return events and change nothing.
 
 ## Contents
 
 ```text
 apps/tbd_subtitles/src/settings/ui/
-├── onscreen_text.rs  visual translation, localized video, Claude fallback, references, sign library, models
 ├── automation_tab.rs   the watch folders with Remove and Add Folder…, and Dolphin's right-click entry
 ├── engines_tab.rs      the engines, the language model, Fix It's model, calls and switch, cut score
 ├── form.rs             the forms' rows, help and error lines, divider, path well, list, field, stepper
@@ -18,6 +17,7 @@ apps/tbd_subtitles/src/settings/ui/
 ├── mod.rs              the module list and the two entry points
 ├── models_banner.rs    the banner under the toolbar: missing, downloading, or all on disk
 ├── models_tab.rs       the models and runtime table, and Download Missing, Stop or all on disk
+├── onscreen_text.rs    visual translation, localized video, Claude fallback, references, sign library
 ├── settings_window.rs  `settings_window_ui`: the tab bar, the open tab, the footer
 └── tests/              unit tests of the typed numbers, `~`, Fix It's rows and the Automation tab
 ```

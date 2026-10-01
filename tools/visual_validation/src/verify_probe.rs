@@ -7,9 +7,9 @@
 //! **Position:** the `verify-probe` command of the validation tool; runs
 //! `replace::verify::verify` with PP-OCRv5 on CUDA (on the host), decoding regions of the job's
 //! source video with FFmpeg.
-//! **Signals and state:** reads the job record, the probe, the reviewed text and the composed
-//! replacements from the job's database, and the patch files; writes the finished regions it read
-//! only under `--out`.
+//! **Signals and state:** reads the job record, the probe, the reviewed text, the composed
+//! replacements and the `frames` rows from the job's database, and the patch files; writes the
+//! finished regions it read only under `--out`.
 //! **Invariants:** the job's work directory and its source video are only read.
 
 use std::path::Path;

@@ -26,7 +26,9 @@ the source's first frame presents. Input 1 is the source: `-map 1:a?` copies eve
 `-map_chapters 1` and `-map_metadata 1` keep its chapters and tags, and `-sn -dn` leave out
 subtitle and data streams. NVENC runs `-preset p6 -tune hq -rc vbr -cq 19 -b:v 0` with the `main`
 or `main10` profile; libx264 runs `-preset slow -crf 16`, with `high10` for 10-bit frames; rgb24
-frames are encoded as `yuv420p`. Each colour tag the probe knows (`VideoColour::of` a probed
+frames are encoded as `yuv420p`. When the source's bit rate is known, `-maxrate` caps the peak
+rate at 1.25 times it for NVENC and 1.5 times it for libx264, with a buffer of twice the peak, so
+the localized video stays near the source's size. Each colour tag the probe knows (`VideoColour::of` a probed
 `VideoStream`) is written; an unknown one is left out. `-y` overwrites a stale output from an
 interrupted run, and `-max_muxing_queue_size 4096` keeps the copied audio from overflowing while
 the video encoder starts.
@@ -46,9 +48,12 @@ last 4 KiB of FFmpeg's stderr.
 
 - Depends on: `child_process::Run` (with `stdin_piped`) for FFmpeg, `video_frames::PixelFormat`
   for the raw layout, `job_model::outputs::VideoStream` for the colour tags.
-- Used by: the localized-video task in `crates/pipeline/`.
+- Used by: the localize stage in `crates/stages/src/localize/`, which the localized-video task in
+  `crates/pipeline/src/tasks/localized.rs` runs.
 - Rules: the source is only read; the output never holds a subtitle stream
-  (`a_round_trip_keeps_every_frame_and_the_audio_and_drops_the_subtitles`); only whole frames are
+  (`a_round_trip_keeps_every_frame_and_the_audio_and_drops_the_subtitles` in `tests/process.rs`);
+  a known source rate caps the peak rate (`a_known_source_rate_caps_the_peak_rate_per_encoder` in
+  `tests/encode.rs`); only whole frames are
   written (`a_frame_of_the_wrong_size_is_refused`); a cancel kills FFmpeg even mid-write
   (`a_cancel_stops_the_encode_and_says_so`).
 

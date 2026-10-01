@@ -15,6 +15,8 @@ tools/visual_validation/
 
 The tool downloads checksum-pinned models, recognizes owner-provided stills, extracts bounded pilot clips and compares production visual documents against independent annotations. Coverage, timing and tracking errors are measured separately from model confidence. An annotated frame sample counts as observed when a document frame starts within one source frame of it or holds its geometry across it, since the scan keeps one observation per sample or boundary rather than one per frame.
 
+`run` stores its steps' outputs and records in the work directory's job database (`job.redb`), as the app does, and writes only a preview ASS and the model calls beside it; `inspect`, `evaluate` and the probes read a finished job's documents and per-frame `frames` rows from that database, so they work on a pilot's work directory and on one the app wrote alike.
+
 ## Getting started
 
 Run `cargo run -p visual_validation -- --help`. Run model inference and FFmpeg commands on the host with its CUDA driver and current FFmpeg.
@@ -25,7 +27,7 @@ Annotations contain source frame rate, height and expected occurrences with text
 
 ## Public surface
 
-- `fetch` downloads the OCR models.
+- `fetch` downloads the OCR models (PP-OCRv5, manga-ocr) and the pinned Japanese font.
 - `image` recognizes a supplied PNG and writes crop and observation artifacts.
 - `clip` extracts a pilot of up to two minutes.
 - `run` executes all six visual steps with production workers, resume fingerprints and measured
@@ -62,9 +64,14 @@ Annotations contain source frame rate, height and expected occurrences with text
 
 ## Boundaries
 
-- Depends on: the production model, stage, media, pipeline and subtitle crates.
+- Depends on: the production crates `crates/inference`, `crates/job_model`, `crates/stages`,
+  `crates/media_io`, `crates/pipeline`, `crates/worker_channel`, `crates/subtitle_formats` and
+  `crates/child_process`; the crates.io crates `image`, `serde`, `serde_json`, `clap`, `anyhow`
+  and `ureq`; FFmpeg, and the app's release binaries for `run`'s workers.
 - Used by: development validation on owner-provided media.
-- Rules: no models are converted, missing readable occurrences fail, and unsafe tracks need an explicit fallback.
+- Rules: no models are converted, missing readable occurrences fail
+  (`every_readable_occurrence_needs_its_own_rendered_translation_or_flag`), and unsafe tracks need
+  an explicit fallback (`perspective_corner_error_requires_a_flagged_nearby_fallback`).
 
 ## Related documentation
 

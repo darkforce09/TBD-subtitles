@@ -30,7 +30,8 @@ declares the three.
 ## Boundaries
 
 - Depends on: `crate::cue` (`CueTrack`, `FrameRate`).
-- Used by: `crates/pipeline/src/tasks/layout.rs`, through the writer of the job's output format.
+- Used by: `crates/pipeline/src/tasks/layout.rs`, through the writer of the job's output format;
+  `tools/visual_validation/src/pilot.rs`, through `ass::write` for its preview script.
 - Rules: every writer produces UTF-8 and never changes a cue's times or text (the header in
   `mod.rs` and the crate header in `crates/subtitle_formats/src/lib.rs`;
   `the_writer_keeps_text_as_given` in `crates/subtitle_formats/src/writers/srt/tests/srt.rs`); the

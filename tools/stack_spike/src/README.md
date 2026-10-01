@@ -19,7 +19,8 @@ tools/stack_spike/src/
 ## How it works
 
 `main.rs` builds a `Context` for `run`, `worker` and `report`. `run` hands each item to
-`measure::measure`, which starts this binary again as `worker <item>`; the worker calls
+`measure::measure`, which starts this binary again as `worker <item>` (or, for a ggml or local
+language-model item, `stack-spike-ggml` or `stack-spike-llm` beside it); the worker calls
 `Item::run` and writes its own times and memory peaks, and the parent adds the wall time and the
 VRAM peaks. `report` reads every `results/<item>.json` back.
 

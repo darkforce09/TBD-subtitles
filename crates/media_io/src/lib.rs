@@ -4,7 +4,8 @@
 //! 32-bit float PCM, the shot-change times and the video frames; and the localized video it
 //! encodes from raw frames beside the source.
 //!
-//! **Position:** called by `stages` and the stack spike tool; runs `ffprobe` and `ffmpeg` through
+//! **Position:** called by `stages`, `pipeline`, the app's review views and system check, and the
+//! stack spike and visual validation tools; runs `ffprobe` and `ffmpeg` through
 //! `child_process` and returns `job_model` types. Links no libav.
 //!
 //! **Signals and state:** reads the video file through child processes; writes only the encode

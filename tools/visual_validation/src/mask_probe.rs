@@ -4,12 +4,14 @@
 //! sampled quads, each colour partition's coverage, cut share and largest piece, completeness
 //! counts, the frames moving writing is followed through and the verdict), and with `--all`
 //! rerun mask extraction over the whole reviewed document and compare every verdict with the one
-//! the job recorded.
-//! **Position:** the `mask-probe` command of the validation tool; runs the production
-//! `replace::mask` code on the CPU, decoding regions of the job's source video with FFmpeg.
-//! **Signals and state:** reads the job record, the probe, the reviewed text, the stroke masks
-//! and the inpainting document from the job's database; writes keyframe plates, masks and a
-//! rerun's files only under `--out`.
+//! the job recorded; for `residue-probe`, print how much of each filled plate's mask still looks
+//! like the lettering.
+//! **Position:** the `mask-probe` and `residue-probe` commands of the validation tool; runs the
+//! production `replace::mask` and `replace::inpaint` code on the CPU, decoding regions of the
+//! job's source video with FFmpeg.
+//! **Signals and state:** reads the job record, the probe, the reviewed text and the stroke-mask
+//! and inpainting documents from the job's database, and their mask and plate files from its work
+//! directory; writes keyframe plates, masks and a rerun's files only under `--out`.
 //! **Invariants:** the job's work directory and its source video are only read.
 
 use std::collections::HashMap;

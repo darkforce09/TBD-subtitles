@@ -10,12 +10,12 @@
 //! **Signals and state:** holds the queue, the toasts, the row removed last, the Settings window's
 //! tab while it is open, whether the log window is open with its lines and filter, the settings
 //! page, the desktop's colour scheme, the finished rows' summaries, the open line review with its
-//! clip and still frame, the edits of closed reviews, the one cap on Fix It's `claude` calls, the
-//! Fix It runs waiting for their correction run and the video fixed last, whether the window is
-//! away, the later starts' hand-offs, the watch folders' watcher, every video ever queued, whether
-//! the owner paused the queue, and the threads it waits on; reads files dropped onto the window;
-//! writes the Dolphin service menu as it opens; logs each action it applies, but the log window's
-//! own.
+//! clip and still frame, the open Check Text with its saves and preview, the edits of closed
+//! reviews, the one cap on Fix It's `claude` calls, the Fix It runs waiting for their correction
+//! run and the video fixed last, whether the window is away, the later starts' hand-offs, the
+//! watch folders' watcher, every video ever queued, whether the owner paused the queue, and the
+//! threads it waits on; reads files dropped onto the window; writes the Dolphin service menu as
+//! it opens; logs each action it applies, but the log window's own.
 //!
 //! **Invariants:** nothing changes state while a frame is drawn: every change is an [`Action`]
 //! applied after the frame, or a thread's answer folded in before it; the threads' answers are

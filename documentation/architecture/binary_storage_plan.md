@@ -114,8 +114,8 @@ records name by path.
   `Measure`, its own wall time and peak memory, the fingerprint) in the same transaction and
   commits it. Anything else — a missing `Done`, a failed check, a non-zero exit, a `Failed` frame —
   drops the transaction, so nothing of the step is stored.
-- **Cancellation.** The cancel flag and the step's deadline kill the worker's process group as
-  today (`child_process`); the pipe ends early, the read fails and the uncommitted transaction is
+- **Cancellation.** The cancel flag and the step's deadline kill the worker's process group
+  (`child_process`); the pipe ends early, the read fails and the uncommitted transaction is
   dropped. A worker whose runner dies gets `PR_SET_PDEATHSIG` and a closed pipe.
 - **In-process steps** (`vad`, `diff_sheet`, `cues`, `text_review`, `qc`, `output`, and the
   on-screen steps when the runner runs them itself) read and write the store directly through the
@@ -129,7 +129,7 @@ What redb holds in memory for a large uncommitted transaction follows its page c
 transaction: 432,000 rows of 2 KB (a two-hour 60 fps per-frame table) peaked at 154 MiB with a
 256 MiB cache and 557 MiB with redb's default 1 GiB, and the commit took 17–25 s
 ([measurement](/documentation/research/redb_large_transaction_memory.md)). One transaction per
-step therefore fits the 8 GB limit at any video length; every job database opens with a 256 MiB
+step therefore fits the 24 GB limit of law 5 at any video length; every job database opens with a 256 MiB
 cache.
 
 ## Storage layout
@@ -228,14 +228,14 @@ and reruns Dressrosa 11 and 28 with identical `.ass` and `.localized.ass` files 
    `PathBuf` archived as a UTF-8 string, both maps already ordered; round-trip tests per type.
 2. **Channel, store, ownership and dump (done).** The [worker channel](#worker-channel)'s frames
    and codec (`crates/worker_channel`), the worker's stdout moved aside, and the runner reading
-   frames as bytes, carrying `Progress`, `ModelCall`, `Measure`, `Failed` and `Done`;
-   `steps/*.worker.json` is gone while outputs are still JSON files. `JobStore` in
+   frames as bytes, carrying `Progress`, `ModelCall`, `Measure`, `Failed` and `Done`, so no
+   worker writes an exchange file. `JobStore` in
    `crates/pipeline/src/work_dir/store/` owns `job.redb` (redb 4.3.0, default features, 256 MiB
    cache), opened once per job per process through a registry, `job.lock` written after the open;
    the six tables with their layout versions in `meta`, typed `put`/`get`/archived `view`, record
    kinds that check an archive and print it as JSON, and the `Input`/`Output` path through
-   `insert_reserve`, tested end to end on pipes. The runner and Fix It hold the store instead of
-   the old pid lock, and the window shows a job another process owns as busy and starts it once
+   `insert_reserve`, tested end to end on pipes. The runner and Fix It hold the store for the
+   whole run, and the window shows a job another process owns as busy and starts it once
    that process ends. The redb memory of a large uncommitted transaction is measured (above).
    `tbd-subtitles dump <job_or_video> <table> [key]` prints JSON. Dressrosa 11 and 28, rerun from
    `text_mask` (the steps before it call Claude, whose answers vary), gave identical `.ass` and
@@ -271,7 +271,7 @@ and reruns Dressrosa 11 and 28 with identical `.ass` and `.localized.ass` files 
    (the tracker's match for moving writing, the keyframe window against the frame's for still
    writing), the shift and scale, the frame's erase mask as run-length rows relative to its plate
    (`RleRun`), and the plate. The per-frame mask is the keyframe mask carried to the frame's
-   placement, so still writing keeps exactly the masks, plates and files it had. A plate run now
+   placement, so still writing keeps exactly the masks, plates and files it had. A plate run
    splits where a frame's mask overlaps the run's union mask by less than 0.85 intersection over
    union, where the scale changes or where the background changes; a plate is the union of its
    frames' rectangles and masks, so a one-pixel jitter shares a plate while writing that travels

@@ -1,5 +1,6 @@
-# One module folder per pipeline stage. Each stage reads its inputs from the job's work directory,
-# does its work through media_io, inference and subtitle_formats, and writes a typed output.
+# One module folder per pipeline stage. Each stage takes the typed inputs the pipeline reads from
+# the job's store, does its work through media_io, inference and subtitle_formats, and returns a
+# typed output for the pipeline to store.
 [package]
 name = "stages"
 description = "The pipeline stages, from probe to subtitle file"
@@ -24,7 +25,7 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 subtitle_formats = { path = "../subtitle_formats" }
 # Stage names and the contract types.
 job_model = { path = "../job_model" }
-# The diff sheet is written as JSON beside its text.
+# The language models' typed requests and answers, written and read as JSON.
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 # The earshot voice-activity detector (pure Rust).
 earshot = "1"

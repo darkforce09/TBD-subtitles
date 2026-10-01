@@ -3,7 +3,8 @@
 //! **Role:** run ffprobe on a video, read its streams into the probe result, and pick the audio
 //! track to transcribe.
 //!
-//! **Position:** called by the probe-and-decode stage and the stack spike tool; runs `ffprobe`
+//! **Position:** called by the probe-and-decode stage and the stack spike and visual validation
+//! tools; runs `ffprobe`
 //! through `child_process`.
 //!
 //! **Signals and state:** reads the video through ffprobe; holds nothing.

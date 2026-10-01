@@ -11,14 +11,14 @@ disagree.
 
 ```text
 documentation/
-├── architecture/        how the app is built: system overview, pipeline, subtitle style rules
+├── architecture/        how the app is built: system overview, pipeline, storage, style, inpainting
 ├── decisions/           dated decision log, one file per subject
-├── features/            one document per user-facing feature: GUI, automation, Japanese text
+├── features/            one document per user-facing feature: GUI, Fix It, automation, Japanese text
 ├── glossary.md          the project's terms and abbreviations
 ├── optimizations/       dialogue accuracy, visual tracking, fast re-encoding, memory scaling
-├── research/            dated research snapshots: speech recognition and the Rust ML stack
+├── research/            dated research snapshots: engines, the Rust ML stack, pilots, measurements
 ├── roadmap.md           milestones with checklists, acceptance tests and open questions
-├── runbooks/            procedures: development environment, continuing in Claude Code
+├── runbooks/            procedures: development environment, the AppImage, the next session
 ├── standards/           documentation, README, coding and commit rules, and the templates
 └── vision_and_goals.md  main goal, goals, non-goals, success criteria, performance budget
 ```
@@ -70,10 +70,13 @@ When two sources disagree, the higher one wins and the lower one is corrected:
 
 ## Code
 
-- [The app](/apps/README.md) — the `tbd-subtitles` binary.
-- [Library crates](/crates/README.md) — the job model, child processes, media input, subtitle
-  formats, inference, stages and the job runner.
-- [Repository tools](/tools/README.md) — the `cargo gates` runner and its check library.
+- [The apps](/apps/README.md) — the `tbd-subtitles` binary and its two worker binaries,
+  `tbd-subtitles-ggml` and `tbd-subtitles-llm`.
+- [Library crates](/crates/README.md) — the job model, child processes, the worker channel, the
+  app icon, media input, subtitle formats, inference, stages and the job runner with its job store
+  and sign library.
+- [Repository tools](/tools/README.md) — the `cargo gates` runner and its check library, the
+  AppImage builder, the stack spike, the visual validation harness and the redb probe.
 
 ## Boundaries
 

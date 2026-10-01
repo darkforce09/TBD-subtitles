@@ -64,10 +64,11 @@ the `claude-desktop` container it is prefixed with `distrobox-host-exec`.
 
 ## Worked sample
 
-Written from `documentation/runbooks/development_environment.md` and checked by running each
-command from inside the container. The sample keeps the toolchain, GPU, FFmpeg and probe checks,
-and adds a Verify step. The sample sits in a fenced block, so no gate reads its links; the
-runbook itself is written from the same facts and may differ.
+A shortened excerpt of `documentation/runbooks/development_environment.md`, checked against the
+built binary's `--help`. The sample keeps the toolchain, GPU, FFmpeg and probe checks and the
+gates, leaves out the builds of the workers and the CUDA reference section, and adds a Verify
+step. The sample sits in a fenced block, so no gate reads its links; the runbook itself is written
+from the same facts and may differ.
 
 ````markdown
 **Status:** live
@@ -112,14 +113,22 @@ the first build takes several.
 
    **Expected:** the first line starts `ffmpeg version 8.1`.
 
-4. Probe the pilot episode.
+4. Probe a test video.
 
    ```bash
-   distrobox-host-exec ffprobe -v error -show_entries stream=codec_type,codec_name,r_frame_rate,start_time -of compact "/run/media/system/Main_storage/Media/one_pace/done/[Muhn Pace] Dressrosa 08.mp4"
+   distrobox-host-exec ffprobe -v error -show_entries stream=codec_type,codec_name,r_frame_rate,start_time -of compact "/run/media/system/Main_storage/Media/one_pace/[Muhn Pace] Dressrosa 11.mp4"
    ```
 
    **Expected:** an `h264` video stream at `r_frame_rate=24/1` and an `aac` audio stream, both
    with `start_time=0.000000`.
+
+5. Run the repository gates, from the repository root.
+
+   ```bash
+   cargo gates
+   ```
+
+   **Expected:** every gate ends with `OK — N check(s), all held` and the command exits 0.
 
 ## Verify
 
@@ -129,7 +138,8 @@ cargo run -q -p tbd_subtitles -- --help
 
 **Expected:** the app builds and prints
 `Generates English subtitles for local videos: GUI, command line and GPU workers`, then
-`Usage: tbd-subtitles [COMMAND]` and the subcommands `gui`, `process` and `worker`.
+`Usage: tbd-subtitles [VIDEOS]...` and the subcommands `gui`, `process`, `fix`, `dump` and
+`worker`.
 
 ## Troubleshooting
 

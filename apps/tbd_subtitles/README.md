@@ -12,7 +12,7 @@ the host PC.
 ```text
 apps/tbd_subtitles/
 ├── Cargo.toml  the package: the `tbd-subtitles` binary and its commented dependencies
-└── src/        the entry point, command line, window, shared core and four feature modules
+└── src/        the entry point, command line, window, shared core and six feature modules
 ```
 
 ## How it works
@@ -42,10 +42,12 @@ and finishes, then the subtitle file beside the video, the job's report and the 
 it exits 2 when a job failed its quality check.
 The job runner starts each worker step as `tbd-subtitles worker <step> <job dir>`, or, for the
 Whisper steps, as `tbd-subtitles-ggml worker <step> <job dir>` from the ggml worker in
-`apps/tbd_subtitles_ggml/`, which must be built into the same folder as this binary.
+`apps/tbd_subtitles_ggml/`, and, for `text_translate`, as `tbd-subtitles-llm worker <step> <job
+dir>` from `apps/tbd_subtitles_llm/`; both must be built into the same folder as this binary.
 
 The source tree splits into composition (`cli`, `application`), shared foundations (`core`) and
-feature folders (`job_queue`, `job_report`, `line_review`, `settings`), each feature with
+feature folders (`job_queue`, `job_report`, `line_review`, `log_console`, `settings`,
+`text_review`), each feature with
 `models/`, `services/` and `ui/`. The window lends each feature a borrowed view every frame and
 applies the events it returns after the frame. `src/README.md` maps the modules.
 
@@ -90,16 +92,17 @@ cargo gates file-length
   config folder (`~/.config`), read by `src/settings/services/settings_file.rs` for the window
   and the `process` subcommand, and written by the window's Settings on each change. A missing
   file means the defaults; an unknown key or a bad value is an error naming it. Its keys:
-  `models_dir`, `work_root`, `glossary`, `cut_score`, `output_format`, `[engines]` `separator`
-  and `whisper`, `[language_model]` `backend`, `model` and `processes`.
-- The `process` options (`--settings`, `--models-dir`, `--glossary`, `--audio-track`,
+  `models_dir`, `work_root`, `glossary`, `cut_score`, `output_format`, `watch_folders`,
+  `[engines]` `separator` and `whisper`, `[language_model]` `backend`, `model`, `fix_model`,
+  `processes`, `fix_calls` and `fix_after_run`, and `[onscreen_text]` `enabled`,
+  `claude_fallback`, `reference_folder` and `localized_video`.
+- The `process` options (`--settings`, `--work-root`, `--models-dir`, `--glossary`, `--audio-track`,
   `--separator`, `--whisper`, `--cut-score`, `--llm-model`, `--format`, `--rerun`), which win over
   the settings file: `src/cli/README.md`.
 - Build features: none of its own. The `eframe` dependency is built with `glow`, `wayland`, `x11`
   and `default_fonts` only, because wgpu fails to create a surface on the owner's Wayland desktop.
   A direct `winit` dependency (the version eframe uses) forces the X11 event loop. The dev
-  dependencies `egui_kittest` (`wgpu`, `eframe`) and `image` (`png`) serve only the ignored
-  snapshot test.
+  dependency `egui_kittest` (`wgpu`, `eframe`) serves only the ignored snapshot test.
 
 ## Public surface
 
@@ -114,15 +117,16 @@ cargo gates file-length
 ## Boundaries
 
 - Depends on: `crates/pipeline/` (`run_job`, `JobOptions`, `workers::Binaries`, `tasks`,
-  `graph`, `work_dir` with its job store and record kinds, `progress`); `crates/worker_channel/`
+  `graph`, `work_dir` with its job store and record kinds, `library` for the sign library,
+  `fix_it`, `models`, `measure`, `resume`, `runner`, `progress`); `crates/worker_channel/`
   for the model-call frames and the job database's table names; `crates/job_model/` for `StepName`, the job settings, the
   quality check and the stage outputs the review reads; `crates/inference/` for the model store
   and the CUDA runtime; `crates/media_io/` for the clip's FFmpeg command lines;
   `crates/child_process/` for the machine check's version queries; `crates/stages/` for the
   built-in One Piece glossary; `crates/app_icon/` for the window's icon; the `eframe` (glow), `winit` (X11), `egui-phosphor`, `ashpd`,
-  `pollster`, `futures-util`, `serde`, `serde_json`, `toml`, `anyhow`, `clap`, `tracing` and
-  `tracing-subscriber` crates; at run time, FFmpeg, ffprobe, the desktop portal and
-  `tbd-subtitles-ggml` beside it.
+  `pollster`, `futures-util`, `serde`, `serde_json`, `toml`, `anyhow`, `clap`, `tracing`,
+  `tracing-subscriber` and `image` (`png`, Check Text's plates and crops) crates; at run time,
+  FFmpeg, ffprobe, the desktop portal and `tbd-subtitles-ggml` and `tbd-subtitles-llm` beside it.
 - Used by: people at a desktop or a terminal; the job runner in `crates/pipeline/` starts its
   `worker` subcommand; no crate links it.
 - Rules:

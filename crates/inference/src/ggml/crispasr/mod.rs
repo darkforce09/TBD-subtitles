@@ -3,8 +3,8 @@
 //! **Role:** open a Whisper `ggml-*.bin` model once and transcribe 16 kHz mono chunks into words
 //! with times and probabilities; run the Qwen3-ForcedAligner over a transcript and its audio.
 //!
-//! **Position:** used by the speech recognition and alignment stages and the stack spike tool,
-//! when the `crispasr` feature is on. crispasr builds `libcrispasr` and ggml from the pinned git
+//! **Position:** used by the speech recognition stage and its Whisper step in the ggml worker,
+//! and by the ggml stack spike tool (the only aligner caller), when the `crispasr` feature is on. crispasr builds `libcrispasr` and ggml from the pinned git
 //! tag with cmake and nvcc; a binary finds them through the rpath its own build script sets.
 //!
 //! **Signals and state:** one CrispASR session per model; the aligner loads its model per call.

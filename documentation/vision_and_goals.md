@@ -31,10 +31,11 @@ version do not match the dub's words or cut.
    bounded memory, resumable after any crash.
 6. **Hands-off.** A desktop GUI with a job queue; a right-click "Generate subtitles" entry in the
    file manager; optional watch folders that process new downloads automatically.
-7. **Japanese on-screen text.** Signs, letters and title cards written in Japanese get translated
-   subtitles, placed near the text (milestone M4).
-8. **Simple.** One Rust binary, FFmpeg beside it, models downloaded on first use. No Python, no
-   servers, no accounts.
+7. **Japanese on-screen text.** Signs, letters and title cards written in Japanese get translated:
+   English subtitles placed on or near the writing (milestone M4), and in a localized copy of the
+   video the writing itself replaced in English (milestone M5).
+8. **Simple.** One Rust app (its binary and two worker binaries), FFmpeg beside it, models
+   downloaded on first use. No Python, no servers, no accounts.
 
 ## Non-goals
 
@@ -56,7 +57,7 @@ version do not match the dub's words or cut.
 | Layout | QC finds no overlaps, no cue over 42 characters per line or two lines, no cue under 5/6 s; at least 95 % of cues at or under 20 characters per second |
 | Speed | 120-minute video in 30 minutes or less; each stage's time recorded in the job report |
 | Memory | Peak RAM within 24 GB; each GPU stage fits in 5.5 GB of VRAM |
-| Robustness | Killing the app mid-job and restarting resumes from the last finished stage |
+| Robustness | Killing the app mid-job and restarting resumes after the last step it committed |
 
 ## Performance budget
 

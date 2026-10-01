@@ -1,4 +1,4 @@
-//! The corrections, `review.json`: written by the window's line review and by Fix It, read by the
+//! The corrections, `corrections/lines`: written by the window's line review and by Fix It, read by the
 //! review step and the quality check.
 //!
 //! **Role:** hold each corrected utterance's text and flags and where its text came from: an
@@ -10,7 +10,7 @@
 //! **Signals and state:** none; plain data.
 //!
 //! **Invariants:** at most one correction per utterance; a correction is the owner's unless it is
-//! a Fix It change the owner has not kept; a file written before Fix It reads unchanged.
+//! a Fix It change the owner has not kept; JSON written before Fix It reads unchanged.
 
 use serde::{Deserialize, Serialize};
 

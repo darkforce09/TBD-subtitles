@@ -35,7 +35,8 @@ out, with its mix sample, once the earliest window not yet run starts after it.
 ## Boundaries
 
 - Depends on: `ort` (the sessions), `realfft` (the transforms), `crate::onnx::session`.
-- Used by: `crates/stages/src/separation/` (the stage driver) and `tools/stack_spike/`.
+- Used by: `crates/stages/src/separation/` (the stage driver), the separation step in
+  `crates/pipeline/src/tasks/media.rs`, which opens the model, and `tools/stack_spike/`.
 - Rules:
   - `inverse(forward(x))` returns `x` (`inverse_undoes_forward` in `tests/stft.rs`);
   - every input frame comes out once, in order, and a model that halves its input yields exactly

@@ -26,9 +26,10 @@ tools/stack_spike/src/items/
 - Depends on: `media_io` (probe, PCM stream, shot scan), `stages::separation`, `stages::vad`,
   `stages::asr`, `stages::alignment`, `stages::sound_events`, `stages::adjudication` (with the
   built-in One Piece glossary, `glossary::one_piece`), `stages::diff_sheet`, `inference::onnx`,
-  `inference::llm`; `crate::context::Context` for paths and model files.
-- Used by: `tools/stack_spike/src/measure/` (`Item::run` in the worker; `needs_gpu` and `ggml` in
-  the parent).
+  `inference::llm`, `job_model::outputs` (the transcripts, speech plans and spans items pass on);
+  `crate::context::Context` for paths and model files.
+- Used by: `tools/stack_spike/src/measure/` (`Item::run` in the worker; `needs_gpu` and
+  `worker_binary` in the parent).
 - Rules: an item reads only the video and the work folder, and writes only the work folder (the
   header in `crates/media_io/src/lib.rs` for the video; review for the rest); every speech item
   uses the RoFormer stem's chunk plan (`PLAN` in `asr.rs`), and every aligner re-times the

@@ -3,8 +3,8 @@
 //! **Role:** the cue model and one writer per format (SRT, WebVTT, ASS), plus import of existing
 //! subtitle files.
 //!
-//! **Position:** called by `stages` (cue building, output) and by the app's review feature;
-//! depends on `job_model`.
+//! **Position:** called by `stages` (cue building, on-screen text, quality check), by `pipeline`
+//! (the job store and the output step) and by the visual validation tool; declares `job_model`.
 //!
 //! **Signals and state:** writers return text; import reads the files it is given.
 //!

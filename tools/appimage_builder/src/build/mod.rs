@@ -5,7 +5,7 @@
 //! compiler, linked to the CUDA 13.4 libraries. Check both workers' backend libraries.
 //!
 //! **Position:** called by `main` after `gpu_runtime::ensure_unpacked`, which provides nvcc;
-//! runs `cargo` through `child_process` and reads the worker with `elf`.
+//! runs `cargo` through `child_process` and reads both workers with `elf`.
 //!
 //! **Signals and state:** starts `cargo` children in the repository root; reads `CARGO` (set by
 //! `cargo run`), `PATH` and `LIBRARY_PATH`.

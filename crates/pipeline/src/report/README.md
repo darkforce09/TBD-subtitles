@@ -7,7 +7,7 @@ every run so its step table shows the latest times.
 
 ```text
 crates/pipeline/src/report/
-├── mod.rs  `write`: read the stored check and dropped sounds, render, add the on-screen text section, write `report.md`
+├── mod.rs  `write`: the stored check and dropped sounds rendered, the on-screen text section added
 └── tests/  the stored documents it reads, the localized-video lines and when they appear
 ```
 

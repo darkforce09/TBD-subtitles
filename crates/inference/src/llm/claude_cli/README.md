@@ -17,11 +17,17 @@ crates/inference/src/llm/claude_cli/
 - Depends on: `child_process::Run` (the `claude` program with a deadline), `serde_json`, and
   `super::call_log`, which logs each call: its summary line, and the whole exchange with what
   `claude` printed, for the app's log window.
-- Used by: `crates/pipeline/` (the adjudication tasks and Fix It), `tools/stack_spike/`
-  (through `stages::adjudication`), and the visual translation stage in `stages::onscreen_text`,
-  whose crop requests (`complete_image_json`) and keyframe requests (`complete_images_json`) send
-  PNG images.
+- Used by: `crates/pipeline/` (the adjudication tasks in `tasks/llm.rs`, the on-screen text
+  translation in `tasks/onscreen.rs`, and Fix It), `tools/stack_spike/` (its language-model
+  item), the visual translation stage in `stages::onscreen_text`, whose keyframe requests
+  (`complete_images_json`) send the whole frame and its crops as PNG images, and the app, which
+  sets the shared limit (`set_shared_limit`) and checks the program (`resolve_program`).
+  `complete_image_json` has no caller outside this folder.
 - Rules:
+  - every `claude` call of every process holds one of a shared number of file-lock slots under
+    the app's data folder while it runs (`independent_file_handles_share_one_concurrency_cap` in
+    `tests/shared_slots.rs`), and a lowered limit still counts the calls already running
+    (`lowering_the_limit_counts_outstanding_high_numbered_slots`);
   - it runs `claude -p --output-format json --json-schema … --tools "" --no-session-persistence
     --strict-mcp-config --disable-slash-commands --setting-sources project` in an empty folder, so
     the owner's user-level hooks, plugins and MCP servers never reach the prompt (review);

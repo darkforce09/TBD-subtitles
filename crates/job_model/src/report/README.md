@@ -30,13 +30,13 @@ a layout violation, heard speech with no cue, a failed language-model call, an a
 
 ## Boundaries
 
-- Depends on: `serde`.
+- Depends on: `serde` and `rkyv`.
 - Used by: `crates/stages/src/qc/`, which builds the report and renders it; `crates/pipeline/`
-  (`src/runner/mod.rs` and `src/report/mod.rs`), which store and read it; the app's job report
-  view and job queue, which show it and whether it passes.
+  (`src/tasks/` stores it; `src/report/`, `src/runner/` and `src/fix_it/` read it); the app's
+  job report view and job queue, which show it and whether it passes.
 - Rules:
-  - the check names stay stable in JSON, so a resumed job reads what an earlier run wrote (the
-    header in `mod.rs` and the crate header in `crates/job_model/src/lib.rs`), and a finding
+  - the check names stay stable in JSON, the form `dump` prints (the header in
+    `mod.rs` and the crate header in `crates/job_model/src/lib.rs`), and a finding
     written without an utterance parses (`a_finding_without_an_utterance_parses` in
     `tests/report.rs`);
   - findings for review never fail a job (`findings_for_review_never_fail_a_job`), and each

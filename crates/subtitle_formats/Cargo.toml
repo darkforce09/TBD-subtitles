@@ -11,7 +11,7 @@ publish = false
 [dependencies]
 # Stage names and the contract types.
 job_model = { path = "../job_model" }
-# Cues are stored as JSON in the job's work directory.
+# Cues also derive serde, so `tbd-subtitles dump` prints a cue track as JSON.
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 # Cues are also archived with rkyv for the job database. The format is named in full, exactly as in
 # `job_model`, so no feature unification can change it.

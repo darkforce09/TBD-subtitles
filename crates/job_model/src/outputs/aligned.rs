@@ -1,11 +1,12 @@
-//! The final words with their times and where each time came from, as kept in `aligned.json`.
+//! The final words with their times and where each time came from, as kept in `outputs/alignment`
+//! and `outputs/review`.
 //!
 //! **Role:** carry the timed final words from the alignment to the cues and the quality check.
 //!
 //! **Position:** written by the alignment stage and the review step; read by the cue layout and
 //! the quality check.
 //!
-//! **Signals and state:** none; plain data, written as JSON and archived with rkyv.
+//! **Signals and state:** none; plain data, archived with rkyv and printed as JSON.
 //!
 //! **Invariants:** utterances are in time order; every word names the source that timed it.
 

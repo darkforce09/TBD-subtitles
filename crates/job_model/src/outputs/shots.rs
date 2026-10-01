@@ -1,4 +1,4 @@
-//! The shot-change times of a video, as kept in `shots.json`.
+//! The shot-change times of a video, as kept in `outputs/shot_scan`.
 
 use serde::{Deserialize, Serialize};
 

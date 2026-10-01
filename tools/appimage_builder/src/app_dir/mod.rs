@@ -70,12 +70,12 @@ impl AppDir {
         &self.root
     }
 
-    /// `usr/bin`: the two binaries, `cuda/` and `ffmpeg/`.
+    /// `usr/bin`: the three binaries, `cuda/` and `ffmpeg/`.
     pub(crate) fn usr_bin(&self) -> PathBuf {
         self.root.join("usr").join("bin")
     }
 
-    /// `usr/lib`: the ggml worker's CrispASR and ggml libraries.
+    /// `usr/lib`: the libraries the two worker binaries need beyond the GPU runtime.
     pub(crate) fn usr_lib(&self) -> PathBuf {
         self.root.join("usr").join("lib")
     }

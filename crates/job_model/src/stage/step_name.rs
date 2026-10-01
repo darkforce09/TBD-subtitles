@@ -4,8 +4,9 @@
 //! engine; adjudication has its first pass, the re-decode of unsure spans, the second pass and
 //! the choice of sound cues); each step has one output, one fingerprint and one timing row.
 //!
-//! **Position:** used by `pipeline` (graph, resume, workers), by the `worker` subcommands of both
-//! app binaries, and by the job report; depends on `serde` and [`StageName`].
+//! **Position:** used by `pipeline` (graph, resume, workers, the job store's keys), by the `worker`
+//! subcommands of the three app binaries, and by the job report; depends on `serde`, `rkyv` and
+//! [`StageName`].
 //!
 //! **Signals and state:** none.
 //!
@@ -133,7 +134,7 @@ impl StepName {
         StepName::LocalizedVideo,
     ];
 
-    /// The name on the command line, in file names and in JSON.
+    /// The name on the command line, in the job store's keys and in JSON.
     pub fn as_str(self) -> &'static str {
         match self {
             StepName::ProbeDecode => "probe_decode",

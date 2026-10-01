@@ -1,7 +1,8 @@
 # Stage outputs
 
-The typed output of each [stage](/documentation/glossary.md#stage), one JSON file per step in the
-job's work directory, from the probe result to the aligned words.
+The typed output of each [stage](/documentation/glossary.md#stage), one document per step in the
+job's database, from the probe result to the output's record, with the owner's corrections and Fix
+It's record.
 
 ## Contents
 
@@ -67,18 +68,21 @@ fingerprint the runs read; `FixRecord::is_current` is false once the job's diffe
 
 ## Boundaries
 
-- Depends on: `serde` for the derives.
+- Depends on: `serde` and `rkyv` for the derives; `crate::report` (`QcCheck`, `QcReport`) for Fix
+  It's record.
 - Used by: `crates/media_io/` (the probe and the shot-change scan), `crates/inference/` (timed
-  words), `crates/stages/` (every stage's inputs and outputs), `crates/pipeline/src/tasks/`, which
-  reads and writes each file, and the stack spike tools.
-- Rules: an output type changes only together with every stage that reads or writes it, and its
-  JSON names stay stable so a resumed job reads what an earlier run wrote (the crate header in
-  `crates/job_model/src/lib.rs`); shot changes keep every scdet score so the cue stage chooses the
-  threshold (review).
+  words), `crates/stages/` (every stage's inputs and outputs), `crates/pipeline/` (`src/tasks/`
+  reads and stores each document, `src/fix_it/` the corrections and Fix It's record), the app's
+  window and the stack spike tools.
+- Rules: an output type changes only together with every stage that reads or writes it, and a
+  changed type bumps the layout version of the table that stores it (the crate header in
+  `crates/job_model/src/lib.rs`); corrections written before Fix It still read
+  (`an_earlier_review_json_still_reads` in `tests/review.rs`); shot changes keep every scdet
+  score so the cue stage chooses the threshold (review).
 
 ## Related documentation
 
-- [Pipeline](/documentation/architecture/pipeline.md#steps-and-processes) — the file each step
-  writes.
+- [Pipeline](/documentation/architecture/pipeline.md#steps-and-processes) — what each step
+  stores.
 - [System overview](/documentation/architecture/system_overview.md#job-work-directory) — the job
   work directory.

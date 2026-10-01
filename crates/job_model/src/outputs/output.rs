@@ -1,4 +1,4 @@
-//! What the output step left: `output.json`, the subtitle file beside the video and what it
+//! What the output step left: `outputs/output`, the subtitle file beside the video and what it
 //! replaced or moved aside.
 
 use serde::{Deserialize, Deserializer, Serialize};

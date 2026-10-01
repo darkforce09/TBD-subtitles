@@ -35,14 +35,14 @@ packaged host checks and owner acceptance remain in progress
       sound_events · alignment · redecode_parakeet
       review (CPU) · adjudicate · readjudicate · sound_cues (claude)
       text_detect · text_read · text_inpaint · text_verify (ONNX) · text_track (CPU)
-      text_mask · text_compose (CPU) · localized_video (FFmpeg, NVENC)
+      text_mask · text_compose · text_typeset (CPU) · localized_video (FFmpeg, NVENC)
       tbd-subtitles-ggml worker <step>
       asr_whisper · redecode_whisper
       tbd-subtitles-llm worker text_translate (mistral.rs; optional claude)
-                            | reads and writes
+                            | Input frames down stdin, Output frames back; the runner commits
                             v
                  work/<job id>/  job.redb, audio, visual artifacts, report.md
-                            | text_review / text_typeset / QC / output in runner
+                            | vad / diff_sheet / cues / text_review / qc / output in runner
                             v
                  <video folder>/<video base name>.ass
                  <video folder>/<video base name>.localized.mkv and .localized.ass
@@ -55,6 +55,9 @@ packaged host checks and owner acceptance remain in progress
   workers. Background loading, model calls and preview rendering keep the window responsive.
 - **process** — headless run for one or more files; used by the Dolphin entry and watch folders
   ([automation](/documentation/features/automation.md)).
+- **fix** and **dump** — Fix It on a finished job without a window
+  ([Fix It](/documentation/features/fix_it.md)), and the rows of a job's `job.redb` printed as
+  JSON (`tbd-subtitles dump <job_or_video> <table> [key]`), for a job no other process owns.
 - **worker `<step>`** — one step in its own process: it loads its model once, processes the whole
   job, takes the stored documents it reads as `Input` frames on stdin, sends its outputs as
   `Output` frames and its progress, model calls, own measure and end or failure to the runner as
@@ -95,23 +98,27 @@ crates/
 │                         outputs, the QC report — the contracts
 ├── media_io/             ffprobe JSON, FFmpeg PCM and timestamped RGB streaming, region crops and
 │                         native frames, shot-change scan, the localized-video encode
-├── pipeline/             step graph, resume, work directory, worker processes, measurements, tasks,
-│                         runner, progress events, report
+├── pipeline/             step graph, resume, work directory and job store, worker processes and
+│                         their channel, measurements, tasks, runner, progress events, report,
+│                         the sign library
 ├── stages/               one module folder per stage (probe_decode, separation, vad, asr, diff_sheet,
 │                         sound_events, adjudication, alignment, cues, onscreen_text with its
 │                         replace/ steps, qc, output, localize)
-└── subtitle_formats/     cue model (frames), SRT/VTT/ASS writers and subtitle import
+├── subtitle_formats/     cue model (frames), SRT/VTT/ASS writers and subtitle import
+└── worker_channel/       the frames a worker and its runner exchange on pipes, and the address of
+                          every stored value
 tools/
 ├── appimage_builder/     the three binaries and runtime libraries in one AppImage
+├── redb_process_probe/   how redb behaves when a second process opens a job database
 ├── repo_gates/           `cargo gates`: the repository laws a program can check
 ├── stack_spike*/         the stack spike's measuring harness and its ggml and llm workers
 ├── verification_core/    the fail-closed verdicts, patterns and reports the gates are written with
 └── visual_validation/    annotated visual pilots and episode timing/memory measurements
 ```
 
-Layering, lowest first: `job_model`, `child_process` and `app_icon`; `media_io`, `subtitle_formats` and
-`inference`; `stages`; `pipeline`; the three app binaries. A crate
-depends only on crates of a lower layer, never a sibling (`cargo gates crate-layering`); a tool
+Layering, lowest first: `job_model`, `child_process`, `app_icon` and `worker_channel`; `media_io`,
+`subtitle_formats` and `inference`; `stages`; `pipeline`; the three app binaries. A crate depends
+only on crates of a lower layer, never a sibling (`cargo gates crate-layering`); a tool
 depends only on the crates listed for it in `tools/repo_gates/src/layout.rs`. Inside the app,
 feature folders keep rendering out of their models and services (the tests in
 `apps/tbd_subtitles/src/tests/architecture_rules.rs`). All boundaries are Rust to Rust, so the
@@ -146,6 +153,11 @@ A file outside the database is written and synced before the row that names it c
 job's database opens, the files under `audio/` and `visual/{crops,keyframes,masks,plates,patches}`
 that no row names are removed; the caches, `fix/calls/`, `logs/`, `sheet.txt` and `report.md`
 stay. A job from before the database is not imported: it runs again.
+
+Beside the default work folder, `~/.local/share/tbd-subtitles/library.redb` holds the
+[sign library](/crates/pipeline/src/library/README.md): approved signs every job reads and records
+into, each opened for one transaction at a time
+([binary storage](/documentation/architecture/binary_storage_plan.md#library-shared-by-episodes)).
 
 A step is skipped when its step record holds its current fingerprint, its documents are stored
 and the files its rows name exist. The fingerprint covers the settings the step reads, the stored
@@ -207,8 +219,9 @@ plus the audio track and the steps to run again. The job record keeps the job's 
   system-wide. GPU workers receive the CUDA library path; only ONNX workers receive
   `ORT_DYLIB_PATH`. The mistral.rs worker does not load ONNX Runtime.
 - ONNX Runtime, ggml and mistral.rs stay in separate worker binaries.
-- Resource limits: 8 GB RAM and 5.5 GB VRAM per GPU worker with the desktop running. Visual
-  processing adds measured time to the audio pipeline.
+- Resource limits: peak RAM within 24 GB (8 GB of the 32 GB left to the desktop) and 5.5 GB VRAM
+  per GPU worker with the desktop running. Visual processing adds measured time to the audio
+  pipeline.
 - One GPU worker at a time on the machine: every GPU worker holds `gpu.lock` in the app data
   folder while it runs, whichever process of the app started it. The inpainting worker and the
   localized-video worker, whose FFmpeg encodes with NVENC, hold it too.

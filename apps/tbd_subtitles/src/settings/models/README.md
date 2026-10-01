@@ -35,18 +35,20 @@ brought everything onto disk, the checks, the models and work folders with their
 confirmation or runs), and the `RightClickEntry`: whether Dolphin's "Generate subtitles" entry
 is written (not installed until the application writes it, installed at its path, or failed with
 the reason).
-`SettingsTab` names the Settings window's five tabs (General, Automation, Engines, Models, This
-Computer) and their titles. `DownloadProgress` names the item downloading now by its id, with its bytes held,
+`SettingsTab` names the Settings window's six tabs (General, Automation, Engines, On-screen
+Text, Models, This Computer) and their titles. `DownloadProgress` names the item downloading now by its id, with its bytes held,
 and the bytes of the whole download. `CLAUDE_MODELS` lists the `claude` models both lists offer
 (Sonnet, Opus, Fable, Haiku) with the help line of each; `display_name` gives a model's name as
 the window writes it, such as "Claude Opus", for the Fix It button and its messages.
 
 ## Boundaries
 
-- Depends on: `job_model::job` (`OutputFormat`, `Separator`, `WhisperModel`) and `serde`.
+- Depends on: `job_model::job` (`OutputFormat`, `Separator`, `WhisperModel`), `job_model::onscreen`
+  (`TextSettings`) and `serde`.
 - Used by: `crate::settings::{services, ui}`, `crate::application` and the `process` subcommand in
   `apps/tbd_subtitles/src/cli/process_command.rs`.
 - Rules: nothing here names egui or eframe
   (`dependency_boundaries_and_external_test_placement_are_enforced` in
   `apps/tbd_subtitles/src/tests/architecture_rules.rs`); an unknown key is an error, never ignored
-  (`an_unknown_key_is_an_error_naming_it` in `../services/tests/settings_file.rs`).
+  (`an_unknown_key_is_an_error_naming_it` in
+  `apps/tbd_subtitles/src/settings/services/tests/settings_file.rs`).

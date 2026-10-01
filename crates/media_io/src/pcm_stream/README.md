@@ -27,14 +27,20 @@ write_f32_file: every chunk to <path>.part, finish(), rename to <path>
 A chunk is `chunk_frames × channels` samples; only the last may be shorter. A dropped
 `PcmStream` drops its `Running` handle, which kills FFmpeg. `F32FileReader` reads a raw file back
 in the same fixed chunks, so a stage streams a stem from the work directory without loading it;
-`F32FileWriter` writes one sample run at a time and renames its `.part` file into place on
-`finish`.
+`read_f32_range` reads one window of samples from a sample offset; `F32FileWriter` writes one
+sample run at a time and renames its `.part` file into place on `finish`.
 
 ## Boundaries
 
 - Depends on: `child_process::Run::spawn` for FFmpeg; `std` for the channel, thread and files.
-- Used by: `crates/stages/src/separation/` (the stems) and `tools/stack_spike/` (the decode item
-  writes `mix_16k.f32`).
+- Used by:
+  - `crates/stages/src/probe_decode/` (the 16 kHz mix) and `crates/stages/src/separation/` (the
+    stems), through `PcmStream` and `F32FileWriter`;
+  - `crates/stages/src/vad/` through `F32FileReader`, and `crates/stages/src/asr/`,
+    `crates/stages/src/sound_events/` and `crates/pipeline/src/tasks/alignment.rs` through
+    `read_f32_range`;
+  - `tools/stack_spike/` (the decode item writes `mix_16k.f32` with `write_f32_file`) and
+    `tools/stack_spike_ggml/` (`read_f32_range`).
 - Rules:
   - memory stays bounded: at most `QUEUED_CHUNKS` chunks wait (`decodes_in_fixed_chunks_at_the_asked_rate`);
   - a failed decode is an error at `finish`, never a short file passed as whole

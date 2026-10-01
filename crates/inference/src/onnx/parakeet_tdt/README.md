@@ -15,7 +15,9 @@ crates/inference/src/onnx/parakeet_tdt/
 
 - Depends on: `parakeet-rs` 0.3.8 (feature extraction, TDT decoding, word grouping) with
   `load-dynamic` and `cuda`, sharing this crate's `ort`; `job_model::outputs::TimedWord`.
-- Used by: `crates/stages/src/asr/engines.rs` and `tools/stack_spike/`.
+- Used by: `crates/stages/src/asr/engines.rs`, the speech step in
+  `crates/pipeline/src/tasks/speech.rs`, the model list in `crates/pipeline/src/models/mod.rs`,
+  and `tools/stack_spike/`.
 - Rules:
   - parakeet-rs puts the CPU provider after CUDA without `error_on_failure`, so a CUDA failure
     would fall back silently; the stack spike's VRAM sampler is what shows it ran on the GPU;

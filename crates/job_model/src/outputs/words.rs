@@ -1,4 +1,4 @@
-//! What a speech engine heard: words with times, per chunk, as kept in `asr/<engine>.json`.
+//! What a speech engine heard: words with times, per chunk, as kept in `outputs/asr_<engine>`.
 
 use serde::{Deserialize, Serialize};
 

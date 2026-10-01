@@ -84,15 +84,18 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..) | .stdin_piped()
 ## Public surface
 
 - `Run`, with `new`, `arg`, `args`, `cwd`, `env`, `env_remove`, `timeout`, `stdin`, `stdin_piped`, `display`,
-  `output`, `merged_output`, `status` and `spawn`: the one way `media_io`, `inference`, `pipeline`
-  and the tools start a program; `tools/verification_core/src/proc.rs` re-exports it for the
+  `output`, `merged_output`, `status` and `spawn`: the one way `media_io`, `inference`, `pipeline`,
+  the app and the tools start a program; `tools/verification_core/src/proc.rs` re-exports it for the
   repository gates.
 - `Output`, `Merged` and `RunError`: the answers, re-exported by the same file; `media_io` wraps
   `RunError` in its own error.
 - `Running` (with `pid`, `take_stdout`, `take_stdin`, `kill`, `has_exited`, `wait`,
   `kill_and_wait`) and
   `Finished`: the streamed child and its result, for the FFmpeg PCM stream in
-  `crates/media_io/src/pcm_stream/mod.rs`, the video encoder in `crates/media_io/src/encode/` and the worker processes in
+  `crates/media_io/src/pcm_stream/mod.rs`, the frame decoders in `crates/media_io/src/video_frames/`,
+  the video encoder in `crates/media_io/src/encode/`, the app's clip players in
+  `apps/tbd_subtitles/src/line_review/services/clip_player.rs` and
+  `apps/tbd_subtitles/src/text_review/services/player.rs`, and the worker processes in
   `crates/pipeline/src/workers/mod.rs` and `tools/stack_spike/src/measure/mod.rs`.
 - `which`, `retry` and `wait_for`: re-exported from `lookup.rs` at the crate root; the gates call
   `which` through `tools/verification_core/src/proc.rs`.
@@ -102,9 +105,11 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..) | .stdin_piped()
 - Depends on: `std` (processes, `std::io::pipe`, threads and the `std::os::unix` process
   extensions) and `libc` for `setsid`, `setpgid`, `prctl`, `getpid`, `getppid`, `killpg` and
   `SIGKILL`. `tracing` for the events of `trace.rs`; `tracing-subscriber` in the tests only.
-- Used by: `tools/verification_core/src/proc.rs`; `crates/media_io/` (ffprobe, the shot scan and
-  the PCM stream), `crates/inference/src/llm/claude_cli/mod.rs`,
-  `crates/pipeline/src/workers/mod.rs` and `tools/stack_spike/src/measure/mod.rs`.
+- Used by: `tools/verification_core/src/proc.rs`; `crates/media_io/` (ffprobe, the shot scan,
+  the PCM and frame streams and the encoder), `crates/inference/src/llm/claude_cli/mod.rs`,
+  `crates/pipeline/src/workers/mod.rs`, `apps/tbd_subtitles/` (the clip players and the system
+  check), `tools/stack_spike/src/measure/mod.rs`, `tools/appimage_builder/` and
+  `tools/visual_validation/`.
 - Rules:
   - a signal is `Signalled`, never an exit code (`signal_death_is_signalled_not_an_exit_code` and
     `merged_output_reports_absent_tools_and_signals_honestly` in `tests/runner.rs`);

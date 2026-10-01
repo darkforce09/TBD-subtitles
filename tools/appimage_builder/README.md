@@ -20,8 +20,8 @@ each with its time, and stops at the first failure, before an AppImage is writte
 
 ```text
 runtime archives ─> release build ─> static FFmpeg ─> AppImage runtime ─> AppDir ─> smoke check ─> image
-(nvcc, CUDA libs)   (app + ggml)     (pinned, hash)   (pinned, hash)      (layout)   (--version,   (squashfs
-                                                                                      -devices)     behind runtime)
+(nvcc, CUDA libs)   (app, ggml and   (pinned, hash)   (pinned, hash)      (layout,   (--version,   (squashfs
+                     llm workers)                                         font)      -devices)     behind runtime)
 ```
 
 No packaging program outside Rust takes part: the ELF walk and the RUNPATH rewrite use `object`,
@@ -32,15 +32,17 @@ generated, so no packaging file is tracked. The result is
 
 ```text
 AppRun -> usr/bin/tbd-subtitles    tbd-subtitles.desktop    tbd-subtitles.png    .DirIcon
-usr/bin/tbd-subtitles, usr/bin/tbd-subtitles-ggml (RUNPATH $ORIGIN/../lib)
+usr/bin/tbd-subtitles
+usr/bin/tbd-subtitles-ggml, usr/bin/tbd-subtitles-llm (RUNPATH $ORIGIN/../lib)
 usr/bin/cuda/{cuda-13.4,cudnn-9.26,onnxruntime-1.28.2}/lib    the libraries the GPU workers load
 usr/bin/ffmpeg/{ffmpeg,ffprobe}                                static FFmpeg 8.1 with pulse
-usr/lib/libcrispasr.so.1, libggml*.so.0                        (RUNPATH $ORIGIN)
+usr/lib/libcrispasr.so.1, libggml*.so.0, …                     each worker's own libraries (RUNPATH $ORIGIN)
+usr/share/fonts/NotoSansJP.ttf, usr/share/licenses/tbd-subtitles/NotoSansJP-OFL.txt
 usr/share/applications, usr/share/icons/hicolor/256x256/apps
 ```
 
 The app finds everything beside its own executable: the CUDA locator in `crates/inference` looks
-in `<exe dir>/cuda/` first, and the job runner finds the ggml worker beside the app.
+in `<exe dir>/cuda/` first, and the job runner finds both workers beside the app.
 
 ## Getting started
 
@@ -56,12 +58,15 @@ A finished run ends with `cargo appimage: wrote …/dist/TBD-subtitles-x86_64.Ap
 
 ## Configuration
 
-- `--skip-build`: pack `target/release/tbd-subtitles` and `tbd-subtitles-ggml` as they are.
+- `--skip-build`: pack `target/release/tbd-subtitles`, `tbd-subtitles-ggml` and
+  `tbd-subtitles-llm` as they are.
 - `--out <dir>`: the output folder, relative to the repository root; default `dist`.
-- `XDG_DATA_HOME` or `HOME`: where the runtime folder lies, read through
-  `inference::model_store::runtime_dir`.
+- `XDG_DATA_HOME` or `HOME`: where the runtime and models folders lie, read through
+  `inference::model_store::runtime_dir` and `models_dir`; the bundled font is fetched into the
+  models folder.
 - `CARGO` (set by `cargo run`) names the cargo that builds; `PATH` is extended with the CUDA
-  13.4 `bin/` folder for the ggml build.
+  13.4 `bin/` folder for the ggml build, and with the CUDA 13.3 compiler's `bin/` folder, plus
+  `LIBRARY_PATH` with the CUDA 13.4 libraries, for the local language-model worker's build.
 
 Downloads are cached in `target/appimage/cache/`; the AppDir is laid out in
 `target/appimage/AppDir/`.

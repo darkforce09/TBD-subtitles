@@ -1,11 +1,11 @@
 //! The `tbd-subtitles` binary.
 //!
 //! **Role:** the composition root: parses the command line and starts the desktop window, a
-//! headless `process` run, or one GPU `worker` stage.
+//! headless `process` or `fix` run, a `dump` of a job's rows, or one `worker` step.
 //!
 //! **Position:** the top layer; `cli` parses and dispatches, `application` runs the eframe window,
 //! `core` holds what every module shares, and each feature folder (`job_queue`, `job_report`,
-//! `line_review`, `settings`) owns one part of the window.
+//! `line_review`, `log_console`, `settings`, `text_review`) owns one part of the window.
 //!
 //! **Signals and state:** reads the command line and `RUST_LOG`; logs to stderr, and the window
 //! also to its log file; exits with the code the command chose (0 on success, 2 for a `process`

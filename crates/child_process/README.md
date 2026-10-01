@@ -81,11 +81,15 @@ pairs and minus the `env_remove` names of its `Run`. Nothing else is read.
 - Used by:
   - `tools/verification_core/`, whose `tools/verification_core/src/proc.rs` re-exports `Run`,
     `Output`, `Merged` and `RunError` and calls `which` for the repository gates;
-  - `crates/media_io/`: ffprobe and the shot scan through `Run`, the FFmpeg PCM stream through
-    `Run::spawn`, and `RunError` in its error type;
+  - `crates/media_io/`: ffprobe and the shot scan through `Run`, the FFmpeg PCM and video-frame
+    streams and the video encoder through `Run::spawn`, and `RunError` in its error type;
   - `crates/inference/`: the `claude` CLI backend in `crates/inference/src/llm/claude_cli/mod.rs`;
   - `crates/pipeline/`: the app's worker processes in `crates/pipeline/src/workers/mod.rs`;
-  - `tools/stack_spike/`: its own measured workers in `tools/stack_spike/src/measure/mod.rs`.
+  - `apps/tbd_subtitles/`: the clip players of Check Lines and Check Text through `Run::spawn`,
+    and the system check in Settings;
+  - `tools/stack_spike/`: its own measured workers in `tools/stack_spike/src/measure/mod.rs`;
+  - `tools/appimage_builder/` and `tools/visual_validation/`: `cargo`, `git`, the bundled
+    FFmpeg's checks, the packed app's smoke check and FFmpeg runs through `Run`.
 - Rules:
   - the crate sits in layer 0 and depends on no workspace crate, and the repository tools may
     depend on it (`cargo gates crate-layering`, layer and tool tables in

@@ -1,13 +1,13 @@
 //! A child that runs while the caller reads its stdout as a stream.
 //!
 //! **Role:** [`Run::spawn`] starts a child whose stdout the caller reads itself (FFmpeg's PCM
-//! pipe, a worker's progress) while stderr is drained on its own thread, and hands back a
+//! pipe, a worker's framed progress and outputs) while stderr is drained on its own thread, and hands back a
 //! [`Running`] handle with the child's pid, its stdout, a piped stdin the caller streams into
 //! (FFmpeg's raw video input), a kill switch, a reaping wait, and a kill-and-reap that keeps the
 //! child's stderr for a caller that stops it on purpose.
 //!
-//! **Position:** called by `media_io` for FFmpeg streams and by the job runner and the stack
-//! spike tool for worker processes; uses `runner.rs` to build and spawn the command and
+//! **Position:** called by `media_io` for FFmpeg streams, by the app's clip players, and by the
+//! job runner and the stack spike tool for worker processes; uses `runner.rs` to build and spawn the command and
 //! `stream.rs` to drain stderr.
 //!
 //! **Signals and state:** one watchdog thread per child with a deadline or a cancel flag; it kills

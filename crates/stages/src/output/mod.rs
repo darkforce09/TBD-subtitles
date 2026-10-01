@@ -2,7 +2,8 @@
 //! replaces backed up into the job's work directory; with a localized video, its own subtitle
 //! file beside it as well.
 //!
-//! **Role:** the last step; the only code that writes outside the work directory.
+//! **Role:** the step that installs the subtitle files; the only code that writes a subtitle file
+//! outside the work directory (the localized video's encode writes the video alone).
 //!
 //! **Position:** called by the output step in the job runner with the text of the chosen format.
 //!

@@ -37,6 +37,7 @@ backbone missed.
   `crates/pipeline/src/tasks/alignment.rs` (`heard_spans`, for the alignment and review steps);
   `crates/stages/src/adjudication/` (the sheet and the word normalisation) and
   `crates/stages/src/alignment/` (`align`, to line displayed words up with the backbone's);
+  `crates/stages/src/fix_it/` (`align` for its change checks, `sheet::clock` for its times);
   `tools/stack_spike/`, `tools/stack_spike_ggml/` and `tools/stack_spike_llm/`.
 - Rules: an alignment visits every word of both lists once, in order
   (`every_word_of_both_lists_appears_once_in_order`); disagreements are written inline and

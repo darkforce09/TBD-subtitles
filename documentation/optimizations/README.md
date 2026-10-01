@@ -2,45 +2,57 @@
 
 # Optimizations
 
-The technical designs and roadmap for advancing subtitle accuracy, visual stability, video
-re-encoding throughput, and memory scaling across hardware profiles.
+The designs behind milestones M6, M7 and M8: using the owner's 32 GB machine, missing fewer spoken
+lines and spelling names right, and following moving writing while re-encoding only what changed.
+None of them is built; the owner picks each item when its milestone starts.
 
 ## Contents
 
 ```text
 documentation/optimizations/
-├── audio_accuracy.md        dialogue completeness, Whisper prompt biasing, orphan recovery and voting
-├── memory_profiles.md       direct 24 GB workstation architecture: DDR5 bandwidth, 44.1 kHz audio, 1080p video
-└── visual_and_video.md      homography perspective tracking, temporal inpaint warping and fast re-encoding
+├── audio_accuracy.md        missed speech, names, batch context, separation and speaker turns
+├── memory_profiles.md       the 24 GB target: the baseline, screening, decoding, overlap, models
+└── visual_and_video.md      homography, warped plates, partial re-encoding and smoothing
 ```
 
 ## How it works
 
-The optimizations build upon the binary storage architecture (`redb` and `rkyv`). With
-step outputs and frame records stored in high-performance binary tables, the pipeline can
-perform sub-millisecond range lookups across 400,000+ frames and audio timelines.
+Each document states what the code does today, read from the code and the measurements in
+[research](/documentation/research/README.md), then one section per item: what changes, and what is
+measured to keep it. Every item builds on the
+[binary storage](/documentation/architecture/binary_storage_plan.md) that is in place: `job.redb`
+per job with its per-frame `frames` and `readings` tables, and the sign library shared by episodes.
 
-- [Audio accuracy](audio_accuracy.md) addresses the remaining 5% of speech recognition errors:
-  orphan recovery in the diff sheet, dynamic arc prompt biasing in Whisper, cross-episode
-  glossary learning via `library.redb`, and multi-engine acoustic voting.
-- [Visual and video](visual_and_video.md) adds temporal stability to on-screen text: planar
-  homography for moving signs, motion-warped inpainting to eliminate background flicker, and
-  GOP-aligned lossless segment re-encoding that cuts `localized_video` runtime from minutes to seconds.
-- [Memory profiles](memory_profiles.md) details the 24 GB target architecture tailored for the
-  owner's 32 GB DDR5-6000 workstation, enabling concurrent audio/visual execution, studio-quality 44.1 kHz
-  vocal separation, native 1080p screening, uncompressed video ring buffers, and global diarization.
+- [Memory profiles](memory_profiles.md) opens with the baseline that every target in the three
+  milestones is stated against: each step's wall time, peak RAM, VRAM and GPU use on Dressrosa 11
+  and 28 with the current build. Its items use the RAM headroom where it helps: full-resolution
+  screening, faster decoding and encoding, overlapping steps that wait on Claude, a larger local
+  translation model. It also lists the ideas the headroom does not help, and why.
+- [Audio accuracy](audio_accuracy.md) recovers speech the backbone engine missed, gives Whisper
+  the glossary as a prompt, learns name spellings across episodes in the sign library's file, adds
+  context across adjudication batches, and measures separation ensembles, a third engine and
+  speaker turns.
+- [Visual and video](visual_and_video.md) follows moving writing with a homography per frame,
+  inpaints a keyframe and warps it instead of inpainting every plate, re-encodes only the segments
+  with replaced writing, and smooths the per-frame placements.
 
 ## Boundaries
 
-- Depends on: [`pipeline.md`](/documentation/architecture/pipeline.md),
-  [`binary_storage_plan.md`](/documentation/architecture/binary_storage_plan.md), and
-  [`job_model`](/crates/job_model/README.md).
-- Used by: the roadmap milestones M6, M7 and M8, the job runner, and the desktop GUI settings.
-- Rules: documents stay at or under 500 lines; all milestones and features preserve the invariant
-  that no dialogue is invented and video source files remain read-only.
+- Depends on: [pipeline](/documentation/architecture/pipeline.md),
+  [binary storage](/documentation/architecture/binary_storage_plan.md),
+  [video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md) and the
+  measurements in [research](/documentation/research/README.md).
+- Used by: the [roadmap](/documentation/roadmap.md), milestones M6, M7 and M8.
+- Rules: documents stay within 500 lines; a number is a measurement with its source or a target
+  stated against the baseline, never an estimate given as fact; no item invents dialogue or writes
+  to a source video.
 
 ## Related documentation
 
-- [Roadmap](/documentation/roadmap.md) — milestones M6, M7, and M8.
-- [Binary storage plan](/documentation/architecture/binary_storage_plan.md) — the redb and rkyv foundation.
-- [Video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md) — baseline inpainting.
+- [Roadmap](/documentation/roadmap.md) — milestones M6, M7 and M8.
+- [Binary storage plan](/documentation/architecture/binary_storage_plan.md) — the redb and rkyv
+  foundation.
+- [Video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md) — the
+  replacement steps as built.
+- [The 24 GB decision](/documentation/decisions/foundations.md#2026-09-30--the-pipeline-targets-the-owners-32-gb-machine-24-gb-of-ram)
+  — the memory and VRAM limits.

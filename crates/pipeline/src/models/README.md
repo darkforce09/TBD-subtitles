@@ -14,11 +14,12 @@ crates/pipeline/src/models/
 ## How it works
 
 `required` lists, in the order the steps load them, the separation model the settings choose,
-Parakeet-TDT, the Whisper model the settings choose, CED-base and Parakeet-CTC. `missing` keeps
-those that `inference::model_store::is_complete` does not find whole in the given folder. The
-separation and speech tasks open their models through `separator_model` and `whisper_model`, so
-the list and the tasks never disagree. `default_dir` is the model store's folder under the app
-data folder.
+Parakeet-TDT, the Whisper model the settings choose, CED-base and Parakeet-CTC; with on-screen
+text on, also PP-OCRv5, manga-ocr and Qwen3.5-4B, and with the localized video on, LaMa and the
+Latin fonts. `missing` keeps those that `inference::model_store::is_complete` does not find whole
+in the given folder. The separation and speech tasks open their models through `separator_model`
+and `whisper_model`, so the list and the tasks never disagree. `default_dir` is the model store's
+folder under the app data folder.
 
 ## Boundaries
 
@@ -27,7 +28,8 @@ data folder.
 - Used by: `crate::tasks` (`media.rs`, `speech.rs`); the app's `process` subcommand and its
   window, which check and download the missing models before a job starts.
 - Rules: every required folder is pinned in the manifest, so it can be downloaded with a checksum
-  (`every_required_model_is_pinned_in_the_manifest` in `tests/models.rs`).
+  (`every_required_model_is_pinned_in_the_manifest` in `tests/models.rs`), and the settings choose
+  the separator and Whisper folders (`the_settings_choose_the_separator_and_whisper_folders`).
 
 ## Related documentation
 

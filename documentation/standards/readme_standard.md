@@ -82,9 +82,10 @@ opens after the `## Contents` heading and before the next `## ` heading.
 
 ```text
 crates/job_model/src/stage/
-├── mod.rs         the module tree and the re-export of the stage name
-├── stage_name.rs  every stage in run order, with its command-line and JSON name
-└── tests/         unit tests for the stage names
+├── mod.rs         the module tree and the re-exports of the stage and step names
+├── stage_name.rs  every stage in run order, with its name and whether it runs in a worker
+├── step_name.rs   every step in run order, with its name and the stage it belongs to
+└── tests/         unit tests for the stage and step names, JSON and rkyv
 ```
 
 ## Kinds

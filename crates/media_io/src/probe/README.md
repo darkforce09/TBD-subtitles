@@ -8,14 +8,15 @@ rate, the audio tracks), and the choice of the English audio track.
 ```text
 crates/media_io/src/probe/
 ├── mod.rs  `probe` runs ffprobe, `parse` reads its JSON, `english_track` picks the track to decode
-└── tests/  unit tests for parsing, the `und` tag, and the English, single and ambiguous track cases
+└── tests/  unit tests for parsing, colour tags, bit rates, `und`, and the English and ambiguous tracks
 ```
 
 ## Boundaries
 
 - Depends on: `child_process::Run` for ffprobe (60 s deadline); `serde_json`; the
   `job_model::outputs` probe types.
-- Used by: `tools/stack_spike/` (the decode item).
+- Used by: the probe-and-decode stage in `crates/stages/src/probe_decode/`,
+  `tools/stack_spike/` (the decode and separate items) and `tools/visual_validation/src/pilot.rs`.
 - Rules:
   - `und` is no language, a track tagged `eng` or `en` wins, a single track is taken, and several
     untagged tracks are refused rather than guessed

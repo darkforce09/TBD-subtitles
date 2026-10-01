@@ -1,4 +1,4 @@
-//! The quality check's result, as kept in `qc.json` and rendered into `report.md`.
+//! The quality check's result, as kept in `outputs/qc` and rendered into `report.md`.
 //!
 //! **Role:** name every check, the finding it leaves (where, what, why), and the counts that sum a
 //! job up.

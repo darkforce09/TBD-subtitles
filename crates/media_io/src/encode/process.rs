@@ -2,7 +2,7 @@
 //!
 //! **Role:** start FFmpeg with `encode_args`, accept whole frames on its stdin, and reap it with
 //! the reason it failed.
-//! **Position:** inside `encode`; the localized-video task writes each composited frame here.
+//! **Position:** inside `encode`; the localize stage writes each composited frame here.
 //! **Signals and state:** one FFmpeg child with a piped stdin, a watchdog deadline and an optional
 //! cancel flag; the process holds the stdin pipe, the frame size and the count of frames written.
 //! **Invariants:** only whole frames of the spec's size are written; `finish` closes stdin before

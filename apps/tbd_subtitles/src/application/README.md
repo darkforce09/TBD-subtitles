@@ -10,7 +10,7 @@ that draws them.
 apps/tbd_subtitles/src/application/
 ├── actions/            applying each feature's actions and folding its threads' answers in
 ├── background.rs       `Pending`: the threads the window waits on; files opened on the desktop
-├── detail_view.rs      the selected job's header: title, line, Overview | Check Lines or Cancel
+├── detail_view.rs      the selected job's header: title, line, Overview, Check Lines, Check Text, Cancel
 ├── environment.rs      `Environment`: files, job and Fix It runners, wake, notifier, log; scratch in tests
 ├── events.rs           `Action`, built from the features' events, and the tab to show
 ├── feature_views.rs    lends each feature its borrowed view and turns its events into actions
@@ -53,7 +53,9 @@ it is open, whether the log window is open with its lines and filter (`log_conso
 the row removed last (for Undo), the desktop's colour scheme, the selected finished job's report,
 every finished row's summary (its verdict and lines to check, read from its work folder when the
 window opens, after each run of its video and after each correction), its line review while open,
-the clip playing in it, the line its editor shows with that line's still frame,
+the clip playing in it, the line its editor shows with that line's still frame, its Check Text
+while open (`text`: the session loading or loaded, its saves, its preview player and the selected
+occurrence's pictures),
 the unsaved edits and run states of each job whose review closed (`parked`, until it opens again;
 they are lost when the window closes), the one gate every Fix It run's `claude` calls share
 (`claude_gate`, capped at the saved "Claude calls at once" and changed at once by an edit), each
@@ -95,8 +97,8 @@ frame_ui(&self)
   │   / Download / StopDownload)
   ├── sidebar (272 px, Fix All on DONE's heading) ──▶ JobQueueEvent ──▶ Action::Queue
   ├── the selected job: jobs_ui (the empty card, the hint, or the header over the job's cards,
-  │   its Overview or its lines to check) ──▶ Queue / ShowTab / Report / Review; the Overview's
-  │   Fix It and Stop ──▶ FixIt(job) / StopFix(job), naming the job it shows
+  │   its Overview, its lines to check or its Check Text) ──▶ Queue / ShowTab / Report / Review
+  │   / Text; the Overview's Fix It and Stop ──▶ FixIt(job) / StopFix(job), naming the job it shows
   ├── the drop overlay while files hover; the toasts ──▶ Action::ToastButton
   ├── settings_window (while open, on its tab) ──▶ Settings (Edit, Open(tab), …) /
   │   ShowSettings(false)
@@ -142,19 +144,22 @@ its header across the top (24 px from the sides, 16 px above and 14 px below, a 
 the name in the 22 px title style, cut with an ellipsis, and a 12 px line under it, which for a
 finished job comes from its report ("25:59 video · finished in 4 min 37 s") and for any other
 from `status_text::detail_line`. On the right a finished job has the segmented Overview | Check
-Lines, Check Lines followed by its row summary's lines to check in small grey figures, or a green
-check once none is left (nothing when no line is worth a listen); a running job the red Cancel,
-or a grey "Stopping…" pill with a spinner once cancelled.
-`DetailTab` is not kept apart: Check Lines shows exactly while a line review of the selected job
-is loaded (`detail_tab`), and `Action::ShowTab` closes the review for Overview or opens it on the
-lines to check for Check Lines; a group's row on the Overview opens it narrowed to that group;
+Lines | Check Text, Check Lines followed by its row summary's lines to check in small grey
+figures, or a green check once none is left (nothing when no line is worth a listen); a running
+job the red Cancel, or a grey "Stopping…" pill with a spinner once cancelled.
+`DetailTab` is not kept apart: Check Text shows exactly while the selected job's text review is
+open, else Check Lines while a line review of it is loaded (`detail_tab`); `Action::ShowTab`
+closes the text review for any other tab, closes the line review for Overview, opens it on the
+lines to check for Check Lines, and opens the text review for Check Text (drawn by
+`text_review::ui::review::show`); a group's row on the Overview opens it narrowed to that group;
 a review that cannot open says why in a red toast and leaves the report on Overview, and a review
 closes once its job is no longer finished (tried or run again), so the job's current view shows.
-Under the header Check Lines shows the line review, the whole width and height; anything
-else scrolls in a column at most 800 px wide, 20 px below the header and 24 px from the sides, its
-cards 16 px apart: the queue's cards for a job that has not finished (`progress_view_ui`), or the
-finished job's Overview (`job_report::ui::overview_ui`, told how many corrections a correction run
-of its video is putting in while one waits or runs), or why it has no report.
+Under the header Check Lines shows the line review and Check Text the text review, the whole
+width and height; anything else scrolls in a column at most 800 px wide, 20 px below the header
+and 24 px from the sides, its cards 16 px apart: the queue's cards for a job that has not
+finished (`progress_view_ui`), or the finished job's Overview (`job_report::ui::overview_ui`, told
+how many corrections a correction run of its video is putting in while one waits or runs), or
+why it has no report.
 
 The shortcuts are read before anything is drawn: Ctrl+Shift+O (matched first) adds a folder,
 Ctrl+O videos, Ctrl+, opens Settings, Ctrl+L the log window; Delete removes the selected row and ↑ and ↓ move through the
@@ -178,12 +183,15 @@ everything onto disk (the frame asks for a redraw when it goes).
 
 ## Boundaries
 
-- Depends on: `crate::job_queue`, `crate::job_report`, `crate::line_review`, `crate::log_console`
-  and `crate::settings` (events, models, services and ui); `media_io::preview` for the clip;
+- Depends on: `crate::job_queue`, `crate::job_report`, `crate::line_review`, `crate::log_console`,
+  `crate::settings` and `crate::text_review` (events, models, services and ui); `pipeline`
+  (`work_dir` for the job databases, `library` for the sign library's path, `fix_it`, `runner`,
+  `models`); `job_model`; `media_io::preview` for the clip;
   `crate::core` (`background`, `color_scheme`, `log_buffer`, `logging`, `portal`,
   `service_menu`, `single_instance`, `steps`, `toast`, `ui`); `app_icon` for the window's icon;
-  `inference::model_store` for the runtime folder; `eframe`, `winit` (the X11 event loop),
-  `anyhow` and `tracing`; in the snapshot test only, `egui_kittest` and `image`.
+  `inference::model_store` for the runtime folder and `inference::llm` (`call_gate::CallGate`,
+  `claude_cli::set_shared_limit`) for the cap on `claude` calls; `eframe`, `winit` (the X11 event
+  loop), `anyhow` and `tracing`; in the snapshot test only, `egui_kittest` and `image`.
 - Used by: `crate::cli`, whose `window_command` calls `launch` for videos alone, `gui` and
   `process --enqueue` when no window is open yet.
 - Rules:
@@ -296,8 +304,8 @@ everything onto disk (the frame asks for a redraw when it goes).
     finished queue, the Dressrosa 15 Overview, then scrolled to its open Details and Step times
     (`overview_d15`), its lines to check, the Settings window, the log window with a job's lines
     (`log`), a line open below the list (`log_detail`) and its model call (`log_calls`), the
-    Settings window's four tabs over Dressrosa 15 with
-    the machine checks set by hand (`settings_general`, `settings_engines`, `settings_models`,
+    Settings window's five tabs but On-screen Text over Dressrosa 15 with the machine checks set
+    by hand (`settings_general`, `settings_automation`, `settings_engines`, `settings_models`,
     `settings_machine`), the first run, the models banner on the first run and during a download
     set by hand (`banner_missing`, `banner_downloading`; nothing downloads), a running queue
     whose done rows show their counts, a waiting row's menu, the Undo toast, the running Dressrosa

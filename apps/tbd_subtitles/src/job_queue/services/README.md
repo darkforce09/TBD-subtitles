@@ -22,7 +22,7 @@ apps/tbd_subtitles/src/job_queue/services/
 ├── queued_history.rs     `queued_videos.json`: every video ever queued, so none is queued twice
 ├── review_lanes.rs       four runners for correction runs, each holding one run and its cancel token
 ├── sidebar_rows.rs       one row per video in Now, Up Next and Done, correction runs folded in
-├── stage_progress.rs     six stage rows, each with its steps, from the step states or the failure
+├── stage_progress.rs     nine stage rows, each with its steps, from the step states or the failure
 ├── status_text.rs        a row's status line, the detail pane's line, when a job starts
 ├── tests/                unit tests for each file here
 ├── time_left.rs          step rates from earlier jobs or the pilot, and a job's time left
@@ -88,7 +88,7 @@ to run, running (its share done from the step's progress, and the seconds since 
 or some are done while others wait (between two of its steps), kept when all are kept, done when
 none waits (the sum of its steps' seconds), else to run. `stage_progress::failed` gives a failed
 job's stages: the steps before the failed one kept, it failed, the rest to run; `step_number`
-numbers a step from 1 of 28.
+numbers a step from 1 of 29.
 The shot scan runs in the background until the cues join it: while it runs its line says so, and
 neither it nor a shot scan still to start holds "Read the video" open, which is done once the
 video's details are read. A failed job's stages come from its `Failure`'s finished steps: those
@@ -162,8 +162,10 @@ for a frame every `CHECK_EVERY` (1 s) while `any_busy` holds.
 
 - Depends on: `crate::job_queue::models`; `crate::core::{background::Wake, format, steps}`;
   `crate::job_report::models::summary::RowSummary` and `crate::job_report::models::fixing::FIX_STEPS`
-  in `status_text.rs`; `pipeline`; `job_model`; `inference::model_store::app_data_dir` and
-  `anyhow` in `queued_history.rs`;
+  in `status_text.rs`; `pipeline` (the job runner, its events, and `work_dir` for the job
+  databases `time_left`, `video_files` and `queue_store` read); `job_model`;
+  `inference::model_store::app_data_dir` and `anyhow` in `queued_history.rs`;
+  `inference::llm::call_log::EXCHANGE_TARGET` in `progress_log.rs`;
   `serde`, `serde_json` and `tracing` (`progress_log`, `job_runner`, `folder_watcher`,
   `watch_scan`, `video_files`, `queued_history`).
 - Used by: `crate::application` (`actions::{queue, review, runner}`, `mod.rs`, `detail_view`);
@@ -192,7 +194,7 @@ for a frame every `CHECK_EVERY` (1 s) while `any_busy` holds.
     `a_stage_between_two_of_its_steps_is_still_running`, `a_failed_step_fails_its_stage`,
     `a_failed_job_lists_exactly_the_steps_it_kept`,
     `the_shot_scan_runs_in_the_background_and_never_holds_its_stage_open`,
-    `steps_are_numbered_from_one_of_twenty_eight` in `tests/stage_progress.rs`);
+    `steps_are_numbered_from_one_of_twenty_nine` in `tests/stage_progress.rs`);
   - every job is on one row, a correction run on its video's (`correction_runs_fold_into_their_videos_row`,
     `a_failed_or_lone_correction_run_keeps_its_own_row` in `tests/sidebar_rows.rs`), and a place in
     line past the first shows only while the queue runs

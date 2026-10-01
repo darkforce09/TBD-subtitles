@@ -46,16 +46,19 @@ Run these from the repository root; the window needs a desktop session. The ggml
 feature build and its CUDA toolkit are in `tbd_subtitles_ggml/README.md`.
 
 ```bash
-cargo run -p tbd_subtitles             # opens the window, empty queue; stays in the foreground
-cargo run -p tbd_subtitles -- --help   # the subcommands: gui, process, worker
+cargo run -p tbd_subtitles             # opens the window with the kept queue; stays in the foreground
+cargo run -p tbd_subtitles -- --help   # the subcommands: gui, process, fix, dump, worker
 cargo test -p tbd_subtitles -p tbd_subtitles_ggml   # CLI, queue, rendering and architecture tests; headless
 ```
 
 ## Boundaries
 
-- Depends on: `crates/pipeline/`, `crates/job_model/` and, for the built-in glossary,
-  `crates/stages/`; CrispASR through `pipeline`'s `crispasr` feature in the ggml worker.
-- Used by: people at a desktop or a terminal; the job runner in `crates/pipeline/` starts both
+- Depends on: `crates/pipeline/`, `crates/job_model/`, `crates/worker_channel/` and
+  `crates/inference/`; in the main binary, `crates/media_io/`, `crates/child_process/`,
+  `crates/app_icon/` and, for the built-in glossary, `crates/stages/`; CrispASR through
+  `pipeline`'s `crispasr` feature in the ggml worker, and mistral.rs through its `mistralrs`
+  feature in the local translation worker.
+- Used by: people at a desktop or a terminal; the job runner in `crates/pipeline/` starts the three
   binaries' `worker` command; no crate links an application.
 - Rules: an application sits on the top layer, and no crate under `crates/` depends on one
   (`cargo gates crate-layering`); ggml and ONNX Runtime never share a binary, so the Whisper

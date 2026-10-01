@@ -1,13 +1,13 @@
-//! The language model's answers and the checks on them, as kept in `adjudication/first.json`
-//! and `adjudicated.json`; and the unsure utterances heard again, as kept in
-//! `adjudication/redecode_<engine>.json`.
+//! The language model's answers and the checks on them, as kept in `outputs/adjudicate` and
+//! `outputs/readjudicate`; and the unsure utterances heard again, as kept in
+//! `outputs/redecode_<engine>`.
 //!
 //! **Role:** carry each adjudication pass and each re-decode from the adjudication steps to the
 //! alignment, the quality check and Fix It.
 //!
 //! **Position:** written by the adjudication stage; read by the later stages and the window.
 //!
-//! **Signals and state:** none; plain data, written as JSON and archived with rkyv.
+//! **Signals and state:** none; plain data, archived with rkyv and printed as JSON.
 //!
 //! **Invariants:** a pass holds one line per utterance of the sheet it was asked about, in sheet
 //! order; a re-decode holds one chunk per id, in the same order.

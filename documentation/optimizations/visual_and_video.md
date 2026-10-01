@@ -2,109 +2,114 @@
 
 # Visual tracking and video acceleration
 
-How the on-screen text pipeline achieves sub-pixel perspective stability, flicker-free
-plate inpainting, and an accelerated localized video encode using binary frame tables in `redb`.
+How replaced writing could follow moving signs more closely, erase them without flicker, and how
+the localized video could re-encode only what changed. These are the items of milestone M8; each
+builds on the per-frame `frames` table of `job.redb`
+([binary storage](/documentation/architecture/binary_storage_plan.md)) and is built only when the
+owner picks it.
 
-## The challenges of video-rate replacement
+## Where replacement stands
 
-In-place on-screen text replacement currently faces two major throughput and stability bottlenecks:
+- **Following.** `text_mask` follows moving writing frame by frame: the keyframe window, at five
+  scales from 0.9 to 1.1, is matched by normalised cross-correlation around the position the
+  sampled quads suggest; one frame scoring under 0.8 loses the occurrence. Each frame's
+  `FrameRecord` holds the keyframe quad carried to that frame, its follow score, a shift and a
+  scale, its erase mask and its plate
+  ([video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md)). Shift
+  and scale cannot express rotation or perspective.
+- **Erasing.** Frames whose placement and background stay alike share one
+  [plate](/documentation/glossary.md#plate), inpainted once by LaMa; writing that travels a few
+  pixels starts a new plate. Each plate is inpainted on its own.
+- **The open failure.** On Dressrosa 11 the 海 wall in a panning newspaper photograph is no longer
+  replaced: joining the shot's pieces into one occurrence makes its frames step between the
+  pieces' boxes, and following fails ("The writing moves in a way that could not be followed")
+  ([polish record](/documentation/research/localized_video_polish_dressrosa_28.md#open-issues)).
+- **The encode.** `localized_video` decodes every frame, blends the patches and re-encodes the
+  whole video with `hevc_nvenc`: 265 s for Dressrosa 11's 44,489 frames, 166 frames per second
+  ([measurement](/documentation/research/localized_video_dressrosa_11.md)). Few of those frames
+  change: Dressrosa 11's `frames` table holds 370 rows, Dressrosa 28's 1,898
+  ([per-frame tables](/documentation/research/per_frame_tables.md)).
 
-1. **Monolithic full-video re-encoding:** `localized_video` decodes, blends, and encodes all
-   44,489 frames of a 30-minute episode with `hevc_nvenc`, taking 265 seconds (over 50% of the
-   visual processing budget), despite only 15 to 20 seconds of the video containing active text patches.
-2. **Per-frame independent inpainting:** inpainting moving signs across dozens of consecutive frames
-   with LaMa produces minor frame-to-frame textural variations (flicker) and wastes neural compute.
+## 1. Per-frame homography
 
-With per-frame binary records indexed in `job.redb`, the pipeline transitions from discrete
-keyframes to continuous temporal video processing.
+When the camera pans across writing or a sign tilts, a shift and a scale leave the lettering
+sliding against the surface.
 
-## 1. Planar homography and optical flow tracking
+- **What changes:** following estimates a 3×3 perspective transform per frame, from the keyframe
+  writing to that frame (a planar homography from tracked feature points, or optical flow inside
+  the writing's window), and stores it in the frame's `FrameRecord`; the `frames` table's layout
+  version rises with it. Composition already warps the lettering through the inverse homography
+  of the keyframe quad; it uses each frame's own transform instead.
+- **What it fixes:** writing that rotates or changes perspective, and the 海 wall, where one
+  transform per frame follows the pan across the joined pieces instead of stepping between their
+  boxes.
+- **Measured:** the 海 wall followed and approved by `text_verify`; the follow scores and
+  approved replacements of Dressrosa 11 and 28 against the baseline; `text_mask` time.
 
-When a camera pans across writing or a sign tilts in perspective, a static bounding box slides
-or jitters relative to the underlying surface.
+## 2. Keyframe inpaint and warped plates
 
-### The solution
+A moving sign is split into several plates, each inpainted by LaMa on its own, so the filled
+background can differ slightly from plate to plate.
 
-- A lightweight optical flow tracker or planar homography estimator computes a 3×3 perspective
-  transformation matrix ($H_t$) for each active frame of an occurrence.
-- The 9 floating-point values (36 bytes archived in `rkyv`) are stored in the `frames` table of
-  `job.redb` keyed by `(occurrence_id, frame_index)`.
-- During compositing, `tiny-skia` applies the homography matrix directly to the rendered English
-  vector lettering.
-- The translated text locks to the 3D surface plane, following camera motion, zoom, and tilt without wobble.
+- **What changes:** LaMa fills the keyframe's plate; for the other frames of the same shot the
+  clean plate is warped along the per-frame homography of item 1. Where the warp no longer
+  matches the frame (an occlusion, a cut, a follow score below threshold) a new plate is inpainted
+  and blended across the change. Background the camera reveals in other frames of the shot can
+  fill the mask from those frames before LaMa paints the rest.
+- **What it fixes:** flicker between plates of one sign, and LaMa runs on every plate.
+- **Measured:** LaMa calls and `text_inpaint` time against the baseline; the replacements approved
+  by `text_verify`; the owner's review in Check Text.
 
-## 2. Temporal inpaint warping (flicker-free plate reuse)
+## 3. Re-encoding only what changed
 
-Running LaMa independently on 60 frames of a single sign is slow and introduces high-frequency
-background texture jitter.
+The Dressrosa sources are H.264 Main profile, level 4.0 (ffprobe on 11, 28 and 40). Dressrosa 11
+is `yuv420p`, 1920×1080 at 24 fps with B-frames, with a keyframe every 3.4 s on average and at most
+10 s apart.
 
-### The solution
+- **What changes:** the frame spans with patches come from the `frames` table; each span widens to
+  the keyframes around it; only those segments are decoded, blended and re-encoded; everything
+  else is stream-copied; the segments are joined in order with the audio copied as today.
+- **The constraint:** stream-copied H.264 and re-encoded segments join into one playable stream
+  only if the re-encoded segments are H.264 too, with the source's profile, level, resolution,
+  pixel format and compatible parameter sets, and each copied segment starts on a keyframe a
+  decoder can start from (an IDR frame, or a closed group of pictures). An HEVC segment cannot be
+  joined to copied H.264. The localized video would then be H.264 (`h264_nvenc` or libx264)
+  rather than HEVC, which changes the
+  [in-place replacement decision](/documentation/decisions/stack_and_pipeline.md#2026-09-30--writing-is-replaced-in-a-localized-video-re-encoded-beside-the-source)
+  and needs a new decision entry.
+- **What it keeps:** frames without replaced writing keep the source's bitstream exactly.
+- **Measured:** `localized_video` time against the baseline on Dressrosa 11 and 28; playback in VLC
+  and mpv across every join (no stall, no corrupt frame, audio in sync); the frame count equal to
+  the source's.
 
-- **Keyframe inpaint:** LaMa executes only on the primary clean keyframe of an occurrence.
-- **Motion-compensated warping:** for subsequent frames within the same camera shot, the clean
-  inpainted background plate is warped along the surface homography vectors.
-- If tracking confidence drops below threshold (e.g. sudden occlusion or scene cut), a secondary
-  inpaint plate is generated and blended across the transition.
-- **Benefits:**
-  - Background textures remain completely solid across time with zero neural flicker.
-  - LaMa neural network invocations drop by up to 80% per episode.
+## 4. Smoothing and fragments
 
-## 3. Smart lossless segment re-encoding
-
-In Dressrosa 11, only 15 occurrences (approximately 20 seconds of footage out of 30 minutes)
-require text alteration. The remaining 98.9% of frames pass through the decoder and encoder unchanged.
-
-### The solution
-
-The pipeline implements GOP-aligned smart rendering:
-
-1. **Identify modified intervals:** query `job.redb` for the exact frame spans containing active
-   composed patches.
-2. **GOP alignment:** expand each interval outward to the nearest closed keyframe (GOP boundary)
-   in the source video.
-3. **Targeted re-encode:** FFmpeg decodes, blends patches, and re-encodes only those isolated
-   5-to-10 second segments using `hevc_nvenc`.
-4. **Lossless concatenation:** unmodified source intervals are stream-copied (`-c copy`) without
-   re-compression, and stitched with the re-encoded segments using the Matroska concat demuxer.
-5. **Runtime reduction:** `localized_video` runtime drops from **4.5 minutes down to 10–15 seconds**,
-   preserving 100% original video quality on untouched scenes.
-
-## 4. Trajectory smoothing and shot-boundary snapping
-
-Text detection confidence fluctuates near entrance and exit boundaries during scene fades or fast
-action, occasionally generating 1-frame dropouts or detached 2-frame initial fragments.
-
-### The solution
-
-- A 1D Kalman filter runs over the bounding box coordinate series stored in `job.redb`.
-- Brief 1-to-2 frame dropouts are interpolated smoothly.
-- The entrance and exit boundaries of an occurrence snap automatically to the nearest shot cut
-  from the shot scan (`outputs/shot_scan`), preventing replacement patches from lingering into an
-  unrelated cut.
-
-## 5. Multi-modal audio-visual synchronization
-
-Title cards, character introductions, and location banners in anime routinely align with distinct
-percussive sound effects or narrator speech onsets.
-
-### The solution
-
-- The visual pipeline cross-references `outputs/text_detect` entries with `outputs/sound_events`
-  and speech word starts from `outputs/alignment`.
-- When an occurrence entrance lands within 3 frames of a verified sound event or narrator dialogue
-  start, its start frame snaps to that exact acoustic timestamp.
-- Subtitle appearances achieve director-intended cinematic synchrony.
+- **Smoothing:** the per-frame shifts (or homographies) of moving writing are smoothed over time,
+  with a Kalman filter or a similar smoother over the `frames` rows, so the lettering does not
+  jitter where the correlation peak wobbles; a frame the smoother moves too far from its match
+  stays as matched.
+- **Fragments:** the scan keeps short fragments apart from their occurrence, such as the two-frame
+  start of the Rebecca cards at their fade-in on Dressrosa 11
+  ([visual scan](/documentation/research/visual_scan_dressrosa_11.md)); a fragment adjacent to an
+  occurrence of the same writing joins it.
+- **Cuts already bound occurrences:** the scan screens both frames around every shot cut and
+  bisects to the exact entry and exit frame, so no occurrence crosses a cut.
+- **Measured:** jitter of the lettering on the moving signs of Dressrosa 11 and 28 (the frame to
+  frame movement of its quad against the follow), the fragments left, and the owner's review.
 
 ## Boundaries
 
-- Depends on: [`video_inpainting_pipeline.md`](/documentation/architecture/video_inpainting_pipeline.md),
-  [`media_io`](/crates/media_io/README.md), and
-  [`job.redb`](/documentation/architecture/binary_storage_plan.md).
-- Used by: roadmap milestone M8, `stages::localize`, and `pipeline::tasks::localized`.
-- Rules: source videos remain strictly read-only; unchanged frames retain their original bitstream.
+- Depends on: [video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md),
+  [media_io](/crates/media_io/README.md), and the `frames` table of
+  [binary storage](/documentation/architecture/binary_storage_plan.md).
+- Used by: roadmap milestone M8, `stages::localize` and `pipeline::tasks::localized`.
+- Rules: source videos stay read-only; replaced writing appears on the exact frame the picture
+  changes, which detection finds by bisection; frames without replaced writing keep their
+  bitstream once item 3 is built.
 
 ## Related documentation
 
-- [Roadmap](/documentation/roadmap.md) — milestone M8.
-- [Video inpainting pipeline](/documentation/architecture/video_inpainting_pipeline.md) — baseline steps.
-- [Binary storage plan](/documentation/architecture/binary_storage_plan.md) — per-frame tables.
+- [Roadmap](/documentation/roadmap.md#m8--visual-tracking-and-video-acceleration) — milestone M8.
+- [Memory profiles](memory_profiles.md) — the baseline, hardware decoding and overlapped encoding.
+- [Localized video polish on Dressrosa 28](/documentation/research/localized_video_polish_dressrosa_28.md)
+  — the open issues these items address.

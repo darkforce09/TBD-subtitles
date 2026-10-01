@@ -55,7 +55,9 @@ first. One plate is decoded at a time.
 
 ## Boundaries
 
-- Depends on: `image` for PNG and resizing, `job_model::onscreen` replacement contracts.
+- Depends on: `image` for PNG and resizing, `imageproc` for the residue's opening,
+  `job_model::onscreen` replacement contracts, the sibling `mask` module's colour distance
+  (`delta_e`, `INK_DELTA_E`) and `onscreen_text`'s `png` module for synced plate files.
 - Used by: `pipeline::tasks::replace`, which supplies LaMa through `inference::onnx::lama`;
   `residue_share` by the `visual_validation` tool's `residue-probe`.
 - Rules: occurrences not `Pending` stay untouched; pixels further than one pixel from a mask keep
