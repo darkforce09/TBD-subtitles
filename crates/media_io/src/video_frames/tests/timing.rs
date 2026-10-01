@@ -511,3 +511,62 @@ fn ffmpeg_preserves_vfr_ends_and_the_offset_between_container_and_video() {
     stream.finish().unwrap();
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn keyframes_are_numbered_in_presentation_order_without_discarded_packets() {
+    let table = concat!(
+        "pts_time=-0.083333|duration_time=0.041667|flags=KD\n",
+        "pts_time=0.000000|duration_time=0.041667|flags=K__\n",
+        "pts_time=0.125000|duration_time=0.041667|flags=___\n",
+        "pts_time=0.041667|duration_time=0.041667|flags=___\n",
+        "pts_time=0.083333|duration_time=0.041667|flags=___\n",
+        "pts_time=0.250000|duration_time=0.041667|flags=K__\n",
+        "pts_time=0.166667|duration_time=0.041667|flags=___\n",
+        "pts_time=0.208333|duration_time=0.041667|flags=___\n",
+        "pts_time=N/A|duration_time=0.041667|flags=K__\n",
+    );
+    let keyframes = packets::parse_keyframes(table, MAX_PACKETS).unwrap();
+    let indices: Vec<u64> = keyframes.iter().map(|keyframe| keyframe.index).collect();
+    assert_eq!(indices, [0, 6]);
+    close(keyframes[1].pts_s, 0.25);
+    let timeline = presentation_timeline(&parse_packets(table, 0.04, MAX_PACKETS).unwrap(), 0.0);
+    close(timeline.unwrap()[6].0, 0.25);
+    assert!(packets::flagged_key("pts_time=1.0|flags=K_"));
+    assert!(!packets::flagged_key("pts_time=1.0|flags=__"));
+    assert!(matches!(
+        packets::parse_keyframes(table, 3),
+        Err(MediaError::Parse(_))
+    ));
+}
+
+#[test]
+fn keyframes_name_the_frames_a_closed_gop_restarts_at() {
+    let dir = scratch("keyframes");
+    let video = dir.join("keyframes.mkv");
+    ffmpeg(
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=size=64x36:rate=24:duration=2",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-x264-params",
+            "bframes=2:keyint=12:min-keyint=12:scenecut=0",
+        ],
+        &video,
+    );
+    let programs = Programs::default();
+    assert_eq!(
+        packets::keyframes(&programs, &video).unwrap(),
+        [0, 12, 24, 36]
+    );
+    let keyframes = packets::keyframe_packets(&programs, &video).unwrap();
+    let timeline = timeline(&programs, &video, 0.0, 24.0).unwrap();
+    for keyframe in &keyframes {
+        close(keyframe.pts_s, timeline[keyframe.index as usize].0);
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}

@@ -50,7 +50,9 @@ something unreadable, or the video has no usable audio track.
   `video_frames::region::{RegionStream, RegionRequest, RegionCrop, RegionFrame}`: for the
   visible-text and localize stages in `crates/stages/` and the detection benchmark.
 - `encode::{Encoder, EncodeSpec, VideoColour, EncoderProcess, available_encoder, encode_args,
-  is_constant_frame_rate}`: for the localize stage in `crates/stages/src/localize/`.
+  is_constant_frame_rate}` and `encode::segments` (probing an H.264 source, planning the copied
+  and re-encoded pieces, encoding, joining and checking them): for the localize stage in
+  `crates/stages/src/localize/`.
 - `yuv::{Yuv420, YuvFrame, Coefficients, Matrix, Range, to_rgb, to_rgb_parallel,
   to_rgb_padded_into, crop_to_rgb, luma_thumbnail, crop_grey}` and
   `frame_queue::{FrameQueue, Producer, BufferPool, PooledBuffer}`: for the visible-text and

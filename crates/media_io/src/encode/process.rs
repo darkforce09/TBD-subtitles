@@ -1,7 +1,7 @@
 //! The FFmpeg encoder a caller streams raw frames into.
 //!
-//! **Role:** start FFmpeg with `encode_args`, accept whole frames on its stdin, and reap it with
-//! the reason it failed.
+//! **Role:** start FFmpeg with `encode_args` for a whole video or `segment_args` for one segment,
+//! accept whole frames on its stdin, and reap it with the reason it failed.
 //! **Position:** inside `encode`; the localize stage writes each composited frame here.
 //! **Signals and state:** one FFmpeg child with a piped stdin, a watchdog deadline and an optional
 //! cancel flag; the process holds the stdin pipe, the frame size and the count of frames written.
@@ -18,11 +18,12 @@ use std::time::Duration;
 
 use child_process::{Run, Running};
 
+use super::segments::{SegmentSpec, segment_args};
 use super::{EncodeSpec, encode_args};
 use crate::{MediaError, Programs};
 
 /// The most stderr bytes an exit error carries: the end, where FFmpeg says what failed.
-const STDERR_TAIL_BYTES: usize = 4096;
+pub(super) const STDERR_TAIL_BYTES: usize = 4096;
 
 /// A running FFmpeg encode that reads raw frames on its stdin.
 pub struct EncoderProcess {
@@ -51,8 +52,35 @@ impl EncoderProcess {
                 "the encode would overwrite its source".into(),
             ));
         }
+        Self::spawn(programs, encode_args(spec), bytes, timeout, cancel)
+    }
+
+    /// Start FFmpeg on one re-encoded segment of a localized video built from pieces, killed at
+    /// `timeout` or once `cancel` is set: raw frames in, a Matroska file of video alone out.
+    pub fn start_segment(
+        programs: &Programs,
+        spec: &SegmentSpec,
+        timeout: Duration,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> Result<Self, MediaError> {
+        let bytes = spec.pixel_format.frame_bytes((spec.width, spec.height))?;
+        let (num, den) = spec.frame_rate;
+        if num == 0 || den == 0 {
+            return Err(MediaError::Parse("invalid segment timing".into()));
+        }
+        Self::spawn(programs, segment_args(spec), bytes, timeout, cancel)
+    }
+
+    /// Start FFmpeg with `args`, reading frames of `bytes` each on a piped stdin.
+    fn spawn(
+        programs: &Programs,
+        args: Vec<String>,
+        bytes: usize,
+        timeout: Duration,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> Result<Self, MediaError> {
         let mut run = Run::new(&programs.ffmpeg)
-            .args(encode_args(spec))
+            .args(args)
             .stdin_piped()
             .timeout(timeout);
         if let Some(flag) = cancel {
@@ -125,7 +153,7 @@ impl EncoderProcess {
 }
 
 /// The last `limit` bytes of `text`, cut at a character boundary.
-fn tail(text: &str, limit: usize) -> String {
+pub(super) fn tail(text: &str, limit: usize) -> String {
     let mut start = text.len().saturating_sub(limit);
     while !text.is_char_boundary(start) {
         start += 1;

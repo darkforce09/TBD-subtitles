@@ -2,7 +2,8 @@
 //!
 //! **Role:** choose the video encoder this FFmpeg can run, build the command line that reads raw
 //! frames on stdin and muxes them with the source's audio, chapters and metadata into Matroska,
-//! and drive that FFmpeg through [`EncoderProcess`].
+//! and drive that FFmpeg through [`EncoderProcess`]; [`segments`] instead re-encodes only the
+//! changed pieces of an H.264 source and joins them to its copied packets.
 //! **Position:** media output for the localized-video step; called by the localize stage in
 //! `stages` with frames from `video_frames::FrameStream::open_native`.
 //! **Signals and state:** `available_encoder` runs two bounded FFmpeg probes (the encoder list and
@@ -14,6 +15,7 @@
 //! timeline is detected before encoding, since raw frames on a pipe carry one constant rate.
 
 mod process;
+pub mod segments;
 
 pub use process::EncoderProcess;
 

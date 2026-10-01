@@ -2,8 +2,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 
 use child_process::RunError;
+use job_model::onscreen::LocalizedEncoder;
 
 use super::*;
+use crate::encode::segments::{H264Level, H264Profile, PeakRate};
 use crate::encode::{Encoder, VideoColour, available_encoder};
 use crate::video_frames::{Decode, FrameStream, PixelFormat, timeline};
 
@@ -59,6 +61,58 @@ fn an_invalid_spec_is_refused_before_anything_runs() {
             Err(MediaError::Parse(_))
         ));
     }
+}
+
+/// A 256x144 Main 3.0 segment spec with no source behind it.
+fn segment(dir: &Path) -> SegmentSpec {
+    SegmentSpec {
+        width: 256,
+        height: 144,
+        frame_rate: (24, 1),
+        pixel_format: PixelFormat::Yuv420p,
+        encoder: LocalizedEncoder::X264,
+        preset: "slow".into(),
+        profile: H264Profile::Main,
+        level: H264Level(30),
+        refs: 1,
+        b_frames: 3,
+        sample_aspect_ratio: None,
+        colour: VideoColour::default(),
+        peak: PeakRate {
+            max_bits_per_s: 1_000_000,
+            buffer_bits: 2_000_000,
+        },
+        output: dir.join("encode00001.mkv"),
+    }
+}
+
+#[test]
+fn an_invalid_segment_is_refused_before_anything_runs() {
+    let programs = Programs {
+        ffmpeg: "/nonexistent/ffmpeg".into(),
+        ..Programs::default()
+    };
+    let dir = Path::new("/job");
+    let mut odd = segment(dir);
+    odd.height = 143;
+    let mut no_rate = segment(dir);
+    no_rate.frame_rate = (0, 1);
+    for bad in [odd, no_rate] {
+        assert!(matches!(
+            EncoderProcess::start_segment(&programs, &bad, Duration::from_secs(10), None),
+            Err(MediaError::Parse(_))
+        ));
+    }
+    // `true` stands in for FFmpeg: a valid segment starts and takes whole frames.
+    let stand_in = Programs {
+        ffmpeg: "true".into(),
+        ..Programs::default()
+    };
+    let process =
+        EncoderProcess::start_segment(&stand_in, &segment(dir), Duration::from_secs(10), None)
+            .unwrap();
+    assert_eq!(process.frame_bytes(), 256 * 144 * 3 / 2);
+    assert_eq!(process.finish().unwrap(), 0);
 }
 
 #[test]

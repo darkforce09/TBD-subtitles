@@ -1,15 +1,20 @@
-//! The presentation timeline of a video's first video stream, read from its packet table.
+//! The presentation timeline of a video's first video stream, read from its packet table, and
+//! the frames its keyframe packets present.
 //!
 //! **Role:** list every frame's origin-relative presentation interval before anything decodes,
-//! for `FrameStream` and for callers that decode regions or re-encode frames by index.
-//! **Position:** inside `video_frames`; `FrameStream::open` and `open_native` read it first.
-//! **Signals and state:** two bounded ffprobe runs, for the container origin and the video packet
+//! for `FrameStream` and for callers that decode regions or re-encode frames by index; list the
+//! presentation indices of the packets the container flags as keyframes, for the localized
+//! video's segment encode.
+//! **Position:** inside `video_frames`; `FrameStream::open` and `open_native` read the timeline
+//! first; `encode::segments` reads the keyframes.
+//! **Signals and state:** bounded ffprobe runs, for the container origin and the video packet
 //! table, which the demuxer reads without decoding; holds nothing afterwards.
 //! **Invariants:** the timeline is every decodable packet's presentation time in presentation
 //! order (B-frame packets arrive in decode order); a packet flagged for the decoder to discard has
 //! no frame. Every time uses the common container origin, preserving the video offset relative to
 //! audio. The next presentation timestamp ends a frame; only the final frame uses its reported or
-//! fallback duration. A repeated or reversed time is an error.
+//! fallback duration. A repeated or reversed time is an error. Keyframes number frames exactly as
+//! the timeline does: the same discarded packets are skipped and the same stable sort orders them.
 
 use std::io::Read;
 use std::path::Path;
@@ -85,6 +90,83 @@ fn packet_timeline(
     origin_s: f64,
     fallback: f64,
 ) -> Result<Vec<(f64, f64)>, MediaError> {
+    let table = packet_table(programs, video)?;
+    let packets = parse_packets(&table, fallback, MAX_PACKETS)?;
+    presentation_timeline(&packets, origin_s)
+}
+
+/// A packet of the first video stream that the container flags as a keyframe.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct KeyframePacket {
+    /// The frame it presents, numbered as [`timeline`] numbers frames.
+    pub index: u64,
+    /// Its presentation time on the container's own clock, not relative to the origin: the time
+    /// a seek in this file names.
+    pub pts_s: f64,
+}
+
+/// The presentation index of every frame of the first video stream whose packet carries the
+/// keyframe flag, ascending; numbered as [`timeline`] numbers frames.
+pub fn keyframes(programs: &Programs, video: &Path) -> Result<Vec<u64>, MediaError> {
+    Ok(keyframe_packets(programs, video)?
+        .into_iter()
+        .map(|keyframe| keyframe.index)
+        .collect())
+}
+
+/// Every keyframe packet of the first video stream with its presentation index and time,
+/// ascending.
+pub fn keyframe_packets(
+    programs: &Programs,
+    video: &Path,
+) -> Result<Vec<KeyframePacket>, MediaError> {
+    parse_keyframes(&packet_table(programs, video)?, MAX_PACKETS)
+}
+
+/// The keyframes of a compact packet table: the packets [`parse_packets`] keeps, in the same
+/// stable presentation order, numbered, and filtered to those whose flags carry `K`.
+pub(super) fn parse_keyframes(
+    table: &str,
+    limit: usize,
+) -> Result<Vec<KeyframePacket>, MediaError> {
+    let mut packets = Vec::new();
+    for line in table.lines() {
+        if line.len() > MAX_LINE_BYTES {
+            return Err(excessive_table());
+        }
+        if discarded(line) {
+            continue;
+        }
+        if let Some((time, _)) = parse_timing(line, PACKET_TIME, 0.0) {
+            if packets.len() == limit {
+                return Err(excessive_table());
+            }
+            packets.push((time, flagged_key(line)));
+        }
+    }
+    packets.sort_by(|a, b| a.0.total_cmp(&b.0));
+    Ok(packets
+        .into_iter()
+        .enumerate()
+        .filter(|(_, (_, key))| *key)
+        .map(|(index, (pts_s, _))| KeyframePacket {
+            index: index as u64,
+            pts_s,
+        })
+        .collect())
+}
+
+/// Whether a packet line's flags carry `K`: the container marks the packet as a keyframe.
+pub(super) fn flagged_key(line: &str) -> bool {
+    line.trim().split('|').any(|part| {
+        part.strip_prefix("flags=")
+            .is_some_and(|flags| flags.contains('K'))
+    })
+}
+
+/// The first video stream's compact packet table: presentation time, duration and flags of
+/// every packet in stored order.
+fn packet_table(programs: &Programs, video: &Path) -> Result<String, MediaError> {
     let output = Run::new(&programs.ffprobe)
         .args([
             "-v",
@@ -107,8 +189,7 @@ fn packet_timeline(
             stderr: output.stderr,
         });
     }
-    let packets = parse_packets(&output.stdout, fallback, MAX_PACKETS)?;
-    presentation_timeline(&packets, origin_s)
+    Ok(output.stdout)
 }
 
 /// The (time, duration) of every decodable packet, sorted into presentation order. A line

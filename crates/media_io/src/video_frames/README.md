@@ -11,7 +11,7 @@ runs of frames cropped to one region.
 crates/media_io/src/video_frames/
 ├── mod.rs         the decode mode, the rgb24 frame stream and the frame reads
 ├── native.rs      `PixelFormat` and `FrameStream::open_native`: unscaled raw frames
-├── packets.rs     `timeline`: presentation times from the container origin and packets
+├── packets.rs     `timeline` and `keyframes`: frame times and keyframe frames from the packets
 ├── pipe.rs        FFmpeg's stdout pipe enlarged to 1 MiB, never past `pipe-max-size`
 ├── region.rs      `RegionStream`: frames cropped to one rectangle, rgb24 in the stream's colour
 ├── still.rs       one frame at a presentation time, through a half-frame-early seek
