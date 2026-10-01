@@ -75,9 +75,10 @@ each run in a new work root the episode's localized video is moved aside, as ste
    boxes found; the sweep rows also say whether the CUDA graph and NHWC were accepted and which
    search mode ran, and the TensorRT rows give the engine build time. The two-session row is
    busier on the GPU than the one-session row, which shows the two streams overlap.
-   `d11-frames/` holds sample PNGs with the production pool's full-resolution boxes in green
-   (3 px) and the 640-wide proxy's boxes, scaled up, in magenta (1 px): look through them for
-   writing only one of the two finds.
+   `d11-frames/` holds sample PNGs with the production pool's full-resolution CUDA boxes in blue
+   (3 px), its TensorRT FP16 boxes in green (1 px) and the 640-wide proxy's boxes, scaled up, in
+   magenta (1 px): look through them for writing only one of them finds, and judge whether FP16
+   loses writing CUDA finds.
 
 3. Run the same bench on Dressrosa 28.
 
@@ -180,8 +181,8 @@ each run in a new work root the episode's localized video is moved aside, as ste
     ```
 
     **Expected:** one row per encoder and preset with frames per second, size and PSNR against the
-    source. Until this run the presets are x264 `-preset slow` and NVENC `p7 -tune hq` for
-    segments and `p6` for the whole-video HEVC encode.
+    source. Before the first run the presets were x264 `-preset slow` and NVENC `p7 -tune hq`
+    for segments and `p6` for the whole-video HEVC encode.
 
 13. Set the presets the encode-bench supports, with the owner: `X264_SEGMENT_PRESET` and
     `NVENC_SEGMENT_PRESET` in `crates/media_io/src/encode/segments/args.rs`, and the whole-video

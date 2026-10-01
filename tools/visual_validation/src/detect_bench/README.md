@@ -26,8 +26,12 @@ tools/visual_validation/src/detect_bench/
 `mod.rs` re-executes the binary once with the CUDA runtime's `LD_LIBRARY_PATH` and
 `ORT_DYLIB_PATH` (`CudaRuntime::worker_env`, as the pipeline starts a GPU worker, TensorRT's
 libraries included when the runtime has them; the runtime is `cuda/` beside the binary,
-`--runtime-dir`, or the app's runtime folder), probes the video and prints the host line from the
-pipeline's `gpu_monitor`, the TensorRT version and the engine cache folder. Every section but the
+`--runtime-dir`, or the app's runtime folder), commits the OCR worker's strict ONNX Runtime
+environment before any session opens (the detector pool refuses to start in any other; sections
+2 and 3, whose sessions each register their own CUDA provider, run in a child process of their
+own, and the box images' proxy detector inherits the environment's provider), probes
+the video and prints the host line from the pipeline's `gpu_monitor`, the TensorRT version and
+the engine cache folder. Every section but the
 box images can be skipped (`--no-decode`, `--no-oar-ocr`, `--no-sweep`, `--no-sessions`,
 `--no-search`, `--no-tensorrt`, `--no-pool-confirm`), so the host can run parts.
 
@@ -69,8 +73,9 @@ built or reused, whether the CUDA graph and NHWC were accepted, and the boxes ag
 Section 9 (`overlay.rs`), with `--frames-dir`, picks `--frames-count` samples spread over the
 clip, runs the stock detector on their proxies (found while the proxies are held, before the pool
 sections), and writes each frame at full resolution as a PNG: the CUDA reference run's boxes in
-green, 3 px, and the proxy's boxes scaled up to the frame and clipped to its last pixel in
-magenta, 1 px. A legend line and a per-image box count print with them.
+blue, 3 px, the TensorRT FP16 run's boxes at the chosen shape in green, 1 px, and the proxy's
+boxes scaled up to the frame and clipped to its last pixel in magenta, 1 px. A legend line and
+a per-image box count for each set print with them.
 
 ## Public surface
 

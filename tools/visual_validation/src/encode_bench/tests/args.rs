@@ -57,7 +57,7 @@ fn the_comparison_aligns_both_clips_at_zero() {
     assert_eq!(
         joined(&args),
         "-nostdin -hide_banner -nostats -v info -ss 600.000 -t 60.000 -i ep.mkv -i /bench/x.mkv \
-         -lavfi [0:v:0]setpts=PTS-STARTPTS[source];[1:v:0]setpts=PTS-STARTPTS[encoded];\
+         -lavfi [0:v:0]settb=1,setpts=N[source];[1:v:0]settb=1,setpts=N[encoded];\
          [encoded][source]psnr -f null -"
     );
 }

@@ -2,10 +2,11 @@
 //!
 //! **Role:** pick a handful of sample frames spread over the clip, run the stock detector on
 //! their 640-wide proxies as the proxy baseline does, and write each frame at full resolution as
-//! a PNG with the production pool's boxes in one colour and the proxy's boxes, scaled up to the
-//! frame, in another; print a legend and a per-image box count.
-//! **Position:** the last section of `detect-bench`, given the CUDA reference run's regions by
-//! the pool sections; the proxy boxes are found earlier, while the proxies are still held.
+//! a PNG with the production pool's CUDA boxes, its TensorRT FP16 boxes and the proxy's boxes,
+//! scaled up to the frame, each in its own colour; print a legend and a per-image box count.
+//! **Position:** the last section of `detect-bench`, given the CUDA reference run's and TensorRT
+//! FP16's regions by the pool sections; the proxy boxes are found earlier, while the proxies are
+//! still held.
 //! **Signals and state:** one stock detector session while the proxy boxes are found; the PNGs
 //! it writes under the folder it is given.
 //! **Invariants:** a scaled or drawn corner never leaves the frame; images are written only
@@ -18,15 +19,18 @@ use imageproc::drawing::draw_line_segment_mut;
 use inference::ocr::pool::PaddedFrame;
 
 use super::detector::{Quad, Screen, Settings, Stock};
-use super::pool_runs::Regions;
+use super::pool_runs::PoolBoxes;
 use super::table::Table;
 
-/// The full-resolution pool's boxes.
-const FULL_COLOUR: Rgb<u8> = Rgb([0, 230, 64]);
+/// The full-resolution CUDA pool's boxes: blue, thick.
+const FULL_COLOUR: Rgb<u8> = Rgb([0, 90, 255]);
 const FULL_THICKNESS: u32 = 3;
 /// The proxy's boxes, drawn over the full-resolution ones.
 const PROXY_COLOUR: Rgb<u8> = Rgb([255, 0, 255]);
 const PROXY_THICKNESS: u32 = 1;
+/// TensorRT FP16's boxes: green, thin, inside the CUDA boxes they agree with.
+const FP16_COLOUR: Rgb<u8> = Rgb([0, 230, 64]);
+const FP16_THICKNESS: u32 = 1;
 /// The box score the proxy keeps, as screening does.
 const SCREEN_BOX_SCORE: f32 = 0.3;
 
@@ -96,12 +100,12 @@ pub fn draw_quad(image: &mut RgbImage, corners: &Quad, colour: Rgb<u8>, thicknes
     }
 }
 
-/// The stock detector's boxes, at its default limit, on `count` proxies spread over the clip.
+/// The stock detector's boxes, at its default limit and on the environment's provider, on
+/// `count` proxies spread over the clip.
 pub fn proxy_boxes(
     model: &Path,
     proxies: &[image::RgbImage],
     count: usize,
-    memory_limit_mib: u64,
 ) -> Result<ProxyBoxes, String> {
     let size = proxies.first().ok_or("no proxy frames")?.dimensions();
     let picks = pick(proxies.len(), count);
@@ -109,7 +113,7 @@ pub fn proxy_boxes(
         model,
         limit_side: None,
         box_score: SCREEN_BOX_SCORE,
-        memory_limit_mib,
+        memory_limit_mib: None,
     };
     let mut detector = Stock::open(&settings)?;
     let mut boxes = Vec::with_capacity(picks.len());
@@ -125,11 +129,14 @@ pub fn proxy_boxes(
 pub fn section(
     destination: &Destination<'_>,
     frames: &[PaddedFrame],
-    full: Option<&Regions>,
+    pool: &PoolBoxes,
     proxy: &Result<ProxyBoxes, String>,
 ) {
     println!("## 9. Box images in {}\n", destination.dir.display());
-    println!("{}\n", legend(full.is_some()));
+    println!(
+        "{}\n",
+        legend(pool.cuda.is_some(), pool.tensorrt_fp16.is_some())
+    );
     let proxy = match proxy {
         Ok(proxy) => proxy,
         Err(error) => {
@@ -141,24 +148,37 @@ pub fn section(
         println!("No images: {}: {error}\n", destination.dir.display());
         return;
     }
-    let mut table = Table::new(&["Image", "Full-resolution boxes", "Proxy boxes", "Note"]);
+    let mut table = Table::new(&[
+        "Image",
+        "Full-resolution boxes",
+        "TensorRT FP16 boxes",
+        "Proxy boxes",
+        "Note",
+    ]);
     for (&index, proxy_quads) in proxy.picks.iter().zip(&proxy.boxes) {
         let Some(frame) = frames.get(index) else {
             continue;
         };
         let time_s = destination.start_s + index as f64 * destination.step_s;
         let name = format!("sample_{index:04}_{time_s:.1}s.png");
-        let regions = full.and_then(|regions| regions.get(index));
+        let regions = pool.cuda.as_ref().and_then(|regions| regions.get(index));
+        let fp16 = pool.tensorrt_fp16.as_ref().and_then(|r| r.get(index));
         let written = write_image(
             &destination.dir.join(&name),
             frame,
-            regions,
+            [
+                (regions, FULL_COLOUR, FULL_THICKNESS),
+                (fp16, FP16_COLOUR, FP16_THICKNESS),
+            ],
             proxy_quads,
             proxy.size,
         );
+        let count =
+            |found: Option<&Vec<_>>| found.map_or("n/a".to_string(), |r| r.len().to_string());
         table.row(vec![
             name,
-            regions.map_or_else(|| "n/a".to_string(), |r| r.len().to_string()),
+            count(regions),
+            count(fp16),
             proxy_quads.len().to_string(),
             written
                 .err()
@@ -169,20 +189,36 @@ pub fn section(
 }
 
 /// The legend line naming each colour.
-pub fn legend(with_full: bool) -> String {
+pub fn legend(with_full: bool, with_fp16: bool) -> String {
     let full = if with_full {
-        "green, 3 px: the production pool's boxes at full resolution (CUDA reference run)"
+        "blue, 3 px: the production pool's boxes at full resolution (CUDA reference run)"
     } else {
         "no full-resolution boxes: the CUDA reference run failed"
     };
-    format!("Legend: {full}; magenta, 1 px: the 640-wide proxy's boxes, scaled up to the frame.")
+    let fp16 = if with_fp16 {
+        "green, 1 px: the TensorRT FP16 pool's boxes at full resolution"
+    } else {
+        "no TensorRT FP16 boxes"
+    };
+    format!(
+        "Legend: {full}; {fp16}; magenta, 1 px: the 640-wide proxy's boxes, scaled up to the \
+         frame."
+    )
 }
 
-/// Write `frame`'s picture with both sets of boxes drawn to `path`.
+/// One frame's full-resolution boxes, when the run found them, with their colour and thickness.
+type BoxSet<'a> = (
+    Option<&'a Vec<(job_model::onscreen::Quad, f64)>>,
+    Rgb<u8>,
+    u32,
+);
+
+/// Write `frame`'s picture to `path` with each full-resolution set of boxes in its colour and
+/// thickness, then the proxy's boxes.
 fn write_image(
     path: &Path,
     frame: &PaddedFrame,
-    full: Option<&Vec<(job_model::onscreen::Quad, f64)>>,
+    full: [BoxSet<'_>; 2],
     proxy: &[Quad],
     proxy_size: (u32, u32),
 ) -> Result<(), String> {
@@ -190,9 +226,11 @@ fn write_image(
     let bytes = frame.width as usize * frame.height as usize * 3;
     let picture = frame.rgb.get(..bytes).ok_or("the frame is short")?.to_vec();
     let mut image = RgbImage::from_raw(size.0, size.1, picture).ok_or("the frame's size")?;
-    for (quad, _) in full.into_iter().flatten() {
-        let quad = clip_to(corners(quad), size);
-        draw_quad(&mut image, &quad, FULL_COLOUR, FULL_THICKNESS);
+    for (regions, colour, thickness) in full {
+        for (quad, _) in regions.into_iter().flatten() {
+            let quad = clip_to(corners(quad), size);
+            draw_quad(&mut image, &quad, colour, thickness);
+        }
     }
     for quad in proxy {
         let quad = scale_quad(*quad, proxy_size, size);

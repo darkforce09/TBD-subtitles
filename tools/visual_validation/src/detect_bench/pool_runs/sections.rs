@@ -6,8 +6,8 @@
 //! precisions. Boxes are compared with a CUDA reference run, two sessions at the chosen shape.
 //! **Position:** called by `detect_bench::run` with the padded frames; measures through
 //! `measure.rs` and lays rows out through `rows.rs`.
-//! **Signals and state:** the measured sweep rows, which choose the shape, and the reference
-//! regions, which it returns for the box images.
+//! **Signals and state:** the measured sweep rows, which choose the shape, and the CUDA reference
+//! and TensorRT FP16 regions, which it returns for the box images.
 //! **Invariants:** a section that is off runs nothing; a failed row never stops the next; the
 //! reference run is made once, by the first section that needs it.
 
@@ -40,13 +40,21 @@ pub struct Sections {
     pub reference: bool,
 }
 
-/// Run every section that is on; the CUDA reference run's regions, when one was made.
+/// The boxes the box images draw: the CUDA reference run's, and TensorRT FP16's at the chosen
+/// shape, each when its run succeeded.
+#[derive(Debug, Default)]
+pub struct PoolBoxes {
+    pub cuda: Option<Regions>,
+    pub tensorrt_fp16: Option<Regions>,
+}
+
+/// Run every section that is on; the regions the box images draw.
 pub fn run(
     setup: &Setup,
     frames: &[PaddedFrame],
     stills: &[PaddedFrame],
     sections: &Sections,
-) -> Option<Regions> {
+) -> PoolBoxes {
     let measured = if sections.cuda_sweep {
         sweep(setup, frames, &sections.grid)
     } else {
@@ -73,8 +81,9 @@ pub fn run(
     if (sections.tensorrt || sections.reference) && reference.is_none() {
         reference = reference_run(setup, frames, shape);
     }
+    let mut tensorrt_fp16 = None;
     if sections.tensorrt {
-        tensorrt(setup, frames, &sections.grid, reference.as_ref());
+        tensorrt_fp16 = tensorrt(setup, frames, &sections.grid, shape, reference.as_ref());
     }
     if sections.confirm {
         confirmation(
@@ -85,7 +94,10 @@ pub fn run(
             sections.tensorrt,
         );
     }
-    reference
+    PoolBoxes {
+        cuda: reference,
+        tensorrt_fp16,
+    }
 }
 
 /// Measure `run` screening `frames`, print progress, and add its row.
@@ -191,13 +203,15 @@ fn reference_run(setup: &Setup, frames: &[PaddedFrame], shape: ScreenShape) -> O
     outcome.ok().map(|m| m.regions)
 }
 
-/// Section 7: TensorRT FP16, then FP32, over the sweep's grid, against the CUDA reference.
+/// Section 7: TensorRT FP16, then FP32, over the sweep's grid, against the CUDA reference; the
+/// FP16 regions at `shape`, else at the first shape FP16 ran.
 fn tensorrt(
     setup: &Setup,
     frames: &[PaddedFrame],
     grid: &[ScreenShape],
+    shape: ScreenShape,
     reference: Option<&Regions>,
-) {
+) -> Option<Regions> {
     println!(
         "## 7. Detector pool, TensorRT: FP16 and FP32 over the sweep ({} frames, {SCREEN_SESSIONS} \
          sessions; engines in {})\n",
@@ -206,13 +220,22 @@ fn tensorrt(
     );
     let mut table = Table::new(&COLUMNS);
     let reference = reference.map(|regions| ("CUDA reference", regions));
+    let (mut chosen, mut first) = (None, None);
     for fp16 in [true, false] {
-        for &shape in grid {
-            let run = PoolRun::tensorrt(shape, SCREEN_SESSIONS, fp16);
-            let _ = screen_row(&mut table, setup, frames, &run, reference);
+        for &row_shape in grid {
+            let run = PoolRun::tensorrt(row_shape, SCREEN_SESSIONS, fp16);
+            let outcome = screen_row(&mut table, setup, frames, &run, reference);
+            if let (true, Ok(measured)) = (fp16, outcome) {
+                if row_shape == shape {
+                    chosen = Some(measured.regions);
+                } else if first.is_none() {
+                    first = Some(measured.regions);
+                }
+            }
         }
     }
     println!("{}", table.render());
+    chosen.or(first)
 }
 
 /// Section 8: the server detector confirming stills through the pool at each of `pools_mib`,

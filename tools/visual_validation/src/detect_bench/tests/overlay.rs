@@ -95,15 +95,17 @@ fn a_thick_box_spreads_one_pixel_each_side_and_stays_inside_the_image() {
 }
 
 #[test]
-fn the_legend_names_both_colours() {
-    let legend = legend(true);
-    assert!(legend.contains("green, 3 px: the production pool's boxes"));
+fn the_legend_names_every_colour() {
+    let legend = legend(true, true);
+    assert!(legend.contains("blue, 3 px: the production pool's boxes"));
     assert!(legend.contains("magenta, 1 px: the 640-wide proxy's boxes, scaled up"));
-    assert!(super::legend(false).contains("no full-resolution boxes"));
+    assert!(legend.contains("green, 1 px: the TensorRT FP16 pool's boxes"));
+    assert!(super::legend(false, false).contains("no full-resolution boxes"));
+    assert!(super::legend(false, false).contains("no TensorRT FP16 boxes"));
 }
 
 #[test]
-fn an_image_is_written_with_both_box_sets() {
+fn an_image_is_written_with_every_box_set() {
     let dir = std::env::temp_dir().join(format!("detect-bench-overlay-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("a temporary folder");
     let frame = PaddedFrame {
@@ -123,11 +125,25 @@ fn an_image_is_written_with_both_box_sets() {
     )];
     let proxy: Vec<Quad> = vec![[(20.0, 10.0), (30.0, 10.0), (30.0, 17.0), (20.0, 17.0)]];
     let path = dir.join("frame.png");
-    write_image(&path, &frame, Some(&full), &proxy, (32, 18)).expect("the image is written");
+    let fp16 = vec![(
+        job_model::onscreen::Quad([
+            Point { x: 4.0, y: 26.0 },
+            Point { x: 20.0, y: 26.0 },
+            Point { x: 20.0, y: 32.0 },
+            Point { x: 4.0, y: 32.0 },
+        ]),
+        0.8,
+    )];
+    let sets = [
+        (Some(&full), FULL_COLOUR, FULL_THICKNESS),
+        (Some(&fp16), FP16_COLOUR, FP16_THICKNESS),
+    ];
+    write_image(&path, &frame, sets, &proxy, (32, 18)).expect("the image is written");
     let written = image::open(&path).expect("a PNG").to_rgb8();
     std::fs::remove_dir_all(&dir).expect("the temporary folder is removed");
     assert_eq!(written.dimensions(), (64, 36));
     assert_eq!(*written.get_pixel(10, 4), FULL_COLOUR);
+    assert_eq!(*written.get_pixel(10, 26), FP16_COLOUR);
     assert_eq!(*written.get_pixel(50, 20), PROXY_COLOUR);
     assert_eq!(*written.get_pixel(50, 27), Rgb([0, 0, 0]));
 }

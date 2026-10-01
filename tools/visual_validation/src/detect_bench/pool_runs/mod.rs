@@ -23,9 +23,8 @@ use inference::ocr::pool::{CONFIRM_SESSIONS, EngineIdentity, PaddedFrame, Priori
 use media_io::yuv::{self, Coefficients, Yuv420};
 use pipeline::measure::gpu_monitor::DeviceInfo;
 
-pub use compare::Regions;
 pub use plan::{PoolRun, grid};
-pub use sections::{Sections, run as run_sections};
+pub use sections::{PoolBoxes, Sections, run as run_sections};
 
 /// What every pool configuration shares.
 #[derive(Debug, Clone)]

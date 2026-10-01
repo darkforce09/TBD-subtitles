@@ -28,15 +28,16 @@ in (`stages::localize::frame_format`: 10-bit 4:2:0 for a 10-bit source, else 8-b
 copies them from that pipe, enlarged to 1 MiB as the stage's decoder does, into the encoder's
 stdin, and the clock runs from the encoder's start to its exit. The frame rate counts the whole
 frames that reached the encoder; the size is the encoded file's; a third FFmpeg compares the
-encoded clip with the source's clip, both shifted to start at zero, through the `psnr` filter and
-the row reports its mean.
+encoded clip with the source's clip frame by frame, each picture stamped with its index (Matroska
+rounds times to the millisecond, so pairing by time would match neighbouring frames), through the
+`psnr` filter, and the row reports its mean.
 
 The segment rows take the production command line: `SegmentSpec::for_source` for the source and
 encoder, with only `preset` changed, through `segment_args` — x264 at ultrafast, veryfast,
 faster, fast, medium, slow, slower and veryslow (production: `X264_SEGMENT_PRESET`), then NVENC
 at p1 to p7 (production: `NVENC_SEGMENT_PRESET`). The whole-video rows run NVENC HEVC with the
 production settings (`-tune hq -rc vbr -cq 19 -b:v 0`, `main` or `main10`, the peak rate at 1.25
-times the source's) at p1 to p7 (production: p6), video alone. A row whose encoder does not run
+times the source's) at p1 to p7 (production: `HEVC_NVENC_PRESET`), video alone. A row whose encoder does not run
 says `unavailable`; a source the segment encode cannot match (not H.264, a profile or level it
 does not know, or NVENC for a 10-bit source) says `n/a` and why; a failed encode prints its error.
 

@@ -43,6 +43,8 @@ use runs::Limits;
 
 /// Set in the re-executed process, whose environment already holds the CUDA runtime.
 const PREPARED: &str = "TBD_DETECT_BENCH_RUNTIME";
+/// Set in the child process that runs only sections 2 and 3.
+const OAR_OCR_CHILD: &str = "TBD_DETECT_BENCH_OAR_OCR";
 /// The production screening proxy's width.
 const PROXY_WIDTH: u32 = 640;
 /// How many stills the server detector section times.
@@ -121,8 +123,8 @@ pub struct Options {
     /// The GPU worker's memory cap TensorRT's workspace is sized within, in MiB.
     #[arg(long, default_value_t = DEFAULT_VRAM_CAP_MIB)]
     pub vram_cap_mib: usize,
-    /// Write full-resolution sample frames here as PNGs, with the pool's boxes and the proxy's
-    /// boxes scaled up drawn in two colours.
+    /// Write full-resolution sample frames here as PNGs, with the pool's CUDA and TensorRT FP16
+    /// boxes and the proxy's boxes scaled up, each drawn in its own colour.
     #[arg(long)]
     pub frames_dir: Option<PathBuf>,
     /// How many sample frames, spread over the clip, `--frames-dir` receives.
@@ -215,6 +217,12 @@ pub fn run(options: &Options) -> Result<()> {
     let clip = options.clip()?;
     let sections = options.sections()?;
     prepare_runtime(options)?;
+    // Sections 2 and 3 give each session its own CUDA provider, which the OCR worker's
+    // environment refuses; they run in a child process of their own.
+    let oar_ocr_child = std::env::var_os(OAR_OCR_CHILD).is_some();
+    if !oar_ocr_child {
+        inference::ocr::strict_cuda_environment().map_err(|error| anyhow::anyhow!("{error}"))?;
+    }
     let programs = programs(options.ffmpeg_dir.as_deref())?;
     let models = match &options.models_dir {
         Some(dir) => dir.clone(),
@@ -240,6 +248,23 @@ pub fn run(options: &Options) -> Result<()> {
         frame: size,
         baseline_mib,
     };
+    let ocr = models.join("pp-ocrv5");
+    if oar_ocr_child {
+        let proxies = decode::samples(&programs, &options.video, clip, proxy, step, true)?;
+        let source = Source {
+            programs: &programs,
+            video: &options.video,
+            clip,
+            size,
+            step,
+        };
+        let limits = Limits {
+            memory_limit_mib: options.memory_limit_mib,
+            raised_limit_mib: options.raised_limit_mib,
+            baseline_mib,
+        };
+        return oar_ocr_sections(&source, &ocr, proxies, &limits);
+    }
 
     println!("# detect-bench: {}\n", file_name(&options.video));
     println!(
@@ -271,35 +296,14 @@ pub fn run(options: &Options) -> Result<()> {
     if !options.no_decode {
         decode::section(&programs, &options.video, clip, size);
     }
-    let ocr = models.join("pp-ocrv5");
+    if !options.no_oar_ocr {
+        run_oar_ocr_child()?;
+    }
     let mut proxy_boxes = None;
-    if !options.no_oar_ocr || options.frames_dir.is_some() {
+    if options.frames_dir.is_some() {
         let proxies = decode::samples(&programs, &options.video, clip, proxy, step, true)?;
-        if options.frames_dir.is_some() {
-            let model = ocr.join("det_mobile.onnx");
-            let found = overlay::proxy_boxes(
-                &model,
-                &proxies,
-                options.frames_count,
-                options.memory_limit_mib,
-            );
-            proxy_boxes = Some(found);
-        }
-        if !options.no_oar_ocr {
-            let source = Source {
-                programs: &programs,
-                video: &options.video,
-                clip,
-                size,
-                step,
-            };
-            let limits = Limits {
-                memory_limit_mib: options.memory_limit_mib,
-                raised_limit_mib: options.raised_limit_mib,
-                baseline_mib,
-            };
-            oar_ocr_sections(&source, &ocr, proxies, &limits)?;
-        }
+        let model = ocr.join("det_mobile.onnx");
+        proxy_boxes = Some(overlay::proxy_boxes(&model, &proxies, options.frames_count));
     }
 
     let pool_wanted = sections.cuda_sweep
@@ -318,7 +322,7 @@ pub fn run(options: &Options) -> Result<()> {
         Ok(())
     })?;
     let stills = &frames[..frames.len().min(POOL_CONFIRM_STILLS)];
-    let reference = pool_runs::run_sections(&setup, &frames, stills, &sections);
+    let pool = pool_runs::run_sections(&setup, &frames, stills, &sections);
     if let Some(dir) = &options.frames_dir {
         let destination = overlay::Destination {
             dir,
@@ -326,7 +330,7 @@ pub fn run(options: &Options) -> Result<()> {
             step_s: f64::from(step) / fps,
         };
         let proxy_boxes = proxy_boxes.unwrap_or_else(|| Err("no proxy boxes".into()));
-        overlay::section(&destination, &frames, reference.as_ref(), &proxy_boxes);
+        overlay::section(&destination, &frames, &pool, &proxy_boxes);
     }
     Ok(())
 }
@@ -360,6 +364,20 @@ fn oar_ocr_sections(
     drop(proxies);
     let stills = &samples[..samples.len().min(CONFIRM_STILLS)];
     runs::confirmation(&ocr.join("det.onnx"), stills, limits);
+    Ok(())
+}
+
+/// Run sections 2 and 3 in a child of this process, which prints their tables in place.
+fn run_oar_ocr_child() -> Result<()> {
+    let exe = std::env::current_exe().context("locate this binary")?;
+    let status = std::process::Command::new(&exe)
+        .args(std::env::args_os().skip(1))
+        .env(OAR_OCR_CHILD, "1")
+        .status()
+        .context("start the oar-ocr sections")?;
+    if !status.success() {
+        println!("Sections 2 and 3 stopped: {status}.\n");
+    }
     Ok(())
 }
 

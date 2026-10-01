@@ -252,7 +252,10 @@ fn open_session(model: &Path) -> Result<ort::session::Session, OcrError> {
         })?)
 }
 
-fn strict_cuda_environment() -> Result<(), OcrError> {
+/// Commit the process's ONNX Runtime environment with the strict CUDA provider, once; an error
+/// when another environment came first. A process that opens any ONNX session besides the OCR
+/// ones calls this before them.
+pub fn strict_cuda_environment() -> Result<(), OcrError> {
     static INITIALIZED: OnceLock<bool> = OnceLock::new();
     if *INITIALIZED.get_or_init(|| {
         use ort::ep::{ArenaExtendStrategy, CUDA, cuda::ConvAlgorithmSearch};

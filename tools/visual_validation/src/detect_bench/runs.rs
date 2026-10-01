@@ -95,7 +95,7 @@ fn open(config: &Config, model: &Path, frame: (u32, u32)) -> Result<Box<dyn Scre
         model,
         limit_side: config.limit_side,
         box_score: config.box_score,
-        memory_limit_mib: config.memory_limit_mib,
+        memory_limit_mib: Some(config.memory_limit_mib),
     };
     Ok(match config.way {
         Way::Stock => Box::new(Stock::open(&settings)?),

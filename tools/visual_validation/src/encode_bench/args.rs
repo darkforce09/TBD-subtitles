@@ -113,8 +113,9 @@ pub fn hevc_args(
     args
 }
 
-/// FFmpeg's arguments to compare `encoded` with `clip` of `video`: both start at time zero and
-/// the `psnr` filter logs the mean over every frame.
+/// FFmpeg's arguments to compare `encoded` with `clip` of `video`, frame by frame: each picture
+/// is stamped with its index, since Matroska rounds times to the millisecond and pairing by time
+/// would match neighbouring frames; the `psnr` filter logs the mean over every frame.
 pub fn psnr_args(video: &Path, clip: Clip, encoded: &Path) -> Vec<String> {
     let mut args = strings(&["-nostdin", "-hide_banner", "-nostats", "-v", "info"]);
     args.extend(clip_input(video, clip));
@@ -122,7 +123,7 @@ pub fn psnr_args(video: &Path, clip: Clip, encoded: &Path) -> Vec<String> {
     args.push(encoded.to_string_lossy().into_owned());
     args.extend(strings(&[
         "-lavfi",
-        "[0:v:0]setpts=PTS-STARTPTS[source];[1:v:0]setpts=PTS-STARTPTS[encoded];\
+        "[0:v:0]settb=1,setpts=N[source];[1:v:0]settb=1,setpts=N[encoded];\
          [encoded][source]psnr",
         "-f",
         "null",

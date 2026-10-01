@@ -5,7 +5,7 @@
 //! height is the next multiple of 32, normalizes the batch, runs the DB model once and
 //! post-processes each image on its own rayon task, clipping boxes back into the frame.
 //! **Position:** opened per measured row by `runs.rs`; each instance owns one ONNX Runtime
-//! session on CUDA with its own arena limit.
+//! session on CUDA with its own arena limit, or on the environment's provider.
 //! **Signals and state:** a session, and for the padded path its batch buffers.
 //! **Invariants:** a screen returns one region list per frame in input order; the padded rows are
 //! black and no box reaches below the frame's last row.
@@ -47,13 +47,18 @@ pub struct Settings<'a> {
     pub limit_side: Option<u32>,
     /// The box score a region needs to be kept.
     pub box_score: f32,
-    /// The session's CUDA arena limit, in MiB.
-    pub memory_limit_mib: u64,
+    /// The session's own CUDA arena limit, in MiB; `None` inherits the process's ONNX Runtime
+    /// environment, the OCR worker's strict CUDA provider, as production's proxy screening does.
+    pub memory_limit_mib: Option<u64>,
 }
 
-/// The production session options, with CUDA and this instance's arena limit.
-fn session_config(memory_limit_mib: u64) -> OrtSessionConfig {
+/// The production session options: CUDA with this instance's arena limit, or the environment's
+/// provider without one.
+fn session_config(memory_limit_mib: Option<u64>) -> OrtSessionConfig {
     let mut config = OrtSessionConfig::new().with_intra_threads(4);
+    let Some(memory_limit_mib) = memory_limit_mib else {
+        return config;
+    };
     config.execution_providers = Some(vec![OrtExecutionProvider::CUDA {
         device_id: Some(0),
         gpu_mem_limit: Some((memory_limit_mib as usize) << 20),
