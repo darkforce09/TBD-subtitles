@@ -8,7 +8,7 @@ localized video, replace the writing itself with English lettering.
 
 ```text
 crates/stages/src/onscreen_text/
-├── detect/               sampled screening, bisected boundaries, keyframe crops and stills
+├── detect/               full-resolution sampled screening, bisected boundaries, keyframe crops
 ├── event_buffer.rs       bounded ASS event storage and adjacent frame coalescing
 ├── furigana.rs           kana ruby folded into the kanji line it annotates
 ├── geometry.rs           checked homographies and robust fitting
@@ -31,13 +31,14 @@ crates/stages/src/onscreen_text/
 
 ## How it works
 
-Detection streams a proxy copy of every frame with packet presentation timestamps, screens the
-samples (every `round(fps / 2)`-th frame plus both frames around each cut) with the local
-detector, and bisects the frames between two samples to the exact frame where writing appears or
-vanishes. Fixed anchor signatures, local signature cells and mutually unique matches separate
-changed writing; each occurrence keeps one frame per sample, a keyframe still nearest its midpoint
-and a perspective-corrected crop from that still, whose surface colour the original picture
-supplies. Tracking checks that the sampled quads stay within tolerance of the keyframe quad; a
+Detection streams every frame at full resolution as yuv420p with packet presentation timestamps,
+screens the samples (every `round(fps / 2)`-th frame plus both frames around each cut) through
+the local detector sessions, several batches in flight and the results applied in sample order,
+and bisects the frames between two samples to the exact frame where writing appears or vanishes.
+Fixed anchor signatures read from the luma plane, local signature cells and mutually unique
+matches separate changed writing; each occurrence keeps one frame per sample, a keyframe nearest
+its midpoint, held in memory or decoded again as a still, and a perspective-corrected crop from
+that keyframe, whose surface colour the original picture supplies. Tracking checks that the sampled quads stay within tolerance of the keyframe quad; a
 moving surface gets nearby placement. When the Claude fallback is on, each keyframe still is sent
 once, whole frame plus region crops, through up to `llm_processes` workers under the shared call
 cap; the local model then opens only for occurrences Claude did not answer, and writing Claude

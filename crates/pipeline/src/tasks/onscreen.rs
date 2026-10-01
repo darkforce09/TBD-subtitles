@@ -20,7 +20,8 @@ use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, PipelineError, Result};
 use crate::library::signs;
 use crate::work_dir::store::keys;
-use inference::ocr::{OcrDetector, OcrReader, TextDetection};
+use inference::ocr::pool::{EngineIdentity, TextScreening};
+use inference::ocr::{DetectorPool, OcrReader, PoolOptions};
 use job_model::StepName;
 use job_model::onscreen::TextDocument;
 use job_model::outputs::{ProbeDecoded, ShotChanges, VideoStream};
@@ -52,8 +53,20 @@ pub(super) fn run(
             let probe = io.probe()?;
             let stream = video_stream(&probe)?;
             let programs = media_io::Programs::beside_current_exe();
-            let mut detector = OcrDetector::open(&job.models()?)
-                .context("open PP-OCRv5 detector; download visual models in Settings")?;
+            let settings = &job.settings().onscreen_text;
+            let options = PoolOptions::new(
+                settings.detector_engine,
+                engine_identity(),
+                stream.width,
+                stream.height,
+            )
+            .map_err(|error| PipelineError::new("open the text detectors", error))?;
+            let options = PoolOptions {
+                vram_cap_mib: crate::graph::WORKER_VRAM_CAP_MIB as usize,
+                ..options
+            };
+            let mut pool = DetectorPool::open(&job.models()?, options)
+                .context("open the PP-OCRv5 detectors; download visual models in Settings")?;
             report.load_s = since(started);
             let shots: ShotChanges = io.get(StepName::ShotScan, None)?;
             let estimated_frames =
@@ -68,29 +81,26 @@ pub(super) fn run(
                     },
                 )
             };
-            let mut source =
-                onscreen_text::detect::FfmpegSource::open(&programs, &job.video(), stream)
-                    .context("open the proxy frame stream")?;
+            let mut source = onscreen_text::detect::FfmpegSource::open(
+                &programs,
+                &job.video(),
+                stream,
+                settings.hardware_decode,
+            )
+            .context("open the frame stream")?;
             let (scanned, stats) = onscreen_text::detect::scan_measured(
                 &mut source,
                 stream,
                 &shots,
                 job.work.root(),
-                &mut detector as &mut dyn TextDetection,
+                &mut pool as &mut dyn TextScreening,
                 &advance,
             )
             .context("scan visible writing")?;
             document = scanned;
-            for (key, spent) in [
-                ("decode_wait_s", stats.decode_wait),
-                ("detect_s", stats.detect),
-                ("confirm_s", stats.confirm),
-                ("stills_s", stats.stills),
-            ] {
-                report.note(key, format!("{:.1}", spent.as_secs_f64()));
+            for (key, value) in stats.notes() {
+                report.note(&key, value);
             }
-            report.note("frames_decoded", stats.frames_decoded);
-            report.note("frames_screened", stats.frames_screened);
         }
         StepName::TextRead => {
             let mut reader = OcrReader::open(&job.models()?)
@@ -237,6 +247,17 @@ fn translate(
         "local translation",
         "this worker has no mistral.rs backend; build tbd-subtitles-llm with --features mistralrs or reinstall the AppImage",
     ))
+}
+
+/// The card, driver and TensorRT build the detectors' engines are made for; empty names when the
+/// driver cannot be read, which only the CUDA engine accepts.
+fn engine_identity() -> EngineIdentity {
+    let device = crate::measure::gpu_monitor::device_info();
+    EngineIdentity {
+        gpu_name: device.as_ref().map(|d| d.name.clone()).unwrap_or_default(),
+        driver: device.map(|d| d.driver).unwrap_or_default(),
+        tensorrt_version: inference::model_store::manifest::TENSORRT_VERSION.to_string(),
+    }
 }
 
 #[cfg(test)]

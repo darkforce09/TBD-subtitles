@@ -1,5 +1,5 @@
 use super::*;
-use image::Rgb;
+use image::{Rgb, RgbImage};
 use job_model::onscreen::Point;
 use job_model::outputs::ShotCut;
 
@@ -19,6 +19,11 @@ fn rectangle(left: f64, top: f64, width: f64, height: f64) -> Quad {
             y: top + height,
         },
     ])
+}
+
+/// The grey picture a region's luma would give.
+fn grey(image: &RgbImage) -> GrayImage {
+    imageops::grayscale(image)
 }
 
 fn lettering(width: u32, height: u32) -> RgbImage {
@@ -41,7 +46,6 @@ fn lettering(width: u32, height: u32) -> RgbImage {
 fn observation(quad: Quad) -> Observation {
     Observation {
         quad,
-        proxy_quad: quad,
         confidence: 0.95,
         surface_rgb: None,
     }
@@ -51,7 +55,7 @@ fn active(image: &RgbImage, quad: Quad, occurrence: usize) -> Active {
     Active {
         occurrence,
         quad,
-        anchor: signature(image),
+        anchor: signature(&grey(image)),
         anchor_box: quad,
     }
 }
@@ -60,7 +64,7 @@ fn active(image: &RgbImage, quad: Quad, occurrence: usize) -> Active {
 fn unchanged(active: &[Active], image: &RgbImage) -> Vec<bool> {
     active
         .iter()
-        .map(|prior| same_signature(&prior.anchor, &signature(image)))
+        .map(|prior| same_signature(&prior.anchor, &signature(&grey(image))))
         .collect()
 }
 
@@ -85,7 +89,7 @@ fn a_small_changed_glyph_is_not_diluted_by_a_long_line() {
                 < 18 * old_a.len() as u64
         );
         assert!(
-            !same_signature(&signature(&image), &signature(&changed)),
+            !same_signature(&signature(&grey(&image)), &signature(&grey(&changed))),
             "width {width}"
         );
     }
@@ -106,7 +110,7 @@ fn immutable_anchor_stops_gradual_fades_from_drifting_into_different_content() {
             }
         }
         assert!(
-            same_signature(&signature(&previous), &signature(&current)),
+            same_signature(&signature(&grey(&previous)), &signature(&grey(&current))),
             "successive small fade"
         );
         if associate(
@@ -121,7 +125,7 @@ fn immutable_anchor_stops_gradual_fades_from_drifting_into_different_content() {
         previous = current;
     }
     assert!(split, "fixed anchor must catch accumulated changes");
-    assert_eq!(prior.anchor, signature(&original));
+    assert_eq!(prior.anchor, signature(&grey(&original)));
 }
 
 #[test]
@@ -163,7 +167,10 @@ fn scrolling_boundary_content_is_compared_instead_of_ignoring_shifted_edges() {
             entered.put_pixel(x, y, Rgb([20; 3]));
         }
     }
-    assert!(!same_signature(&signature(&original), &signature(&entered)));
+    assert!(!same_signature(
+        &signature(&grey(&original)),
+        &signature(&grey(&entered))
+    ));
 }
 
 #[test]
@@ -249,7 +256,7 @@ fn the_occurrence_cap_allows_continuations_but_never_new_occurrences() {
 #[test]
 fn signatures_stay_bounded() {
     for (width, height) in [(2048, 48), (48, 2048), (1000, 1000), (20, 10)] {
-        let signature = signature(&RgbImage::new(width, height));
+        let signature = signature(&GrayImage::new(width, height));
         assert!(signature.width().max(signature.height()) <= 768);
         assert!(signature.width().min(signature.height()) <= 48);
         assert!(signature.width() <= width && signature.height() <= height);

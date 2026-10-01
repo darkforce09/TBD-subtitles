@@ -114,16 +114,23 @@ pub(super) fn phase_section(md: &mut String, steps: &StepRecords, video_s: f64) 
     }
 }
 
-/// The text detection's decode wait, detection, confirmation and stills, its frames and NVDEC use.
+/// The text detection's warm-up, engine build, decode wait, conversion, screening, probes,
+/// signatures, confirmation and stills, its frames and NVDEC use.
 fn detect_line(steps: &StepRecords) -> Option<String> {
     let m = &steps.get(&StepName::TextDetect)?.measure;
     let mut parts = phases(
         m,
         &[
+            ("warm-up", "warmup_s"),
+            ("engine build", "engine_build_s"),
             ("decode wait", "decode_wait_s"),
-            ("detection", "detect_s"),
+            ("conversion", "convert_s"),
+            ("screening", "screen_s"),
+            ("probes", "probe_s"),
+            ("signatures", "signature_s"),
             ("confirmation", "confirm_s"),
-            ("stills", "stills_s"),
+            ("stills from memory", "stills_ram_s"),
+            ("stills from the video", "stills_ffmpeg_s"),
         ],
     );
     for (label, key) in [

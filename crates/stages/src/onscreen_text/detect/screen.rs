@@ -1,27 +1,27 @@
-//! Coarse sampling, repeat screening and lockstep bisection for the visual scan.
+//! Which frames the scan screens, which of them repeat the last screened picture, and the padded
+//! picture a screened frame is sent as.
 //!
-//! **Role:** choose the proxy frames the detector screens, recognise a sample that repeats the
-//! last screened picture, hold samples with the frames between them, and narrow every entry or
-//! exit of a region to its exact frame.
-//! **Position:** helpers of `detect::scan`; no decoding, no model and no file output.
-//! **Signals and state:** the sample schedule, a pending batch of at most `SCREEN_BATCH` samples
-//! with their gaps, and interval searches.
+//! **Role:** choose the sample frames, recognise a sample whose brightness repeats the last
+//! screened sample's, and convert a frame to the padded rgb24 picture the detector sessions take.
+//! **Position:** helpers of the scan coordinator and of the bisection probes; no decoding, no
+//! model and no file output.
+//! **Signals and state:** the sample schedule and the last screened sample's luma thumbnail.
 //! **Invariants:** every `step`-th frame, both frames around every shot cut and the final frame
-//! are samples, so a gap never crosses a cut and holds at most `step - 1` frames; a search needs
-//! at most ceil(log2(step)) probes; each bisection step screens its distinct probes in one call.
+//! are samples, so a gap never crosses a cut and holds at most `step - 1` frames; a sample is a
+//! repeat only when every 32 by 32 block of its luma stays within a mean of 4 levels of the last
+//! screened sample's, so a slow change never drifts through a chain of repeats; padding rows are
+//! black and the picture is never stretched.
 
-use image::RgbImage;
+use inference::ocr::pool::PaddedFrame;
 use job_model::outputs::ShotChanges;
+use media_io::yuv::{Coefficients, LumaThumbnail, Yuv420, luma_thumbnail, to_rgb_padded_into};
 
-use super::source::ProxyFrame;
-use crate::onscreen_text::TextResult;
-
-/// Samples screened in one detector call.
-pub(super) const SCREEN_BATCH: usize = 4;
-/// The side of a repeat-comparison block, in proxy pixels.
-const BLOCK: u32 = 32;
-/// The mean absolute difference per channel above which a block has changed.
-const BLOCK_MEAN: u64 = 4;
+/// The side of a thumbnail cell, in pixels.
+const THUMBNAIL_CELL: usize = 8;
+/// Thumbnail cells per side of a compared block: 32-pixel blocks.
+const BLOCK_CELLS: usize = 4;
+/// The mean luma difference of a block above which it has changed.
+const BLOCK_MEAN: u32 = 4;
 
 /// Frames between coarse samples: about half a second, at least one.
 pub(super) fn sample_step(fps: f64) -> u64 {
@@ -64,177 +64,41 @@ impl Samples {
     }
 }
 
-/// Whether two proxies of one size differ by a mean of at most 4 per channel in every 32 by 32
-/// block, so the later one can reuse the earlier one's screen.
-pub(super) fn near_duplicate(a: &RgbImage, b: &RgbImage) -> bool {
-    if a.dimensions() != b.dimensions() {
-        return false;
-    }
-    let (width, height) = a.dimensions();
-    let row = width as usize * 3;
-    for top in (0..height).step_by(BLOCK as usize) {
-        for left in (0..width).step_by(BLOCK as usize) {
-            let across = (left + BLOCK).min(width) - left;
-            let down = (top + BLOCK).min(height) - top;
-            let mut total = 0u64;
-            for y in top..top + down {
-                let start = y as usize * row + left as usize * 3;
-                let end = start + across as usize * 3;
-                total += a.as_raw()[start..end]
-                    .iter()
-                    .zip(&b.as_raw()[start..end])
-                    .map(|(p, q)| u64::from(p.abs_diff(*q)))
-                    .sum::<u64>();
-            }
-            if total > BLOCK_MEAN * u64::from(across) * u64::from(down) * 3 {
-                return false;
-            }
-        }
-    }
-    true
-}
-
-/// A sample with the frames since the previous sample.
-pub(super) struct PendingSample {
-    pub(super) frame: ProxyFrame,
-    pub(super) gap: Vec<ProxyFrame>,
-}
-
-impl PendingSample {
-    /// The frame at `index` among this sample and its gap.
-    pub(super) fn frame(&self, index: u64) -> Option<&ProxyFrame> {
-        if index == self.frame.index {
-            return Some(&self.frame);
-        }
-        let first = self.gap.first()?.index;
-        self.gap
-            .get(usize::try_from(index.checked_sub(first)?).ok()?)
-            .filter(|frame| frame.index == index)
-    }
-
-    /// The previous sample's index: a change seen at this sample lies after it.
-    pub(super) fn previous_sample(&self) -> u64 {
-        self.gap
-            .first()
-            .map_or(self.frame.index, |first| first.index)
-            .saturating_sub(1)
-    }
-}
-
-/// Samples waiting for one screening call, and the gap after the last of them.
+/// The last screened sample's brightness, against which later samples count as repeats.
 #[derive(Default)]
-pub(super) struct Pending {
-    samples: Vec<PendingSample>,
-    gap: Vec<ProxyFrame>,
+pub(super) struct Repeats {
+    last: Option<LumaThumbnail>,
 }
 
-impl Pending {
-    /// Adds the next frame; hands out the batch once it holds `SCREEN_BATCH` samples.
-    pub(super) fn push(&mut self, frame: ProxyFrame, sample: bool) -> Option<Vec<PendingSample>> {
-        if !sample {
-            self.gap.push(frame);
-            return None;
+impl Repeats {
+    /// Whether `picture` must be screened: `false` when it repeats the last screened sample,
+    /// `true` otherwise, and it then becomes the last screened sample.
+    pub(super) fn needs_screen(&mut self, picture: &Yuv420<'_>) -> bool {
+        let thumbnail = luma_thumbnail(picture, THUMBNAIL_CELL);
+        if self
+            .last
+            .as_ref()
+            .is_some_and(|last| thumbnail.matches(last, BLOCK_CELLS, BLOCK_MEAN))
+        {
+            return false;
         }
-        self.samples.push(PendingSample {
-            frame,
-            gap: std::mem::take(&mut self.gap),
-        });
-        (self.samples.len() == SCREEN_BATCH).then(|| std::mem::take(&mut self.samples))
-    }
-
-    /// Every frame held: the samples, their gaps and the gap after the last sample.
-    pub(super) fn frames(&self) -> usize {
-        self.gap.len()
-            + self
-                .samples
-                .iter()
-                .map(|sample| 1 + sample.gap.len())
-                .sum::<usize>()
-    }
-
-    /// The last, partial batch; frames after its final sample mean the stream stopped short.
-    pub(super) fn finish(self) -> TextResult<Vec<PendingSample>> {
-        if !self.gap.is_empty() {
-            return Err("The screening copy ended between samples".into());
-        }
-        Ok(self.samples)
+        self.last = Some(thumbnail);
+        true
     }
 }
 
-/// The kind of change a search looks for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Seek {
-    /// The first frame showing the region.
-    Entry,
-    /// The first frame no longer showing it.
-    Exit,
-}
-
-/// A change known to lie in (`lo`, `hi`]; once no frame lies between them, `hi` is the answer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Search {
-    pub(super) lo: u64,
-    pub(super) hi: u64,
-    pub(super) seek: Seek,
-}
-
-impl Search {
-    pub(super) fn new(lo: u64, hi: u64, seek: Seek) -> Self {
-        Self {
-            lo: lo.min(hi),
-            hi,
-            seek,
-        }
-    }
-
-    fn open(&self) -> bool {
-        self.hi - self.lo > 1
-    }
-
-    fn probe(&self) -> u64 {
-        self.lo + (self.hi - self.lo) / 2
-    }
-
-    fn narrow(&mut self, present: bool) {
-        let probe = self.probe();
-        let changed = match self.seek {
-            Seek::Entry => present,
-            Seek::Exit => !present,
-        };
-        if changed {
-            self.hi = probe;
-        } else {
-            self.lo = probe;
-        }
-    }
-}
-
-/// Advances every search one probe per step: `screen` receives the step's distinct probe
-/// indices in one call, then `present(cache, search, index)` answers each search's probe.
-pub(super) fn bisect<C>(
-    searches: &mut [Search],
-    cache: &mut C,
-    mut screen: impl FnMut(&mut C, &[u64]) -> TextResult<()>,
-    present: impl Fn(&C, usize, u64) -> bool,
-) -> TextResult<()> {
-    loop {
-        let mut probes: Vec<u64> = searches
-            .iter()
-            .filter(|search| search.open())
-            .map(Search::probe)
-            .collect();
-        if probes.is_empty() {
-            return Ok(());
-        }
-        probes.sort_unstable();
-        probes.dedup();
-        screen(cache, &probes)?;
-        for (index, search) in searches.iter_mut().enumerate() {
-            if search.open() {
-                let shown = present(cache, index, search.probe());
-                search.narrow(shown);
-            }
-        }
+/// `picture` as rgb24 in the stream's colour, padded below with black rows to a multiple of 32.
+pub(super) fn padded(picture: &Yuv420<'_>, colour: &Coefficients) -> PaddedFrame {
+    let height = picture.height as u32;
+    let padded_height = PaddedFrame::padded(height);
+    let mut rgb = vec![0; picture.width * padded_height as usize * 3];
+    let converted = to_rgb_padded_into(picture, colour, padded_height as usize, &mut rgb);
+    debug_assert!(converted, "the buffer is sized for the padded picture");
+    PaddedFrame {
+        width: picture.width as u32,
+        height,
+        padded_height,
+        rgb,
     }
 }
 

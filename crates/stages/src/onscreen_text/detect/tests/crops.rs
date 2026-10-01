@@ -1,29 +1,8 @@
 use super::*;
 use image::Rgb;
 use job_model::onscreen::{TextFrame, TextPresentation, TextProvenance};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-struct Temporary(PathBuf);
-
-impl Temporary {
-    fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
-            "tbd-detect-crops-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(path.join("visual/crops")).unwrap();
-        std::fs::create_dir_all(path.join("visual/keyframes")).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for Temporary {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
+use crate::onscreen_text::detect::regions::same_signature;
 
 fn rectangle(left: f64, top: f64, width: f64, height: f64) -> Quad {
     Quad([
@@ -151,20 +130,72 @@ fn perspective_rectification_recovers_the_lettering_plane() {
     assert_eq!(simple_surface(&axis_crop(&scene, sign)), None);
 }
 
+/// A full-range yuv420p picture with neutral chroma whose luma is `image`'s red channel.
+fn grey_picture(image: &RgbImage) -> Vec<u8> {
+    let mut bytes: Vec<u8> = image.pixels().map(|pixel| pixel.0[0]).collect();
+    bytes.resize(bytes.len() * 3 / 2, 128);
+    bytes
+}
+
+fn full_range() -> Coefficients {
+    Coefficients::new(media_io::yuv::Matrix::Bt709, media_io::yuv::Range::Full)
+}
+
 #[test]
-fn keyframe_stills_are_saved_at_most_1280_pixels_wide_keeping_the_aspect() {
-    let root = Temporary::new();
-    let wide = root.0.join("wide.png");
-    save_keyframe(&RgbImage::new(1920, 1080), &wide).unwrap();
-    assert_eq!(image::image_dimensions(&wide).unwrap(), (1280, 720));
-    let small = root.0.join("small.png");
-    save_keyframe(&RgbImage::new(640, 360), &small).unwrap();
-    assert_eq!(image::image_dimensions(&small).unwrap(), (640, 360));
+fn a_grey_crop_from_luma_matches_the_colour_crop_axis_aligned_and_rectified() {
+    let original = lettering(192, 48);
+    let plane = rectangle(0.0, 0.0, 191.0, 47.0);
+    let sign = Quad([
+        Point { x: 40.0, y: 20.0 },
+        Point { x: 235.0, y: 65.0 },
+        Point { x: 216.0, y: 124.0 },
+        Point { x: 30.0, y: 82.0 },
+    ]);
+    let transform = geometry::quad_to_quad(plane, sign).unwrap();
+    let projection =
+        Projection::from_matrix(std::array::from_fn(|i| transform[(i / 3, i % 3)] as f32)).unwrap();
+    let mut scene = RgbImage::from_pixel(280, 150, Rgb([240; 3]));
+    warp_into(
+        &original,
+        &projection,
+        Interpolation::Bilinear,
+        Rgb([240; 3]),
+        &mut scene,
+    );
+    let bytes = grey_picture(&scene);
+    let picture = Yuv420::planar(&bytes, 280, 150).unwrap();
+    for quad in [sign, rectangle(30.0, 20.0, 120.0, 40.0)] {
+        let grey = grey_crop(&picture, &full_range(), quad);
+        let colour = imageops::grayscale(&crop(&scene, quad));
+        assert_eq!(grey.dimensions(), colour.dimensions());
+        let error = grey
+            .as_raw()
+            .iter()
+            .zip(colour.as_raw())
+            .map(|(a, b)| u64::from(a.abs_diff(*b)))
+            .sum::<u64>() as f64
+            / grey.as_raw().len() as f64;
+        assert!(error < 1.0, "grey and colour crops differ by {error}");
+    }
+    let edge = rectangle(-5.0, 140.0, 20.0, 30.0);
+    let clamped = grey_crop(&picture, &full_range(), edge);
+    assert_eq!(clamped.dimensions(), (15, 10), "clamped to the picture");
+}
+
+#[test]
+fn a_signature_reads_the_anchor_box_from_luma() {
+    let scene = lettering(192, 48);
+    let bytes = grey_picture(&scene);
+    let picture = Yuv420::planar(&bytes, 192, 48).unwrap();
+    let anchor = rectangle(10.0, 4.0, 150.0, 40.0);
+    let from_luma = picture_at(&picture, &full_range(), anchor);
+    let from_colour = signature(&imageops::grayscale(&axis_crop(&scene, anchor)));
+    assert!(same_signature(&from_colour, &from_luma));
+    assert_eq!(from_colour, from_luma);
 }
 
 #[test]
 fn the_keyframe_takes_the_best_full_resolution_region_and_one_surface_for_all_frames() {
-    let root = Temporary::new();
     let mut still = RgbImage::from_pixel(320, 180, Rgb([90, 110, 130]));
     for y in 40..80 {
         for x in 60..200 {
@@ -176,15 +207,17 @@ fn the_keyframe_takes_the_best_full_resolution_region_and_one_surface_for_all_fr
             still.put_pixel(x, y, Rgb([20; 3]));
         }
     }
-    let proxy = rectangle(57.0, 39.0, 144.0, 42.0);
-    let mut item = occurrence(&[proxy, proxy, proxy]);
+    let screened = rectangle(57.0, 39.0, 144.0, 42.0);
+    let mut item = occurrence(&[screened, screened, screened]);
     let exact = rectangle(60.0, 40.0, 140.0, 40.0);
     let found = [(rectangle(0.0, 0.0, 30.0, 20.0), 0.9), (exact, 0.8)];
     let image = Path::new("visual/keyframes/frame-00000001.png");
-    assert!(confirm(&mut item, 1, &still, &found, image, &root.0).unwrap());
+    let (path, rectified) = confirm(&mut item, 1, &still, &found, image)
+        .unwrap()
+        .unwrap();
     assert_eq!(item.frames[1].quad, exact);
     assert_eq!(
-        item.frames[0].quad, proxy,
+        item.frames[0].quad, screened,
         "only the keyframe frame changes"
     );
     assert!(item.frames.iter().all(|f| f.surface_rgb == Some([240; 3])));
@@ -197,22 +230,24 @@ fn the_keyframe_takes_the_best_full_resolution_region_and_one_surface_for_all_fr
         })
     );
     assert_eq!(item.crops, [PathBuf::from("visual/crops/text-000001.png")]);
-    let saved = image::open(root.0.join(&item.crops[0])).unwrap();
-    assert_eq!((saved.width(), saved.height()), (140, 40));
+    assert_eq!(path, item.crops[0]);
+    assert_eq!(rectified.dimensions(), (140, 40));
 }
 
 #[test]
 fn an_unconfirmed_keyframe_leaves_the_occurrence_untouched_and_unconfirmed() {
-    let root = Temporary::new();
     let still = RgbImage::from_pixel(320, 180, Rgb([90, 110, 130]));
-    let proxy = rectangle(57.0, 39.0, 144.0, 42.0);
-    let mut item = occurrence(&[proxy, proxy]);
+    let screened = rectangle(57.0, 39.0, 144.0, 42.0);
+    let mut item = occurrence(&[screened, screened]);
     let elsewhere = [(rectangle(250.0, 120.0, 60.0, 40.0), 0.9)];
     let image = Path::new("visual/keyframes/frame-00000000.png");
-    assert!(!confirm(&mut item, 0, &still, &elsewhere, image, &root.0).unwrap());
-    assert_eq!(item.frames[0].quad, proxy);
+    assert!(
+        confirm(&mut item, 0, &still, &elsewhere, image)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(item.frames[0].quad, screened);
     assert!(item.warnings.is_empty());
     assert!(item.keyframe.is_none());
-    assert!(!root.0.join("visual/crops/text-000001.png").exists());
-    assert!(confirm(&mut item, 5, &still, &elsewhere, image, &root.0).is_err());
+    assert!(confirm(&mut item, 5, &still, &elsewhere, image).is_err());
 }

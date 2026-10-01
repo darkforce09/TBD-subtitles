@@ -50,9 +50,9 @@ fn measured_steps() -> StepRecords {
                 job_ram_mib: Some(3500.0),
                 notes: notes(&[
                     ("decode_wait_s", "50.0"),
-                    ("detect_s", "100.0"),
+                    ("screen_s", "100.0"),
                     ("confirm_s", "10.0"),
-                    ("stills_s", "20.0"),
+                    ("stills_ffmpeg_s", "20.0"),
                     ("frames_decoded", "40000"),
                     ("frames_screened", "4000"),
                 ]),
@@ -143,7 +143,7 @@ fn the_phase_section_splits_detection_and_the_localized_video() {
     assert!(md.starts_with("\n## Phase times\n"), "{md}");
     assert!(
         md.contains(
-            "- text_detect: decode wait 50.0 s (25 %); detection 100.0 s (50 %); confirmation 10.0 s (5 %); stills 20.0 s (10 %); 40000 frames decoded (200 fps); 4000 frames screened (20 fps)\n"
+            "- text_detect: decode wait 50.0 s (25 %); screening 100.0 s (50 %); confirmation 10.0 s (5 %); stills from the video 20.0 s (10 %); 40000 frames decoded (200 fps); 4000 frames screened (20 fps)\n"
         ),
         "{md}"
     );

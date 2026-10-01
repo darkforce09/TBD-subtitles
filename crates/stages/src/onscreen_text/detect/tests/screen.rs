@@ -1,6 +1,6 @@
 use super::*;
-use image::Rgb;
 use job_model::outputs::ShotCut;
+use media_io::yuv::{Matrix, Range};
 
 fn timeline(count: u64) -> Vec<(f64, f64)> {
     (0..count)
@@ -8,137 +8,105 @@ fn timeline(count: u64) -> Vec<(f64, f64)> {
         .collect()
 }
 
-fn frame(index: u64) -> ProxyFrame {
-    ProxyFrame {
-        index,
-        time_s: index as f64 / 24.0,
-        end_s: (index + 1) as f64 / 24.0,
-        rgb: RgbImage::new(1, 1),
-    }
+/// A 64 by 36 yuv420p picture with a luma gradient and neutral chroma.
+fn picture() -> Vec<u8> {
+    let mut bytes: Vec<u8> = (0..36u32)
+        .flat_map(|y| (0..64u32).map(move |x| ((x * 3 + y * 5) % 200 + 20) as u8))
+        .collect();
+    bytes.resize(64 * 36 * 3 / 2, 128);
+    bytes
 }
 
-fn picture() -> RgbImage {
-    RgbImage::from_fn(64, 36, |x, y| {
-        Rgb([(x * 4) as u8, (y * 7) as u8, ((x + y) * 3) as u8])
-    })
-}
-
-fn ceil_log2(k: u64) -> usize {
-    if k <= 1 {
-        0
-    } else {
-        ((k - 1).ilog2() + 1) as usize
-    }
+fn yuv(bytes: &[u8]) -> Yuv420<'_> {
+    Yuv420::planar(bytes, 64, 36).unwrap()
 }
 
 #[test]
-fn a_repeated_picture_is_a_near_duplicate_until_one_block_changes() {
-    let proxy = picture();
-    assert!(near_duplicate(&proxy, &proxy.clone()));
-    let mut noisy = proxy.clone();
-    for (i, pixel) in noisy.pixels_mut().enumerate() {
-        for channel in &mut pixel.0 {
-            *channel = if i % 2 == 0 {
-                channel.saturating_add(3)
-            } else {
-                channel.saturating_sub(3)
-            };
-        }
+fn a_repeated_picture_is_a_repeat_until_one_block_of_its_luma_changes() {
+    let first = picture();
+    let mut repeats = Repeats::default();
+    assert!(
+        repeats.needs_screen(&yuv(&first)),
+        "the first sample is screened"
+    );
+    assert!(!repeats.needs_screen(&yuv(&first)));
+    let mut noisy = first.clone();
+    for (i, sample) in noisy[..64 * 36].iter_mut().enumerate() {
+        *sample = if i % 2 == 0 {
+            sample.saturating_add(3)
+        } else {
+            sample.saturating_sub(3)
+        };
     }
-    assert!(near_duplicate(&proxy, &noisy), "sensor-level noise repeats");
-    let mut changed = proxy.clone();
+    assert!(
+        !repeats.needs_screen(&yuv(&noisy)),
+        "sensor-level noise repeats"
+    );
+    let mut chroma = first.clone();
+    for sample in &mut chroma[64 * 36..] {
+        *sample = 200;
+    }
+    assert!(
+        !repeats.needs_screen(&yuv(&chroma)),
+        "the check reads luma only"
+    );
+    let mut changed = first.clone();
     for y in 0..32 {
         for x in 32..64 {
-            let pixel = changed.get_pixel_mut(x, y);
-            pixel.0[0] = pixel.0[0].wrapping_add(60);
+            changed[y * 64 + x] = changed[y * 64 + x].wrapping_add(60);
         }
     }
-    assert!(!near_duplicate(&proxy, &changed), "one changed block");
-    let mut glyph = proxy.clone();
+    assert!(repeats.needs_screen(&yuv(&changed)), "one changed block");
+    assert!(
+        !repeats.needs_screen(&yuv(&changed)),
+        "the changed picture is now the last screened one"
+    );
+    let mut glyph = changed.clone();
     for y in 33..36 {
         for x in 0..8 {
-            glyph.put_pixel(x, y, Rgb([255; 3]));
+            glyph[y * 64 + x] = 255;
         }
     }
     assert!(
-        !near_duplicate(&proxy, &glyph),
+        repeats.needs_screen(&yuv(&glyph)),
         "a small glyph in a partial block"
     );
-    assert!(!near_duplicate(&proxy, &RgbImage::new(32, 36)));
 }
 
 #[test]
-fn bisection_finds_every_entry_and_exit_within_ceil_log2_k_probes() {
-    for k in [1u64, 5, 12, 25] {
-        for seek in [Seek::Entry, Seek::Exit] {
-            for change in 1..=k {
-                let base = 10 * k;
-                let mut searches = [Search::new(base, base + k, seek)];
-                let probes = std::cell::Cell::new(0usize);
-                bisect(
-                    &mut searches,
-                    &mut (),
-                    |_, indices| {
-                        probes.set(probes.get() + indices.len());
-                        Ok(())
-                    },
-                    |_, _, index| match seek {
-                        Seek::Entry => index >= base + change,
-                        Seek::Exit => index < base + change,
-                    },
-                )
-                .unwrap();
-                assert_eq!(searches[0].hi, base + change, "k {k}, {seek:?} at {change}");
-                assert!(
-                    probes.get() <= ceil_log2(k),
-                    "k {k}: {} probes",
-                    probes.get()
-                );
-            }
+fn a_slow_change_never_drifts_through_a_chain_of_repeats() {
+    let mut repeats = Repeats::default();
+    let first = picture();
+    assert!(repeats.needs_screen(&yuv(&first)));
+    let mut screened = 0;
+    for step in 1..=10u8 {
+        let mut faded = first.clone();
+        for sample in &mut faded[..64 * 36] {
+            *sample = sample.saturating_sub(step * 2);
+        }
+        if repeats.needs_screen(&yuv(&faded)) {
+            screened += 1;
         }
     }
+    assert!(screened >= 2, "the fade is screened again: {screened}");
 }
 
 #[test]
-fn transitions_in_different_gaps_advance_in_lockstep_with_one_screen_per_step() {
-    let mut searches = [
-        Search::new(0, 12, Seek::Entry),
-        Search::new(24, 36, Seek::Exit),
-        Search::new(48, 60, Seek::Entry),
-        Search::new(0, 12, Seek::Entry),
-    ];
-    let changes = [5, 31, 60, 5];
-    let mut calls: Vec<Vec<u64>> = Vec::new();
-    bisect(
-        &mut searches,
-        &mut calls,
-        |calls, indices| {
-            calls.push(indices.to_vec());
-            Ok(())
-        },
-        |calls, search, index| {
-            assert!(
-                calls.last().unwrap().contains(&index),
-                "probed in this step"
-            );
-            match search {
-                1 => index < changes[search],
-                _ => index >= changes[search],
-            }
-        },
-    )
-    .unwrap();
-    let found: Vec<u64> = searches.iter().map(|search| search.hi).collect();
-    assert_eq!(found, changes);
-    assert_eq!(calls.len(), ceil_log2(12), "one screening call per step");
-    assert_eq!(calls[0], [6, 30, 54], "one deduplicated probe per gap");
-    for call in &calls {
-        let gaps: Vec<u64> = call.iter().map(|index| index / 12).collect();
-        let mut distinct = gaps.clone();
-        distinct.dedup();
-        assert_eq!(gaps, distinct, "at most one probe per gap here: {call:?}");
-    }
-    assert_eq!(calls[3], [5, 59]);
+fn a_padded_picture_keeps_the_frame_on_top_and_black_rows_below() {
+    let bytes = picture();
+    let colour = Coefficients::new(Matrix::Bt709, Range::Full);
+    let frame = padded(&yuv(&bytes), &colour);
+    assert_eq!(
+        (frame.width, frame.height, frame.padded_height),
+        (64, 36, 64)
+    );
+    assert_eq!(frame.rgb.len(), 64 * 64 * 3);
+    assert_eq!(
+        &frame.rgb[..3],
+        &[bytes[0]; 3],
+        "full range grey stays grey"
+    );
+    assert!(frame.rgb[64 * 36 * 3..].iter().all(|&value| value == 0));
 }
 
 #[test]
@@ -171,61 +139,4 @@ fn samples_are_every_kth_frame_both_frames_around_each_cut_and_the_final_frame()
     assert_eq!(sample_step(29.97), 15);
     assert_eq!(sample_step(1.0), 1);
     assert_eq!(sample_step(0.0), 1);
-}
-
-#[test]
-fn the_pending_batch_never_holds_more_than_eight_samples_with_their_gaps() {
-    for k in [1u64, 5, 12, 25] {
-        let frames = timeline(400);
-        let cuts = ShotChanges {
-            cuts: vec![ShotCut {
-                time_s: frames[133].0,
-                score: 50.0,
-            }],
-        };
-        let samples = Samples::new(&frames, &cuts, k);
-        let bound = SCREEN_BATCH * (k as usize + 1);
-        let mut pending = Pending::default();
-        let mut held = 0;
-        for index in 0..400 {
-            if let Some(batch) = pending.push(frame(index), samples.contains(index)) {
-                assert_eq!(batch.len(), SCREEN_BATCH);
-                let size: usize = batch.iter().map(|sample| 1 + sample.gap.len()).sum();
-                assert!(size <= bound, "k {k}: batch of {size} frames");
-                for sample in &batch {
-                    assert!(
-                        sample.gap.len() < k as usize,
-                        "a gap holds at most k - 1 frames"
-                    );
-                    if sample.frame.index > 0 {
-                        assert_eq!(
-                            sample.previous_sample() + sample.gap.len() as u64 + 1,
-                            sample.frame.index
-                        );
-                    }
-                    for frame in &sample.gap {
-                        assert_eq!(sample.frame(frame.index).unwrap().index, frame.index);
-                    }
-                }
-                held += size;
-            }
-            assert!(
-                pending.frames() <= bound,
-                "k {k}: {} frames",
-                pending.frames()
-            );
-        }
-        held += pending.frames();
-        let rest = pending.finish().unwrap();
-        assert!(rest.len() < SCREEN_BATCH);
-        assert_eq!(held, 400, "every frame passes through exactly one batch");
-    }
-}
-
-#[test]
-fn a_stream_that_stops_between_samples_is_an_error() {
-    let mut pending = Pending::default();
-    assert!(pending.push(frame(0), true).is_none());
-    assert!(pending.push(frame(1), false).is_none());
-    assert!(pending.finish().is_err());
 }

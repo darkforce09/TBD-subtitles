@@ -1,117 +1,40 @@
-//! Rectified crops, text surfaces and keyframe stills.
+//! Rectified crops, grey region pictures, text surfaces and the confirmation of one occurrence.
 //!
-//! **Role:** rectify a quad's lettering plane, measure a plain surface behind writing, and confirm
-//! every occurrence on the full-resolution still of its keyframe.
-//! **Position:** the scan's last phase, and the crop helper of the validation harness.
-//! **Signals and state:** at most four full-resolution stills at a time; crop and keyframe PNGs
-//! under the job's `visual/` folder.
-//! **Invariants:** one still and one detector pass per keyframe frame; every confirmed occurrence
-//! gets one crop and one keyframe image, and an unconfirmed one leaves the document; one surface
-//! measurement covers all of an occurrence's frames.
+//! **Role:** rectify a quad's lettering plane in colour or in grey from the luma plane, measure a
+//! plain surface behind writing, and confirm an occurrence on the full-resolution still of its
+//! keyframe.
+//! **Position:** used by the scan for region signatures, by confirmation for crops, and by the
+//! validation harness and the read-back check for `crop`.
+//! **Signals and state:** none; the caller writes the crops this module returns.
+//! **Invariants:** a grey picture reads the full-range luma plane with no colour conversion and
+//! covers the same pixels the colour crop would; one surface measurement covers all of an
+//! occurrence's frames; an unconfirmed occurrence is left untouched.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use image::{GrayImage, ImageFormat, RgbImage, imageops};
+use image::{GrayImage, Luma, RgbImage, imageops};
 use imageproc::geometric_transformations::{Interpolation, Projection, warp_into};
-use inference::ocr::TextDetection;
-use job_model::onscreen::{Point, Quad, TextDocument, TextKeyframe, TextOccurrence};
+use job_model::onscreen::{Point, Quad, TextKeyframe, TextOccurrence};
+use media_io::yuv::{Coefficients, Rect, Yuv420, crop_grey};
 
 use super::regions::{SAME_REGION, overlap, signature};
-use super::source::FrameSource;
-use crate::onscreen_text::{TextResult, geometry, png};
+use crate::onscreen_text::{TextResult, geometry};
 
-/// Stills requested from the frame source at once.
-const STILL_CHUNK: usize = 4;
-/// The widest saved keyframe still, in pixels.
-const KEYFRAME_WIDTH: u32 = 1280;
-
-/// Confirms every occurrence on the still of its keyframe, `(frame position, frame index)` per
-/// occurrence, fetching the distinct stills four at a time in the order first needed. An
-/// occurrence without a keyframe, or whose keyframe shows no matching full-resolution region, is
-/// screening noise and leaves the document.
-pub(super) fn confirm_keyframes(
-    document: &mut TextDocument,
-    keyframes: &[Option<(usize, u64)>],
-    source: &mut dyn FrameSource,
-    detector: &mut dyn TextDetection,
-    root: &Path,
-    progress: &(dyn Fn(usize, usize) + Sync),
-) -> TextResult<()> {
-    // A rerun's crops and stills replace the previous scan's; stale files never linger.
-    for folder in ["visual/crops", "visual/keyframes"] {
-        let folder = root.join(folder);
-        std::fs::create_dir_all(&folder)?;
-        for entry in std::fs::read_dir(&folder)? {
-            let path = entry?.path();
-            if path.is_file() {
-                std::fs::remove_file(path)?;
-            }
-        }
-    }
-    let mut order = Vec::new();
-    let mut users: HashMap<u64, Vec<usize>> = HashMap::new();
-    for (occurrence, keyframe) in keyframes.iter().enumerate() {
-        if let Some((_, index)) = *keyframe {
-            let sharing = users.entry(index).or_default();
-            if sharing.is_empty() {
-                order.push(index);
-            }
-            sharing.push(occurrence);
-        }
-    }
-    let decoded = usize::try_from(document.decoded_frames).unwrap_or(usize::MAX);
-    let total = decoded.saturating_add(order.len());
-    let mut done = decoded;
-    let mut confirmed = vec![false; document.occurrences.len()];
-    for chunk in order.chunks(STILL_CHUNK) {
-        let stills = source.stills(chunk)?;
-        if stills.len() != chunk.len() {
-            return Err("The frame source returned a different number of stills".into());
-        }
-        for (&index, still) in chunk.iter().zip(&stills) {
-            if still.dimensions() != (document.width, document.height) {
-                return Err("A keyframe still does not match the source video dimensions".into());
-            }
-            let found = detector.detect(still)?;
-            let image = PathBuf::from(format!("visual/keyframes/frame-{index:08}.png"));
-            let mut saved = false;
-            for &occurrence in users.get(&index).into_iter().flatten() {
-                if let Some((position, _)) = keyframes[occurrence] {
-                    let item = &mut document.occurrences[occurrence];
-                    if confirm(item, position, still, &found, &image, root)? {
-                        confirmed[occurrence] = true;
-                        if !saved {
-                            save_keyframe(still, &root.join(&image))?;
-                            saved = true;
-                        }
-                    }
-                }
-            }
-            done += 1;
-            progress(done, total);
-        }
-    }
-    let mut position = 0;
-    document.occurrences.retain(|_| {
-        let keep = confirmed[position];
-        position += 1;
-        keep
-    });
-    Ok(())
-}
+/// Pixels around a quad's bounds that a grey rectification also reads, for its bilinear taps.
+const WARP_MARGIN: usize = 2;
+/// The largest rectified crop, in pixels; a larger plane is cropped by its bounds instead.
+const MAX_RECTIFIED: u64 = 16_777_216;
 
 /// Replaces the keyframe frame's quad by the full-resolution region overlapping it most, then
-/// measures the surface, saves the rectified crop and records the keyframe. Without an
-/// overlapping region the occurrence is unconfirmed and left untouched: `false`.
-pub(super) fn confirm(
+/// measures the surface and records the keyframe; the rectified crop to write and its path come
+/// back. Without an overlapping region the occurrence is unconfirmed and left untouched: `None`.
+pub(crate) fn confirm(
     item: &mut TextOccurrence,
     position: usize,
     still: &RgbImage,
     found: &[(Quad, f64)],
     image: &Path,
-    root: &Path,
-) -> TextResult<bool> {
+) -> TextResult<Option<(PathBuf, RgbImage)>> {
     let Some(frame) = item.frames.get_mut(position) else {
         return Err("A keyframe lies outside its occurrence's frames".into());
     };
@@ -121,60 +44,106 @@ pub(super) fn confirm(
         .filter(|&(share, _)| share > SAME_REGION)
         .max_by(|a, b| a.0.total_cmp(&b.0));
     let Some((_, quad)) = best else {
-        return Ok(false);
+        return Ok(None);
     };
     frame.quad = quad;
-    let (quad, time_s) = (frame.quad, frame.time_s);
+    let time_s = frame.time_s;
     let surface = simple_surface(&axis_crop(still, quad));
     for frame in &mut item.frames {
         frame.surface_rgb = surface;
     }
     let crop_path = PathBuf::from(format!("visual/crops/{}.png", item.id));
-    let rectified = crop(still, quad);
-    png::write(&root.join(&crop_path), |out| {
-        rectified.write_to(out, ImageFormat::Png)
-    })?;
-    item.crops = vec![crop_path];
+    item.crops = vec![crop_path.clone()];
     item.keyframe = Some(TextKeyframe {
         time_s,
         image: image.to_path_buf(),
     });
-    Ok(true)
+    Ok(Some((crop_path, crop(still, quad))))
 }
 
-/// The signature of `frame` at a region's anchor box, so pictures of one region are always
-/// compared over the same pixels whatever box the detector draws on a given frame.
-pub(super) fn picture_at(frame: &RgbImage, anchor_box: Quad) -> GrayImage {
-    signature(&crop(frame, anchor_box))
+/// The signature of `picture` at a region's anchor box, read from its luma plane, so pictures
+/// of one region are always compared over the same pixels whatever box the detector draws on a
+/// given frame.
+pub(crate) fn picture_at(
+    picture: &Yuv420<'_>,
+    colour: &Coefficients,
+    anchor_box: Quad,
+) -> GrayImage {
+    signature(&grey_crop(picture, colour, anchor_box))
 }
 
-/// Saves a still at most 1280 pixels wide, keeping its aspect.
-pub(super) fn save_keyframe(still: &RgbImage, path: &Path) -> TextResult<()> {
-    if still.width() <= KEYFRAME_WIDTH {
-        return png::write(path, |out| still.write_to(out, ImageFormat::Png));
-    }
-    let height = (f64::from(still.height()) * f64::from(KEYFRAME_WIDTH) / f64::from(still.width()))
-        .round()
-        .max(1.0) as u32;
-    let resized = imageops::resize(
-        still,
-        KEYFRAME_WIDTH,
-        height,
-        imageops::FilterType::Triangle,
+/// The quad's lettering plane rectified to an upright grey image from the luma plane; an
+/// axis-aligned or degenerate quad is cropped directly.
+pub(crate) fn grey_crop(picture: &Yuv420<'_>, colour: &Coefficients, quad: Quad) -> GrayImage {
+    let Some((width, height, _)) = rectification(quad) else {
+        return grey_rect(
+            picture,
+            colour,
+            bounds_rect(quad, picture.width, picture.height, 0),
+        );
+    };
+    // Only the quad's bounds, with a margin for the interpolation, are read from the plane.
+    let area = bounds_rect(quad, picture.width, picture.height, WARP_MARGIN);
+    let source = grey_rect(picture, colour, area);
+    let shifted = Quad(quad.0.map(|point| Point {
+        x: point.x - area.x as f64,
+        y: point.y - area.y as f64,
+    }));
+    let Some((_, _, projection)) = rectification(shifted) else {
+        return grey_rect(
+            picture,
+            colour,
+            bounds_rect(quad, picture.width, picture.height, 0),
+        );
+    };
+    let mut output = GrayImage::new(width, height);
+    warp_into(
+        &source,
+        &projection,
+        Interpolation::Bilinear,
+        Luma([255]),
+        &mut output,
     );
-    png::write(path, |out| resized.write_to(out, ImageFormat::Png))
+    output
 }
 
-/// The quad's lettering plane rectified to an upright image; an axis-aligned or degenerate quad
-/// is cropped directly.
-pub fn crop(image: &RgbImage, quad: Quad) -> RgbImage {
+/// The full-range grey picture of `rect`, which lies inside the picture.
+fn grey_rect(picture: &Yuv420<'_>, colour: &Coefficients, rect: Rect) -> GrayImage {
+    let mut grey = Vec::new();
+    if !crop_grey(picture, colour, rect, &mut grey) {
+        return GrayImage::new(1, 1);
+    }
+    GrayImage::from_raw(rect.width as u32, rect.height as u32, grey)
+        .unwrap_or_else(|| GrayImage::new(1, 1))
+}
+
+/// The quad's bounding box grown by `margin`, clamped to a `width` × `height` picture and at
+/// least one pixel, as `axis_crop` takes it.
+fn bounds_rect(quad: Quad, width: usize, height: usize, margin: usize) -> Rect {
+    let (left, top, right, bottom) = quad.bounds();
+    let margin = margin as f64;
+    let x = ((left - margin).floor().max(0.0) as usize).min(width.saturating_sub(1));
+    let y = ((top - margin).floor().max(0.0) as usize).min(height.saturating_sub(1));
+    let w = (((right + margin).ceil().max(0.0) as usize).min(width)).saturating_sub(x);
+    let h = (((bottom + margin).ceil().max(0.0) as usize).min(height)).saturating_sub(y);
+    Rect {
+        x,
+        y,
+        width: w.max(1),
+        height: h.max(1),
+    }
+}
+
+/// The rectified size of a quad's lettering plane and the projection onto it; `None` when the
+/// quad is axis-aligned, degenerate or too large, and is cropped by its bounds instead.
+fn rectification(quad: Quad) -> Option<(u32, u32, Projection)> {
     let p = quad.0;
     let axis_aligned = (p[0].y - p[1].y).abs() < 0.1
         && (p[2].y - p[3].y).abs() < 0.1
         && (p[0].x - p[3].x).abs() < 0.1
         && (p[1].x - p[2].x).abs() < 0.1;
     if axis_aligned {
-        return axis_crop(image, quad);
+        return None;
     }
     let width = geometry::distance(p[0], p[1])
         .max(geometry::distance(p[3], p[2]))
@@ -182,30 +151,29 @@ pub fn crop(image: &RgbImage, quad: Quad) -> RgbImage {
     let height = geometry::distance(p[0], p[3])
         .max(geometry::distance(p[1], p[2]))
         .ceil() as u32;
-    if width < 2 || height < 2 || u64::from(width) * u64::from(height) > 16_777_216 {
-        return axis_crop(image, quad);
+    if width < 2 || height < 2 || u64::from(width) * u64::from(height) > MAX_RECTIFIED {
+        return None;
     }
+    let (right, bottom) = (f64::from(width - 1), f64::from(height - 1));
     let target = Quad([
         Point { x: 0.0, y: 0.0 },
+        Point { x: right, y: 0.0 },
         Point {
-            x: f64::from(width - 1),
-            y: 0.0,
+            x: right,
+            y: bottom,
         },
-        Point {
-            x: f64::from(width - 1),
-            y: f64::from(height - 1),
-        },
-        Point {
-            x: 0.0,
-            y: f64::from(height - 1),
-        },
+        Point { x: 0.0, y: bottom },
     ]);
-    let Some(transform) = geometry::quad_to_quad(quad, target) else {
-        return axis_crop(image, quad);
-    };
-    let Some(projection) =
-        Projection::from_matrix(std::array::from_fn(|i| transform[(i / 3, i % 3)] as f32))
-    else {
+    let transform = geometry::quad_to_quad(quad, target)?;
+    let projection =
+        Projection::from_matrix(std::array::from_fn(|i| transform[(i / 3, i % 3)] as f32))?;
+    Some((width, height, projection))
+}
+
+/// The quad's lettering plane rectified to an upright image; an axis-aligned or degenerate quad
+/// is cropped directly.
+pub fn crop(image: &RgbImage, quad: Quad) -> RgbImage {
+    let Some((width, height, projection)) = rectification(quad) else {
         return axis_crop(image, quad);
     };
     let mut output = RgbImage::new(width, height);
@@ -220,17 +188,20 @@ pub fn crop(image: &RgbImage, quad: Quad) -> RgbImage {
 }
 
 /// The quad's bounding box, clamped to the image and at least one pixel.
-pub(super) fn axis_crop(image: &RgbImage, quad: Quad) -> RgbImage {
-    let (left, top, right, bottom) = quad.bounds();
-    let x = (left.floor().max(0.0) as u32).min(image.width().saturating_sub(1));
-    let y = (top.floor().max(0.0) as u32).min(image.height().saturating_sub(1));
-    let w = ((right.ceil() as u32).min(image.width()).saturating_sub(x)).max(1);
-    let h = ((bottom.ceil() as u32).min(image.height()).saturating_sub(y)).max(1);
-    imageops::crop_imm(image, x, y, w, h).to_image()
+pub(crate) fn axis_crop(image: &RgbImage, quad: Quad) -> RgbImage {
+    let rect = bounds_rect(quad, image.width() as usize, image.height() as usize, 0);
+    imageops::crop_imm(
+        image,
+        rect.x as u32,
+        rect.y as u32,
+        rect.width as u32,
+        rect.height as u32,
+    )
+    .to_image()
 }
 
 /// A mask requires a nearly constant border and a dominant constant interior background.
-pub(super) fn simple_surface(image: &RgbImage) -> Option<[u8; 3]> {
+pub(crate) fn simple_surface(image: &RgbImage) -> Option<[u8; 3]> {
     let color = image.get_pixel(0, 0).0;
     let similar =
         |pixel: &image::Rgb<u8>| pixel.0.iter().zip(color).all(|(a, b)| a.abs_diff(b) <= 5);
