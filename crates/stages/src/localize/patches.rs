@@ -93,6 +93,27 @@ impl Schedule {
         self.pending.is_empty() && self.active.is_empty()
     }
 
+    /// The runs of frames not yet advanced to on which any patch is active, as `(first, last)`
+    /// with both ends included: ascending, with runs that overlap or meet joined.
+    pub fn changed_spans(&self) -> Vec<(u64, u64)> {
+        let mut spans: Vec<(u64, u64)> = self
+            .active
+            .iter()
+            .chain(&self.pending)
+            .map(|patch| (patch.first_frame.max(self.next_frame), patch.last_frame))
+            .filter(|(first, last)| first <= last)
+            .collect();
+        spans.sort_unstable();
+        let mut merged: Vec<(u64, u64)> = Vec::with_capacity(spans.len());
+        for (first, last) in spans {
+            match merged.last_mut() {
+                Some(run) if first <= run.1.saturating_add(1) => run.1 = run.1.max(last),
+                _ => merged.push((first, last)),
+            }
+        }
+        merged
+    }
+
     /// Move to `frame`, later than every frame before; the patch files no later frame blends.
     pub fn advance(&mut self, frame: u64) -> LocalizeResult<Vec<usize>> {
         if frame < self.next_frame {

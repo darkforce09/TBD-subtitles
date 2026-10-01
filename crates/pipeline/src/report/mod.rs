@@ -2,7 +2,8 @@
 //! records, written after every run so its step table shows the latest times.
 //!
 //! **Role:** render the quality check, then the on-screen text section and, when the localized
-//! video was written, its replacements, fallbacks, path and encoder.
+//! video was written, its replacements, fallbacks, path, encoder, and the segments re-encoded
+//! and frames copied or the reason the whole video was re-encoded.
 //! **Position:** called by the runner at the end of every job; reads what the steps stored.
 //! **Signals and state:** reads `meta/last_run`, `outputs/qc`, `outputs/cues/dropped_sounds`,
 //! `outputs/text_typeset`, `outputs/text_verify` and `outputs/localized_video` from one snapshot
@@ -105,15 +106,27 @@ fn localized_video_ran(steps: &StepRecords) -> bool {
 }
 
 /// The report's localized-video lines: what was replaced in the picture, what was left in
-/// Japanese, and the file and encoder written.
+/// Japanese, the file and encoder written, and how much of it was re-encoded and copied, or why
+/// the whole video was re-encoded.
 fn localized_lines(replacements: &ReplacementDocument, video: &LocalizedVideoRecord) -> String {
     let fallbacks = replacements
         .texts
         .iter()
         .filter(|text| matches!(text.status, ReplaceStatus::Fallback(_)))
         .count();
+    let segments = &video.segments;
+    let encoded = match &segments.fallback_reason {
+        Some(reason) => format!(
+            "- Whole video re-encoded ({} frames): {reason}\n",
+            segments.frames_reencoded
+        ),
+        None => format!(
+            "- Segments re-encoded: {} ({} frames); frames copied: {}\n",
+            segments.segments_reencoded, segments.frames_reencoded, segments.frames_copied
+        ),
+    };
     format!(
-        "\n### Localized video\n\n- Occurrences replaced in the video: {}\n- Occurrences left in Japanese: {}\n- Localized video: {}\n- Encoder: {}\n",
+        "\n### Localized video\n\n- Occurrences replaced in the video: {}\n- Occurrences left in Japanese: {}\n- Localized video: {}\n- Encoder: {}\n{encoded}",
         video.replaced,
         fallbacks,
         video.path.as_deref().unwrap_or("none"),

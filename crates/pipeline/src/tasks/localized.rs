@@ -1,13 +1,15 @@
-//! The localized-video task: blend every composed patch over the source frames and encode the
-//! result beside the source video.
+//! The localized-video task: blend every composed patch over the source frames and write the
+//! result beside the source video, re-encoding only the segments that change when it can.
 //!
-//! **Role:** write `<video>.localized.mkv` and its record, or record that the job writes none.
+//! **Role:** write `<video>.localized.mkv` and its record, with how much was re-encoded and
+//! copied and why the whole video was, or record that the job writes none.
 //! **Position:** pipeline task dispatch above `stages::localize`.
 //! **Signals and state:** reads `outputs/text_verify` (the replacements the read-back check
 //! approved), the probe, this step's previous record (`outputs/localized_video`) and every `frames`
-//! row (each frame blends the patch of its own shift) through the step's `StepIo`, and the source
-//! video; writes the localized video through a part file and stores its record as
-//! `outputs/localized_video`.
+//! row (each frame blends the patch of its own shift) through the step's `StepIo`, the segment
+//! encoder setting, and the source video; writes the localized video through a part file, with
+//! the pieces of a segment encode in `visual/localized_pieces/` until it ends, and stores its
+//! record as `outputs/localized_video`.
 //! **Invariants:** the source video is only read; a job without the localized video stores an
 //! empty record and starts no encoder; a file at the output path is replaced only when this
 //! job's previous record names it, as its current or earlier video; the output appears whole and
@@ -19,12 +21,16 @@ use std::time::Instant;
 
 use job_model::StepName;
 use job_model::onscreen::{LocalizedVideoRecord, VerifiedReplacements};
-use stages::localize::{self, RenderRequest};
+use stages::localize::{self, RenderPhases, RenderRequest, Rendered};
 
 use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, PipelineError, Result};
 use crate::tasks::replace::{localized, motion};
 use crate::work_dir::store::keys;
+
+/// The job folder's work folder for the pieces of a segment encode, made and removed by the
+/// render.
+const PIECES_DIR: &str = "visual/localized_pieces";
 
 pub(super) fn run(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<TaskReport> {
     let started = Instant::now();
@@ -57,6 +63,7 @@ pub(super) fn run(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<
     let motion = motion(io)?;
     let programs = media_io::Programs::beside_current_exe();
     let part = part_path(&output);
+    let pieces = job.work.root().join(PIECES_DIR);
     let request = RenderRequest {
         programs: &programs,
         video: &video,
@@ -65,40 +72,64 @@ pub(super) fn run(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<
         motion: &motion,
         root: job.work.root(),
         output: &part,
+        encoder: job.settings().onscreen_text.localized_encoder,
+        pieces_dir: &pieces,
         cancel: None,
     };
     let rendered = match localize::render(&request, progress) {
         Ok(rendered) => rendered,
         Err(error) => {
             let _ = std::fs::remove_file(&part);
+            let _ = std::fs::remove_dir_all(&pieces);
             return Err(PipelineError::new("write the localized video", error));
         }
     };
     install(&part, &output)?;
-    let record = LocalizedVideoRecord {
-        path: Some(output.to_string_lossy().into_owned()),
-        encoder: rendered.encoder.name().to_string(),
-        frames: rendered.frames,
-        replaced: document.baked().count(),
-        earlier: None,
-        segments: Default::default(),
-    };
+    let record = record_of(&rendered, &output, document.baked().count());
     io.put(StepName::LocalizedVideo, None, &record)?;
     report.process_s = since(started);
+    note_render(&mut report, &record, &rendered.phases);
+    Ok(report)
+}
+
+/// The record of a localized video written to `output` with `replaced` occurrences drawn in.
+fn record_of(rendered: &Rendered, output: &Path, replaced: usize) -> LocalizedVideoRecord {
+    LocalizedVideoRecord {
+        path: Some(output.to_string_lossy().into_owned()),
+        encoder: rendered.encoder.to_string(),
+        frames: rendered.frames,
+        replaced,
+        earlier: None,
+        segments: rendered.segments.clone(),
+    }
+}
+
+/// The step's notes: the file, encoder, frames and replacements; how much was re-encoded and
+/// copied, and why the whole video was; and the time of each phase.
+fn note_render(report: &mut TaskReport, record: &LocalizedVideoRecord, phases: &RenderPhases) {
     report.note("path", record.path.as_deref().unwrap_or_default());
     report.note("encoder", &record.encoder);
     report.note("frames", record.frames);
     report.note("replaced", record.replaced);
-    let phases = rendered.phases;
+    let segments = &record.segments;
+    report.note("segments_reencoded", segments.segments_reencoded);
+    report.note("frames_reencoded", segments.frames_reencoded);
+    report.note("frames_copied", segments.frames_copied);
+    if let Some(reason) = &segments.fallback_reason {
+        report.note("fallback_reason", reason);
+    }
     for (key, spent) in [
         ("decode_wait_s", phases.decode_wait),
         ("blend_s", phases.blend),
         ("encode_wait_s", phases.encode_wait),
         ("flush_s", phases.flush),
+        ("plan_s", phases.plan),
+        ("copy_s", phases.copy),
+        ("join_s", phases.join),
+        ("verify_s", phases.verify),
     ] {
         report.note(key, format!("{:.1}", spent.as_secs_f64()));
     }
-    Ok(report)
 }
 
 /// Refuse an output that would overwrite the source, or a file at the output path that this

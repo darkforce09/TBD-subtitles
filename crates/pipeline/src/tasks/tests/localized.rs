@@ -1,6 +1,7 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
-use job_model::onscreen::LocalizedVideoRecord;
+use job_model::onscreen::{LocalizedVideoRecord, SegmentSummary};
 
 use super::*;
 
@@ -20,6 +21,95 @@ fn record(path: Option<&Path>) -> LocalizedVideoRecord {
         earlier: None,
         segments: Default::default(),
     }
+}
+
+fn rendered(segments: SegmentSummary) -> Rendered {
+    Rendered {
+        frames: 1000,
+        encoder: "libx264",
+        phases: RenderPhases {
+            decode_wait: Duration::from_millis(1200),
+            blend: Duration::from_millis(3400),
+            encode_wait: Duration::from_millis(5600),
+            flush: Duration::from_millis(700),
+            plan: Duration::from_millis(800),
+            copy: Duration::from_millis(900),
+            join: Duration::from_millis(1000),
+            verify: Duration::from_millis(1100),
+        },
+        segments,
+    }
+}
+
+#[test]
+fn the_record_carries_the_encoder_and_the_segment_summary() {
+    let segments = SegmentSummary {
+        segments_reencoded: 2,
+        frames_reencoded: 96,
+        frames_copied: 904,
+        fallback_reason: None,
+    };
+    let output = Path::new("/videos/episode.localized.mkv");
+    assert_eq!(
+        record_of(&rendered(segments.clone()), output, 3),
+        LocalizedVideoRecord {
+            path: Some("/videos/episode.localized.mkv".into()),
+            encoder: "libx264".into(),
+            frames: 1000,
+            replaced: 3,
+            earlier: None,
+            segments,
+        }
+    );
+}
+
+#[test]
+fn the_notes_count_segments_and_frames_and_name_a_fallback() {
+    let segments = SegmentSummary {
+        segments_reencoded: 2,
+        frames_reencoded: 96,
+        frames_copied: 904,
+        fallback_reason: None,
+    };
+    let done = rendered(segments);
+    let mut report = TaskReport::default();
+    note_render(
+        &mut report,
+        &record_of(&done, Path::new("/v.localized.mkv"), 1),
+        &done.phases,
+    );
+    let note = |key: &str| report.notes.get(key).map(String::as_str);
+    assert_eq!(note("encoder"), Some("libx264"));
+    assert_eq!(note("frames"), Some("1000"));
+    assert_eq!(note("segments_reencoded"), Some("2"));
+    assert_eq!(note("frames_reencoded"), Some("96"));
+    assert_eq!(note("frames_copied"), Some("904"));
+    assert_eq!(note("fallback_reason"), None);
+    assert_eq!(note("decode_wait_s"), Some("1.2"));
+    assert_eq!(note("blend_s"), Some("3.4"));
+    assert_eq!(note("encode_wait_s"), Some("5.6"));
+    assert_eq!(note("flush_s"), Some("0.7"));
+    assert_eq!(note("plan_s"), Some("0.8"));
+    assert_eq!(note("copy_s"), Some("0.9"));
+    assert_eq!(note("join_s"), Some("1.0"));
+    assert_eq!(note("verify_s"), Some("1.1"));
+
+    let whole = rendered(SegmentSummary {
+        segments_reencoded: 1,
+        frames_reencoded: 1000,
+        frames_copied: 0,
+        fallback_reason: Some("the video is hevc, not H.264".into()),
+    });
+    let mut report = TaskReport::default();
+    note_render(
+        &mut report,
+        &record_of(&whole, Path::new("/v.localized.mkv"), 1),
+        &whole.phases,
+    );
+    assert_eq!(
+        report.notes.get("fallback_reason").map(String::as_str),
+        Some("the video is hevc, not H.264")
+    );
 }
 
 #[test]

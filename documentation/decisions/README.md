@@ -16,6 +16,7 @@ documentation/decisions/
 ├── desktop_gui.md         the window, its queue, report, review and settings, and the batch
 ├── foundations.md         what is built, in what language, with which programs, where files go
 ├── inference_engines.md   TensorRT for the PP-OCRv5 detectors, its bundling and licence, model conversion
+├── localized_video.md     which frames the localized video re-encodes, by which encoder, the checks
 ├── onscreen_detection.md  how the detection step screens proxies: batch, arena, which detector
 ├── stack_and_pipeline.md  the runtimes, models and binaries, the pipeline's steps, the pilot
 └── storage.md             the job database, archived values, the owning process, the worker channel, the sign library

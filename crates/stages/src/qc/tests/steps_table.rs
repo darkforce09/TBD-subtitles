@@ -80,7 +80,14 @@ fn measured_steps() -> StepRecords {
                     ("blend_s", "60.0"),
                     ("encode_wait_s", "180.0"),
                     ("flush_s", "3.0"),
+                    ("plan_s", "2.0"),
+                    ("copy_s", "6.0"),
+                    ("join_s", "3.0"),
+                    ("verify_s", "0.0"),
                     ("frames", "45000"),
+                    ("segments_reencoded", "3"),
+                    ("frames_reencoded", "900"),
+                    ("frames_copied", "44100"),
                 ]),
                 ..StepMeasure::default()
             }),
@@ -149,7 +156,7 @@ fn the_phase_section_splits_detection_and_the_localized_video() {
     );
     assert!(
         md.contains(
-            "- localized_video: decode wait 30.0 s (10 %); blend 60.0 s (20 %); encode wait 180.0 s (60 %); flush 3.0 s (1 %); 45000 frames (150.0 fps); NVENC 55 % mean\n"
+            "- localized_video: decode wait 30.0 s (10 %); blend 60.0 s (20 %); encode wait 180.0 s (60 %); flush 3.0 s (1 %); plan 2.0 s (1 %); copy 6.0 s (2 %); join 3.0 s (1 %); 45000 frames (150.0 fps); 3 segments re-encoded (900 frames), 44100 frames copied; NVENC 55 % mean\n"
         ),
         "{md}"
     );
@@ -159,6 +166,29 @@ fn the_phase_section_splits_detection_and_the_localized_video() {
     );
     assert!(
         md.contains("- text_verify: 50 samples at 2.0 per second\n"),
+        "{md}"
+    );
+}
+
+#[test]
+fn a_whole_localized_video_encode_shows_its_reason_in_place_of_segments() {
+    let mut steps = measured_steps();
+    if let Some(localized) = steps.get_mut(&StepName::LocalizedVideo) {
+        let notes = &mut localized.measure.notes;
+        for key in ["copy_s", "join_s"] {
+            notes.insert(key.into(), "0.0".into());
+        }
+        notes.insert(
+            "fallback_reason".into(),
+            "the video is hevc, not H.264".into(),
+        );
+    }
+    let mut md = String::new();
+    phase_section(&mut md, &steps, 1800.0);
+    assert!(
+        md.contains(
+            "flush 3.0 s (1 %); plan 2.0 s (1 %); 45000 frames (150.0 fps); whole video re-encoded: the video is hevc, not H.264; NVENC 55 % mean\n"
+        ),
         "{md}"
     );
 }

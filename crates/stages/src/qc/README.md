@@ -42,8 +42,9 @@ the video (`× RT`, the video's length over the wall time, computed rather than 
 peak CPU cores, the busiest thread, GPU use, its own, its largest child's and the whole job's peak
 memory and its VRAM; then the summed step time projected to a 120-minute video, the last run's real
 wall time and the whole job's peak memory; then `## Phase times` for the steps that note them (the
-text detection's and the localized video's phases and frame rates, the shot scan's and the
-read-back check's speed). A measure that was not taken shows as `—`, never as 0.
+text detection's and the localized video's phases and frame rates, the localized video's
+segments re-encoded and frames copied or why the whole video was re-encoded, the shot scan's and
+the read-back check's speed). A measure that was not taken shows as `—`, never as 0.
 
 ## Boundaries
 

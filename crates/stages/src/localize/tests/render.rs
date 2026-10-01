@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use image::{Rgba, RgbaImage};
-use job_model::onscreen::{PixelRect, Plate, ReplaceStatus, ReplacedText, ReplacementDocument};
+use job_model::onscreen::{
+    LocalizedEncoder, PixelRect, Plate, ReplaceStatus, ReplacedText, ReplacementDocument,
+};
 use job_model::outputs::VideoStream;
 use media_io::video_frames::{Decode, FrameStream, PixelFormat, timeline};
 
@@ -45,6 +47,8 @@ fn a_stream_without_a_frame_rate_is_refused_before_anything_runs() {
         motion: &Motion::default(),
         root: Path::new("/nonexistent"),
         output: Path::new("/nonexistent/out.mkv"),
+        encoder: LocalizedEncoder::X264,
+        pieces_dir: Path::new("/nonexistent/pieces"),
         cancel: None,
     };
     let error = render(&request, &|_, _| {}).unwrap_err();
@@ -211,12 +215,15 @@ fn render_case(pix_fmt: &str, format: PixelFormat) {
             motion: &Motion::default(),
             root: &dir,
             output: &output,
+            encoder: LocalizedEncoder::X264,
+            pieces_dir: &dir.join("pieces"),
             cancel: None,
         },
         &|done, total| reports.lock().unwrap().push((done, total)),
     )
     .unwrap();
-    eprintln!("encoded with {}", rendered.encoder.name());
+    eprintln!("encoded with {}: {:?}", rendered.encoder, rendered.segments);
+    assert!(!dir.join("pieces").exists(), "the work folder is removed");
     assert_eq!(rendered.frames, frames as u64);
     assert_eq!(reports.lock().unwrap().last(), Some(&(frames, frames)));
 

@@ -22,7 +22,8 @@ time, the review warnings and every occurrence with a warning or no English. Whe
 localized-video step ran without recording itself disabled, a `Localized video` subsection
 follows: the occurrences replaced in the video (from `outputs/localized_video`), the
 occurrences left in Japanese (from `outputs/text_verify`, after the read-back check), the
-localized video's path and the encoder that wrote it.
+localized video's path and the encoder that wrote it, and either the segments re-encoded with
+their frames and the frames copied, or the reason the whole video was re-encoded.
 
 ## Boundaries
 

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use job_model::job::{StepMeasure, StepRecord};
-use job_model::onscreen::ReplacedText;
+use job_model::onscreen::{ReplacedText, SegmentSummary};
 
 use super::*;
 
@@ -56,11 +56,16 @@ fn the_localized_video_lines_count_replacements_and_fallbacks_and_name_the_file(
     };
     let video = LocalizedVideoRecord {
         path: Some("/videos/a.localized.mkv".into()),
-        encoder: "hevc_nvenc".into(),
+        encoder: "libx264".into(),
         frames: 100,
         replaced: 2,
         earlier: None,
-        segments: Default::default(),
+        segments: SegmentSummary {
+            segments_reencoded: 2,
+            frames_reencoded: 48,
+            frames_copied: 52,
+            fallback_reason: None,
+        },
     };
     assert_eq!(
         localized_lines(&composed, &video),
@@ -68,7 +73,33 @@ fn the_localized_video_lines_count_replacements_and_fallbacks_and_name_the_file(
          - Occurrences replaced in the video: 2\n\
          - Occurrences left in Japanese: 3\n\
          - Localized video: /videos/a.localized.mkv\n\
-         - Encoder: hevc_nvenc\n"
+         - Encoder: libx264\n\
+         - Segments re-encoded: 2 (48 frames); frames copied: 52\n"
+    );
+}
+
+#[test]
+fn a_whole_video_encode_gives_its_reason() {
+    let video = LocalizedVideoRecord {
+        path: Some("/videos/a.localized.mkv".into()),
+        encoder: "hevc_nvenc".into(),
+        frames: 100,
+        replaced: 1,
+        earlier: None,
+        segments: SegmentSummary {
+            segments_reencoded: 1,
+            frames_reencoded: 100,
+            frames_copied: 0,
+            fallback_reason: Some("the video has a variable frame rate".into()),
+        },
+    };
+    let lines = localized_lines(&ReplacementDocument::default(), &video);
+    assert!(
+        lines.ends_with(
+            "- Encoder: hevc_nvenc\n\
+             - Whole video re-encoded (100 frames): the video has a variable frame rate\n"
+        ),
+        "{lines}"
     );
 }
 

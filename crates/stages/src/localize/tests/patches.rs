@@ -99,6 +99,42 @@ fn patches_are_active_exactly_on_their_frames_in_document_order() {
 }
 
 #[test]
+fn the_changed_spans_are_every_frame_a_patch_covers_merged_in_order() {
+    let doc = document(vec![
+        text(
+            "T1",
+            ReplaceStatus::Baked,
+            vec![plate(40, 49, Some("a1")), plate(50, 55, Some("a2"))],
+        ),
+        text("T2", ReplaceStatus::Baked, vec![plate(5, 9, Some("b"))]),
+        text("T3", ReplaceStatus::Baked, vec![plate(8, 12, Some("c"))]),
+        text("T4", ReplaceStatus::Baked, vec![plate(14, 20, Some("d"))]),
+        text("T5", ReplaceStatus::Baked, vec![plate(60, 70, None)]),
+        text(
+            "T6",
+            ReplaceStatus::Fallback("too busy".into()),
+            vec![plate(80, 90, Some("f"))],
+        ),
+    ]);
+    let mut schedule = Schedule::new(&doc, &Motion::default()).unwrap();
+    // Overlapping and touching plates join; a gap of one frame keeps runs apart; plates without
+    // a patch and occurrences left in Japanese change nothing.
+    assert_eq!(schedule.changed_spans(), vec![(5, 12), (14, 20), (40, 55)]);
+    schedule.advance(16).unwrap();
+    assert_eq!(
+        schedule.changed_spans(),
+        vec![(17, 20), (40, 55)],
+        "frames already advanced to are no longer due"
+    );
+    assert!(
+        Schedule::new(&ReplacementDocument::default(), &Motion::default())
+            .unwrap()
+            .changed_spans()
+            .is_empty()
+    );
+}
+
+#[test]
 fn only_baked_occurrences_with_composed_patches_are_scheduled() {
     let doc = document(vec![
         text("T1", ReplaceStatus::Pending, vec![plate(0, 5, Some("p"))]),

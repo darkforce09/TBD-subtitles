@@ -150,7 +150,9 @@ fn detect_line(steps: &StepRecords) -> Option<String> {
     line(StepName::TextDetect, parts)
 }
 
-/// The localized video's decode wait, blend, encode wait and flush, its frames and NVENC use.
+/// The localized video's decode wait, blend, encode wait and flush, the segment encode's plan,
+/// copy, join and check when they took time, its frames, the segments re-encoded and frames
+/// copied or why the whole video was re-encoded, and NVENC use.
 fn localized_line(steps: &StepRecords) -> Option<String> {
     let m = &steps.get(&StepName::LocalizedVideo)?.measure;
     let mut parts = phases(
@@ -162,10 +164,29 @@ fn localized_line(steps: &StepRecords) -> Option<String> {
             ("flush", "flush_s"),
         ],
     );
+    let segment_phases: Vec<(&str, &str)> = [
+        ("plan", "plan_s"),
+        ("copy", "copy_s"),
+        ("join", "join_s"),
+        ("check", "verify_s"),
+    ]
+    .into_iter()
+    .filter(|(_, key)| note(m, key).is_some_and(|seconds| seconds > 0.0))
+    .collect();
+    parts.extend(phases(m, &segment_phases));
     if let Some(frames) = note(m, "frames") {
         parts.push(format!(
             "{frames:.0} frames ({} fps)",
             num(rate(frames, m.process_s.unwrap_or(0.0)), 1)
+        ));
+    }
+    if let Some(reason) = m.notes.get("fallback_reason") {
+        parts.push(format!("whole video re-encoded: {reason}"));
+    } else if let Some(segments) = note(m, "segments_reencoded") {
+        parts.push(format!(
+            "{segments:.0} segments re-encoded ({} frames), {} frames copied",
+            num(note(m, "frames_reencoded"), 0),
+            num(note(m, "frames_copied"), 0)
         ));
     }
     if let Some(encoder) = m.gpu_encoder_pct {
