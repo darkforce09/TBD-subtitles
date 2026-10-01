@@ -59,6 +59,7 @@ fn settings() -> JobSettings {
             claude_fallback: false,
             reference_folder: Some(PathBuf::from("/media/one pace/ドレスローザ/reference")),
             localized_video: true,
+            ..TextSettings::default()
         },
     }
 }

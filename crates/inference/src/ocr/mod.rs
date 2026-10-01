@@ -10,6 +10,7 @@
 //! downloaded through the pinned model store.
 
 mod manga;
+pub mod pool;
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;

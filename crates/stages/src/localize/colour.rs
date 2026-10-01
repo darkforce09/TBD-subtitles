@@ -2,7 +2,8 @@
 //!
 //! **Role:** turn a patch's 8-bit R′G′B′ pixels into the sample values of the decoded frames, so
 //! a blended patch shows the colour it was composed in.
-//! **Position:** used by `patches` when a patch is loaded; chosen once per render from the probe.
+//! **Position:** used by `patches` when a patch is loaded; chosen once per render from the probe;
+//! the matrix and range are `media_io::yuv`'s, which converts frames the other way.
 //! **Signals and state:** plain values; no I/O.
 //! **Invariants:** the matrix follows the stream's `color_space` tag, else its height (BT.709 from
 //! 720 lines, BT.601 below); the range follows `color_range` (`pc` is full, anything else
@@ -10,61 +11,7 @@
 
 use job_model::outputs::VideoStream;
 use media_io::video_frames::PixelFormat;
-
-/// The lowest frame height taken as high definition when the matrix is not tagged.
-const HD_LINES: u32 = 720;
-
-/// The luma coefficients of a Y′CbCr matrix.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Matrix {
-    /// ITU-R BT.709: high definition.
-    Bt709,
-    /// ITU-R BT.601 (`bt470bg`, `smpte170m`): standard definition.
-    Bt601,
-    /// ITU-R BT.2020 non-constant luminance.
-    Bt2020,
-}
-
-impl Matrix {
-    /// The red and blue luma weights (Kr, Kb).
-    fn weights(self) -> (f64, f64) {
-        match self {
-            Matrix::Bt709 => (0.2126, 0.0722),
-            Matrix::Bt601 => (0.299, 0.114),
-            Matrix::Bt2020 => (0.2627, 0.0593),
-        }
-    }
-
-    /// The matrix a stream's frames use: its tag when known, else by frame height.
-    pub fn of(stream: &VideoStream) -> Matrix {
-        match stream.color_space.as_deref() {
-            Some("bt709") => Matrix::Bt709,
-            Some("bt470bg" | "smpte170m") => Matrix::Bt601,
-            Some("bt2020nc" | "bt2020c") => Matrix::Bt2020,
-            _ if stream.height >= HD_LINES => Matrix::Bt709,
-            _ => Matrix::Bt601,
-        }
-    }
-}
-
-/// How sample values map onto the signal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Range {
-    /// Studio swing: 16–235 luma and 16–240 chroma at 8 bits.
-    Limited,
-    /// Full swing: 0–255 at 8 bits.
-    Full,
-}
-
-impl Range {
-    /// The range a stream's frames use: full for `pc`, else limited.
-    pub fn of(stream: &VideoStream) -> Range {
-        match stream.color_range.as_deref() {
-            Some("pc") => Range::Full,
-            _ => Range::Limited,
-        }
-    }
-}
+pub use media_io::yuv::{Matrix, Range};
 
 /// The conversion from 8-bit R′G′B′ to one frame format's Y′CbCr samples.
 #[derive(Debug, Clone, Copy, PartialEq)]

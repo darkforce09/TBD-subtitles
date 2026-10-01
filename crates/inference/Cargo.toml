@@ -32,7 +32,13 @@ lzma-rs = { version = "0.3", default-features = false }
 # ONNX Runtime for separation, CTC alignment and sound events, loaded at run time from Microsoft's
 # CUDA 13 build in the runtime folder: the prebuilt static library needs a newer glibc and
 # libstdc++ than the build container has, and a loaded library links nowhere at build time.
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "api-28", "cuda", "load-dynamic"] }
+# The `tensorrt` feature adds NVIDIA's TensorRT provider, which the text detectors may run on.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "api-28", "cuda", "tensorrt", "load-dynamic"] }
+# The detectors' probability maps, handed to oar-ocr's DB post-processing; the version ort and
+# oar-ocr use.
+ndarray = "0.17"
+# The detectors' normalisation and per-image post-processing across the machine's cores.
+rayon = "1"
 # Parakeet-TDT: its feature extraction, TDT decoding and word timing, on this crate's `ort`.
 parakeet-rs = { version = "0.3.8", default-features = false, features = ["cuda", "load-dynamic", "api-28"] }
 # Parakeet-CTC's own BPE tokenizer (`tokenizer.json`); the version parakeet-rs already uses.

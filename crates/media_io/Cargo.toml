@@ -17,3 +17,7 @@ job_model = { path = "../job_model" }
 # ffprobe's JSON output, read into the probe result.
 serde = { version = "1", default-features = false, features = ["std", "derive"] }
 serde_json = "1"
+# Converts YUV frames to RGB across the machine's cores, one picture row per task.
+rayon = "1"
+# Enlarges the read end of FFmpeg's frame pipe (`F_SETPIPE_SZ`), so a frame crosses in few reads.
+libc = { version = "0.2", default-features = false }

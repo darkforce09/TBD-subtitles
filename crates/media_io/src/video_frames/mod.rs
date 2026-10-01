@@ -15,7 +15,7 @@
 //! Dropping the stream kills the decoder; the source is only read.
 
 mod native;
-mod packets;
+pub mod packets;
 pub mod region;
 pub mod still;
 

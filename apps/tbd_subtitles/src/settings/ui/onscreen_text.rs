@@ -1,7 +1,8 @@
 //! Settings for translated Japanese writing in the same job as dialogue subtitles.
 //!
-//! **Role:** show visual processing, the localized video, translation fallback, reference folders,
-//! the sign library with its Clear button, and model readiness.
+//! **Role:** show visual processing, the localized video and its encoder, the detector engine and
+//! video decoding, translation fallback, reference folders, the sign library with its Clear
+//! button, and model readiness.
 //!
 //! **Position:** drawn by `settings_window` on On-screen Text; uses the shared form controls.
 //!
@@ -13,12 +14,14 @@
 use std::path::PathBuf;
 
 use eframe::egui::{RichText, TextEdit, Ui};
+use job_model::onscreen::{DetectorEngine, LocalizedEncoder};
 
 use super::super::form;
 use crate::core::format;
 use crate::core::ui::button::Button;
 use crate::core::ui::icons;
 use crate::core::ui::palette::palette;
+use crate::core::ui::segmented::segmented;
 use crate::core::ui::switch::switch;
 use crate::settings::events::SettingsEvent;
 use crate::settings::models::machine::CheckState;
@@ -34,6 +37,21 @@ const LIBRARY_HELP: &str = "Signs whose English was drawn into the video and rea
 const REPLACE_HELP: &str = "Erase the Japanese and draw the English into a copy of the video, \
                             <name>.localized.mkv, saved beside the original. Its subtitles go in \
                             <name>.localized.ass. The original video is never changed.";
+
+/// What the localized video's encoder does, under its choice.
+const ENCODER_HELP: &str = "Only the parts of the video with replaced writing are encoded again; \
+                            the rest is copied from the original. x264 matches the original \
+                            stream most closely; NVENC is faster on long changes.";
+
+/// What the detector engine does, under its choice.
+const ENGINE_HELP: &str = "TensorRT builds a faster engine for this graphics card the first time \
+                           it runs, which takes a few minutes. Switching engines finds writing \
+                           again in videos already done.";
+
+/// What decoding on the GPU does, under its switch.
+const DECODE_HELP: &str = "Decode frames with the graphics card's video decoder (NVDEC) instead of \
+                           the processor. The frames are the same; use it when the processor is \
+                           busy with other work.";
 
 /// Draw the visual settings; every changed value is saved by the application after this frame.
 pub(super) fn onscreen_text_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Vec<SettingsEvent>) {
@@ -73,6 +91,38 @@ pub(super) fn onscreen_text_ui(ui: &mut Ui, page: &SettingsPage, events: &mut Ve
         if !settings.enabled {
             form::help(ui, "Turn on Translate on-screen text to use it.");
         }
+    });
+    form::row(ui, "Video encoder", |ui| {
+        let encoders = LocalizedEncoder::ALL.map(|encoder| (encoder, encoder.label(), None));
+        ui.horizontal(|ui| {
+            if let Some(encoder) = segmented(ui, settings.localized_encoder, &encoders) {
+                let mut edited = page.saved.clone();
+                edited.onscreen_text.localized_encoder = encoder;
+                events.push(SettingsEvent::Edit(Box::new(edited)));
+            }
+        });
+        form::help(ui, ENCODER_HELP);
+    });
+    form::divider(ui);
+    form::row(ui, "Detector engine", |ui| {
+        let engines = DetectorEngine::ALL.map(|engine| (engine, engine.label(), None));
+        ui.horizontal(|ui| {
+            if let Some(engine) = segmented(ui, settings.detector_engine, &engines) {
+                let mut edited = page.saved.clone();
+                edited.onscreen_text.detector_engine = engine;
+                events.push(SettingsEvent::Edit(Box::new(edited)));
+            }
+        });
+        form::help(ui, ENGINE_HELP);
+    });
+    form::row(ui, "Decode video on the GPU", |ui| {
+        ui.add_space(4.5);
+        if switch(ui, settings.hardware_decode, "Decode video on the GPU").clicked() {
+            let mut edited = page.saved.clone();
+            edited.onscreen_text.hardware_decode = !settings.hardware_decode;
+            events.push(SettingsEvent::Edit(Box::new(edited)));
+        }
+        form::help(ui, DECODE_HELP);
     });
     form::divider(ui);
     form::row(ui, "Translation", |ui| {

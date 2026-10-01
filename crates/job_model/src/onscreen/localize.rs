@@ -298,6 +298,33 @@ pub struct LocalizedVideoRecord {
     /// later run may replace it.
     #[serde(default)]
     pub earlier: Option<String>,
+    /// How the video was made: the segments re-encoded, the frames re-encoded and copied, and why
+    /// the whole video was re-encoded instead, when it was.
+    #[serde(default)]
+    pub segments: SegmentSummary,
+}
+
+/// How much of the localized video was re-encoded and how much copied from the source.
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+pub struct SegmentSummary {
+    /// Keyframe-bounded segments decoded, blended and encoded again.
+    pub segments_reencoded: usize,
+    pub frames_reencoded: u64,
+    /// Frames whose source bitstream was copied unchanged.
+    pub frames_copied: u64,
+    /// Why every frame was re-encoded instead of only the changed segments; `None` when only the
+    /// changed segments were.
+    pub fallback_reason: Option<String>,
 }
 
 #[cfg(test)]

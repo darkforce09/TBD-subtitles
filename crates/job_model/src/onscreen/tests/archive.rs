@@ -4,10 +4,11 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::PathBuf;
 
 use super::{
-    LetteringStyle, LibrarySign, LocalizedVideoRecord, PixelRect, Plate, Point, Quad,
-    ReplaceStatus, ReplacedText, ReplacementDocument, ShiftedPatch, TextCheck, TextCorrections,
-    TextDocument, TextEdit, TextFrame, TextKeyframe, TextOccurrence, TextPresentation,
-    TextProvenance, TextSettings, TextSummary, TextTreatment, VerifiedReplacements, VerifyReading,
+    DetectorEngine, LetteringStyle, LibrarySign, LocalizedEncoder, LocalizedVideoRecord, PixelRect,
+    Plate, Point, Quad, ReplaceStatus, ReplacedText, ReplacementDocument, SegmentSummary,
+    ShiftedPatch, TextCheck, TextCorrections, TextDocument, TextEdit, TextFrame, TextKeyframe,
+    TextOccurrence, TextPresentation, TextProvenance, TextSettings, TextSummary, TextTreatment,
+    VerifiedReplacements, VerifyReading,
 };
 use crate::archive_round_trip::round_trip;
 
@@ -107,6 +108,9 @@ fn settings() -> TextSettings {
         claude_fallback: false,
         reference_folder: Some(path("reference")),
         localized_video: true,
+        hardware_decode: true,
+        detector_engine: DetectorEngine::TensorRt,
+        localized_encoder: LocalizedEncoder::Nvenc,
     }
 }
 
@@ -332,6 +336,12 @@ fn localized_video_record_round_trips() {
         frames: 34_000,
         replaced: 15,
         earlier: Some("/media/one pace/Dressrosa 11.localized.old.mkv".into()),
+        segments: SegmentSummary {
+            segments_reencoded: 4,
+            frames_reencoded: 1_200,
+            frames_copied: 32_800,
+            fallback_reason: None,
+        },
     });
 }
 

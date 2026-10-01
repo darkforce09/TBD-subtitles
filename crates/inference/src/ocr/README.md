@@ -7,7 +7,8 @@ Already exported PP-OCRv5 and manga-ocr models, loaded in isolated ONNX workers.
 ```text
 crates/inference/src/ocr/
 ├── manga.rs  bounded encoder/decoder beam search
-└── mod.rs    `TextDetection`, the two detectors (`OcrDetector`), `OcrReader` and strict CUDA setup
+├── mod.rs    `TextDetection`, the two detectors (`OcrDetector`), `OcrReader` and strict CUDA setup
+└── pool/     the screening pool's contract: padded frame batches, regions and confirmations
 ```
 
 ## How it works

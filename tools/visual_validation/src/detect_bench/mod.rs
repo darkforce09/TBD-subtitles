@@ -19,7 +19,6 @@ mod detector;
 mod runs;
 mod table;
 mod usage;
-mod yuv;
 
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};

@@ -24,7 +24,7 @@ use media_io::Programs;
 
 use super::table::{Table, optional};
 use super::usage::Sampler;
-use super::yuv::{self, Yuv420};
+use media_io::yuv::{self, Coefficients, Matrix, Range, Yuv420};
 
 /// The pipe size asked for on the enlarged routes.
 const WIDE_PIPE: usize = 1 << 20;
@@ -308,6 +308,7 @@ fn conversion(size: (u32, u32), planar: Option<&[u8]>, nv12: Option<&[u8]>) {
             table.row(vec![format!("{layout}: no frame decoded")]);
             continue;
         };
+        let colour = Coefficients::new(Matrix::Bt709, Range::Limited);
         let mut serial = vec![0u8; frame.rgb_len()];
         let mut parallel = vec![0u8; frame.rgb_len()];
         let time = |convert: &dyn Fn(&mut [u8]) -> bool, out: &mut [u8]| {
@@ -318,8 +319,11 @@ fn conversion(size: (u32, u32), planar: Option<&[u8]>, nv12: Option<&[u8]>) {
             }
             started.elapsed().as_secs_f64() * 1000.0 / f64::from(RUNS)
         };
-        let scalar_ms = time(&|out| yuv::to_rgb(&frame, out), &mut serial);
-        let parallel_ms = time(&|out| yuv::to_rgb_parallel(&frame, out), &mut parallel);
+        let scalar_ms = time(&|out| yuv::to_rgb(&frame, &colour, out), &mut serial);
+        let parallel_ms = time(
+            &|out| yuv::to_rgb_parallel(&frame, &colour, out),
+            &mut parallel,
+        );
         table.row(vec![
             format!("{layout}, scalar integer BT.709"),
             format!("{scalar_ms:.2}"),

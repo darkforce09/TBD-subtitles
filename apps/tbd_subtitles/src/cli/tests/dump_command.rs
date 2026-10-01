@@ -133,7 +133,7 @@ fn a_store_dumps_one_row_pretty_or_a_table_as_json_lines() {
     let text = String::from_utf8(out).expect("UTF-8");
     assert!(text.contains("\n  \"versions\": {"), "{text}");
     let layout: Value = serde_json::from_str(&text).expect("JSON");
-    assert_eq!(layout["versions"]["outputs"], 2);
+    assert_eq!(layout["versions"]["outputs"], 3);
 
     let mut out = Vec::new();
     assert!(print(&read, Table::StepRecords, None, &mut out).unwrap());

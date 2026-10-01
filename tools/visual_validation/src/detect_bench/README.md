@@ -14,8 +14,7 @@ tools/visual_validation/src/detect_bench/
 ├── runs.rs      one measured detector configuration, and the screening and confirmation tables
 ├── table.rs     Markdown tables and optional figures
 ├── usage.rs     GPU and NVDEC utilisation through NVML and CPU ticks from /proc for one run
-├── yuv.rs       BT.709 limited-range yuv420p and nv12 to rgb24, on one thread or rayon rows
-└── tests/       options, FFmpeg arguments, box clipping, conversion, ticks and table formatting
+└── tests/       options, FFmpeg arguments, box clipping, ticks and table formatting
 ```
 
 ## How it works
@@ -29,8 +28,8 @@ Section 1 (`decode.rs`) runs FFmpeg over the clip four times — rgb24 on the de
 rgb24 and yuv420p with the pipe enlarged to 1 MiB on the read end (`F_SETPIPE_SZ`, never past
 `pipe-max-size`), and NVDEC downloaded as nv12 — reading every frame into one reused buffer, with
 `usage.rs` measuring wall time, CPU cores (this process and its reaped FFmpeg) and GPU and NVDEC
-use. It then times `yuv.rs` on the first yuv420p and nv12 frames and checks the parallel bytes
-equal the scalar ones.
+use. It then times `media_io::yuv`'s BT.709 limited-range conversion on the first yuv420p and
+nv12 frames and checks the parallel bytes equal the scalar ones.
 
 Sections 2 and 3 (`runs.rs`) hold every sample-step frame (round(fps / 2)) in memory, at full
 resolution and as the production 640-wide proxy with the deblocking filter skipped, so decoding
@@ -48,14 +47,13 @@ the default 960.
 
 ## Boundaries
 
-- Depends on: `crates/inference` (`cuda_runtime`, `model_store`), `crates/media_io` (`Programs`,
-  `probe`), `crates/pipeline` (`measure::gpu_monitor`, `measure::process_tree::clock_ticks`),
-  `crates/child_process`; the crates.io crates `oar-ocr`, `ndarray`, `rayon`, `libc`,
-  `nvml-wrapper`, `image`, `clap` and `anyhow`; FFmpeg.
+- Depends on: `crates/inference` (`cuda_runtime`, `model_store`), `crates/media_io`
+  (`Programs`, `yuv`, `probe`), `crates/pipeline` (`measure::gpu_monitor`,
+  `measure::process_tree::clock_ticks`), `crates/child_process`; the crates.io crates
+  `oar-ocr`, `ndarray`, `rayon`, `libc`, `nvml-wrapper`, `image`, `clap` and `anyhow`; FFmpeg.
 - Used by: `tools/visual_validation/src/main.rs` (the `detect-bench` command).
 - Rules: the source video is only read; a failed configuration reports its error in its row
-  rather than ending the bench; the two conversions give identical bytes
-  (`planar_and_interleaved_chroma_convert_to_the_same_picture_on_one_or_many_threads`); no box
+  rather than ending the bench; no box
   of the padded path reaches below the frame
   (`a_box_reaching_into_the_padding_is_clipped_to_the_frame`).
 

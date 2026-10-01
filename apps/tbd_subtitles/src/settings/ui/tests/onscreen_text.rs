@@ -35,7 +35,7 @@ fn page(library: SignLibrary) -> SettingsPage {
 fn harness(page: &SettingsPage) -> Harness<'_, Vec<SettingsEvent>> {
     let mut installed = false;
     let mut harness = Harness::builder()
-        .with_size(vec2(660.0, 1200.0))
+        .with_size(vec2(660.0, 1600.0))
         .build_ui_state(
             move |ui, events: &mut Vec<SettingsEvent>| {
                 if !installed {
@@ -107,4 +107,36 @@ fn an_empty_or_unmeasured_library_offers_nothing_to_clear() {
     let harness = harness(&page);
     harness.get_by_label("Measuring…");
     harness.get_by_label("sign library: cannot open it");
+}
+
+#[test]
+fn the_engine_encoder_and_decoder_choices_each_send_one_edit() {
+    let page = page(SignLibrary::default());
+    let mut harness = harness(&page);
+    harness.get_by_label("TensorRT").click();
+    harness.run();
+    harness.get_by_label("NVENC (GPU)").click();
+    harness.run();
+    harness.get_by_label("Decode video on the GPU").click();
+    harness.run();
+    let edits: Vec<(DetectorEngine, LocalizedEncoder, bool)> = harness
+        .state()
+        .iter()
+        .map(|event| match event {
+            SettingsEvent::Edit(edited) => (
+                edited.onscreen_text.detector_engine,
+                edited.onscreen_text.localized_encoder,
+                edited.onscreen_text.hardware_decode,
+            ),
+            _ => panic!("only edits"),
+        })
+        .collect();
+    assert_eq!(
+        edits,
+        [
+            (DetectorEngine::TensorRt, LocalizedEncoder::X264, false),
+            (DetectorEngine::Cuda, LocalizedEncoder::Nvenc, false),
+            (DetectorEngine::Cuda, LocalizedEncoder::X264, true),
+        ]
+    );
 }

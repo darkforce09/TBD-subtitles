@@ -81,6 +81,7 @@ pub(super) fn run(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<
         frames: rendered.frames,
         replaced: document.baked().count(),
         earlier: None,
+        segments: Default::default(),
     };
     io.put(StepName::LocalizedVideo, None, &record)?;
     report.process_s = since(started);

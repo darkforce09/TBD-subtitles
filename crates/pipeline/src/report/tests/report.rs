@@ -60,6 +60,7 @@ fn the_localized_video_lines_count_replacements_and_fallbacks_and_name_the_file(
         frames: 100,
         replaced: 2,
         earlier: None,
+        segments: Default::default(),
     };
     assert_eq!(
         localized_lines(&composed, &video),

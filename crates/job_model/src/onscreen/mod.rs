@@ -22,9 +22,9 @@ pub use frames::{FrameRecord, RleRun, decode_mask, encode_mask, mask_area};
 pub use library::LibrarySign;
 pub use localize::{
     LetteringStyle, LocalizedVideoRecord, PixelRect, Plate, ReplaceStatus, ReplacedText,
-    ReplacementDocument, ShiftedPatch,
+    ReplacementDocument, SegmentSummary, ShiftedPatch,
 };
-pub use settings::TextSettings;
+pub use settings::{DetectorEngine, LocalizedEncoder, TextSettings};
 pub use verify::{TextCheck, VerifiedReplacements, VerifyReading, telling};
 
 #[derive(

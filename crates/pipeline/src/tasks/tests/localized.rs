@@ -18,6 +18,7 @@ fn record(path: Option<&Path>) -> LocalizedVideoRecord {
         frames: 10,
         replaced: 1,
         earlier: None,
+        segments: Default::default(),
     }
 }
 

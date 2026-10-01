@@ -27,6 +27,13 @@ use worker_channel::address::{Address, Table};
 
 use crate::work_dir::store::keys;
 
+mod gpu;
+
+pub use gpu::{
+    GpuPriority, TEXT_DETECT_VRAM_MIB, VRAM_HEADROOM_MIB, WORKER_VRAM_CAP_MIB, gpu_priority,
+    locks_gpu_lazily, vram_need_mib,
+};
+
 /// The binaries a worker runs in, one per native GPU runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Binary {
@@ -219,8 +226,9 @@ const REVISIONS: &[(StepName, u32)] = &[
     // dialogue and sound cues alone, moved above English lettered into the picture.
     // The lettered writing it keeps subtitles clear of is what the read-back check approved.
     (StepName::Output, 5),
-    // Sampled screening with bisected boundaries and one keyframe per occurrence.
-    (StepName::TextDetect, 4),
+    // Full-resolution frames screened in padded batches on two sessions, each occurrence confirmed
+    // on the screened sample nearest its middle.
+    (StepName::TextDetect, 5),
     (StepName::TextRead, 3),
     // Sampled geometry replaces per-frame optical flow.
     (StepName::TextTrack, 3),
@@ -233,14 +241,17 @@ const REVISIONS: &[(StepName, u32)] = &[
     // Masks, fills and lettering account for ruby, check each erase and make one replacement per
     // sign; every frame's mask is a `frames` row, a plate's erase the union of its frames', and
     // a plate whose frames take several shifts has one patch per shift.
-    (StepName::TextMask, 3),
+    // Region crops are decoded as YUV and converted in the source's own matrix and range.
+    (StepName::TextMask, 4),
     (StepName::TextCompose, 3),
     // Strokes left after the wider retry no longer decide; the read-back check does.
-    (StepName::TextInpaint, 3),
+    (StepName::TextInpaint, 4),
     // A local OCR reads each finished replacement back before it reaches the localized video;
     // its readings are `readings` rows, and each frame blends the patch of its own shift.
-    (StepName::TextVerify, 2),
-    (StepName::LocalizedVideo, 3),
+    (StepName::TextVerify, 3),
+    // Only the keyframe-bounded segments with replaced writing are re-encoded, as H.264 matching
+    // the source; the rest of the source's bitstream is copied.
+    (StepName::LocalizedVideo, 4),
 ];
 
 /// The revision of a step's code; a change makes every earlier output of the step stale.
@@ -263,12 +274,22 @@ pub fn settings(step: StepName, settings: &JobSettings) -> Value {
             "llm_model": settings.llm_model,
         }),
         Cues => json!({ "cut_score": settings.cut_score }),
-        TextDetect | TextRead | TextTrack | TextReview => {
+        // The detectors' engine changes the boxes they find; how frames are decoded does not.
+        TextDetect => json!({
+            "enabled": settings.onscreen_text.enabled,
+            "detector_engine": settings.onscreen_text.detector_engine,
+        }),
+        TextRead | TextTrack | TextReview => {
             json!({ "enabled": settings.onscreen_text.enabled })
         }
-        TextMask | TextInpaint | TextCompose | TextVerify | TextTypeset | LocalizedVideo => json!({
+        TextMask | TextInpaint | TextCompose | TextVerify | TextTypeset => json!({
             "enabled": settings.onscreen_text.enabled,
             "localized_video": settings.onscreen_text.localized_video,
+        }),
+        LocalizedVideo => json!({
+            "enabled": settings.onscreen_text.enabled,
+            "localized_video": settings.onscreen_text.localized_video,
+            "localized_encoder": settings.onscreen_text.localized_encoder,
         }),
         // Named fields keep the localized-video switch out of the translation fingerprint.
         TextTranslate => json!({

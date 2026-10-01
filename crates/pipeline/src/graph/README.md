@@ -8,8 +8,9 @@ it reads, which steps depend on it, and which steps form the visual lane. The ru
 
 ```text
 crates/pipeline/src/graph/
+├── gpu.rs  each GPU step's memory need, the lazily locking step, and the lane's place in the queue
 ├── mod.rs  placement, GPU/runtime needs, inputs, stored reads, dependents, settings, revisions, lane
-└── tests/  unit tests for inputs, placements, reads, dependents, settings, revisions and the lane
+└── tests/  unit tests for inputs, placements, reads, dependents, settings, revisions, lane and GPU
 ```
 
 ## How it works

@@ -57,17 +57,17 @@ fn changed_steps_carry_their_revision_and_the_rest_are_at_one() {
     assert_eq!(revision(Cues), 3);
     assert_eq!(revision(Qc), 5);
     assert_eq!(revision(Output), 5);
-    assert_eq!(revision(TextDetect), 4);
+    assert_eq!(revision(TextDetect), 5);
     assert_eq!(revision(TextRead), 3);
     assert_eq!(revision(TextTrack), 3);
     assert_eq!(revision(TextTranslate), 7);
     assert_eq!(revision(TextReview), 3);
     assert_eq!(revision(TextTypeset), 4);
-    assert_eq!(revision(TextMask), 3);
-    assert_eq!(revision(TextInpaint), 3);
+    assert_eq!(revision(TextMask), 4);
+    assert_eq!(revision(TextInpaint), 4);
     assert_eq!(revision(TextCompose), 3);
-    assert_eq!(revision(TextVerify), 2);
-    assert_eq!(revision(LocalizedVideo), 3);
+    assert_eq!(revision(TextVerify), 3);
+    assert_eq!(revision(LocalizedVideo), 4);
     for step in StepName::ALL {
         if !matches!(
             step,
@@ -274,6 +274,37 @@ fn only_the_settings_a_step_reads_reach_its_fingerprint() {
         settings(StepName::Adjudicate, &a),
         settings(StepName::Adjudicate, &b)
     );
+}
+
+#[test]
+fn the_engine_and_encoder_reach_their_steps_and_the_decoder_reaches_none() {
+    use job_model::onscreen::{DetectorEngine, LocalizedEncoder};
+    let base = JobSettings::with_glossary(vec![]);
+    let mut decoded_on_gpu = base.clone();
+    decoded_on_gpu.onscreen_text.hardware_decode = true;
+    for step in StepName::ALL {
+        assert_eq!(
+            settings(step, &base),
+            settings(step, &decoded_on_gpu),
+            "{step}"
+        );
+    }
+    let mut tensor_rt = base.clone();
+    tensor_rt.onscreen_text.detector_engine = DetectorEngine::TensorRt;
+    let mut nvenc = base.clone();
+    nvenc.onscreen_text.localized_encoder = LocalizedEncoder::Nvenc;
+    for step in StepName::ALL {
+        assert_eq!(
+            settings(step, &base) != settings(step, &tensor_rt),
+            step == StepName::TextDetect,
+            "{step}"
+        );
+        assert_eq!(
+            settings(step, &base) != settings(step, &nvenc),
+            step == StepName::LocalizedVideo,
+            "{step}"
+        );
+    }
 }
 
 #[test]
