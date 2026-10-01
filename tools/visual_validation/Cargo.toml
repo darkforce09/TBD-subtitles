@@ -23,3 +23,14 @@ serde_json = "1"
 clap = { version = "4.6", features = ["derive"] }
 anyhow = "1"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
+# The detection benchmark: PP-OCRv5 detection predictors and their DB model, pre- and
+# post-processing pieces, on the same ONNX Runtime the inference crate loads.
+oar-ocr = { version = "=0.9.2", default-features = false, features = ["cuda"] }
+# The detection benchmark's batch tensors, the version oar-ocr uses.
+ndarray = "0.17"
+# The detection benchmark's parallel post-processing and colour conversion.
+rayon = "1"
+# The detection benchmark's pipe size (`F_SETPIPE_SZ`).
+libc = { version = "0.2", default-features = false }
+# The detection benchmark's GPU and NVDEC utilisation, read from the driver's NVML.
+nvml-wrapper = { version = "0.13", default-features = false }

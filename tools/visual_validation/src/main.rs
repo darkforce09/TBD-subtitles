@@ -1,10 +1,12 @@
 //! Reproducible visual translation validation on owner-provided media.
 //!
-//! **Role:** fetch pinned models, recognize stills and evaluate annotated video artifacts.
+//! **Role:** fetch pinned models, recognize stills, evaluate annotated video artifacts and measure
+//! full-resolution screening.
 //! **Position:** repository tool calling the same backends and stages as production.
 //! **Signals and state:** local input files and explicit JSON reports; no source mutation.
 //! **Invariants:** missing readable occurrences fail; uncertain tracks require explicit fallback.
 
+mod detect_bench;
 mod evaluate;
 mod job_rows;
 mod mask_probe;
@@ -96,6 +98,10 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Measure full-resolution text screening on a clip: decode routes, YUV conversion, the
+    /// mobile detector by path, batch and workers, the proxy baseline and the server detector
+    /// (run on the host: CUDA, NVML and FFmpeg).
+    DetectBench(detect_bench::Options),
     /// Extract a bounded pilot clip, preserving the input video.
     Clip {
         video: PathBuf,
@@ -167,6 +173,7 @@ fn main() -> Result<()> {
         })?,
         Command::ResidueProbe { work } => mask_probe::residue(&work)?,
         Command::VerifyProbe { work, ids, out } => verify_probe::run(&work, &ids, out.as_deref())?,
+        Command::DetectBench(options) => detect_bench::run(&options)?,
         Command::Clip {
             video,
             output,

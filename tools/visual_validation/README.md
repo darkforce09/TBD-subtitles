@@ -13,7 +13,7 @@ tools/visual_validation/
 
 ## How it works
 
-The tool downloads checksum-pinned models, recognizes owner-provided stills, extracts bounded pilot clips and compares production visual documents against independent annotations. Coverage, timing and tracking errors are measured separately from model confidence. An annotated frame sample counts as observed when a document frame starts within one source frame of it or holds its geometry across it, since the scan keeps one observation per sample or boundary rather than one per frame.
+The tool downloads checksum-pinned models, recognizes owner-provided stills, extracts bounded pilot clips and compares production visual documents against independent annotations. Coverage, timing and tracking errors are measured separately from model confidence. An annotated frame sample counts as observed when a document frame starts within one source frame of it or holds its geometry across it, since the scan keeps one observation per sample or boundary rather than one per frame. `detect-bench` measures what screening at full resolution instead of the proxy would cost, from decoding to the detector, and prints Markdown tables.
 
 `run` stores its steps' outputs and records in the work directory's job database (`job.redb`), as the app does, and writes only a preview ASS and the model calls beside it; `inspect`, `evaluate` and the probes read a finished job's documents and per-frame `frames` rows from that database, so they work on a pilot's work directory and on one the app wrote alike.
 
@@ -60,14 +60,27 @@ Annotations contain source frame rate, height and expected occurrences with text
   similarity and the verdict; then each occurrence's result and the similarity distribution.
   `--out` saves each finished region read as a PNG. It needs the CUDA and ONNX Runtime libraries
   on `LD_LIBRARY_PATH` and `ORT_DYLIB_PATH`, as a GPU worker has them.
+- `detect-bench <video> [--start S] [--duration D] [--ffmpeg-dir DIR] [--models-dir DIR]
+  [--runtime-dir DIR] [--memory-limit-mib N] [--raised-limit-mib N]` measures, on a clip
+  (default 600 s for 120 s), how fast full-resolution frames reach a Rust reader through four
+  FFmpeg routes (rgb24 on the default and an enlarged pipe, yuv420p, NVDEC as nv12), how fast
+  Rust converts YUV 4:2:0 to RGB, how fast the PP-OCRv5 mobile detector screens the sample
+  frames at full resolution (the stock predictor at limit 1920 by batch 1–8, a padded path by
+  batch 2–8, two workers at each path's fastest batch, and the 640 × 360 proxy baseline), and
+  what the server detector costs per still; each row gives ms per frame, frames per second, GPU
+  use, peak VRAM, CPU cores and boxes found, and a failed configuration prints its error and runs
+  once more at the raised arena limit. Run it on the host: it re-executes itself with the CUDA
+  runtime's library path and `ORT_DYLIB_PATH`, from `cuda/` beside the binary, `--runtime-dir`
+  or the app's runtime folder.
 - `font-candidate` inspects an official Google Fonts candidate before checksum pinning.
 
 ## Boundaries
 
 - Depends on: the production crates `crates/inference`, `crates/job_model`, `crates/stages`,
   `crates/media_io`, `crates/pipeline`, `crates/worker_channel`, `crates/subtitle_formats` and
-  `crates/child_process`; the crates.io crates `image`, `serde`, `serde_json`, `clap`, `anyhow`
-  and `ureq`; FFmpeg, and the app's release binaries for `run`'s workers.
+  `crates/child_process`; the crates.io crates `image`, `serde`, `serde_json`, `clap`, `anyhow`,
+  `ureq`, and for `detect-bench` `oar-ocr`, `ndarray`, `rayon`, `libc` and `nvml-wrapper`;
+  FFmpeg, and the app's release binaries for `run`'s workers.
 - Used by: development validation on owner-provided media.
 - Rules: no models are converted, missing readable occurrences fail
   (`every_readable_occurrence_needs_its_own_rendered_translation_or_flag`), and unsafe tracks need
