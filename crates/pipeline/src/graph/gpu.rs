@@ -41,7 +41,7 @@ const MEASURED_PEAKS_MIB: &[(StepName, u64)] = &[
     (StepName::TextRead, 1_088),
     (StepName::TextTranslate, 3_566),
     (StepName::TextInpaint, 1_202),
-    (StepName::TextVerify, 2_894),
+    (StepName::TextVerify, 3_800),
     (StepName::LocalizedVideo, 275),
 ];
 

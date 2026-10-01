@@ -261,7 +261,7 @@ pub fn strict_cuda_environment() -> Result<(), OcrError> {
         use ort::ep::{ArenaExtendStrategy, CUDA, cuda::ConvAlgorithmSearch};
         ort::init()
             .with_execution_providers([CUDA::default()
-                .with_memory_limit(3 * 1024 * 1024 * 1024)
+                .with_memory_limit(5 * 1024 * 1024 * 1024)
                 .with_arena_extend_strategy(ArenaExtendStrategy::SameAsRequested)
                 .with_conv_algorithm_search(ConvAlgorithmSearch::Heuristic)
                 .with_conv_max_workspace(false)
