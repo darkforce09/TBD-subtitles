@@ -39,6 +39,7 @@ pub use io::StepIo;
 pub(crate) use review::corrected_lines;
 
 use std::collections::BTreeMap;
+use std::io::{IsTerminal, Read};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -192,13 +193,29 @@ pub fn in_process(
 /// read the step's inputs from stdin, run the step, and send its outputs, progress and measure,
 /// then its end; any error is sent as a `Failed` frame and returned.
 pub fn worker_main(step: StepName, job_dir: &Path, binary: Binary) -> Result<()> {
+    if std::io::stdin().is_terminal() {
+        return Err(PipelineError::new(
+            format!("worker {step}"),
+            "a worker receives inputs on a pipe from the runner, not a terminal",
+        ));
+    }
+    worker_main_from(step, job_dir, binary, std::io::stdin())
+}
+
+/// What a worker binary executes for `step` in `job_dir`, reading runner inputs from `stdin`.
+pub fn worker_main_from(
+    step: StepName,
+    job_dir: &Path,
+    binary: Binary,
+    stdin: impl Read + Send + 'static,
+) -> Result<()> {
     worker_channel::worker::install().map_err(|error| {
         PipelineError::new(
             format!("worker {step}"),
             format!("cannot open the worker channel: {error}"),
         )
     })?;
-    let result = run_in_worker(step, job_dir, binary);
+    let result = run_in_worker(step, job_dir, binary, stdin);
     if let Err(error) = &result {
         worker_channel::worker::failed(&error.to_string());
     }
@@ -206,7 +223,12 @@ pub fn worker_main(step: StepName, job_dir: &Path, binary: Binary) -> Result<()>
 }
 
 /// The worker's step, from the placement check to its `Done` frame.
-fn run_in_worker(step: StepName, job_dir: &Path, binary: Binary) -> Result<()> {
+fn run_in_worker(
+    step: StepName,
+    job_dir: &Path,
+    binary: Binary,
+    stdin: impl Read + Send + 'static,
+) -> Result<()> {
     let context = format!("worker {step}");
     let wanted = match graph::placement(step) {
         Placement::Worker(b) => b,
@@ -223,7 +245,7 @@ fn run_in_worker(step: StepName, job_dir: &Path, binary: Binary) -> Result<()> {
             format!("the step runs in `{name}`"),
         ));
     }
-    let stdin = std::io::BufReader::new(std::io::stdin());
+    let stdin = std::io::BufReader::new(stdin);
     let mut io = StepIo::over_stdin(step, stdin)?;
     let job = Job::received(job_dir, &io)?;
     let send = |done: usize, total: usize| {

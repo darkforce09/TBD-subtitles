@@ -121,7 +121,11 @@ fn process_refuses_a_missing_video_by_name() {
 
 #[test]
 fn a_worker_without_a_job_fails() {
-    let error = dispatch(parse(&["worker", "separation", "/no/such/job"]).unwrap()).unwrap_err();
+    let error = dispatch_with(
+        parse(&["worker", "separation", "/no/such/job"]).unwrap(),
+        std::io::empty(),
+    )
+    .unwrap_err();
     assert!(format!("{error:#}").contains("job_record"), "{error:#}");
 }
 

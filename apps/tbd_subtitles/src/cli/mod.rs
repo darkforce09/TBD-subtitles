@@ -101,6 +101,11 @@ fn window_request(cli: &Cli) -> Option<window_command::WindowRequest> {
 
 /// Run a subcommand that never opens the window.
 fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
+    dispatch_with(cli, std::io::stdin())
+}
+
+/// Run a subcommand that never opens the window, with custom worker stdin.
+fn dispatch_with(cli: Cli, stdin: impl std::io::Read + Send + 'static) -> anyhow::Result<ExitCode> {
     match cli.command {
         None | Some(Command::Gui { .. }) => {
             anyhow::bail!("the window opens through `window_command`, not `dispatch`")
@@ -109,7 +114,7 @@ fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
         Some(Command::Fix(args)) => fix_command::run(&args).map(|()| ExitCode::SUCCESS),
         Some(Command::Dump(args)) => dump_command::run(&args),
         Some(Command::Worker { step, job_dir }) => {
-            worker_command::run(step, &job_dir).map(|()| ExitCode::SUCCESS)
+            worker_command::run(step, &job_dir, stdin).map(|()| ExitCode::SUCCESS)
         }
     }
 }
