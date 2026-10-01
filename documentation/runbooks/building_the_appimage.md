@@ -43,8 +43,9 @@ owner's choice and for the owner's own use: do not share the AppImage as is
    build, download FFmpeg, lay out `AppDir`, pack the squashfs image), then the path
    `dist/TBD-subtitles-<version>-<git short>-x86_64.AppImage` and its size. The first run prints
    `streaming …TensorRT-10.14.1.48…tar.gz`, a percentage, and `kept libnvinfer.so…`, the library
-   names taken from it. Without TensorRT the image was around 1.5 GB; the size with TensorRT's
-   libraries is to be recorded here after the first host build.
+   names taken from it (the first host build streamed and installed them in 1 min 57 s). The
+   image is about 4.8 GB (4,804 MiB on 2026-10-01), of which TensorRT's libraries are 3.9 GB;
+   without TensorRT it was around 1.5 GB.
    `dist/TBD-subtitles-x86_64.AppImage` is a hard link to the same file, for a stable name.
 
 2. Rebuild the image from an already-built `AppDir` without rebuilding the app, after only a docs
