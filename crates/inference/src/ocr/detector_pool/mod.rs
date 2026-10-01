@@ -2,8 +2,8 @@
 //!
 //! **Role:** implement `TextScreening` with one thread per session. Each thread owns a mobile
 //! detector session that screens padded full-resolution batches of a fixed shape; once screening
-//! ends, the threads close those sessions and open server detector sessions, batch 1, that
-//! confirm single frames. Sessions run on the CUDA provider, or on TensorRT before CUDA.
+//! ends, the threads close those sessions and the first `confirm_sessions` of them open server
+//! detector sessions, batch 1, that confirm single frames. Sessions run on the CUDA provider, or on TensorRT before CUDA.
 //!
 //! **Position:** opened by the `text_detect` step in its GPU worker; the detection scan in
 //! `stages` submits jobs and confirms through the `TextScreening` trait.
@@ -35,8 +35,8 @@ use job_model::onscreen::DetectorEngine;
 
 use super::OcrError;
 use super::pool::{
-    CONFIRM_POOL_MIB, ConfirmJob, ConfirmResult, EngineIdentity, SCREEN_SESSIONS, ScreenJob,
-    ScreenResult, ScreenShape, TextScreening,
+    CONFIRM_POOL_MIB, CONFIRM_SESSIONS, ConfirmJob, ConfirmResult, EngineIdentity, SCREEN_SESSIONS,
+    ScreenJob, ScreenResult, ScreenShape, TextScreening,
 };
 use batch::InputShape;
 use queue::Queue;
@@ -85,6 +85,10 @@ pub struct PoolOptions {
     pub shape: ScreenShape,
     /// Screening sessions, one thread each.
     pub sessions: usize,
+    /// Confirming sessions, opened by the first threads once screening ends; at most `sessions`.
+    pub confirm_sessions: usize,
+    /// The GPU memory pool of each confirming session, in MiB.
+    pub confirm_pool_mib: usize,
     /// The folder holding one folder per TensorRT engine key.
     pub cache_dir: PathBuf,
     /// The frames' own size; every frame of the run has it.
@@ -112,6 +116,8 @@ impl PoolOptions {
             identity,
             shape: ScreenShape::INITIAL,
             sessions: SCREEN_SESSIONS,
+            confirm_sessions: CONFIRM_SESSIONS,
+            confirm_pool_mib: CONFIRM_POOL_MIB,
             cache_dir: data.join(TENSORRT_FOLDER),
             frame_width: width,
             frame_height: height,
@@ -122,15 +128,25 @@ impl PoolOptions {
 
     /// The session `role` opens with, its model under `models_root`.
     fn spec(&self, role: Role, models_root: &Path) -> SessionSpec {
-        let (model, batch, pool_mib) = match role {
-            Role::Screen => (SCREEN_MODEL, self.shape.batch, self.shape.pool_mib),
-            Role::Confirm => (CONFIRM_MODEL, 1, CONFIRM_POOL_MIB),
+        let (model, batch, pool_mib, sessions) = match role {
+            Role::Screen => (
+                SCREEN_MODEL,
+                self.shape.batch,
+                self.shape.pool_mib,
+                self.sessions,
+            ),
+            Role::Confirm => (
+                CONFIRM_MODEL,
+                1,
+                self.confirm_pool_mib,
+                self.confirm_sessions,
+            ),
         };
         let tensorrt = (self.engine == DetectorEngine::TensorRt).then(|| TensorRtSpec {
             identity: self.identity.clone(),
             cache_root: self.cache_dir.clone(),
             fp16: self.tensorrt_fp16,
-            workspace_mib: session::workspace_mib(self.vram_cap_mib, self.sessions, pool_mib),
+            workspace_mib: session::workspace_mib(self.vram_cap_mib, sessions, pool_mib),
         });
         SessionSpec {
             role,
@@ -144,8 +160,15 @@ impl PoolOptions {
     }
 
     fn check(&self) -> Result<(), OcrError> {
-        if self.sessions == 0 || self.shape.batch == 0 || self.shape.pool_mib == 0 {
-            return Err("the detector pool needs a session, a batch and a memory pool".into());
+        if self.sessions == 0
+            || self.shape.batch == 0
+            || self.shape.pool_mib == 0
+            || self.confirm_pool_mib == 0
+        {
+            return Err("the detector pool needs a session, a batch and memory pools".into());
+        }
+        if self.confirm_sessions == 0 || self.confirm_sessions > self.sessions {
+            return Err("the detector pool confirms on one to all of its session threads".into());
         }
         if self.frame_width == 0 || self.frame_height == 0 {
             return Err("the detector pool needs the frames' size".into());
@@ -175,6 +198,10 @@ impl PoolOptions {
             ("search mode".to_owned(), self.search.label().to_owned()),
             ("screen sessions".to_owned(), self.sessions.to_string()),
             ("screen shape".to_owned(), shape(screen)),
+            (
+                "confirm sessions".to_owned(),
+                self.confirm_sessions.to_string(),
+            ),
             ("confirm shape".to_owned(), shape(confirm)),
         ])
     }
@@ -229,6 +256,7 @@ impl DetectorPool {
                 report: Arc::clone(&report),
                 screen: screen.clone(),
                 confirm: confirm.clone(),
+                confirms: thread < options.confirm_sessions,
                 frame,
                 screened: screened_tx.clone(),
                 confirmed: confirmed_tx.clone(),

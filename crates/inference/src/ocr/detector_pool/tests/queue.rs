@@ -22,7 +22,7 @@ fn confirm(seq: u64) -> ConfirmJob {
 }
 
 fn order(state: &mut State) -> Vec<u64> {
-    std::iter::from_fn(|| match state.take(true) {
+    std::iter::from_fn(|| match state.take(true, true) {
         Some(Task::Screen(job)) => Some(job.seq),
         _ => None,
     })
@@ -43,22 +43,22 @@ fn probes_run_first_then_screening_jobs_by_number() {
 #[test]
 fn an_empty_queue_makes_the_thread_wait() {
     let mut state = State::new(2);
-    assert!(state.take(true).is_none());
+    assert!(state.take(true, true).is_none());
 }
 
 #[test]
 fn confirmations_wait_until_every_screening_session_is_closed() {
     let mut state = State::new(2);
     state.push_confirm([(0, confirm(10)), (1, confirm(11))]);
-    assert!(matches!(state.take(true), Some(Task::CloseScreen)));
+    assert!(matches!(state.take(true, true), Some(Task::CloseScreen)));
     state.screen_closed();
     // One session is still open somewhere: nothing to confirm yet.
-    assert!(state.take(false).is_none());
-    assert!(matches!(state.take(true), Some(Task::CloseScreen)));
+    assert!(state.take(false, true).is_none());
+    assert!(matches!(state.take(true, true), Some(Task::CloseScreen)));
     state.screen_closed();
-    assert!(matches!(state.take(false), Some(Task::Confirm(0, job)) if job.seq == 10));
-    assert!(matches!(state.take(false), Some(Task::Confirm(1, job)) if job.seq == 11));
-    assert!(state.take(false).is_none());
+    assert!(matches!(state.take(false, true), Some(Task::Confirm(0, job)) if job.seq == 10));
+    assert!(matches!(state.take(false, true), Some(Task::Confirm(1, job)) if job.seq == 11));
+    assert!(state.take(false, true).is_none());
 }
 
 #[test]
@@ -66,6 +66,20 @@ fn closing_ends_every_thread() {
     let mut state = State::new(1);
     state.push_screen(screen(1, Priority::Screen));
     state.close();
-    assert!(matches!(state.take(true), Some(Task::Exit)));
-    assert!(matches!(state.take(false), Some(Task::Exit)));
+    assert!(matches!(state.take(true, true), Some(Task::Exit)));
+    assert!(matches!(state.take(false, true), Some(Task::Exit)));
+}
+
+#[test]
+fn a_thread_that_does_not_confirm_closes_its_session_and_waits_for_the_end() {
+    let mut state = State::new(2);
+    state.push_confirm([(0, confirm(10))]);
+    assert!(matches!(state.take(true, false), Some(Task::CloseScreen)));
+    state.screen_closed();
+    assert!(matches!(state.take(true, true), Some(Task::CloseScreen)));
+    state.screen_closed();
+    assert!(state.take(false, false).is_none());
+    assert!(matches!(state.take(false, true), Some(Task::Confirm(0, job)) if job.seq == 10));
+    state.close();
+    assert!(matches!(state.take(false, false), Some(Task::Exit)));
 }

@@ -2,7 +2,7 @@
 //!
 //! **Role:** open and warm up the thread's screening session, run the screening jobs the queue
 //! hands it, close the session when screening ends, open a confirming session the first time a
-//! confirmation reaches the thread, and send every result back with its job's number.
+//! confirmation reaches the thread when it is one of the confirming threads, and send every result back with its job's number.
 //!
 //! **Position:** spawned by `DetectorPool::open`, one per session; drains `queue.rs`.
 //!
@@ -41,6 +41,8 @@ pub struct Context {
     pub report: Arc<Mutex<Report>>,
     pub screen: SessionSpec,
     pub confirm: SessionSpec,
+    /// Whether this thread opens a confirming session once screening ends.
+    pub confirms: bool,
     /// The frames' own width and height.
     pub frame: (u32, u32),
     pub screened: Sender<Result<ScreenResult, OcrError>>,
@@ -108,7 +110,7 @@ pub fn run(context: Context, thread: usize, started: Sender<Result<(), OcrError>
     let confirming = PostProcess::confirming();
     let mut confirm: Option<Result<WarmSession, String>> = None;
     loop {
-        match context.queue.next(screen.is_some()) {
+        match context.queue.next(screen.is_some(), context.confirms) {
             Task::Exit => return,
             Task::CloseScreen => {
                 screen = None;

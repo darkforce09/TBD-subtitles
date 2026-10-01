@@ -12,6 +12,7 @@
 
 use std::collections::BTreeMap;
 
+use inference::ocr::pool::CONFIRM_SESSIONS;
 use pipeline::measure::gpu_monitor::VramPeaks;
 
 use super::super::table::optional;
@@ -90,14 +91,14 @@ pub fn row(
     outcome: &Result<Measured, String>,
     against: Option<&str>,
 ) -> Vec<String> {
-    let (batch, pool_mib) = match phase {
-        Phase::Screen => (run.shape.batch, run.shape.pool_mib),
-        Phase::Confirm => (1, inference::ocr::pool::CONFIRM_POOL_MIB),
+    let (sessions, batch, pool_mib) = match phase {
+        Phase::Screen => (run.sessions, run.shape.batch, run.shape.pool_mib),
+        Phase::Confirm => (CONFIRM_SESSIONS.min(run.sessions), 1, run.confirm_pool_mib),
     };
     let mut cells = vec![
         run.engine_label().to_string(),
         run.search_label().to_string(),
-        run.sessions.to_string(),
+        sessions.to_string(),
         batch.to_string(),
         pool_mib.to_string(),
     ];

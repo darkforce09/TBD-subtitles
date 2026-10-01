@@ -46,8 +46,10 @@ clips every corner into the frame, which drops boxes found only in the padding.
 
 `confirm` refuses to start while screening results are still due; it then closes every screening
 session before any confirming session opens (`queue.rs` holds the barrier), so peak GPU memory is
-the larger of the two phases, never their sum. Each confirming session opens on its thread's
-first confirmation, with batch 1 and `CONFIRM_POOL_MIB`. Every task taken from the queue gets one
+the larger of the two phases, never their sum. Only the first `confirm_sessions` threads
+(`CONFIRM_SESSIONS`, one) take confirmations; the others wait for the pool to close. A confirming
+session opens on its thread's first confirmation, with batch 1 and `confirm_pool_mib`
+(`CONFIRM_POOL_MIB`). Every task taken from the queue gets one
 answer, an error included, so neither `recv` nor `confirm` waits forever.
 
 `notes()` names the engine, the search mode, the session count and both input shapes, and, per

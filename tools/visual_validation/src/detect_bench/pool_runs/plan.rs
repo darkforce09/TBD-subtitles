@@ -10,7 +10,7 @@
 //! pool) is built at the first pool size of its batch and reused at the others.
 
 use inference::ocr::SearchMode;
-use inference::ocr::pool::ScreenShape;
+use inference::ocr::pool::{CONFIRM_POOL_MIB, ScreenShape};
 use job_model::onscreen::DetectorEngine;
 
 /// One configuration of the production detector pool.
@@ -22,6 +22,8 @@ pub struct PoolRun {
     pub search: SearchMode,
     pub sessions: usize,
     pub shape: ScreenShape,
+    /// Each confirming session's GPU memory pool, in MiB.
+    pub confirm_pool_mib: usize,
 }
 
 impl PoolRun {
@@ -33,6 +35,7 @@ impl PoolRun {
             search: SearchMode::Fast,
             sessions,
             shape,
+            confirm_pool_mib: CONFIRM_POOL_MIB,
         }
     }
 

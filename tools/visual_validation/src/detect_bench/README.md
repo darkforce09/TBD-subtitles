@@ -61,7 +61,8 @@ Sections 4 to 8 (`pool_runs/`) decode the same sample frames as yuv420p, convert
 one configuration at a time: the CUDA sweep over `--sweep-batches` × `--sweep-pools-mib` with two
 sessions, one session against two at the chosen shape, the fast and deterministic searches run
 twice each with their boxes compared, TensorRT FP16 and FP32 over the same sweep with engines in
-`--trt-cache`, and confirmation of 40 stills by CUDA and both TensorRT precisions. Each row gives
+`--trt-cache`, and confirmation of 40 stills by CUDA and both TensorRT precisions on the production
+confirming sessions, at each pool of `--confirm-pools-mib` (default `1536,2048,2560,3072`). Each row gives
 frames per second, GPU busy %, peak VRAM, warm-up and engine build seconds, whether the engine was
 built or reused, whether the CUDA graph and NHWC were accepted, and the boxes against a reference.
 

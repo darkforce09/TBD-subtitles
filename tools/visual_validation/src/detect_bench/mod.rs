@@ -104,6 +104,9 @@ pub struct Options {
     /// The session memory pools the sweeps run each batch at, in MiB, comma-separated.
     #[arg(long, value_delimiter = ',', default_values_t = [1536usize, 2048, 2560, 3072])]
     pub sweep_pools_mib: Vec<usize>,
+    /// The memory pools confirmation runs each engine at, in MiB, comma-separated.
+    #[arg(long, value_delimiter = ',', default_values_t = [1536usize, 2048, 2560, 3072])]
+    pub confirm_pools_mib: Vec<usize>,
     /// The batch sections 5 to 8 run at; the sweep's fastest, else the production default, when
     /// neither this nor `--shape-pool-mib` is given.
     #[arg(long)]
@@ -174,11 +177,21 @@ impl Options {
             search: !self.no_search,
             tensorrt: !self.no_tensorrt,
             confirm: !self.no_pool_confirm,
+            confirm_pools_mib: self
+                .confirm_pools_mib
+                .iter()
+                .copied()
+                .filter(|&pool| pool > 0)
+                .collect(),
             reference: self.frames_dir.is_some(),
         };
         anyhow::ensure!(
             !(sections.cuda_sweep || sections.tensorrt) || !sections.grid.is_empty(),
             "the sweep needs at least one batch and one pool size above zero"
+        );
+        anyhow::ensure!(
+            !sections.confirm || !sections.confirm_pools_mib.is_empty(),
+            "confirmation needs at least one pool size above zero"
         );
         anyhow::ensure!(
             self.frames_dir.is_none() || self.frames_count > 0,

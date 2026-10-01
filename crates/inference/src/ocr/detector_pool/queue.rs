@@ -2,7 +2,7 @@
 //!
 //! **Role:** hand each session thread its next task: a waiting screening job, probes first and
 //! then by sequence number; once screening ends, the order to close its screening session, and
-//! after every screening session is closed, the next confirmation.
+//! after every screening session is closed, the next confirmation to a thread that confirms.
 //!
 //! **Position:** filled by `DetectorPool`, drained by the session threads in `worker.rs`.
 //!
@@ -108,14 +108,15 @@ impl State {
         self.phase = Phase::Closed;
     }
 
-    /// The next task for a thread that does or does not still hold a screening session, or
-    /// `None` while it has to wait.
-    pub fn take(&mut self, holds_screen: bool) -> Option<Task> {
+    /// The next task for a thread that does or does not still hold a screening session and
+    /// does or does not confirm, or `None` while it has to wait; a thread that does not confirm
+    /// waits from the end of screening until the pool closes.
+    pub fn take(&mut self, holds_screen: bool, confirms: bool) -> Option<Task> {
         match self.phase {
             Phase::Closed => Some(Task::Exit),
             Phase::Screen => self.screen.pop().map(|Waiting(job)| Task::Screen(job)),
             Phase::Confirm if holds_screen => Some(Task::CloseScreen),
-            Phase::Confirm if self.screens_open > 0 => None,
+            Phase::Confirm if self.screens_open > 0 || !confirms => None,
             Phase::Confirm => self
                 .confirm
                 .pop_front()
@@ -150,10 +151,10 @@ impl Queue {
     }
 
     /// The thread's next task; blocks until there is one.
-    pub fn next(&self, holds_screen: bool) -> Task {
+    pub fn next(&self, holds_screen: bool, confirms: bool) -> Task {
         let mut state = self.lock();
         loop {
-            if let Some(task) = state.take(holds_screen) {
+            if let Some(task) = state.take(holds_screen, confirms) {
                 return task;
             }
             state = self

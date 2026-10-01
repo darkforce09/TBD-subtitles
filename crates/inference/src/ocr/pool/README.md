@@ -18,9 +18,10 @@ A `PaddedFrame` is one frame converted to rgb24 and padded below with black rows
 `ScreenShape::batch` frames, each with a sequence number and a `Priority`: bisection probes run
 before screening batches that wait. Results come back as `ScreenResult`s in whatever order the
 sessions finish, and the scan applies them in its own order. `confirm` runs the server detector on
-one frame per occurrence, spread over the sessions, and answers in the order asked.
+one frame per occurrence on `CONFIRM_SESSIONS` sessions, and answers in the order asked.
 `ScreenShape::INITIAL`, `SCREEN_SESSIONS` and `CONFIRM_POOL_MIB` are the starting values the
-host's pool-by-batch sweep replaces. `EngineIdentity` names the card, driver and TensorRT build a
+host's pool-by-batch sweep replaces; `CONFIRM_SESSIONS` is one, since one server detector at full
+resolution keeps the GPU busy and a second does not fit beside it. `EngineIdentity` names the card, driver and TensorRT build a
 cached engine was made for; the caller reads it from the driver.
 
 ## Boundaries

@@ -154,3 +154,26 @@ TensorRT engine, runs that reuse its cached engine give identical results, while
 may differ. The search runs during each session's warm-up, timed apart from screening.
 
 **Supersedes:** none.
+
+### 2026-10-01 — One server-detector session confirms
+
+**Context:** The first host run of the detector pool's confirmation (Dressrosa 11, 40 stills,
+CUDA, fast search) opened the server PP-OCRv5 detector on both session threads at 1920 × 1088,
+batch 1. With two sessions every pool of 1,536 to 3,072 MiB failed: a single convolution asked
+the arena for 558 MB, and at 3,072 MiB each the two sessions with the desktop's 1.3 GB no longer
+fit on the 8 GB card. One session at 3,072 MiB confirmed 7.2 stills a second (138 ms each) with
+the GPU 97 % busy and peaked at 3.3–3.6 GB of process VRAM; at 2,560 MiB it ran out of its pool.
+
+**Decision:** One session confirms (`CONFIRM_SESSIONS`): the first session thread opens the
+server detector once screening ends, and the other threads wait for the pool to close. The pool
+options carry the confirming sessions and their memory pool apart from screening's, and the
+detect-bench sweeps the confirmation pool (`--confirm-pools-mib`) so the host sets
+`CONFIRM_POOL_MIB` from measurement.
+
+**Consequences:** Confirmation takes about 0.14 s per occurrence on the RTX 3070 and holds one
+session's memory; a second session would add no speed, since one already keeps the GPU busy.
+Peak VRAM is still the larger of the two phases.
+
+**Supersedes:** "on both sessions, each opening its confirmation session" in the entry of
+2026-10-01 — The server detector confirms each occurrence at full resolution on the sample
+nearest its middle; the rest of that entry holds.

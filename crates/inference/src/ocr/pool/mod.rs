@@ -45,6 +45,10 @@ pub const SCREEN_SESSIONS: usize = 2;
 /// screening sessions are closed before these open.
 pub const CONFIRM_POOL_MIB: usize = 1_536;
 
+/// The confirming sessions: one, since a single server detector on a full-resolution frame keeps
+/// the GPU busy and a second does not fit beside it within the worker's VRAM cap.
+pub const CONFIRM_SESSIONS: usize = 1;
+
 /// One frame converted to rgb24 and padded below with black rows to a multiple of 32.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaddedFrame {

@@ -68,6 +68,7 @@ fn a_run_becomes_the_pool_options_it_names() {
     };
     let run = PoolRun {
         search: SearchMode::Deterministic,
+        confirm_pool_mib: 2560,
         ..PoolRun::tensorrt(shape, 1, false)
     };
     let options = setup.options(&run);
@@ -79,6 +80,7 @@ fn a_run_becomes_the_pool_options_it_names() {
     assert_eq!(options.cache_dir, PathBuf::from("/tmp/bench/tensorrt"));
     assert_eq!((options.frame_width, options.frame_height), (1920, 1080));
     assert_eq!(options.vram_cap_mib, 6656);
+    assert_eq!(options.confirm_pool_mib, 2560);
     assert_eq!(options.identity, setup.identity);
 }
 

@@ -90,6 +90,8 @@ fn options(sessions: usize, batch: usize) -> PoolOptions {
             pool_mib: 256,
         },
         sessions,
+        confirm_sessions: 1,
+        confirm_pool_mib: 1_536,
         cache_dir: PathBuf::from("tensorrt"),
         frame_width: WIDTH,
         frame_height: HEIGHT,
@@ -226,7 +228,7 @@ fn confirmations_answer_in_the_order_given_after_screening_closes() {
     let first_confirm = events.iter().position(|e| e == "open confirm").unwrap();
     assert!(last_close < first_confirm, "{events:?}");
     assert_eq!(events.iter().filter(|e| *e == "close screen").count(), 2);
-    assert!(events.iter().filter(|e| *e == "open confirm").count() <= 2);
+    assert_eq!(events.iter().filter(|e| *e == "open confirm").count(), 1);
     assert!(
         pool.submit(job(0, Priority::Screen, vec![frame(None, false)]))
             .is_err()
@@ -336,4 +338,25 @@ fn tensorrt_sessions_carry_their_cache_and_workspace() {
             .tensorrt
             .is_none()
     );
+}
+
+#[test]
+fn confirming_sessions_take_their_own_pool() {
+    let mut options = options(2, 4);
+    options.shape.pool_mib = 2_048;
+    options.confirm_pool_mib = 3_072;
+    assert_eq!(options.spec(Role::Screen, Path::new("m")).pool_mib, 2_048);
+    assert_eq!(options.spec(Role::Confirm, Path::new("m")).pool_mib, 3_072);
+    options.confirm_pool_mib = 0;
+    assert!(open(FakeOpener::default(), options).is_err());
+}
+
+#[test]
+fn confirming_sessions_are_at_least_one_and_at_most_the_threads() {
+    let mut none = options(2, 1);
+    none.confirm_sessions = 0;
+    assert!(open(FakeOpener::default(), none).is_err());
+    let mut too_many = options(2, 1);
+    too_many.confirm_sessions = 3;
+    assert!(open(FakeOpener::default(), too_many).is_err());
 }

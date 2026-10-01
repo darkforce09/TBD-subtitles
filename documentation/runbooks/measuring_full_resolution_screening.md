@@ -60,8 +60,9 @@ each run in a new work root the episode's localized video is moved aside, as ste
    and FP32 rows for the screening and confirmation sessions. The sweep's grid is
    `--sweep-batches` (default `2,4,8`) by `--sweep-pools-mib` (default `1536,2048,2560,3072`);
    `--shape-batch` and `--shape-pool-mib` fix the shape the later sections use (else the fastest
-   sweep row); `--trt-cache` names the engine cache (default under the system's temporary
-   folder, so a second run reuses it); `--vram-cap-mib` bounds TensorRT's workspace (default
+   sweep row); `--confirm-pools-mib` gives the confirmation rows' pools (default
+   `1536,2048,2560,3072`); `--trt-cache` names the engine cache (default under the system's
+   temporary folder, so a second run reuses it); `--vram-cap-mib` bounds TensorRT's workspace (default
    6656); `--frames-count` sets how many box images `--frames-dir` gets (default 6); and
    `--no-decode`, `--no-oar-ocr`, `--no-sweep`, `--no-sessions`, `--no-search`, `--no-tensorrt`
    and `--no-pool-confirm` skip sections.

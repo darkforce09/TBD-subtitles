@@ -71,6 +71,7 @@ fn every_pool_section_runs_by_default_over_three_batches_and_four_pools() {
     let options = parse(&["ep.mp4"]).expect("a video alone parses");
     assert_eq!(options.sweep_batches, vec![2, 4, 8]);
     assert_eq!(options.sweep_pools_mib, vec![1536, 2048, 2560, 3072]);
+    assert_eq!(options.confirm_pools_mib, vec![1536, 2048, 2560, 3072]);
     assert_eq!(options.vram_cap_mib, DEFAULT_VRAM_CAP_MIB);
     assert_eq!(options.frames_dir, None);
     assert_eq!(options.frames_count, 6);
@@ -102,6 +103,8 @@ fn every_pool_option_is_read() {
         "4,8",
         "--sweep-pools-mib",
         "2048",
+        "--confirm-pools-mib",
+        "2560,0,4096",
         "--shape-batch",
         "8",
         "--shape-pool-mib",
@@ -119,6 +122,7 @@ fn every_pool_option_is_read() {
     assert!(options.no_decode && options.no_oar_ocr);
     assert_eq!(options.sweep_batches, vec![4, 8]);
     assert_eq!(options.sweep_pools_mib, vec![2048]);
+    assert_eq!(options.confirm_pools_mib, vec![2560, 0, 4096]);
     assert_eq!(options.trt_cache(), PathBuf::from("/work/trt"));
     assert_eq!(options.vram_cap_mib, 6000);
     assert_eq!(options.frames_dir, Some(PathBuf::from("/work/frames")));
@@ -134,6 +138,7 @@ fn every_pool_option_is_read() {
     assert!(!sections.cuda_sweep && !sections.sessions && !sections.search);
     assert!(!sections.tensorrt && !sections.confirm);
     assert!(sections.reference);
+    assert_eq!(sections.confirm_pools_mib, vec![2560, 4096]);
 }
 
 #[test]
@@ -169,4 +174,13 @@ fn an_empty_sweep_is_refused_only_when_a_sweep_runs() {
 fn a_1080p_source_gets_a_640_by_360_proxy() {
     assert_eq!(even(PROXY_WIDTH * 1080 / 1920), 360);
     assert_eq!(even(PROXY_WIDTH * 817 / 1440), 362);
+}
+
+#[test]
+fn confirmation_without_a_pool_is_refused_only_when_it_runs() {
+    let empty = parse(&["ep.mp4", "--confirm-pools-mib", "0"]).expect("parses");
+    assert!(empty.sections().is_err());
+    let skipped =
+        parse(&["ep.mp4", "--confirm-pools-mib", "0", "--no-pool-confirm"]).expect("parses");
+    assert!(skipped.sections().is_ok());
 }

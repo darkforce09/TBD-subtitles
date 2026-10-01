@@ -34,6 +34,8 @@ pub struct Sections {
     pub search: bool,
     pub tensorrt: bool,
     pub confirm: bool,
+    /// The GPU memory pools confirmation runs at, in MiB.
+    pub confirm_pools_mib: Vec<usize>,
     /// Whether the CUDA reference run is wanted even when no section compares against it.
     pub reference: bool,
 }
@@ -75,7 +77,13 @@ pub fn run(
         tensorrt(setup, frames, &sections.grid, reference.as_ref());
     }
     if sections.confirm {
-        confirmation(setup, stills, shape, sections.tensorrt);
+        confirmation(
+            setup,
+            stills,
+            shape,
+            &sections.confirm_pools_mib,
+            sections.tensorrt,
+        );
     }
     reference
 }
@@ -207,27 +215,44 @@ fn tensorrt(
     println!("{}", table.render());
 }
 
-/// Section 8: the server detector confirming stills through the pool, CUDA and, with
-/// `tensorrt`, both TensorRT precisions against the CUDA run.
-fn confirmation(setup: &Setup, stills: &[PaddedFrame], shape: ScreenShape, tensorrt: bool) {
+/// Section 8: the server detector confirming stills through the pool at each of `pools_mib`,
+/// CUDA and, with `tensorrt`, both TensorRT precisions against the first CUDA run.
+fn confirmation(
+    setup: &Setup,
+    stills: &[PaddedFrame],
+    shape: ScreenShape,
+    pools_mib: &[usize],
+    tensorrt: bool,
+) {
     println!(
         "## 8. Detector pool: confirmation, batch 1 ({} stills, one per session untimed first)\n",
         stills.len()
     );
     let mut table = Table::new(&COLUMNS);
-    let mut runs = vec![PoolRun::cuda(shape, SCREEN_SESSIONS)];
+    let mut engines = vec![PoolRun::cuda(shape, SCREEN_SESSIONS)];
     if tensorrt {
-        runs.push(PoolRun::tensorrt(shape, SCREEN_SESSIONS, true));
-        runs.push(PoolRun::tensorrt(shape, SCREEN_SESSIONS, false));
+        engines.push(PoolRun::tensorrt(shape, SCREEN_SESSIONS, true));
+        engines.push(PoolRun::tensorrt(shape, SCREEN_SESSIONS, false));
     }
+    let runs = engines.into_iter().flat_map(|engine| {
+        pools_mib.iter().map(move |&confirm_pool_mib| PoolRun {
+            confirm_pool_mib,
+            ..engine
+        })
+    });
     let mut cuda: Option<Regions> = None;
     for run in runs {
         let outcome = measure::confirm(setup, stills, &run);
         let reference = cuda.as_ref().map(|regions| ("CUDA", regions));
         let against = against(&outcome, reference);
         table.row(row(&run, Phase::Confirm, &outcome, against.as_deref()));
-        eprintln!("pool confirm {} done", run.engine_label());
+        eprintln!(
+            "pool confirm {} pool {} MiB done",
+            run.engine_label(),
+            run.confirm_pool_mib
+        );
         if run.engine == DetectorEngine::Cuda
+            && cuda.is_none()
             && let Ok(measured) = outcome
         {
             cuda = Some(measured.regions);
