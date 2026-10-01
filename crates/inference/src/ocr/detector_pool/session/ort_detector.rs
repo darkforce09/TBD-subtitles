@@ -1,19 +1,21 @@
 //! A detector session on ONNX Runtime, with its input and output bound to fixed buffers.
 //!
 //! **Role:** open one PP-OCRv5 detector on the CUDA provider, or on TensorRT before CUDA, with a
-//! fixed `[batch, 3, height, width]` input; bind a device input tensor and a pinned output
+//! fixed `[batch, 3, height, width]` input; bind a device input tensor and a device output
 //! tensor once, and on each run copy the pinned staging tensor into the device input, run the
-//! binding and hand back the probability maps where the output tensor holds them.
+//! binding, copy the device output into the host result tensor and hand back the probability
+//! maps from there.
 //!
 //! **Position:** `OrtOpener` is the pool's opener in production; the GPU path the tests cannot
 //! reach, kept to the calls ONNX Runtime needs.
 //!
-//! **Signals and state:** one session, its `IoBinding`, the pinned staging and output tensors
-//! and the device input tensor, all owned by the session thread that opened them.
+//! **Signals and state:** one session, its `IoBinding`, the pinned staging tensor, the host result tensor
+//! and the device input and output tensors, all owned by the session thread that opened them.
 //!
 //! **Invariants:** one optimisation level (3), one intra-op and one inter-op thread without
 //! spinning, no environment providers; deterministic kernels exactly in the deterministic search
-//! mode; the device input's address never changes, so a captured CUDA graph stays valid; a
+//! mode; both bound tensors live on the device and their addresses never change, so a captured
+//! CUDA graph stays valid (ONNX Runtime refuses a host-memory output inside the run); a
 //! TensorRT session's profile names the model's own input, and its engine and timing caches live
 //! in the folder of its key.
 
@@ -22,7 +24,7 @@ use std::path::Path;
 use ort::memory::{AllocationDevice, Allocator, AllocatorType, MemoryInfo, MemoryType};
 use ort::session::builder::{GraphOptimizationLevel, SessionBuilder};
 use ort::session::{IoBinding, Session};
-use ort::value::{Tensor, ValueType};
+use ort::value::{Tensor, TensorValueType, ValueType};
 
 use super::engine_cache::{cache_key, check_identity, holds_engine, profile_shapes, sha256_hex};
 use super::onnx_input::first_input_name;
@@ -45,8 +47,9 @@ struct OrtDetector {
     binding: IoBinding,
     staging: Tensor<f32>,
     device_input: Tensor<f32>,
+    result: Tensor<f32>,
     output_name: String,
-    _allocators: [Allocator; 3],
+    _allocators: [Allocator; 2],
 }
 
 fn failed(context: &str) -> impl Fn(ort::Error) -> OcrError + '_ {
@@ -173,7 +176,7 @@ impl OrtDetector {
         })
     }
 
-    /// Allocate the buffers and bind the device input and the pinned output once.
+    /// Allocate the buffers and bind the device input and the device output once.
     fn bind(
         session: Session,
         input_name: &str,
@@ -188,11 +191,11 @@ impl OrtDetector {
         };
         let device = memory(AllocationDevice::CUDA, MemoryType::Default)?;
         let pinned_in = memory(AllocationDevice::CUDA_PINNED, MemoryType::CPUInput)?;
-        let pinned_out = memory(AllocationDevice::CUDA_PINNED, MemoryType::CPUOutput)?;
         let tensors = failed("allocating the detector's buffers");
         let staging = Tensor::<f32>::new(&pinned_in, dims).map_err(&tensors)?;
         let device_input = Tensor::<f32>::new(&device, dims).map_err(&tensors)?;
-        let output = Tensor::<f32>::new(&pinned_out, output_dims).map_err(&tensors)?;
+        let device_output = Tensor::<f32>::new(&device, output_dims).map_err(&tensors)?;
+        let result = Tensor::<f32>::new(&Allocator::default(), output_dims).map_err(&tensors)?;
         let mut binding = session
             .create_binding()
             .map_err(failed("binding the detector"))?;
@@ -200,15 +203,16 @@ impl OrtDetector {
             .bind_input(input_name, &device_input)
             .map_err(failed("binding the detector's input"))?;
         binding
-            .bind_output(output_name.as_str(), output)
+            .bind_output(output_name.as_str(), device_output)
             .map_err(failed("binding the detector's output"))?;
         Ok(OrtDetector {
             session,
             binding,
             staging,
             device_input,
+            result,
             output_name,
-            _allocators: [device, pinned_in, pinned_out],
+            _allocators: [device, pinned_in],
         })
     }
 }
@@ -229,13 +233,15 @@ impl DetectorSession for OrtDetector {
             .session
             .run_binding(&self.binding)
             .map_err(failed("running the detector"))?;
-        let maps = outputs
+        outputs
             .get(&self.output_name)
-            .ok_or("the detector returned no probability map")?;
-        let (_, maps) = maps
-            .try_extract_tensor::<f32>()
-            .map_err(failed("reading the probability maps"))?;
-        read(maps)
+            .ok_or("the detector returned no probability map")?
+            .downcast_ref::<TensorValueType<f32>>()
+            .map_err(failed("reading the probability maps"))?
+            .copy_into(&mut self.result)
+            .map_err(failed("copying the probability maps from the GPU"))?;
+        drop(outputs);
+        read(self.result.extract_tensor().1)
     }
 }
 

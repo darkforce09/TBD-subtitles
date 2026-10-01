@@ -43,9 +43,12 @@ timing caches live in `<cache root>/<key>/`; a folder without an `.engine` file 
 builds the engine, and its opening and warm-up count as engine build time. After opening, the
 session's own input name must equal the file's.
 
-The session binds a CUDA device input tensor and a `CUDA_PINNED` output tensor once. Each run
-copies the pinned staging tensor into the device input with `copy_into`, so the input's address
-never changes, runs the binding and reads the probability maps from the pinned output in place.
+The session binds a CUDA device input tensor and a CUDA device output tensor once. Each run
+copies the pinned staging tensor into the device input with `copy_into`, so neither bound
+address ever changes, runs the binding, and copies the device output into a host tensor with
+`copy_into`, from which the probability maps are read. ONNX Runtime refuses an output bound in
+`CUDA_PINNED` memory (its copy of the output lands on the output itself and fails), and a
+captured CUDA graph needs both bound tensors on the device.
 `copy_into` runs through ONNX Runtime's shared copy session, so copies from the pool's threads
 take turns.
 
