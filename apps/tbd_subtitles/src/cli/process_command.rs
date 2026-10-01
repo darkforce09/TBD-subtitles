@@ -3,8 +3,9 @@
 //!
 //! **Role:** find the videos in the folders given, put the options over the settings file, turn
 //! them into job settings (the glossary, the models, the cut score, the output format, steps to
-//! run again), run each video's job, and print each step as it starts, advances and finishes,
-//! then where the subtitles and the report are, and which jobs failed the quality check.
+//! run again) and whether the sign library is used, run each video's job, and print each step as
+//! it starts, advances and finishes, then where the subtitles and the report are, the run's wall
+//! time and whole-job peak memory, and which jobs failed the quality check.
 //!
 //! **Position:** called by `cli::dispatch`; `window_command` uses `expand` for `--enqueue`;
 //! runs `pipeline::run_job`; reads the settings file and the glossary through
@@ -35,7 +36,7 @@ use crate::settings::models::app_settings::AppSettings;
 use crate::settings::services::{job_settings, settings_file};
 
 /// The options that shape a job, which `--enqueue` refuses: the window's jobs take its settings.
-const JOB_OPTIONS: [&str; 11] = [
+const JOB_OPTIONS: [&str; 12] = [
     "settings",
     "work_root",
     "models_dir",
@@ -47,6 +48,7 @@ const JOB_OPTIONS: [&str; 11] = [
     "llm_model",
     "format",
     "rerun",
+    "no_library",
 ];
 
 /// The options of one `process` run.
@@ -95,6 +97,9 @@ pub(super) struct ProcessArgs {
     /// Run these steps again even when their output is still valid (repeatable).
     #[arg(long, value_parser = parse_step)]
     rerun: Vec<StepName>,
+    /// Run without the sign library shared between episodes: no sign is looked up or recorded.
+    #[arg(long)]
+    pub(super) no_library: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -253,7 +258,11 @@ pub(super) fn run(args: &ProcessArgs) -> anyhow::Result<ExitCode> {
         binaries: Binaries::beside_current_exe()?,
         cancel: CancelToken::new(),
         gpu_lock: pipeline::work_dir::gpu_lock_path()?,
-        library: Some(pipeline::library::default_path()?),
+        library: if args.no_library {
+            None
+        } else {
+            Some(pipeline::library::default_path()?)
+        },
         models_dir: job_settings::models_dir(&chosen)?,
     };
     let missing = pipeline::models::missing(&options.models_dir, &options.settings);
@@ -294,6 +303,12 @@ pub(super) fn print_outcome(outcome: &JobOutcome) {
             [] => "passes".to_string(),
             reasons => format!("fails: {}", reasons.join("; ")),
         }
+    );
+    let mib = |v: Option<f64>| v.map_or_else(|| "—".to_string(), |v| format!("{v:.0}"));
+    eprintln!(
+        "run:       {:.1} min wall time, whole-job peak RAM {} MiB",
+        outcome.run.wall_s() / 60.0,
+        mib(outcome.run.peak_ram_mib)
     );
 }
 
@@ -344,13 +359,14 @@ pub(super) fn print(event: Progress) {
         Progress::StepFinished { step, measure } => {
             let mib = |v: Option<f64>| v.map_or_else(|| "—".to_string(), |v| format!("{v:.0}"));
             eprintln!(
-                "  ✓ {step} {:.1} s (RAM {} MiB, VRAM {} MiB)",
+                "  ✓ {step} {:.1} s (RAM {} MiB, job RAM {} MiB, VRAM {} MiB)",
                 measure.wall_s,
                 mib(measure
                     .peak_ram_mib
                     .into_iter()
                     .chain(measure.peak_child_ram_mib)
                     .reduce(f64::max)),
+                mib(measure.job_ram_mib),
                 mib(measure.peak_vram_mib)
             );
         }

@@ -36,6 +36,7 @@ fn stand_in() -> RunJob {
             qc: QcReport::default(),
             ran: Vec::new(),
             skipped: Vec::new(),
+            run: Default::default(),
         })
     })
 }

@@ -11,8 +11,9 @@
 //! **Signals and state:** holds the job's `JobStore` (and so `job.redb` and `job.lock`) until the
 //! run returns; sends each worker the stored values its step reads; names the sign library to the
 //! workers of the steps that read it; commits the outputs a step
-//! wrote with its step record, in one transaction, for in-process and worker steps alike; emits
-//! progress events.
+//! wrote with its step record, in one transaction, for in-process and worker steps alike, with what
+//! the job's processes and the GPU used while the step ran (`measure::job_sampler`); puts the run's
+//! start, end and peak memory as `meta/last_run` when the walk ends; emits progress events.
 //!
 //! **Invariants:** a step record exists only beside the outputs it was committed with, and a step
 //! about to run again loses its record first, so a killed job resumes from the last finished step;
@@ -28,7 +29,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use inference::cuda_runtime::CudaRuntime;
 use job_model::StepName;
-use job_model::job::{JobRecord, JobSettings, StepMeasure, StepRecord};
+use job_model::job::{JobRecord, JobRun, JobSettings, StepMeasure, StepRecord};
 use job_model::outputs::ProbeDecoded;
 use job_model::report::QcReport;
 use worker_channel::address::Address;
@@ -37,6 +38,7 @@ use crate::cancel::CancelToken;
 use crate::error::{Context, PipelineError, Result};
 use crate::graph::{self, Placement};
 use crate::library::{self, Library};
+use crate::measure::job_sampler::JobSampler;
 use crate::progress::{Progress, ProgressSink};
 use crate::tasks::{self, Job, StepIo};
 use crate::work_dir::store::StoreRead;
@@ -74,6 +76,8 @@ pub struct JobOutcome {
     pub qc: QcReport,
     pub ran: Vec<StepName>,
     pub skipped: Vec<StepName>,
+    /// The run as a whole: its start, its end and the job's peak memory over it.
+    pub run: JobRun,
 }
 
 /// Run every step of `video`'s job.
@@ -187,6 +191,19 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                 }
             }
         };
+    // The job's processes and the GPU, sampled while each step runs; the use is merged into the
+    // step's measure before it is stamped.
+    let sampler = JobSampler::start(std::process::id());
+    let started_ns = now_ns();
+    let measured = |step: StepName, record: &JobRecord| {
+        sampler.open(step);
+        let ran = run_step(step, record);
+        let used = sampler.close(step);
+        ran.map(|(mut measure, outputs)| {
+            used.apply(&mut measure);
+            (measure, outputs)
+        })
+    };
 
     let (mut ran, mut skipped) = (Vec::new(), Vec::new());
     std::thread::scope(|scope| -> Result<()> {
@@ -219,19 +236,19 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                 progress(Progress::StepStarted(step));
                 if step == StepName::ShotScan {
                     let snapshot = record.clone();
-                    let run_step = &run_step;
+                    let measured = &measured;
                     let store = &store;
                     let span = step_span.clone();
                     // The scan commits its own outputs, so a later step's outputs never wait on
                     // a transaction only this thread's join would end.
                     shots = Some(scope.spawn(move || {
                         let _in_step = span.enter();
-                        let (measure, outputs) = run_step(StepName::ShotScan, &snapshot)?;
+                        let (measure, outputs) = measured(StepName::ShotScan, &snapshot)?;
                         stamp(store, StepName::ShotScan, fingerprint, measure, outputs)
                     }));
                     continue;
                 }
-                let stamped = run_step(step, &record)
+                let stamped = measured(step, &record)
                     .and_then(|(measure, outputs)| {
                         stamp(&store, step, fingerprint, measure, outputs)
                     })
@@ -257,6 +274,12 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
         walked
     })?;
 
+    let run = JobRun {
+        started_ns,
+        finished_ns: now_ns(),
+        peak_ram_mib: sampler.stop().peak_pss_mib,
+    };
+    store.put_job_run(&run)?;
     let steps = store.read()?.step_records()?;
     let qc = report::write(&work, &record, &steps)?;
     tracing::info!("the report is written to {}", work.report().display());
@@ -267,6 +290,7 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
         qc,
         ran,
         skipped,
+        run,
     })
 }
 
@@ -321,12 +345,9 @@ fn stamp(
     measure: StepMeasure,
     outputs: Option<StepWrite>,
 ) -> Result<StepRecord> {
-    let finished_ns = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos());
     let stamped = StepRecord {
         fingerprint,
-        finished_ns,
+        finished_ns: now_ns(),
         measure,
     };
     outputs
@@ -341,4 +362,11 @@ fn finish(step: StepName, stamped: StepRecord, progress: ProgressSink) {
         step,
         measure: stamped.measure,
     });
+}
+
+/// Now, in nanoseconds since the Unix epoch.
+fn now_ns() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos())
 }

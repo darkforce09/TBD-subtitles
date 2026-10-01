@@ -48,12 +48,18 @@ The sign library `JobOptions::library` names (`None` for none) reaches the finge
 (`resume::is_valid`, `resume::fingerprint`), the in-process tasks through `tasks::Job::library`,
 and the workers of `text_translate` and `text_compose` as `library::LOCATION_VARIABLE`, empty when
 there is none.
-At the end `report::write` renders `report.md` from the record and the stored step records, and
-`JobOutcome` names the subtitle file, the report, the quality check and the steps run and skipped.
+Before the walk the runner starts one `measure::job_sampler::JobSampler` on its own pid; it opens
+a step's window just before the step runs (on the shot scan's thread too) and closes it right
+after, and the step's `StepUse` (CPU, GPU, NVENC, NVDEC and whole-job memory while it ran) goes
+into its measure before `stamp`. When the walk ends the sampler stops, and the run's start, end
+and peak memory are put as `meta/last_run` (`JobRun`). Then `report::write` renders `report.md`
+from the record, the stored step records and the last run, and `JobOutcome` names the subtitle
+file, the report, the quality check, the steps run and skipped, and the run.
 
 ## Boundaries
 
-- Depends on: `crate::{graph, library, resume, tasks, workers, work_dir, report, progress}`;
+- Depends on: `crate::{graph, library, measure, resume, tasks, workers, work_dir, report,
+  progress}`;
   `inference::cuda_runtime` and `inference::model_store`; `job_model`; `stages::output`;
   `worker_channel::address`; `tracing` for the `step{step}` span each step runs in (its workers'
   and programs' lines, and the shot scan's thread, log inside it), its debug lines (the job,

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use rkyv::rancor::Error;
 
-use super::{JobRecord, JobSettings, OutputFormat, Separator, StepMeasure, StepRecord};
+use super::{JobRecord, JobRun, JobSettings, OutputFormat, Separator, StepMeasure, StepRecord};
 use super::{StepRecords, WhisperModel, WorkerMeasure};
 use crate::archive_round_trip::{misaligned, round_trip};
 use crate::onscreen::TextSettings;
@@ -25,6 +25,13 @@ fn measure() -> StepMeasure {
         peak_ram_mib: Some(2048.5),
         peak_child_ram_mib: Some(512.0),
         peak_vram_mib: Some(4096.0),
+        gpu_busy_pct: Some(87.5),
+        gpu_encoder_pct: Some(41.0),
+        gpu_decoder_pct: None,
+        job_ram_mib: Some(6144.0),
+        cpu_cores_mean: Some(3.25),
+        cpu_cores_peak: Some(7.5),
+        busiest_thread_pct: Some(99.0),
         notes: notes(),
     }
 }
@@ -93,6 +100,27 @@ fn step_record_round_trips() {
 #[test]
 fn step_measure_round_trips() {
     round_trip(&measure());
+}
+
+#[test]
+fn job_run_round_trips() {
+    let run = JobRun {
+        started_ns: 1_790_000_000_000_000_000_000,
+        finished_ns: 1_790_000_001_500_000_000_000,
+        peak_ram_mib: Some(9216.5),
+    };
+    round_trip(&run);
+    round_trip(&JobRun::default());
+}
+
+#[test]
+fn a_job_run_s_wall_time_is_its_span_in_seconds() {
+    let run = JobRun {
+        started_ns: 2_000_000_000,
+        finished_ns: 3_500_000_000,
+        peak_ram_mib: None,
+    };
+    assert_eq!(run.wall_s(), 1.5);
 }
 
 #[test]

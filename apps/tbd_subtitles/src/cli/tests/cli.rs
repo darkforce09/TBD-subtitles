@@ -241,6 +241,7 @@ fn enqueue_takes_no_job_option() {
         &["--llm-model", "opus"],
         &["--format", "vtt"],
         &["--rerun", "cues"],
+        &["--no-library"],
     ] {
         let mut args = vec!["process", "--enqueue", "a.mkv"];
         args.extend_from_slice(option);
@@ -349,4 +350,10 @@ fn step_progress_prints_once_per_tenth_whatever_the_report_size() {
         .collect();
     assert_eq!(printed.len(), 11, "{printed:?}");
     assert_eq!(printed.last(), Some(&44_489));
+}
+
+#[test]
+fn process_uses_the_sign_library_unless_told_not_to() {
+    assert!(!process_args(&["process", "a.mp4"]).no_library);
+    assert!(process_args(&["process", "a.mp4", "--no-library"]).no_library);
 }

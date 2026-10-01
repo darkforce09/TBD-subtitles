@@ -182,6 +182,7 @@ impl Fixture {
                     StepName::Output,
                 ],
                 skipped: vec![StepName::AsrWhisper],
+                run: Default::default(),
             })
         })
     }

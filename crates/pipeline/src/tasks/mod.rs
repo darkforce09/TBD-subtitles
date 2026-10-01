@@ -184,6 +184,7 @@ pub fn in_process(
         peak_child_ram_mib: None,
         peak_vram_mib: None,
         notes: report.notes,
+        ..StepMeasure::default()
     })
 }
 

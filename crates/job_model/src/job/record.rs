@@ -1,5 +1,6 @@
 //! What the job database records of a job: the video it is for and the settings (`meta/job_record`),
-//! and each finished step with its fingerprint, finish time and measurements (`step_records/<step>`);
+//! and each finished step with its fingerprint, finish time and measurements (`step_records/<step>`),
+//! the last run as a whole (`meta/last_run`);
 //! plus what a worker process reports about itself.
 //!
 //! **Role:** the records the job runner keeps of one job and resumes from.
@@ -94,9 +95,54 @@ pub struct StepMeasure {
     pub peak_child_ram_mib: Option<f64>,
     /// The step's peak GPU memory, in MiB.
     pub peak_vram_mib: Option<f64>,
+    /// The device's mean SM use while the step ran, in percent (the whole GPU, the desktop's
+    /// share included).
+    pub gpu_busy_pct: Option<f64>,
+    /// The device's mean NVENC use while the step ran, in percent.
+    pub gpu_encoder_pct: Option<f64>,
+    /// The device's mean NVDEC use while the step ran, in percent.
+    pub gpu_decoder_pct: Option<f64>,
+    /// The peak proportional set size of every process of the job at once (the app, its workers
+    /// and the programs they start) while the step ran, in MiB.
+    pub job_ram_mib: Option<f64>,
+    /// The mean CPU cores the job's processes kept busy while the step ran.
+    pub cpu_cores_mean: Option<f64>,
+    /// The most CPU cores the job's processes kept busy in one sample while the step ran.
+    pub cpu_cores_peak: Option<f64>,
+    /// The mean share of one core the busiest thread of the job used while the step ran, in
+    /// percent.
+    pub busiest_thread_pct: Option<f64>,
     /// Short facts about the run, such as a count of chunks or calls.
     #[serde(default)]
     pub notes: BTreeMap<String, String>,
+}
+
+/// One run of a job as a whole, from the walk's start to its end; the `meta/last_run` row.
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+pub struct JobRun {
+    /// When the run started walking the steps, in nanoseconds since the Unix epoch.
+    pub started_ns: u128,
+    /// When the last step of the run finished, in nanoseconds since the Unix epoch.
+    pub finished_ns: u128,
+    /// The peak proportional set size of every process of the job at once over the run, in MiB.
+    pub peak_ram_mib: Option<f64>,
+}
+
+impl JobRun {
+    /// The run's wall time, in seconds.
+    pub fn wall_s(&self) -> f64 {
+        self.finished_ns.saturating_sub(self.started_ns) as f64 / 1e9
+    }
 }
 
 /// What a worker process sends the runner about itself when its step finishes.

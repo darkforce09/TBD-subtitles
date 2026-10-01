@@ -38,6 +38,7 @@ fn stand_in() -> RunJob {
             qc: QcReport::default(),
             ran: vec![StepName::Cues],
             skipped: Vec::new(),
+            run: Default::default(),
         })
     })
 }

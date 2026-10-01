@@ -13,6 +13,7 @@ crates/stages/src/onscreen_text/detect/
 ├── regions.rs  fixed-anchor signatures, mutually unique matches and tiled occurrence frames
 ├── screen.rs   the sample schedule, repeated samples, pending batches and lockstep bisection
 ├── source.rs   the frame source contract, proxy frames and the FFmpeg source
+├── timing.rs   `scan_measured`: the scan with its decode, detection and still times and frame counts
 └── tests/      association, rectification, sampling, bisection and whole-scan checks
 ```
 
@@ -45,11 +46,18 @@ at most 1280 pixels wide, in `visual/keyframes/`. Both folders are emptied when 
 starts, so a rerun never leaves stale files behind. At most one million observations and one hundred
 thousand occurrences are held; beyond that the scan fails and asks for shorter jobs.
 
+`scan_measured` runs the same scan over a source and a detector wrapped in timers, and returns its
+document unchanged with `ScanStats`: the time waiting on the proxy decoder, in the screening
+detector (samples and bisection probes), in the server detector confirming keyframes and in
+decoding full-resolution stills, with the proxy frames decoded and the pictures screened. The
+`text_detect` task notes them as `decode_wait_s`, `detect_s`, `confirm_s`, `stills_s`,
+`frames_decoded` and `frames_screened`.
+
 ## Boundaries
 
 - Depends on: `media_io` frame streams, stills and proxy sizing, `inference::ocr::TextDetection`, `job_model` contracts, and the sibling `geometry` and `png` modules (crops and stills written synced).
-- Used by: `pipeline::tasks::onscreen` for the scan and `tools/visual_validation` for `crop`.
-- Rules: source videos are only read; no full-video image extraction; pending proxies stay within four samples with their gaps and stills four at a time; limits fail explicitly; every occurrence gets exactly one crop and one keyframe image.
+- Used by: `pipeline::tasks::onscreen` for the measured scan and `tools/visual_validation` for `crop`.
+- Rules: source videos are only read; no full-video image extraction; pending proxies stay within four samples with their gaps and stills four at a time; limits fail explicitly; every occurrence gets exactly one crop and one keyframe image; the measured scan returns exactly the plain scan's document (`a_measured_scan_returns_the_plain_scan_s_document_and_counts_its_frames` in `tests/timing.rs`).
 
 ## Related documentation
 

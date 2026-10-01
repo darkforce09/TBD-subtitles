@@ -14,7 +14,7 @@ crates/pipeline/src/
 ├── graph/     the step table: inputs, placement, GPU use, revision, settings, timeout and outputs
 ├── library/   the sign library shared by episodes: `library.redb`, its keys, matches and approvals
 ├── lib.rs     the crate root: the module list, the crate header and the `run_job` re-exports
-├── measure/   peak VRAM of a worker through NVML, peak RAM of a process and its children
+├── measure/   peak VRAM of a worker, peak RAM of a process and its children, the job sampler
 ├── models/    the models a job needs: each step's model folder, the required list, the missing ones
 ├── progress/  the events a running job reports and the sink they go to
 ├── report/    `report.md` from the quality check and the job record

@@ -25,7 +25,10 @@ fn step_record() -> StepRecord {
             peak_ram_mib: Some(512.0),
             peak_child_ram_mib: None,
             peak_vram_mib: Some(2048.0),
+            job_ram_mib: Some(3072.0),
+            cpu_cores_mean: Some(1.5),
             notes: BTreeMap::from([("chunks".to_string(), "7".to_string())]),
+            ..StepMeasure::default()
         },
     }
 }

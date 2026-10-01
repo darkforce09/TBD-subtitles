@@ -14,8 +14,9 @@ crates/pipeline/src/report/
 ## How it works
 
 `write` reads one snapshot of the job's store through the process's handle of it
-(`JobStore::open`, shared with the runner) and renders the quality check (`outputs/qc`) and the
-dropped sounds (`outputs/cues/dropped_sounds`) with `stages::qc::markdown::render`. With on-screen text on, it
+(`JobStore::open`, shared with the runner) and renders the quality check (`outputs/qc`), the
+dropped sounds (`outputs/cues/dropped_sounds`) and the last run (`meta/last_run`, for the real
+wall time and whole-job peak memory) with `stages::qc::markdown::render`. With on-screen text on, it
 adds the on-screen text section from `outputs/text_typeset`: the counts, the visual processing
 time, the review warnings and every occurrence with a warning or no English. When the
 localized-video step ran without recording itself disabled, a `Localized video` subsection
@@ -26,7 +27,8 @@ localized video's path and the encoder that wrote it.
 ## Boundaries
 
 - Depends on: `stages::qc::markdown::render` and `stages::output::subtitle_path`; `job_model`
-  (`JobRecord`, `QcReport`, `TextDocument`, `VerifiedReplacements`, `LocalizedVideoRecord`);
+  (`JobRecord`, `JobRun`, `QcReport`, `TextDocument`, `VerifiedReplacements`,
+  `LocalizedVideoRecord`);
   `crate::work_dir` (the store and its keys); `rkyv` (the checked reads).
 - Used by: `crate::runner`, at the end of every job, skipped steps included.
 - Rules: the report is written through a part file like every job file; a document it reads and

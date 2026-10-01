@@ -6,7 +6,8 @@
 //! **Position:** the stage of the `localized_video` step, after composition; called by
 //! `pipeline::tasks::localized`, above `media_io`'s native frame stream and encoder.
 //! **Signals and state:** one FFmpeg decoder and one FFmpeg encoder, a patch schedule and a patch
-//! cache bounded to `CACHE_BYTES`; one frame in memory at a time.
+//! cache bounded to `CACHE_BYTES`; one frame in memory at a time; the time the frame loop waits on
+//! the decoder, blends, waits on the encoder and flushes both (`RenderPhases`).
 //! **Invariants:** the source is only read; the encoder receives exactly one frame per timeline
 //! entry, in order, at the source's constant frame rate and first-frame offset; a variable frame
 //! rate is refused before encoding; frames without an active patch pass through unchanged.
@@ -21,7 +22,7 @@ use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use job_model::onscreen::ReplacementDocument;
 use job_model::outputs::VideoStream;
@@ -102,6 +103,21 @@ pub struct RenderRequest<'a> {
 pub struct Rendered {
     pub frames: u64,
     pub encoder: Encoder,
+    /// Where the frame loop spent its time.
+    pub phases: RenderPhases,
+}
+
+/// Where a render's frame loop spent its time; together they make up nearly all of it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RenderPhases {
+    /// Waiting on the decoder for the next frame.
+    pub decode_wait: Duration,
+    /// Advancing the patch schedule, loading patches and blending them in.
+    pub blend: Duration,
+    /// Waiting on the encoder to take a frame.
+    pub encode_wait: Duration,
+    /// Ending the decoder and draining the encoder after the last frame.
+    pub flush: Duration,
 }
 
 /// The raw format frames are decoded, blended and encoded in: 10-bit for a 10-bit 4:2:0 source,
@@ -182,7 +198,12 @@ pub fn render(request: &RenderRequest, progress: Progress) -> LocalizeResult<Ren
     let conversion = Conversion::of(stream, format);
     let mut cache = PatchCache::new(CACHE_BYTES);
     let mut done = 0;
-    while let Some(mut frame) = frames.next_frame()? {
+    let mut phases = RenderPhases::default();
+    loop {
+        let waited = Instant::now();
+        let next = frames.next_frame()?;
+        phases.decode_wait += waited.elapsed();
+        let Some(mut frame) = next else { break };
         if request
             .cancel
             .as_ref()
@@ -190,6 +211,7 @@ pub fn render(request: &RenderRequest, progress: Progress) -> LocalizeResult<Ren
         {
             return Err("the localized video was cancelled".into());
         }
+        let blending = Instant::now();
         for file in schedule.advance(frame.index)? {
             cache.remove(file);
         }
@@ -197,18 +219,23 @@ pub fn render(request: &RenderRequest, progress: Progress) -> LocalizeResult<Ren
             let patch = cache.get(entry, |entry| load(request.root, entry, conversion))?;
             blend(&mut frame.rgb, format, size, patch)?;
         }
+        phases.blend += blending.elapsed();
+        let writing = Instant::now();
         if let Err(error) = encode.write_frame(&frame.rgb) {
             // The encoder stopped reading; its exit says why.
             encode.finish()?;
             return Err(error.into());
         }
+        phases.encode_wait += writing.elapsed();
         done += 1;
         if done % PROGRESS_FRAMES == 0 {
             progress(done, total);
         }
     }
+    let flushing = Instant::now();
     frames.finish()?;
     let written = encode.finish()?;
+    phases.flush = flushing.elapsed();
     if written != total as u64 {
         return Err(format!("the encoder took {written} frames of {total}").into());
     }
@@ -216,6 +243,7 @@ pub fn render(request: &RenderRequest, progress: Progress) -> LocalizeResult<Ren
     Ok(Rendered {
         frames: written,
         encoder,
+        phases,
     })
 }
 

@@ -1,7 +1,8 @@
-//! A finished job's report read from its database: the job record, the step records, the owner's
-//! line corrections, Fix It's record, the quality check, the output record, the typeset on-screen
-//! text, and for a localized video its record and the replacements the read-back check approved
-//! (composition's while that check has not run); and the summary its sidebar row shows.
+//! A finished job's report read from its database: the job record, the step records, the last
+//! run, the owner's line corrections, Fix It's record, the quality check, the output record, the
+//! typeset on-screen text, and for a localized video its record and the replacements the read-back
+//! check approved (composition's while that check has not run); and the summary its sidebar row
+//! shows.
 //!
 //! **Role:** find the video's work directory as the pipeline names it, read its rows in one
 //! snapshot, and count its problems and lines worth a listen through `line_counts`, and what Fix
@@ -22,7 +23,7 @@
 use std::path::{Path, PathBuf};
 
 use job_model::StepName;
-use job_model::job::{JobRecord, StepRecords};
+use job_model::job::{JobRecord, JobRun, StepRecords};
 use job_model::onscreen::{
     LocalizedVideoRecord, ReplacementDocument, TextDocument, VerifiedReplacements,
 };
@@ -90,6 +91,7 @@ pub(crate) fn load(video: &Path, work_root: &Path) -> Result<JobReport, String> 
         qc,
         corrections,
         steps,
+        run: stored.run,
     })
 }
 
@@ -174,7 +176,8 @@ enum Detail {
 
 /// What the job's database holds for its report: the job record, the step records, the owner's
 /// corrections, Fix It's record while it belongs to the job as it stands, the quality check, and
-/// for the whole report the output record, the typeset text and the localized video's rows.
+/// for the whole report the last run, the output record, the typeset text and the localized
+/// video's rows.
 #[derive(Default)]
 struct Stored {
     record: Option<JobRecord>,
@@ -185,6 +188,7 @@ struct Stored {
     output: Option<OutputRecord>,
     typeset: Option<TextDocument>,
     localized: LocalizedRows,
+    run: Option<JobRun>,
 }
 
 /// The rows of the job in `work_dir` its report reads, none of them for a job with no database;
@@ -211,14 +215,16 @@ fn stored(work_dir: &Path, detail: Detail) -> Result<Stored, String> {
     Ok(stored)
 }
 
-/// Add the rows only the whole report reads: the output record and the localized video's rows,
-/// which never fail it, and the typeset text of a job with on-screen text on.
+/// Add the rows only the whole report reads: the last run (none before a run ended), the output
+/// record and the localized video's rows, which never fail it, and the typeset text of a job with
+/// on-screen text on.
 fn read_report_rows(read: &StoreRead, stored: &mut Stored) -> pipeline::Result<()> {
     let text = stored
         .record
         .as_ref()
         .map(|record| record.settings.onscreen_text.clone());
     stored.output = read.output(StepName::Output, None).ok().flatten();
+    stored.run = read.job_run()?;
     if text.as_ref().is_some_and(|text| text.enabled) {
         stored.typeset = read.output(StepName::TextTypeset, None)?;
     }

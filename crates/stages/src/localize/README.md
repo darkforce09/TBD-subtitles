@@ -11,7 +11,7 @@ chapters and metadata.
 crates/stages/src/localize/
 ├── blend.rs    patches as frame samples, and the alpha blend over 8-bit and 10-bit 4:2:0 frames
 ├── colour.rs   RGB to Y′CbCr in the stream's matrix, range and bit depth, and back
-├── mod.rs      `render`: the decoder, the patch loop and the encoder; `frame_format`; the error
+├── mod.rs      `render`: decoder, patch loop, encoder and their phase times; `frame_format`; the error
 ├── motion.rs   `Motion`: the writing's shift in each frame, folded from the `frames` rows
 ├── patches.rs  the frame-by-frame patch schedule, the byte-bounded patch cache and patch loading
 ├── still.rs    one region of one frame with its patches blended, back in RGB, for the read-back check
@@ -53,7 +53,11 @@ conversion, each patch part inside it is converted and blended by `blend` exactl
 does, and `Conversion::rgb` turns the samples back into R′G′B′. The read-back check reads it.
 
 Progress is reported every 240 frames and at the end. The decoder and the encoder must both handle
-exactly one frame per timeline entry; a cancel flag stops the loop and kills the encoder.
+exactly one frame per timeline entry; a cancel flag stops the loop and kills the encoder. The
+loop times its phases into `Rendered::phases` (`RenderPhases`): waiting on the decoder for each
+frame, advancing the schedule with loading and blending the patches, waiting on the encoder to
+take each frame, and the flush that ends the decoder and drains the encoder; the task notes them
+as `decode_wait_s`, `blend_s`, `encode_wait_s` and `flush_s`.
 
 ## Boundaries
 

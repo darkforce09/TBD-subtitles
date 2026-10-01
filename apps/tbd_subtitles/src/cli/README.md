@@ -63,7 +63,9 @@ line names. `run` expands each folder into every video under it without a subtit
 before the first job starts, finds the job runner's three binaries beside the running one
 (`Binaries::beside_current_exe`), runs the jobs in order and stops at the first that fails. Each
 [step](/documentation/architecture/pipeline.md) prints one line to stderr as it starts (`>`), is
-skipped as still valid (`=`), advances, and finishes (`✓`, with its time and peak RAM and VRAM).
+skipped as still valid (`=`), advances, and finishes (`✓`, with its time, its peak RAM, the whole
+job's peak RAM while it ran and its VRAM); a finished job adds a line with the run's wall time and
+the whole job's peak RAM.
 Once every job ran, `process_command::verdict` turns their quality checks into the exit code: 0
 when each passed, else 2 with a line naming the videos that failed it.
 
@@ -86,7 +88,7 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
 
 ### process
 
-- Synopsis: `tbd-subtitles process <PATHS>... [--settings <FILE>] [--work-root <DIR>] [--models-dir <DIR>] [--glossary <one_piece|none|FILE>] [--audio-track <N>] [--separator <roformer|mdx-net>] [--whisper <large-v3|large-v3-turbo>] [--cut-score <SCORE>] [--llm-model <MODEL>] [--format <srt|vtt|ass>] [--rerun <STEP>]...`,
+- Synopsis: `tbd-subtitles process <PATHS>... [--settings <FILE>] [--work-root <DIR>] [--models-dir <DIR>] [--glossary <one_piece|none|FILE>] [--audio-track <N>] [--separator <roformer|mdx-net>] [--whisper <large-v3|large-v3-turbo>] [--cut-score <SCORE>] [--llm-model <MODEL>] [--format <srt|vtt|ass>] [--rerun <STEP>]... [--no-library]`,
   or `tbd-subtitles process --enqueue <PATHS>...`
 - Does: runs one job per video, in order: a video named always, and a folder as every video
   anywhere under it that has no subtitle file yet (hidden folders and downloads still in progress
@@ -94,13 +96,16 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
   (`<video base name>.srt`, `.vtt` or `.ass` beside the video), its report (`report.md` in the
   job's [work directory](/documentation/glossary.md#work-directory)) and a quality line (cues,
   findings, the share within 20 characters per second, and whether the job passes the quality
-  check or why not). Each job resumes from the steps whose output is still valid. Every option but
-  `--audio-track` and `--rerun` wins over the same setting in the settings file; without either,
-  the defaults are work directories under `tbd-subtitles/work/` in the data folder, models under
-  `tbd-subtitles/models/`, the `one_piece` glossary, the English audio track, `roformer`,
-  `large-v3`, a cut score of 20, the `sonnet` model and SRT. `--rerun` names a step to run
-  again even when its output is valid, and may repeat. With `--enqueue` it runs nothing itself:
-  the videos (folders expanded the same way) go to the window's queue and the queue starts, unless
+  check or why not), then the run's wall time and the whole job's peak RAM (every process of the
+  job at once). Each job resumes from the steps whose output is still valid. Every option but
+  `--audio-track`, `--rerun` and `--no-library` wins over the same setting in the settings file;
+  without either, the defaults are work directories under `tbd-subtitles/work/` in the data
+  folder, models under `tbd-subtitles/models/`, the `one_piece` glossary, the English audio
+  track, `roformer`, `large-v3`, a cut score of 20, the `sonnet` model and SRT. `--rerun` names a
+  step to run again even when its output is valid, and may repeat. `--no-library` runs without
+  the sign library shared between episodes: no sign is looked up in it or recorded, as for a
+  baseline measurement. With `--enqueue` it runs nothing itself: the videos (folders expanded the
+  same way) go to the window's queue and the queue starts, unless
   the owner pressed Pause in that window; the window already open takes them without coming
   forward, or the window opens minimized. `--enqueue` takes none of the other options, since the
   window's jobs take its saved settings; Dolphin's "Generate subtitles" runs it.
@@ -190,6 +195,8 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
     minimized (`videos_without_a_subcommand_open_the_window_with_them`,
     `gui_and_enqueue_concern_the_window_and_the_rest_do_not`), and `--enqueue` takes no job
     option (`enqueue_takes_no_job_option`, `process_run_refuses_enqueue`);
+  - `process` uses the sign library unless `--no-library` is given
+    (`process_uses_the_sign_library_unless_told_not_to`);
   - a folder gives every video under it without subtitles, a video named is always processed,
     and a folder with none fails naming it
     (`a_folder_gives_every_video_under_it_without_subtitles`); the exit code is 0 when every job

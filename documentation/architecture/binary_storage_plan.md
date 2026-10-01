@@ -158,8 +158,8 @@ a job is opened, the files in the step-owned folders (`audio/`,
 
 | Table | Key | Value |
 |---|---|---|
-| `meta` | `"job_record"`, `"layout"` | the job record (video, settings, models); the layout version of every table |
-| `step_records` | step name (`probe_decode` … `localized_video`) | fingerprint of its inputs, finished time, measures (with the worker's `Measure` frame) |
+| `meta` | `"job_record"`, `"layout"`, `"last_run"` | the job record (video, settings, models); the layout version of every table; the last run's start, end and whole-job peak memory |
+| `step_records` | step name (`probe_decode` … `localized_video`) | fingerprint of its inputs, finished time, measures (with the worker's `Measure` frame and what the job sampler saw while it ran) |
 | `outputs` | step name (`asr_parakeet`, `redecode_whisper` are steps of their own), or `<step>/<part>` for a step's further document (`cues/dropped_sounds`, `text_typeset/ass`) | the step's output document |
 | `corrections` | `"lines"`, `"text"`, `"fix"` | the owner's line and on-screen text corrections, and Fix It's record of its runs |
 | `frames` | (occurrence id, frame number) | a `FrameRecord` written by `text_mask`: quad, follow score, shift and scale, erase mask as run-length rows relative to its plate, plate index |
@@ -205,7 +205,8 @@ keyframe of known signs alone) and lettering style (`text_compose`), and is stil
 and read back in its own frames; a digest of the matched signs is part of both steps'
 fingerprints, so a library change reruns only the jobs it touches, and a job never matches its own
 signs. A Check Text correction that changes or removes a sign's English or keeps the Japanese, and
-a retry, removes it. The window's Settings shows the library's size and clears it. A job run from
+a retry, removes it. The window's Settings shows the library's size and clears it, and
+`process --no-library` runs a job without it, looking up and recording nothing. A job run from
 a terminal and the window can run at the same time, and a second open of the file fails at once,
 so no process keeps `library.redb` open: a process opens it read-write for one transaction (the
 lookups of one step, or one job's approved signs), closes it, and retries every 50 ms for up to

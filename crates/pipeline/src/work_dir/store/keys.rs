@@ -2,8 +2,8 @@
 //! the owner keeps.
 //!
 //! **Role:** name a step's output documents (`outputs/<step>`, `outputs/<step>/<part>` for a
-//! step's further documents), its record (`step_records/<step>`), the job record, the table
-//! layout, the owner's corrections and Fix It's record.
+//! step's further documents), its record (`step_records/<step>`), the job record, the last run,
+//! the table layout, the owner's corrections and Fix It's record.
 //!
 //! **Position:** used by `kinds` to type each key, by `graph` for what a step reads, by
 //! `tasks::io` to address what a task reads and writes, and by `resume` and the runner.
@@ -21,6 +21,10 @@ pub const JOB_RECORD: &str = "job_record";
 
 /// The `meta` row of every table's layout version.
 pub const LAYOUT: &str = super::tables::LAYOUT_KEY;
+
+/// The `meta` row of the last run as a whole: when it started and ended, and the job's peak
+/// memory over it.
+pub const LAST_RUN: &str = "last_run";
 
 /// The `corrections` row of the owner's line corrections.
 pub const LINE_CORRECTIONS: &str = "lines";

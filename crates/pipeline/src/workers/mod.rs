@@ -240,6 +240,7 @@ pub fn run_worker(
             .filter(|&mib| mib > 0)
             .map(|mib| mib as f64),
         notes,
+        ..StepMeasure::default()
     };
     Ok(WorkerRun {
         measure,

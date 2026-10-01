@@ -70,7 +70,7 @@ pub(super) fn run(
             let mut source =
                 onscreen_text::detect::FfmpegSource::open(&programs, &job.video(), stream)
                     .context("open the proxy frame stream")?;
-            document = onscreen_text::detect::scan(
+            let (scanned, stats) = onscreen_text::detect::scan_measured(
                 &mut source,
                 stream,
                 &shots,
@@ -79,6 +79,17 @@ pub(super) fn run(
                 &advance,
             )
             .context("scan visible writing")?;
+            document = scanned;
+            for (key, spent) in [
+                ("decode_wait_s", stats.decode_wait),
+                ("detect_s", stats.detect),
+                ("confirm_s", stats.confirm),
+                ("stills_s", stats.stills),
+            ] {
+                report.note(key, format!("{:.1}", spent.as_secs_f64()));
+            }
+            report.note("frames_decoded", stats.frames_decoded);
+            report.note("frames_screened", stats.frames_screened);
         }
         StepName::TextRead => {
             let mut reader = OcrReader::open(&job.models()?)

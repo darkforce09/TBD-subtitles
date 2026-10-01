@@ -29,9 +29,9 @@ tbd-subtitles process <video>
         ├─ worker     ──▶ workers::run_worker ──▶ `<binary> worker <step> <job dir>`
         │                   │ inputs on stdin       └─▶ tasks::worker_main ──▶ stages, inference
         │                   ▲ frames on stdout, outputs straight into job.redb
-        ├─ measure    peak RAM of this process and its children; peak VRAM per worker through NVML
+        ├─ measure    peak RAM and per-worker VRAM; per step the whole job's CPU, GPU and memory
         ├─ progress   events to the caller's sink
-        └─ report     report.md from outputs/qc, the job record and the step records
+        └─ report     report.md from outputs/qc, the job record, the step records and the last run
 ```
 
 `run_job` canonicalises the video, derives the job's folder under the work root, opens the job's

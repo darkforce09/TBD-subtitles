@@ -15,7 +15,7 @@
 //! `VerifyReading`; a kind's check and its JSON read the same type.
 
 use job_model::StepName;
-use job_model::job::{JobRecord, StepRecord};
+use job_model::job::{JobRecord, JobRun, StepRecord};
 use job_model::onscreen::{
     FrameRecord, LocalizedVideoRecord, ReplacementDocument, TextCorrections, TextDocument,
     VerifiedReplacements, VerifyReading,
@@ -104,6 +104,7 @@ where
 
 static JOB_RECORD: RecordKind = RecordKind::of::<JobRecord>("JobRecord");
 static TABLE_LAYOUTS: RecordKind = RecordKind::of::<TableLayouts>("TableLayouts");
+static JOB_RUN: RecordKind = RecordKind::of::<JobRun>("JobRun");
 static STEP_RECORD: RecordKind = RecordKind::of::<StepRecord>("StepRecord");
 static CORRECTIONS: RecordKind = RecordKind::of::<Corrections>("Corrections");
 static TEXT_CORRECTIONS: RecordKind = RecordKind::of::<TextCorrections>("TextCorrections");
@@ -153,6 +154,7 @@ pub fn kind(table: Table, key: &Key) -> Result<&'static RecordKind> {
         Table::Meta => match name.as_str() {
             keys::JOB_RECORD => Some(&JOB_RECORD),
             keys::LAYOUT => Some(&TABLE_LAYOUTS),
+            keys::LAST_RUN => Some(&JOB_RUN),
             _ => None,
         },
         Table::StepRecords => name.parse::<StepName>().ok().map(|_| &STEP_RECORD),

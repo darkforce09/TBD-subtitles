@@ -1,15 +1,16 @@
 # Job record
 
 The job record kept in a job's database (`meta/job_record`): the video it is for and the settings
-it runs with; the step records (`step_records/<step>`): the fingerprint, finish time and
-measurements of every finished step; plus what a worker process reports about itself.
+it runs with; the last run (`meta/last_run`); the step records (`step_records/<step>`): the
+fingerprint, finish time and measurements of every finished step; plus what a worker process
+reports about itself.
 
 ## Contents
 
 ```text
 crates/job_model/src/job/
 ├── mod.rs       the module tree and the re-exports
-├── record.rs    `JobRecord`, `StepRecord`, `StepRecords`, `StepMeasure` and `WorkerMeasure`
+├── record.rs    `JobRecord`, `JobRun`, `StepRecord`, `StepRecords`, `StepMeasure` and `WorkerMeasure`
 ├── settings.rs  `JobSettings`, its model choices `Separator` and `WhisperModel`, and `OutputFormat`
 └── tests/       unit tests for the record's JSON and every type's rkyv round trip
 ```
@@ -21,10 +22,13 @@ names the models folder the run read (`None` for the default; no fingerprint cov
 digest of the owner's line corrections when the run started. Each finished step has a
 `StepRecord` of its own: the fingerprint of the step's settings and inputs, its finish time in
 nanoseconds, and its `StepMeasure` (wall time, load and process time, peak memory of the step, of
-its largest child and of the GPU, and short notes); `StepRecords` maps each `StepName` to its
-record, as the `step_records` table reads back. A measure that was not taken is `None`, never
-zero. A worker sends its own `WorkerMeasure` when its step finishes, and the runner folds it into
-the step's measure.
+its largest child and of the GPU; what the job used while it ran: mean GPU, NVENC and NVDEC use,
+the peak memory of every process of the job at once, mean and peak CPU cores and the busiest
+thread's share; and short notes); `StepRecords` maps each `StepName` to its record, as the
+`step_records` table reads back. `JobRun` (`meta/last_run`) is the last run as a whole: when it
+started walking the steps, when it ended, and the whole job's peak memory over it. A measure that
+was not taken is `None`, never zero. A worker sends its own `WorkerMeasure` when its step
+finishes, and the runner folds it into the step's measure.
 
 `JobSettings` is everything that changes a job's output: the separation model (`roformer` or
 `mdx_net`), the Whisper model (`large_v3` or `large_v3_turbo`), the audio track, the glossary, the
@@ -50,7 +54,8 @@ bumps its table's layout version, and the steps run again (there is no migration
     `step_records_round_trip_through_json_by_step_name` in `tests/record.rs`), and a record
     without its optional fields parses (`a_record_without_its_optional_fields_parses`);
   - every type round-trips through rkyv, and archived step records are found by archived step
-    name (`tests/archive.rs`).
+    name (`tests/archive.rs`); a run's wall time is its span
+    (`a_job_run_s_wall_time_is_its_span_in_seconds`).
 
 ## Related documentation
 

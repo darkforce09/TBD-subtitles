@@ -4,7 +4,7 @@
 mod record;
 mod settings;
 
-pub use record::{JobRecord, StepMeasure, StepRecord, StepRecords, WorkerMeasure};
+pub use record::{JobRecord, JobRun, StepMeasure, StepRecord, StepRecords, WorkerMeasure};
 pub use settings::{JobSettings, OutputFormat, Separator, WhisperModel};
 
 #[cfg(test)]

@@ -6,8 +6,8 @@
 //! song with no cue; every unsure, novel or dropped-agreed-word line; every utterance timed
 //! without the aligner; the aligner's offset; failed model calls; and the counts that sum it up.
 //!
-//! **Position:** called by the QC step with the job's outputs; `markdown.rs` renders the result
-//! with the step timings as `report.md`.
+//! **Position:** called by the QC step with the job's outputs; `markdown.rs`, with
+//! `steps_table.rs`, renders the result with the step measures as `report.md`.
 //!
 //! **Signals and state:** none; pure.
 //!
@@ -16,6 +16,7 @@
 
 pub mod coverage;
 pub mod markdown;
+mod steps_table;
 
 use std::collections::{BTreeMap, HashMap};
 

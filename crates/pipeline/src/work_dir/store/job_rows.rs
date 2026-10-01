@@ -1,9 +1,10 @@
-//! The job's own rows, typed: its record, its step records and the documents a fixture puts.
+//! The job's own rows, typed: its record, its last run, its step records and the documents a
+//! fixture puts.
 //!
-//! **Role:** read the job record, a step's document and every step record from a snapshot; put a
-//! step's output, the job record or a step record in a transaction of its own (for test fixtures
-//! and tools); read a job's rows from its folder for a reader that holds no store (`read_stored`,
-//! `read_job`).
+//! **Role:** read the job record, the last run, a step's document and every step record from a
+//! snapshot; put a step's output, the job record, the last run or a step record in a transaction
+//! of its own (the runner puts the last run; fixtures and tools the rest); read a job's rows from
+//! its folder for a reader that holds no store (`read_stored`, `read_job`).
 //!
 //! **Position:** in `work_dir::store`; used by the runner, `resume`, Fix It, the app's readers and
 //! the fixtures of pipeline and app tests.
@@ -18,7 +19,7 @@
 use std::path::Path;
 
 use job_model::StepName;
-use job_model::job::{JobRecord, StepRecord, StepRecords};
+use job_model::job::{JobRecord, JobRun, StepRecord, StepRecords};
 use rkyv::api::high::{HighDeserializer, HighSerializer, HighValidator};
 use rkyv::bytecheck::CheckBytes;
 use rkyv::rancor::Error as ArchiveError;
@@ -41,6 +42,11 @@ impl StoreRead {
     /// The job record; `None` before the runner first wrote it.
     pub fn job_record(&self) -> Result<Option<JobRecord>> {
         self.get(Table::Meta, &keys::named(keys::JOB_RECORD))
+    }
+
+    /// The last run as a whole; `None` before a run first finished walking the steps.
+    pub fn job_run(&self) -> Result<Option<JobRun>> {
+        self.get(Table::Meta, &keys::named(keys::LAST_RUN))
     }
 
     /// `step`'s document `part`; `None` while it is not stored.
@@ -89,6 +95,13 @@ impl JobStore {
     pub fn put_job_record(&self, record: &JobRecord) -> Result<()> {
         let mut write = self.write()?;
         write.put(Table::Meta, &keys::named(keys::JOB_RECORD), record)?;
+        write.commit()
+    }
+
+    /// Put the last run and commit it.
+    pub fn put_job_run(&self, run: &JobRun) -> Result<()> {
+        let mut write = self.write()?;
+        write.put(Table::Meta, &keys::named(keys::LAST_RUN), run)?;
         write.commit()
     }
 

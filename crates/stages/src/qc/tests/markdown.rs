@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use job_model::StepName;
 use job_model::job::{JobSettings, StepMeasure, StepRecord};
 use job_model::report::{QcCheck, QcFinding, QcSummary};
 
@@ -69,6 +70,7 @@ fn the_report_lists_flags_steps_and_unmeasured_values_as_dashes() {
         &report,
         &record(),
         &steps(),
+        None,
         "/v/[Muhn Pace] Dressrosa 11.srt",
         &["12.0s [thud]".into()],
     );
@@ -79,11 +81,11 @@ fn the_report_lists_flags_steps_and_unmeasured_values_as_dashes() {
         "{md}"
     );
     assert!(
-        md.contains("| separation | separation | 100.0 | 0.9 | 99.0 | 1156 | — | 4280 |"),
+        md.contains("| separation | separation | 100.0 | 18.5 | 0.9 | 99.0 | — | — | — | 1156 | — | — | 4280 |"),
         "{md}"
     );
     assert!(
-        md.contains("| vad | vad | 0.6 | — | — | — | — | — |"),
+        md.contains("| vad | vad | 0.6 | 3089.5 | — | — | — | — | — | — | — | — | — |"),
         "{md}"
     );
     assert!(md.contains("- 12.0s [thud]"));
@@ -108,7 +110,7 @@ fn the_report_counts_the_owner_s_lines_and_fix_it_s_apart() {
         },
         findings: Vec::new(),
     };
-    let md = render(&report, &record(), &steps(), "/v/x.srt", &[]);
+    let md = render(&report, &record(), &steps(), None, "/v/x.srt", &[]);
     assert!(md.contains("- Lines the owner corrected: 2\n"), "{md}");
     assert!(
         md.contains("- Lines Fix It changed, not checked yet: 5\n"),

@@ -623,6 +623,7 @@ fn a_kept_job_without_visual_text_resumes_and_corrects_without_the_visual_models
                 qc: Default::default(),
                 ran: Vec::new(),
                 skipped: Vec::new(),
+                run: Default::default(),
             })
         }));
         assert!(fixture.app.settings.saved.onscreen_text.enabled);
@@ -724,6 +725,7 @@ fn an_unrelated_job_completion_keeps_the_unsaved_text_draft_and_current_session(
             qc: Default::default(),
             ran: Vec::new(),
             skipped: Vec::new(),
+            run: Default::default(),
         }),
     ))
     .expect("unrelated completion");

@@ -1,5 +1,5 @@
 use job_model::StepName;
-use job_model::job::{StepMeasure, StepRecord};
+use job_model::job::{JobRun, StepMeasure, StepRecord};
 use job_model::outputs::SpeechPlan;
 use worker_channel::address::Table;
 
@@ -66,4 +66,18 @@ fn a_reader_without_a_store_reads_the_job_from_its_folder_and_creates_nothing() 
     assert_eq!(job.steps.len(), 1);
     assert_eq!(job.steps[&StepName::Qc], step(9));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_last_run_reads_back_as_it_was_put() {
+    let scratch = Scratch::new("job-run");
+    let store = scratch.store();
+    assert_eq!(store.read().unwrap().job_run().unwrap(), None);
+    let run = JobRun {
+        started_ns: 10,
+        finished_ns: 2_000_000_010,
+        peak_ram_mib: Some(5120.0),
+    };
+    store.put_job_run(&run).unwrap();
+    assert_eq!(store.read().unwrap().job_run().unwrap(), Some(run));
 }

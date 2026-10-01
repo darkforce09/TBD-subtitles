@@ -88,6 +88,15 @@ pub(super) fn run(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<
     report.note("encoder", &record.encoder);
     report.note("frames", record.frames);
     report.note("replaced", record.replaced);
+    let phases = rendered.phases;
+    for (key, spent) in [
+        ("decode_wait_s", phases.decode_wait),
+        ("blend_s", phases.blend),
+        ("encode_wait_s", phases.encode_wait),
+        ("flush_s", phases.flush),
+    ] {
+        report.note(key, format!("{:.1}", spent.as_secs_f64()));
+    }
     Ok(report)
 }
 

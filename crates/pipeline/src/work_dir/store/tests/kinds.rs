@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use job_model::job::{JobSettings, StepMeasure};
+use job_model::job::{JobRun, JobSettings, StepMeasure};
 use job_model::outputs::{AudioStream, ProbeResult};
 use rkyv::api::high::HighSerializer;
 use rkyv::ser::allocator::ArenaHandle;
@@ -86,6 +86,7 @@ fn every_document() -> Vec<(Table, &'static str, Vec<u8>)> {
     vec![
         (Table::Meta, "job_record", archive(&job_record())),
         (Table::Meta, "layout", archive(&TableLayouts::default())),
+        (Table::Meta, "last_run", archive(&JobRun::default())),
         (Table::StepRecords, "text_verify", archive(&step_record())),
         (
             Table::Corrections,

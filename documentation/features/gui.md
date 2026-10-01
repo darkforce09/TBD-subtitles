@@ -120,8 +120,8 @@ list and the line editor side by side.
   answered counts as checked; with none left, the card says "All 38 lines checked" and "Claude
   checked 36 · you checked 2". Then Details (subtitles, easy to read, unsure lines, words no engine
   heard, timing offset, speech and voice with no subtitle, words timed by the aligner, and
-  "Corrections you made", the owner's alone, not Claude's) and Step times (each stage and step with
-  its time, peak RAM and peak VRAM, and Open Full Report), both folded away at first.
+  "Corrections you made", the owner's alone, not Claude's) and Step times (each step's time, peak RAM
+  and VRAM; the last run's wall time and whole-job peak RAM; Open Full Report), both folded away.
   On-screen text adds detected, translated, nearby and unresolved counts ("· 8 replaced in the
   video" once the replacement steps ran), visual processing time, combined ASS output and a Check
   Text action; warnings remain visible after the job finishes. While a job's localized video is on

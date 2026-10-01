@@ -104,7 +104,14 @@ the other on-screen text steps with translation off, write empty outputs and loa
   Qwen visual translator. All GPU workers use the same machine-wide lock.
 - **Measurements:** a worker reports its load and processing time, its `VmHWM` and its largest
   child's peak memory. The runner samples its VRAM through NVML. A step in the runner resets and
-  reads the runner's own peak memory.
+  reads the runner's own peak memory. Over the whole run one sampler thread reads, every 250 ms,
+  the summed proportional set size and the CPU ticks of the app and every process under it and
+  the device's SM, NVENC and NVDEC use; each step's record keeps what it saw while the step ran
+  (the whole job's peak memory, mean and peak CPU cores, the busiest thread's share, mean GPU,
+  NVENC and NVDEC use; `None` without NVML), and `meta/last_run` keeps the run's start, end and
+  peak memory. `text_detect` notes its decode wait, detection, confirmation and still times and
+  its frames decoded and screened; `localized_video` its decode wait, blend, encode wait and
+  flush.
 
 ## 1. Probe and decode
 
@@ -283,8 +290,12 @@ past the end of the video, speech the backbone heard words in for longer than 1 
 given for reference), unsure lines, novel words, dropped agreed words, utterances timed without the aligner,
 the aligner offset and failed model calls, plus the share of words per timing source and of cues
 within 20 characters per second. The result is `outputs/qc`. The runner renders it into
-`report.md` after every run, with the flagged lines and their timestamps, the sound cues that found no place,
-and one row per step with its time, load, processing, peak RAM, peak child RAM and peak VRAM.
+`report.md` after every run, with the flagged lines and their timestamps, the sound cues that
+found no place, and one row per step with its time, its speed against the video (`× RT`), load,
+processing, mean and peak CPU cores, the busiest thread, GPU use, peak RAM, peak child RAM, the
+whole job's peak RAM and peak VRAM; a footer with the summed step time, the last run's real wall
+time and the whole job's peak RAM; and the phase times and frame rates of the steps that note
+them.
 
 ## 11. Output
 

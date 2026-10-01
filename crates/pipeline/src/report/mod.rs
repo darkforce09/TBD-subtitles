@@ -4,7 +4,7 @@
 //! **Role:** render the quality check, then the on-screen text section and, when the localized
 //! video was written, its replacements, fallbacks, path and encoder.
 //! **Position:** called by the runner at the end of every job; reads what the steps stored.
-//! **Signals and state:** reads `outputs/qc`, `outputs/cues/dropped_sounds`,
+//! **Signals and state:** reads `meta/last_run`, `outputs/qc`, `outputs/cues/dropped_sounds`,
 //! `outputs/text_typeset`, `outputs/text_verify` and `outputs/localized_video` from one snapshot
 //! of the job's store, through the process's one handle of it; writes `report.md`.
 //! **Invariants:** the localized-video lines appear only when that step ran without recording
@@ -36,8 +36,15 @@ pub fn write(work: &WorkDir, record: &JobRecord, steps: &StepRecords) -> Result<
         std::path::Path::new(&record.video),
         record.settings.effective_output_format(),
     );
-    let mut text =
-        stages::qc::markdown::render(&qc, record, steps, &output.to_string_lossy(), &dropped);
+    let run = read.job_run()?;
+    let mut text = stages::qc::markdown::render(
+        &qc,
+        record,
+        steps,
+        run.as_ref(),
+        &output.to_string_lossy(),
+        &dropped,
+    );
     if record.settings.onscreen_text.enabled {
         let visual: TextDocument = stored(&read, StepName::TextTypeset, None)?;
         let summary = visual.summary();

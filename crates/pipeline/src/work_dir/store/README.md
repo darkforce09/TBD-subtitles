@@ -67,13 +67,14 @@ write, for a read-change-write, and `clear` empties a table.
 
 `keys` names every row: a step's documents are `outputs/<step>`, and `outputs/<step>/<part>` for
 the further ones `output_parts` lists (`cues/dropped_sounds`, `text_typeset/ass`); its record is
-`step_records/<step>`; the job record is `meta/job_record`; the owner's corrections are
-`corrections/lines` and `corrections/text`, and Fix It's record is `corrections/fix`.
-`job_rows` reads the job record and the step records typed (`StoreRead::job_record`,
-`step_record`, `step_records`, `output`), puts one row per committed transaction
-(`JobStore::put_output`, `put_job_record`, `put_step_record`, for the runner's fixtures and the
-tests of the crate and the app), and reads a job from its folder for a caller that holds no store
-(`read_job`, `read_stored`).
+`step_records/<step>`; the job record is `meta/job_record` and the last run `meta/last_run`; the
+owner's corrections are `corrections/lines` and `corrections/text`, and Fix It's record is
+`corrections/fix`.
+`job_rows` reads the job record, the last run and the step records typed
+(`StoreRead::job_record`, `job_run`, `step_record`, `step_records`, `output`), puts one row per
+committed transaction (`JobStore::put_job_run` for the runner; `put_output`, `put_job_record`,
+`put_step_record` for the runner's fixtures and the tests of the crate and the app), and reads a
+job from its folder for a caller that holds no store (`read_job`, `read_stored`).
 
 `files::named_files` lists the files one step's rows name: the probe's mix, the separation's
 stems, the crops and keyframe stills of every on-screen text document, the sources, masks, fills,
@@ -89,7 +90,7 @@ channel checks every output a worker sends with it before the row is kept
 
 | Table | Key | Record type |
 |---|---|---|
-| `meta` | `job_record`, `layout` | `JobRecord`, `TableLayouts` |
+| `meta` | `job_record`, `layout`, `last_run` | `JobRecord`, `TableLayouts`, `JobRun` |
 | `step_records` | any step name | `StepRecord` |
 | `corrections` | `lines`, `text`, `fix` | `Corrections`, `TextCorrections`, `FixRecord` |
 | `outputs` | a step name | the document the step writes: `ProbeDecoded`, `ShotChanges`, `SpeechPlan`, `EngineTranscript` (both ASR steps), `Vec<Utterance>` (`diff_sheet`), `Vec<SoundEvent>`, `AdjudicationPass` (`adjudicate`, `readjudicate`), `Redecode` (both redecodes), `SoundCues`, `Aligned` (`alignment`, `review`), `CueTrack` (`cues`), `TextDocument` (`text_detect` … `text_review`, `text_typeset`), `ReplacementDocument` (`text_mask`, `text_inpaint`, `text_compose`), `VerifiedReplacements`, `QcReport`, `OutputRecord`, `LocalizedVideoRecord` |

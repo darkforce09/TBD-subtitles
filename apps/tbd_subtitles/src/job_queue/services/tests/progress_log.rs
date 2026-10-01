@@ -142,6 +142,7 @@ fn a_finished_job_names_its_subtitles_and_its_localized_video() {
             qc: job_model::report::QcReport::default(),
             ran: vec![StepName::Cues, StepName::Output],
             skipped: vec![StepName::Vad],
+            run: Default::default(),
         })
     };
     let line = describe_end(&outcome(), None);

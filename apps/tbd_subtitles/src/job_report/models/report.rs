@@ -1,11 +1,21 @@
 //! A finished job's report as the window shows it: the quality check with its problems and its
 //! lines worth a listen, the owner's corrections, what Fix It did, the files (the localized video
-//! among them), and each step's time and memory.
+//! among them), each step's time and memory, and the last run as a whole.
+//!
+//! **Role:** hold what the Overview draws of one finished job, and the totals it adds up: the
+//! steps' summed time, the highest whole-job memory and the sidebar row's counts.
+//!
+//! **Position:** built by `job_report::services::report_loading`; drawn by `job_report::ui`.
+//!
+//! **Signals and state:** none; plain data.
+//!
+//! **Invariants:** a measure no step took stays `None`, never zero; the summed time leaves out
+//! the shot scan, which runs alongside.
 
 use std::path::PathBuf;
 
 use job_model::StepName;
-use job_model::job::StepMeasure;
+use job_model::job::{JobRun, StepMeasure};
 use job_model::outputs::Corrections;
 use job_model::report::QcReport;
 
@@ -49,6 +59,8 @@ pub(crate) struct JobReport {
     pub(crate) fix_result: Option<FixResult>,
     /// Each finished step with its measure, in run order.
     pub(crate) steps: Vec<(StepName, StepMeasure)>,
+    /// The last run as a whole: its wall time and the job's peak memory; `None` before one ended.
+    pub(crate) run: Option<JobRun>,
 }
 
 impl JobReport {
@@ -59,6 +71,15 @@ impl JobReport {
             .filter(|(step, _)| *step != StepName::ShotScan)
             .map(|(_, measure)| measure.wall_s)
             .sum()
+    }
+
+    /// The highest whole-job memory any step saw, every process of the job at once; `None` when
+    /// no step measured it.
+    pub(crate) fn job_ram_mib(&self) -> Option<f64> {
+        self.steps
+            .iter()
+            .filter_map(|(_, measure)| measure.job_ram_mib)
+            .reduce(f64::max)
     }
 
     /// What its sidebar row and the header's Check Lines say.

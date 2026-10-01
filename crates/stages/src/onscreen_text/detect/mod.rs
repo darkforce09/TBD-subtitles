@@ -19,6 +19,7 @@ mod crops;
 mod regions;
 mod screen;
 mod source;
+mod timing;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -41,6 +42,7 @@ use screen::{
 
 pub use crops::crop;
 pub use source::{FfmpegSource, FrameSource, ProxyFrame};
+pub use timing::{ScanStats, scan_measured};
 
 /// Rows of the screening copy; the width keeps the source aspect.
 pub const PROXY_LINES: u32 = 360;

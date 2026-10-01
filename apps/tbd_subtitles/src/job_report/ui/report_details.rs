@@ -1,5 +1,6 @@
 //! The Overview's two disclosures: Details (the quality check's numbers in plain words) and Step
-//! times (each stage and step with its time, peak RAM and peak VRAM, and Open Full Report).
+//! times (each stage and step with its time, peak RAM and peak VRAM, the job's totals with the
+//! last run's wall time and its whole-job peak RAM, and Open Full Report).
 //!
 //! **Role:** draw the borrowed report's numbers, folded away until the owner opens them, and turn
 //! Open Full Report into a `ReportEvent`.
@@ -124,10 +125,16 @@ fn key_value_ui(ui: &mut Ui, key: &str, value: &str) {
 /// Report.
 pub(super) fn step_times_ui(ui: &mut Ui, report: &JobReport, events: &mut Vec<ReportEvent>) {
     card(ui, false, |ui| {
-        let aside = format!(
+        let mut aside = format!(
             "{} in total, shot scan aside",
             format::duration(report.total_s())
         );
+        if let Some(run) = &report.run {
+            aside.push_str(&format!(" · last run {}", format::duration(run.wall_s())));
+        }
+        if let Some(mib) = report.job_ram_mib() {
+            aside.push_str(&format!(" · peak RAM {mib:.0} MiB"));
+        }
         let id = Id::new(("report-steps", &report.work_dir));
         if !disclosure(ui, id, ("Step times", "Step times"), &aside) {
             return;
