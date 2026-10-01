@@ -30,20 +30,22 @@ pub struct ScreenShape {
 }
 
 impl ScreenShape {
-    /// The shape screening starts with until the host's pool-by-batch sweep sets it: four frames
-    /// per session, so two sessions keep eight frames in flight.
+    /// The shape screening runs at, from the host's pool-by-batch sweep on Dressrosa 11 and 28:
+    /// four frames per session, so two sessions keep eight in flight, in a 1,536 MiB pool, the
+    /// fastest pair on CUDA (35 to 44 frames a second) and on TensorRT FP16 (239 to 242).
     pub const INITIAL: ScreenShape = ScreenShape {
         batch: 4,
-        pool_mib: 2_304,
+        pool_mib: 1_536,
     };
 }
 
 /// The screening sessions that run side by side on the GPU.
 pub const SCREEN_SESSIONS: usize = 2;
 
-/// The GPU memory pool of each confirming session, in MiB, until the host's sweep sets it; the
+/// The GPU memory pool of each confirming session, in MiB: the smallest of the host's sweep in
+/// which the server detector confirms a full-resolution still on CUDA (2,560 MiB runs out); the
 /// screening sessions are closed before these open.
-pub const CONFIRM_POOL_MIB: usize = 1_536;
+pub const CONFIRM_POOL_MIB: usize = 3_072;
 
 /// The width every screened frame is also shrunk to, for writing too large for the mobile
 /// detector at full resolution: a glyph a third of the frame tall is found at this width.

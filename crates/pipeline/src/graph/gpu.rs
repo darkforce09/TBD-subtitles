@@ -24,9 +24,10 @@ pub const WORKER_VRAM_CAP_MIB: u64 = 6_656;
 /// Headroom over a measured peak, in MiB, for allocator growth between runs.
 pub const VRAM_HEADROOM_MIB: u64 = 256;
 
-/// The `text_detect` worker's VRAM need, in MiB: two screening sessions' pools and their CUDA
-/// contexts. The host's pool-by-batch sweep sets it, within the worker cap.
-pub const TEXT_DETECT_VRAM_MIB: u64 = 5_120;
+/// The `text_detect` worker's VRAM need, in MiB: the larger phase's measured peak on Dressrosa
+/// 11 and 28 plus `VRAM_HEADROOM_MIB`. Screening on CUDA, two threads each with a full-resolution
+/// and a proxy session, peaked at 4,087 MiB; confirming at 3,347; TensorRT held less.
+pub const TEXT_DETECT_VRAM_MIB: u64 = 4_087 + VRAM_HEADROOM_MIB;
 
 /// The largest VRAM each GPU step was measured to hold, in MiB, on Dressrosa 11 and 28.
 const MEASURED_PEAKS_MIB: &[(StepName, u64)] = &[

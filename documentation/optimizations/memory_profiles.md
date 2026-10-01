@@ -31,8 +31,8 @@ that machine directly, with no stepping stones at 8 or 16 GB. Two things do not 
 
 **The memory wait.** Each GPU step has a VRAM need: its measured peak in the
 [M6 baseline](/documentation/research/m6_baseline.md) plus 256 MiB, never the cap itself;
-`text_detect`'s is a named constant that the host sweep of the
-[runbook](/documentation/runbooks/measuring_full_resolution_screening.md) fixes. After taking the
+`text_detect`'s, 4,343 MiB, is its measured screening peak plus 256 MiB from the host sweep of the
+[runbook](/documentation/runbooks/measuring_full_resolution_screening.md). After taking the
 GPU lock, the worker polls NVML's free memory every second until it covers the need, telling the
 window "waiting for GPU memory: N MiB free, M needed"; it honours cancel, and after ten minutes it
 fails the step with the free memory, the need and "close other GPU programs and retry". Without
@@ -84,17 +84,19 @@ faint writing a downscale would lose can be found; the owner accepts the extra n
   at most 4 reuses its detections; the others are converted in Rust with rayon to RGB padded with
   black to 1,088 lines and screened by the mobile PP-OCRv5 detector on two sessions, each on its
   own thread and CUDA stream in the one worker. Batch and arena pool are one measured pair,
-  starting at batch 4 per session. Bisection probes are converted from held YUV and go ahead of
+  batch 4 per session in a 1,536 MiB pool; each thread also screens the batch shrunk to 640 wide
+  on a 512 MiB proxy session. Bisection probes are converted from held YUV and go ahead of
   the queued batches; results apply in sample order, so one and two sessions give one document.
 - **Keyframes from RAM:** the keyframe is the screened sample nearest the occurrence's middle,
-  held as YUV within a 4 GiB budget; the server detector confirms it at full resolution on both
-  sessions after the scan, and an evicted candidate falls back to an FFmpeg still, eight decoding
+  held as YUV within a 4 GiB budget; the server detector confirms it at full resolution on one
+  session in a 3,072 MiB pool after the scan, and an evicted candidate falls back to an FFmpeg still, eight decoding
   at once
   ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-server-detector-confirms-each-occurrence-at-full-resolution-on-the-sample-nearest-its-middle)).
 - **Detector engine:** CUDA by default, with TF32, NHWC and a CUDA graph, searching cuDNN's
   algorithms exhaustively
   ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-cuda-path-searches-cudnn-algorithms-exhaustively-unless-a-repeat-run-disagrees));
-  or TensorRT FP16 engines built once and cached, a setting until the host bench confirms it
+  or TensorRT engines built once and cached (FP16 screening, FP32 confirming), a setting until
+  the host check confirms it
   ([decision](/documentation/decisions/inference_engines.md#2026-10-01--tensorrt-runs-the-pp-ocrv5-detectors)).
 - **What the host measures:** the pool × batch sweep that fixes the batch, the screening and
   confirmation pools and `text_detect`'s VRAM need within 6.5 GB; the overlap of the two sessions;
