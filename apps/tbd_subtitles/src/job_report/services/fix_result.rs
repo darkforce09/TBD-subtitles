@@ -1,4 +1,4 @@
-//! What Fix It did to a finished job, from its `fix.json` record, the corrections and the
+//! What Fix It did to a finished job, from its stored record, the corrections and the
 //! problems the job has now.
 //!
 //! **Role:** count the lines Claude changed, answered unchanged, had turned down or left to the

@@ -100,7 +100,7 @@ fn no_file_is_an_empty_queue_and_a_broken_one_an_error() {
 }
 
 #[test]
-fn a_failure_an_older_window_kept_reads_its_finished_steps_from_job_json() {
+fn a_failure_an_older_window_kept_reads_its_finished_steps_from_its_job_database() {
     let dir = scratch("finished");
     let video = dir.join("Dressrosa 19.mp4");
     std::fs::write(&video, b"video").expect("video");
@@ -128,28 +128,27 @@ fn a_failure_an_older_window_kept_reads_its_finished_steps_from_job_json() {
             ..Default::default()
         },
     };
-    let record = JobRecord {
+    let record = job_model::job::JobRecord {
         video: video.display().to_string(),
         video_size: 5,
         video_modified_s: 0,
         settings: job_model::job::JobSettings::with_glossary(vec![]),
         models_dir: None,
         corrections: None,
-        steps: [
-            (StepName::ProbeDecode, step(4.0)),
-            (StepName::Separation, step(190.0)),
-            (StepName::Vad, step(1.0)),
-            (StepName::AsrParakeet, step(16.0)),
-            (StepName::AsrWhisper, step(3.0)),
-        ]
-        .into_iter()
-        .collect(),
     };
-    std::fs::write(
-        job.join("job.json"),
-        serde_json::to_string(&record).expect("json"),
-    )
-    .expect("job.json");
+    let store = pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(&job))
+        .expect("the store");
+    store.put_job_record(&record).expect("the record");
+    for (name, done) in [
+        (StepName::ProbeDecode, step(4.0)),
+        (StepName::Separation, step(190.0)),
+        (StepName::Vad, step(1.0)),
+        (StepName::AsrParakeet, step(16.0)),
+        (StepName::AsrWhisper, step(3.0)),
+    ] {
+        store.put_step_record(name, &done).expect("the step");
+    }
+    drop(store);
     let mut queue = load(&path).expect("load");
     read_finished_steps(&mut queue, &work);
     let JobState::Failed(read) = &queue.items[0].state else {
@@ -176,7 +175,7 @@ fn a_failure_an_older_window_kept_reads_its_finished_steps_from_job_json() {
             (StepName::ShotScan, FinishedStep::Done(None)),
             (StepName::Separation, FinishedStep::Done(None)),
         ],
-        "with no job.json, the steps it kept, in a time not known"
+        "with no job record, the steps it kept, in a time not known"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

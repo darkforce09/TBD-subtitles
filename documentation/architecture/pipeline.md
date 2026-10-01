@@ -6,7 +6,7 @@ Every stage from a video file to a finished subtitle file: what it reads, what i
 writes, and the guards that keep quality up. The design comes from the Dressrosa research; the
 crates and models behind each stage are in the [Rust ML stack](/documentation/research/rust_ml_stack.md),
 and the layout rules in the [subtitle style rules](/documentation/architecture/subtitle_style_rules.md).
-Stage outputs live in the job's work directory ([system overview](/documentation/architecture/system_overview.md#job-work-directory)).
+Stage outputs live in the job's database and work directory ([system overview](/documentation/architecture/system_overview.md#job-work-directory)).
 
 ## Why several engines and a language model
 
@@ -38,52 +38,54 @@ video ─▶ 1 probe+decode ─▶ 2 separate ─▶ 3 vad+chunks ─▶ 4 asr �
 ## Steps and processes
 
 The job runner (`crates/pipeline/`) runs a stage as one or more
-[steps](/documentation/glossary.md#step), in the order of `StepName::ALL`. Each step writes its
-own output in the job's work directory, gets its own fingerprint, and gets its own row of time
-and peak memory in the job report.
+[steps](/documentation/glossary.md#step), in the order of `StepName::ALL`. Each step stores its
+own documents in the job's database, `job.redb` (the `outputs` rows below, with its step record
+in `step_records/<step>`), keeps its large files in the job's work directory, gets its own
+fingerprint, and gets its own row of time and peak memory in the job report.
 
 | Step | Stage | Runs in | Output |
 |---|---|---|---|
-| probe_decode | 1 | worker, `tbd-subtitles` (FFmpeg child) | `probe.json`, `audio/mix_16k.f32` |
-| shot_scan | 1 | worker, `tbd-subtitles`, alongside the steps after it | `shots.json` |
-| separation | 2 | worker, `tbd-subtitles` (ONNX Runtime) | `audio/vocals_16k.f32`, `audio/background_16k.f32` |
-| vad | 3 | job runner | `vad.json` |
-| asr_parakeet | 4 | worker, `tbd-subtitles` (ONNX Runtime) | `asr/parakeet.json` |
-| asr_whisper | 4 | worker, `tbd-subtitles-ggml` (ggml) | `asr/whisper.json` |
-| diff_sheet | 5 | job runner | `sheet.json`, `sheet.txt` |
-| sound_events | 8 | worker, `tbd-subtitles` (ONNX Runtime) | `sound_events.json` |
-| adjudicate | 6 | worker, `tbd-subtitles` (`claude` children) | `adjudication/first.json` |
-| redecode_parakeet | 6 | worker, `tbd-subtitles` (ONNX Runtime) | `adjudication/redecode_parakeet.json` |
-| redecode_whisper | 6 | worker, `tbd-subtitles-ggml` (ggml) | `adjudication/redecode_whisper.json` |
-| readjudicate | 6 | worker, `tbd-subtitles` (`claude` child) | `adjudicated.json` |
-| sound_cues | 6 | worker, `tbd-subtitles` (`claude` children) | `sound_cues.json` |
-| alignment | 7 | worker, `tbd-subtitles` (ONNX Runtime) | `aligned.json` |
-| review | 7 | worker, `tbd-subtitles` (ONNX Runtime on the CPU) | `reviewed.json` |
-| cues | 9 | job runner | `cues.json` |
-| text_detect | on-screen text | worker, `tbd-subtitles` (ONNX Runtime; FFmpeg proxy stream and stills) | `visual/text_detect.json`, representative crops, keyframe stills |
-| text_read | on-screen text | worker, `tbd-subtitles` (ONNX Runtime) | `visual/text_read.json`, reading cache |
-| text_track | on-screen text | worker, `tbd-subtitles` (CPU, no decoding) | `visual/text_track.json` |
-| text_translate | on-screen text | worker, `tbd-subtitles-llm` (`claude` children first; mistral.rs for the rest) | `visual/text_translate.json`, translation cache |
-| text_review | on-screen text | job runner | `visual/text_review.json` |
-| text_mask | on-screen text | worker, `tbd-subtitles` (CPU; FFmpeg region crops) | `visual/text_mask.json`, `visual/masks/` |
-| text_inpaint | on-screen text | worker, `tbd-subtitles` (ONNX Runtime) | `visual/text_inpaint.json`, `visual/plates/` |
-| text_compose | on-screen text | worker, `tbd-subtitles` (CPU) | `visual/text_compose.json`, `visual/patches/` |
-| text_verify | on-screen text | worker, `tbd-subtitles` (ONNX Runtime; FFmpeg region crops) | `visual/text_verify.json` |
-| text_typeset | on-screen text | worker, `tbd-subtitles` (CPU) | `visual/text_typeset.json`, `visual/events.ass` |
-| qc | 10 | job runner | `qc.json` |
-| output | 11 | job runner | `<video base name>.srt` (or `.vtt`, `.ass`), `<video base name>.localized.ass`, `output.json` |
-| localized_video | localized video | worker, `tbd-subtitles` (FFmpeg decoder and NVENC encoder) | `<video base name>.localized.mkv`, `visual/localized_video.json` |
+| probe_decode | 1 | worker, `tbd-subtitles` (FFmpeg child) | `outputs/probe_decode`, `audio/mix_16k.f32` |
+| shot_scan | 1 | worker, `tbd-subtitles`, alongside the steps after it | `outputs/shot_scan` |
+| separation | 2 | worker, `tbd-subtitles` (ONNX Runtime) | `audio/vocals_16k.f32`, `audio/background_16k.f32` (no document) |
+| vad | 3 | job runner | `outputs/vad` |
+| asr_parakeet | 4 | worker, `tbd-subtitles` (ONNX Runtime) | `outputs/asr_parakeet` |
+| asr_whisper | 4 | worker, `tbd-subtitles-ggml` (ggml) | `outputs/asr_whisper` |
+| diff_sheet | 5 | job runner | `outputs/diff_sheet`, `sheet.txt` |
+| sound_events | 8 | worker, `tbd-subtitles` (ONNX Runtime) | `outputs/sound_events` |
+| adjudicate | 6 | worker, `tbd-subtitles` (`claude` children) | `outputs/adjudicate` |
+| redecode_parakeet | 6 | worker, `tbd-subtitles` (ONNX Runtime) | `outputs/redecode_parakeet` |
+| redecode_whisper | 6 | worker, `tbd-subtitles-ggml` (ggml) | `outputs/redecode_whisper` |
+| readjudicate | 6 | worker, `tbd-subtitles` (`claude` child) | `outputs/readjudicate` |
+| sound_cues | 6 | worker, `tbd-subtitles` (`claude` children) | `outputs/sound_cues` |
+| alignment | 7 | worker, `tbd-subtitles` (ONNX Runtime) | `outputs/alignment` |
+| review | 7 | worker, `tbd-subtitles` (ONNX Runtime on the CPU) | `outputs/review` |
+| cues | 9 | job runner | `outputs/cues`, `outputs/cues/dropped_sounds` |
+| text_detect | on-screen text | worker, `tbd-subtitles` (ONNX Runtime; FFmpeg proxy stream and stills) | `outputs/text_detect`, `visual/crops/`, `visual/keyframes/` |
+| text_read | on-screen text | worker, `tbd-subtitles` (ONNX Runtime) | `outputs/text_read`, reading cache `visual/readings/` |
+| text_track | on-screen text | worker, `tbd-subtitles` (CPU, no decoding) | `outputs/text_track` |
+| text_translate | on-screen text | worker, `tbd-subtitles-llm` (`claude` children first; mistral.rs for the rest) | `outputs/text_translate`, translation cache `visual/translations/` |
+| text_review | on-screen text | job runner | `outputs/text_review` |
+| text_mask | on-screen text | worker, `tbd-subtitles` (CPU; FFmpeg region crops) | `outputs/text_mask`, `visual/masks/` |
+| text_inpaint | on-screen text | worker, `tbd-subtitles` (ONNX Runtime) | `outputs/text_inpaint`, `visual/plates/` |
+| text_compose | on-screen text | worker, `tbd-subtitles` (CPU) | `outputs/text_compose`, `visual/patches/` |
+| text_verify | on-screen text | worker, `tbd-subtitles` (ONNX Runtime; FFmpeg region crops) | `outputs/text_verify` |
+| text_typeset | on-screen text | worker, `tbd-subtitles` (CPU) | `outputs/text_typeset`, `outputs/text_typeset/ass` |
+| qc | 10 | job runner | `outputs/qc` |
+| output | 11 | job runner | `<video base name>.srt` (or `.vtt`, `.ass`), `<video base name>.localized.ass`, `outputs/output` |
+| localized_video | localized video | worker, `tbd-subtitles` (FFmpeg decoder and NVENC encoder) | `<video base name>.localized.mkv`, `outputs/localized_video` |
 
 The 29 steps run in this order. The five replacement steps (`text_mask`, `text_inpaint`,
 `text_compose`, `text_verify`, `localized_video`) do work only when the job's
 [localized video](/documentation/glossary.md#localized-video) setting is on; otherwise they, like
 the other on-screen text steps with translation off, write empty outputs and load nothing.
 
-- **Resume:** a step is skipped when the job record holds its fingerprint and its files exist.
-  The fingerprint hashes the step's name and code revision, the settings it reads, the video's
-  path, size and modification time (for the steps that read the video), and the fingerprint and
+- **Resume:** a step is skipped when its step record holds its current fingerprint, its
+  documents are stored and the files its rows name exist. The fingerprint hashes the step's name
+  and code revision, the settings it reads, the stored table layouts, the video's path, size and
+  modification time (for the steps that read the video), and the fingerprint and
   finish time of every step it reads. A step that runs again therefore re-runs every step after
-  it, and `--rerun <step>` forces one.
+  it, and `--rerun <step>` clears that step and every step that reads it in one transaction.
 - **Cancel:** the job's cancel token is checked before each step and watched by the running
   worker's watchdog, which kills the worker's process group; the job ends as cancelled and its
   finished steps stay valid, so the next run resumes after them.
@@ -207,13 +209,13 @@ the other on-screen text steps with translation off, write empty outputs and loa
   30 ms. It is signed because both time words on the same 80 ms grid, where an absolute median is
   one frame; the signed median shows a systematic shift. The quality check reports a larger
   offset.
-- **Review:** the owner's corrections from the window (`review.json`: each corrected utterance's
-  text, flags and where the text came from) are timed by the `review` step: each corrected
-  utterance alone, with Parakeet-CTC on the CPU between the middles of the gaps to its
+- **Review:** the owner's corrections from the window (`corrections/lines`: each corrected
+  utterance's text, flags and where the text came from) are timed by the `review` step: each
+  corrected utterance alone, with Parakeet-CTC on the CPU between the middles of the gaps to its
   neighbours, else the aligner's earlier times carried over to the words that stayed or replaced
   others, else the backbone's times; every other utterance keeps its times. The result,
-  `reviewed.json`, is what the cues and the quality check read; with no corrections it is
-  `aligned.json` as it stands. The quality check counts the corrected lines and drops their
+  `outputs/review`, is what the cues and the quality check read; with no corrections it is
+  `outputs/alignment` as it stands. The quality check counts the corrected lines and drops their
   unsure, novel-word and dropped-word findings; for a [Fix It](#fix-it) change the owner has not
   kept, it checks the words again against every hypothesis, the re-decodes included, and counts
   the line apart. The step's fingerprint covers the corrections'
@@ -274,8 +276,8 @@ past the end of the video, speech the backbone heard words in for longer than 1 
 (outside songs and dropped noise; the voice activity with no cue, grunts and crowds included, is
 given for reference), unsure lines, novel words, dropped agreed words, utterances timed without the aligner,
 the aligner offset and failed model calls, plus the share of words per timing source and of cues
-within 20 characters per second. The result is `qc.json`. The runner renders it into `report.md`
-after every run, with the flagged lines and their timestamps, the sound cues that found no place,
+within 20 characters per second. The result is `outputs/qc`. The runner renders it into
+`report.md` after every run, with the flagged lines and their timestamps, the sound cues that found no place,
 and one row per step with its time, load, processing, peak RAM, peak child RAM and peak VRAM.
 
 ## 11. Output
@@ -284,16 +286,16 @@ and one row per step with its time, load, processing, peak RAM, peak child RAM a
   UTF-8, in the video's folder, written to a part file and renamed. An existing, different
   subtitle file is first copied to the job's `backup/` folder, never beside the video; an
   identical one is left alone. When the format changes, the job's file of the old format moves to
-  `backup/`, so one subtitle file stays beside the video. `output.json` records the path, the
+  `backup/`, so one subtitle file stays beside the video. `outputs/output` records the path, the
   backup and the moved file.
 - With the localized video on, the step also writes `<video base name>.localized.ass`: the same
-  dialogue and sound cues and no on-screen text at all, backed up the same way; `output.json`
-  records it as `localized`. The step reads `visual/text_verify.json` and
-  `visual/text_typeset.json` for it: each sampled frame of each occurrence drawn into the video,
-  on the ASS canvas and grown by 12 pixels, is writing a cue keeps clear of, and a cue whose box
+  dialogue and sound cues and no on-screen text at all, backed up the same way; `outputs/output`
+  records it as `localized`. The step reads `outputs/text_verify` and `outputs/text_typeset`
+  for it: each sampled frame of each occurrence drawn into the video, on the ASS canvas and
+  grown by 12 pixels, is writing a cue keeps clear of, and a cue whose box
   at the bottom meets that writing while both are on screen starts with `{\an8}` and shows at
   the top ([subtitle style rules](/documentation/architecture/subtitle_style_rules.md#on-screen-text-and-the-localized-video)).
-  A missing `visual/text_verify.json` fails the step.
+  A missing `outputs/text_verify` fails the step.
 - The job report stays in the work directory; the GUI shows it. With the localized video
   written, `report.md` adds a Localized video section: occurrences replaced, occurrences left in
   Japanese, the path and the encoder.
@@ -324,7 +326,7 @@ into the picture and approve it, and a last step after `output` writes the video
   metadata and no subtitle stream.
 
 An occurrence that cannot be separated, followed or lettered legibly, or that fails the read-back
-check, stays Japanese in the localized video; `visual/text_verify.json` keeps the reason, which
+check, stays Japanese in the localized video; `outputs/text_verify` keeps the reason, which
 Check Text shows as `Not replaced in the video: <reason>`. A variable-frame-rate video fails the
 last step; a `.localized.mkv` the job did not write is never
 overwritten. Algorithms, files and bounds:
@@ -334,18 +336,19 @@ overwritten. Algorithms, files and bounds:
 
 On a finished job, at the owner's request, a stronger `claude` model (Opus by default) fixes
 the lines the quality check flagged. It is not a step of the run: `pipeline::fix_it` reads the
-job's `sheet.json` with the re-decodes, `adjudicated.json` with the corrections in place,
-`review.json`, `qc.json`, `reviewed.json` and the backbone's words, and refuses a job whose
-check or output has not finished or whose corrections changed since its last run.
+job's stored diff sheet with the re-decodes, the adjudicated lines with the corrections in
+place, `corrections/lines`, `outputs/qc`, `outputs/review` and the backbone's words, and
+refuses a job whose check or output has not finished or whose corrections changed since its
+last run.
 `stages::fix_it` then runs three passes, each with no tools: a brief of the whole video from its
 file and folder names, the glossary and every line (show, episode, cast, scenes, speech habits,
 lines out of place); fixes one family at a time (words, then timing and layout, then reading
 speed), each answer held by a guard that refuses any word no engine heard near the line; and a
 judge that accepts or turns down each changed line against the line before it. Kept changes go
-into `review.json` as `fix_it` corrections, never over one of the owner's, and `fix.json` records
-the run; each answered call waits in `fix/calls/` until the run ends, so a stopped run resumes
-without paying again. The caller then runs the job again, and as for any correction only the
-review step and the steps after it run. Details: [Fix It](/documentation/features/fix_it.md).
+into `corrections/lines` as `fix_it` corrections, never over one of the owner's, and
+`corrections/fix` records the run, in the same transaction; each answered call waits in
+`fix/calls/` until the run ends, so a stopped run resumes without paying again. The caller then
+runs the job again, and as for any correction only the review step and the steps after it run. Details: [Fix It](/documentation/features/fix_it.md).
 
 ## Related documentation
 

@@ -7,8 +7,9 @@
 //! **Position:** called by `tasks::run` inside workers of the main binary; uses
 //! `stages::sound_events` and `stages::adjudication::sound_cues`.
 //!
-//! **Signals and state:** reads the stems, `sheet.json`, `adjudicated.json` and `asr/whisper.json`;
-//! writes `sound_events.json` and `sound_cues.json`.
+//! **Signals and state:** reads the stems and, through the step's `StepIo`, the probe, the sound
+//! events, the sheet, the adjudicated lines and Whisper's transcript; stores the sound events
+//! (`outputs/sound_events`) and the chosen cues (`outputs/sound_cues`).
 //!
 //! **Invariants:** no model call is made when there is no candidate; every song ends up with a
 //! music cue.
@@ -18,16 +19,20 @@ use std::time::Instant;
 
 use inference::onnx::Device;
 use inference::onnx::ced::{self, Ced};
+use job_model::StepName;
 use job_model::outputs::{AdjudicationPass, EngineTranscript, SoundCues, SoundEvent, Utterance};
 use stages::adjudication::sound_cues;
 use stages::sound_events::{self, Windowing, candidates, classes};
 
-use super::{Job, StepProgress, TaskReport, llm, since};
+use super::{Job, StepIo, StepProgress, TaskReport, llm, since};
 use crate::error::{Context, PipelineError, Result};
-use crate::work_dir;
 
-pub(super) fn sound_events(job: &Job, progress: &dyn Fn(usize, usize)) -> Result<TaskReport> {
-    let duration = job.probe()?.probe.duration_s;
+pub(super) fn sound_events(
+    job: &Job,
+    io: &mut StepIo,
+    progress: StepProgress,
+) -> Result<TaskReport> {
+    let duration = io.probe()?.probe.duration_s;
     let load = Instant::now();
     let mut tagger =
         Ced::open(&job.models()?.join(ced::MODEL), Device::Cuda).context("load CED")?;
@@ -52,15 +57,15 @@ pub(super) fn sound_events(job: &Job, progress: &dyn Fn(usize, usize)) -> Result
     }
     report.process_s = since(started);
     report.note("events", events.len());
-    work_dir::write_json(&job.work.sound_events(), &events)?;
+    io.put(StepName::SoundEvents, None, &events)?;
     Ok(report)
 }
 
-pub(super) fn sound_cues(job: &Job, progress: StepProgress) -> Result<TaskReport> {
-    let events: Vec<SoundEvent> = work_dir::read_json(&job.work.sound_events())?;
-    let sheet: Vec<Utterance> = work_dir::read_json(&job.work.sheet())?;
-    let adjudicated: AdjudicationPass = work_dir::read_json(&job.work.adjudicated())?;
-    let whisper: EngineTranscript = work_dir::read_json(&job.work.asr("whisper"))?;
+pub(super) fn sound_cues(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<TaskReport> {
+    let events: Vec<SoundEvent> = io.get(StepName::SoundEvents, None)?;
+    let sheet: Vec<Utterance> = io.get(StepName::DiffSheet, None)?;
+    let adjudicated: AdjudicationPass = io.get(StepName::Readjudicate, None)?;
+    let whisper: EngineTranscript = io.get(StepName::AsrWhisper, None)?;
     let started = Instant::now();
     let (found, songs) = candidates::candidates(&events, &sheet, &adjudicated.lines, &whisper);
     let text: HashMap<&str, &job_model::outputs::Line> = adjudicated
@@ -97,6 +102,6 @@ pub(super) fn sound_cues(job: &Job, progress: StepProgress) -> Result<TaskReport
     report.note("refused", chosen.refused.len());
     report.note("failed_calls", chosen.failed_calls.len());
     report.note("cost_usd", format!("{:.2}", chosen.cost_usd));
-    work_dir::write_json(&job.work.sound_cues(), &chosen)?;
+    io.put(StepName::SoundCues, None, &chosen)?;
     Ok(report)
 }

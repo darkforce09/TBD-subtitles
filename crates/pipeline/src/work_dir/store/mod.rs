@@ -2,10 +2,12 @@
 //!
 //! **Role:** open a job's database read-write once per process, repairing a file a killed writer
 //! left, name the owning process in `job.lock`, drop every table whose layout version changed,
-//! and hand out write transactions and read snapshots of its rows.
+//! remove the files in step-owned folders that no row names, and hand out write transactions and
+//! read snapshots of its rows.
 //!
-//! **Position:** in `work_dir`; opened by the runner and Fix It for the length of their work; uses
-//! `tables` for the table definitions and `records` for the rows.
+//! **Position:** in `work_dir`; opened by the runner, Fix It and the app's readers for the length
+//! of their work; uses `tables` for the table definitions, `records` for the rows, `keys` for
+//! their names, `job_rows` for the typed job rows and `files` for the files rows name.
 //!
 //! **Signals and state:** a process-wide registry of the open stores by job folder, so every
 //! caller in one process shares one handle; `job.redb` locked by redb for the life of the handle;
@@ -16,6 +18,9 @@
 //! removed only while it still names this process, after the database is closed; a table whose
 //! stored layout version differs from `LAYOUT_VERSIONS` is dropped whole, never migrated.
 
+pub mod files;
+mod job_rows;
+pub mod keys;
 pub mod kinds;
 mod records;
 mod tables;
@@ -33,6 +38,8 @@ use worker_channel::address::Table;
 use super::{WorkDir, write_text};
 use crate::error::{Context, PipelineError, Result};
 
+pub use job_rows::{StoredJob, load_job_record, load_step_records, read_job, read_stored};
+pub use keys::{output_address, output_key, output_keys};
 pub use kinds::{RecordKind, kind};
 pub use records::{StoreRead, StoreWrite};
 pub use tables::{FramedTable, LAYOUT_VERSIONS, NamedTable};
@@ -140,6 +147,12 @@ impl JobStore {
             match open_database(work, mode) {
                 Ok(database) => {
                     let store = JobStore::own(database, work, key.clone(), versions)?;
+                    if let Err(error) = files::remove_orphans(&store) {
+                        tracing::warn!(
+                            "cannot remove the unnamed files of {}: {error}",
+                            root.display()
+                        );
+                    }
                     let store = Arc::new(store);
                     open.insert(key, Arc::downgrade(&store));
                     return Ok(store);
@@ -295,8 +308,16 @@ fn apply_layouts(database: &Database, versions: &[(Table, u32)], path: &Path) ->
 }
 
 #[cfg(test)]
+#[path = "tests/scratch.rs"]
+pub(crate) mod scratch;
+
+#[cfg(test)]
 #[path = "tests/store.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/job_rows.rs"]
+mod job_rows_tests;
 
 #[cfg(test)]
 #[path = "tests/records.rs"]

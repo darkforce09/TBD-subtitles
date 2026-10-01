@@ -1,8 +1,8 @@
 # Step tasks
 
-The body of every step: read its inputs from the work directory, call the stage, write its
-outputs. The same code runs inside the job runner for the in-process steps and inside a worker
-process of either app binary for the rest.
+The body of every step: read its inputs through its `StepIo`, call the stage, write its outputs
+through it. The same code runs inside the job runner for the in-process steps and inside a worker
+process of the app binaries for the rest.
 
 ## Contents
 
@@ -10,6 +10,7 @@ process of either app binary for the rest.
 crates/pipeline/src/tasks/
 ├── onscreen.rs   the visual steps from detection to typesetting and their isolated model workers
 ├── alignment.rs  forced alignment: Parakeet-CTC and CTC Viterbi over the vocal stem, block by block
+├── io.rs         `StepIo`: a task's stored inputs and outputs, in the runner and in a worker
 ├── layout.rs     cue building at the frame rate, the quality check, the subtitle file beside the video
 ├── localized.rs  the localized video: approved patches blended over every frame and encoded
 ├── llm.rs        adjudication and re-adjudication through `claude -p`, several processes at once
@@ -20,23 +21,40 @@ crates/pipeline/src/tasks/
 ├── sounds.rs     sound events with CED over both stems, and the sound cues the language model picks
 ├── speech.rs     voice activity and chunk plan, Parakeet and Whisper, the diff sheet, re-decodes
 ├── verify.rs     the read-back check: PP-OCRv5 in its ONNX Runtime worker approves each lettering
-└── tests/        unit tests for review, the check's corrections, the localized subtitles and video
+└── tests/        unit tests for the alignment's inputs, review, the check, the visual steps, the localized subtitles and video, `StepIo`
 ```
 
 ## How it works
 
 ```text
-runner ──▶ in_process(step) ─┐
-                             ├─▶ run(step, job, progress) ──▶ media | speech | sounds | llm
-worker ──▶ worker_main(step) ┘                                  | alignment | layout ──▶ stages
+runner ──▶ in_process(step, StepIo::in_process(store)) ─┐
+                                                        ├─▶ run(step, job, io, progress) ──▶ tasks ──▶ stages
+worker ──▶ worker_main(step) ── StepIo::in_worker(stdin) ┘
 ```
 
-A `Job` is the work directory and its record; `Job::load` reads `job.json`, so a worker needs only
-the job's folder. `Job::models` is the models folder the record names, else the default. `run` sends each step to its task, which returns a `TaskReport` of load time,
-processing time and notes. `in_process` resets this process's peak RAM, runs the task and returns
-its `StepMeasure`. `worker_main` first installs the worker channel (`worker_channel::worker`),
-which keeps a private copy of the stdout pipe for frames and points descriptor 1 at stderr before
-any native library loads. It then refuses a step placed in the other binary, sends each advance as
+Every task is `fn(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<TaskReport>`.
+`StepIo::get(step, part)` is the checked, deserialised document of a step the task reads, and a
+missing one is an error naming its key; `view` reads one in place; `probe`, `job_record`,
+`corrections` and `text_corrections` are the common reads (no corrections is none).
+`StepIo::put(step, part, value)` keeps a document the task writes, refused when its key has no
+record kind, and `put_frame(table, occurrence, frame, value)` a `frames` or `readings` row. In the
+runner (`StepIo::in_process`) reads come from one snapshot of the job's store and writes go into
+the step's pending write, which `into_outputs` hands the runner to commit with the step's record;
+in a worker (`StepIo::in_worker`) reads come from the `Input` frames the runner sent down stdin
+(`graph::reads`) and writes go up the channel as `Output` frames. Every task, from the probe to
+the localized video, reads and writes its documents only through it: the owner's text corrections
+come from `corrections/text`, the typeset ASS events are `outputs/text_typeset/ass`, the diff sheet
+also writes `sheet.txt`, the sheet for reading, and the output writes the subtitle files beside the
+video.
+
+A `Job` is the work directory and its record; in a worker `Job::received` takes the record from
+the `meta/job_record` input. `Job::models` is the models folder the record names, else the
+default. `run` sends each step to its task, which returns a `TaskReport` of load time, processing
+time and notes. `in_process` resets this process's peak RAM, runs the task on its `StepIo` and
+returns its `StepMeasure`. `worker_main` first installs the worker channel
+(`worker_channel::worker`), which keeps a private copy of the stdout pipe for frames and points
+descriptor 1 at stderr before any native library loads, then reads the step's inputs from stdin.
+It refuses a step placed in the other binary, sends each advance as
 a `Progress` frame, and at the end sends the load time, processing time, peak RAM, peak child RAM
 and notes as an rkyv archive of `WorkerMeasure` in a `Measure` frame, then `Done`; any error,
 the placement check's included, goes out as a `Failed` frame with its text before it is returned.
@@ -44,20 +62,21 @@ the placement check's included, goes out as a `Failed` frame with its text befor
 model steps share one factory of `ClaudeCli` backends, each running in the job's empty
 `claude-cwd/`. The Whisper steps load a model only with the `crispasr` feature; without it they
 fail and name `tbd-subtitles-ggml`. The output task writes the job's format (SRT, WebVTT or ASS),
-moves the file of another format it wrote last time into `backup/`, and records both in
-`output.json` (`OutputRecord`). With the localized video on, it also writes
+moves the file of another format it wrote last time into `backup/`, and stores both as
+`outputs/output` (`OutputRecord`), which its next run reads; with on-screen text on, it appends the
+typeset events, `outputs/text_typeset/ass`. With the localized video on, it also writes
 `<video>.localized.ass`: the dialogue and sound cues alone, no on-screen events, with each cue that
 would cover English lettered into the video (every sampled frame of each baked occurrence, from
-`visual/text_verify.json` and `visual/text_typeset.json`, on the ASS canvas and grown by 12
+`outputs/text_verify` and `outputs/text_typeset`, on the ASS canvas and grown by 12
 pixels) moved to the top by `subtitle_formats::writers::ass::write_with`. The read-back check
 opens PP-OCRv5 only when composition baked something, reads each baked occurrence back through
-`stages::onscreen_text::replace::verify` and writes `visual/text_verify.json`, which the output and
+`stages::onscreen_text::replace::verify` and stores `outputs/text_verify`, which the output and
 the localized video read. The quality check settles the findings of every corrected line;
 a Fix It change the owner has not checked has its words held again against every hypothesis, the
 re-decodes included, and the summary counts the owner's lines and Fix It's apart. The alignment
-and review tasks read both engines' transcripts (Whisper's when it is there) for
-`sheet::heard_spans`, so a line is aligned where any engine heard its words; transcripts that cut
-other utterances than the sheet holds are an error. The long tasks
+and review tasks read both engines' transcripts for `sheet::heard_spans`, so a line is aligned
+where any engine heard its words; transcripts that cut other utterances than the sheet holds
+leave every line in the backbone's windows. The long tasks
 report progress: probe and decode and separation in seconds of audio, the language-model tasks
 in batches.
 
@@ -66,18 +85,35 @@ in batches.
 - Depends on: `stages` (every stage module), `inference` (the ONNX models, CrispASR Whisper, the
   `claude` CLI backend and the model store), `media_io`, `subtitle_formats` (the cue track and the
   subtitle writers), `job_model`, `worker_channel` (the worker's frames), `rkyv` (the measure's
-  archive), `crate::graph`, `crate::measure::memory` and `crate::work_dir`.
-- Used by: `crate::runner` (`in_process`); the `worker` subcommands in
+  archive), `crate::graph`, `crate::measure::memory`, `crate::work_dir` (the store and its keys)
+  and `crate::workers::StepWrite` (the pending write).
+- Used by: `crate::runner` (`in_process`, `StepIo`); `tools/visual_validation/` (the same); the
+  `worker` subcommands in
   `apps/tbd_subtitles/src/cli/worker_command.rs`, `apps/tbd_subtitles_ggml/src/main.rs` and
   `apps/tbd_subtitles_llm/src/main.rs` (`worker_main`).
 - Rules:
-  - a task writes its outputs completely or not at all, through `work_dir`'s part files;
+  - a task's stored outputs are committed with its step's record or not at all, and nothing it
+    puts is visible before (`an_in_process_step_reads_the_store_and_commits_its_output_with_its_record`
+    in `tests/io.rs`); a file it writes goes through `work_dir`'s part files;
+  - a worker's inputs arrive down its stdin and its outputs as frames, the same task code as in
+    the runner (`a_worker_reads_its_inputs_from_its_stdin_and_sends_its_output_as_frames`), and a
+    missing input is an error naming its key (`a_missing_input_is_an_error_naming_its_key`);
   - the subtitle files beside the video are the only files written outside the work directory,
     and a replaced one is kept in the job's `backup/` (`layout.rs`);
   - the localized subtitle file carries no on-screen events and moves a cue over lettered English
     to the top (`the_localized_subtitles_carry_dialogue_alone_moved_above_lettered_writing` in
     `tests/layout.rs`);
+  - a worker of the alignment receives every document the task reads, and the task needs each
+    one (`the_worker_inputs_of_the_alignment_hold_everything_the_task_reads` in
+    `tests/alignment.rs`);
   - the video is only read, and audio is streamed, never held whole (`media.rs`);
+  - every crop, still, mask, plate, patch and preview a visual document names, and the localized
+    video, is synced on disk before the document is put (`stages::onscreen_text::png`,
+    `install` in `localized.rs`);
+  - a visual step's worker needs no input beyond `graph::reads`
+    (`the_review_reads_the_translation_the_probe_the_shots_and_the_text_corrections` in
+    `tests/onscreen.rs`, `a_composition_with_nothing_baked_passes_through_the_check_unchanged` in
+    `tests/verify.rs`);
   - a Fix It change the owner has not checked is checked again for words no engine heard
     (`owner_lines_are_settled_and_fix_it_lines_are_checked_again` in `tests/layout.rs`);
   - a binary without `crispasr` refuses a Whisper step instead of skipping it (`speech.rs`);

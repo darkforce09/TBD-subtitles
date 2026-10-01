@@ -5,7 +5,7 @@ use job_model::report::{QcCheck, QcFinding, QcSummary};
 
 use super::*;
 
-fn record() -> JobRecord {
+fn steps() -> StepRecords {
     let mut steps = BTreeMap::new();
     steps.insert(
         StepName::Separation,
@@ -33,6 +33,10 @@ fn record() -> JobRecord {
             },
         },
     );
+    steps
+}
+
+fn record() -> JobRecord {
     JobRecord {
         video: "/v/[Muhn Pace] Dressrosa 11.mp4".into(),
         video_size: 1,
@@ -40,7 +44,6 @@ fn record() -> JobRecord {
         settings: JobSettings::with_glossary(vec![]),
         models_dir: None,
         corrections: None,
-        steps,
     }
 }
 
@@ -65,6 +68,7 @@ fn the_report_lists_flags_steps_and_unmeasured_values_as_dashes() {
     let md = render(
         &report,
         &record(),
+        &steps(),
         "/v/[Muhn Pace] Dressrosa 11.srt",
         &["12.0s [thud]".into()],
     );
@@ -104,7 +108,7 @@ fn the_report_counts_the_owner_s_lines_and_fix_it_s_apart() {
         },
         findings: Vec::new(),
     };
-    let md = render(&report, &record(), "/v/x.srt", &[]);
+    let md = render(&report, &record(), &steps(), "/v/x.srt", &[]);
     assert!(md.contains("- Lines the owner corrected: 2\n"), "{md}");
     assert!(
         md.contains("- Lines Fix It changed, not checked yet: 5\n"),

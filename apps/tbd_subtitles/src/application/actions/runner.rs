@@ -23,13 +23,13 @@
 //! while a model is missing; a job started at once (Try Again, Run Again) leaves the queue off,
 //! and a pause ends once the full lane is idle, while no full run is busy; a run of a video never starts while another run
 //! of the same video runs or Fix It fixes it, and a waiting full run holds its lane meanwhile; a
-//! job takes the settings saved now until it has started once, and its own `job.json` settings
+//! job takes the settings saved now until it has started once, and its own job record's settings
 //! after that, as a review run always does.
 
 use std::path::Path;
 use std::time::Instant;
 
-use job_model::job::{JobRecord, JobSettings};
+use job_model::job::JobSettings;
 use pipeline::progress::Progress;
 use pipeline::workers::Binaries;
 use pipeline::{CancelToken, JobOptions};
@@ -252,14 +252,12 @@ impl TbdSubtitlesApp {
     }
 }
 
-/// The settings `video`'s job ran with, from its `job.json`.
+/// The settings `video`'s job ran with, from its job record.
 pub(crate) fn recorded_settings(work_root: &Path, video: &Path) -> Option<JobSettings> {
     let video = std::fs::canonicalize(video).ok()?;
-    let path = work_root
-        .join(pipeline::work_dir::job_id(&video))
-        .join("job.json");
-    let record: JobRecord = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
-    Some(record.settings)
+    let dir = work_root.join(pipeline::work_dir::job_id(&video));
+    let job = pipeline::work_dir::read_job(&dir).ok()??;
+    Some(job.record.settings)
 }
 
 /// Fold what the full runner and the review lanes sent into the queue, and start the next jobs
@@ -281,8 +279,8 @@ pub(crate) fn poll_runner(app: &mut TbdSubtitlesApp) {
                 if let Some(item) = app.queue.get_mut(id)
                     && let JobState::Running(job) = &mut item.state
                 {
-                    // The pipeline announces the job, or a first step, only after `job.json`
-                    // holds the steps to run again; until then a failure keeps them for a retry.
+                    // The pipeline announces the job, or a first step, only after its database has
+                    // cleared the steps to run again; until then a failure keeps them for a retry.
                     let started = matches!(
                         progress,
                         Progress::JobStarted { .. } | Progress::StepStarted(_)

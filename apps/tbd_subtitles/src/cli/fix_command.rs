@@ -9,7 +9,7 @@
 //! **Position:** called by `cli::dispatch`; runs `pipeline::fix_it::fix_video` and
 //! `pipeline::run_job`; shares the printout of `process_command`.
 //!
-//! **Signals and state:** reads the settings file and the job's `job.json`; prints to stderr.
+//! **Signals and state:** reads the settings file and the job's record; prints to stderr.
 //!
 //! **Invariants:** an option given on the command line wins over the settings file; the
 //! correction run takes the settings the job ran with, never the ones saved now; nothing runs
@@ -89,7 +89,9 @@ pub(super) fn run(args: &FixArgs) -> anyhow::Result<()> {
     if outcome.changed.is_empty() {
         return Ok(());
     }
-    let record: JobRecord = pipeline::work_dir::read_json(&outcome.work_dir.join("job.json"))?;
+    let record: JobRecord = pipeline::work_dir::read_job(&outcome.work_dir)?
+        .with_context(|| format!("{} has no job record", outcome.work_dir.display()))?
+        .record;
     let job = JobOptions {
         work_root: options.work_root.clone(),
         settings: record.settings,

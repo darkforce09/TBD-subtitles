@@ -1,43 +1,47 @@
-//! A finished job's lines for review, read from its work directory: what each engine heard, what
-//! the language model settled on, why the quality check flagged it, and the owner's corrections.
+//! A finished job's lines for review, read from its database: what each engine heard, what the
+//! language model settled on, why the quality check flagged it, and the owner's corrections.
 //!
-//! **Role:** join `sheet.json`, the re-decodes, `adjudicated.json`, `qc.json`, `review.json` and
-//! `probe.json` into a `ReviewSession`, each line with its groups and why in the owner's words.
+//! **Role:** join the sheet, the re-decodes, the settled re-adjudication, the quality check, the
+//! owner's corrections and the probe, all read from one snapshot of the job's database, into a
+//! `ReviewSession`, each line with its groups and why in the owner's words.
 //!
 //! **Position:** called by the application when the owner opens a job's review and after a
 //! review run ends.
 //!
-//! **Signals and state:** reads the work directory; writes nothing.
+//! **Signals and state:** opens the job's database for one read (sharing this process's handle
+//! while a job of it runs here); writes nothing.
 //!
 //! **Invariants:** an utterance appears once, in sheet order; a line Fix It changed that the owner
 //! has not checked is in the Changed by Claude group, first, with what the app had and why; a
-//! missing re-decode or correction file means none, a missing sheet or adjudication is an error
-//! naming the file.
+//! missing re-decode, quality check, correction or probe means none, a missing sheet or
+//! adjudication is an error naming its row.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
+use job_model::StepName;
 use job_model::outputs::{
     AdjudicationPass, Chosen, Corrections, ProbeDecoded, Redecode, Utterance,
 };
 use job_model::report::{QcCheck, QcFinding, QcReport};
+use pipeline::work_dir::WorkDir;
 
 use crate::job_report::models::finding_group::LineGroup;
 use crate::line_review::models::session::{Hypothesis, ReviewLine, ReviewSession};
 
 /// The review of the job of `video` whose work directory is `work_dir`.
 pub(crate) fn load(video: &Path, work_dir: &Path) -> Result<ReviewSession, String> {
-    let sheet: Vec<Utterance> = read(&work_dir.join("sheet.json"))?;
-    let adjudicated: AdjudicationPass = read(&work_dir.join("adjudicated.json"))?;
-    let qc: QcReport = read(&work_dir.join("qc.json")).unwrap_or_default();
-    let corrections: Corrections = optional(&work_dir.join("review.json"))?.unwrap_or_default();
-    let probe: Option<ProbeDecoded> = optional(&work_dir.join("probe.json"))?;
+    let Stored {
+        sheet,
+        adjudicated,
+        qc,
+        corrections,
+        probe,
+        redecodes,
+    } = stored(work_dir)?;
     let mut again: HashMap<String, Vec<Hypothesis>> = HashMap::new();
-    for (engine, tag) in [("parakeet", "ALT p"), ("whisper", "ALT w")] {
-        let path = work_dir
-            .join("adjudication")
-            .join(format!("redecode_{engine}.json"));
-        if let Some(redecode) = optional::<Redecode>(&path)? {
+    for (redecode, tag) in redecodes.into_iter().zip(["ALT p", "ALT w"]) {
+        if let Some(redecode) = redecode {
             for (id, chunk) in redecode.ids.iter().zip(&redecode.transcript.chunks) {
                 let text = chunk
                     .words
@@ -154,18 +158,53 @@ pub(crate) fn work_dir(video: &Path, work_root: &Path) -> Result<PathBuf, String
     Ok(work_root.join(pipeline::work_dir::job_id(&video)))
 }
 
-fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
-    optional(path)?.ok_or_else(|| format!("{} is missing", path.display()))
+/// What the review reads from the job's database.
+struct Stored {
+    sheet: Vec<Utterance>,
+    adjudicated: AdjudicationPass,
+    qc: QcReport,
+    corrections: Corrections,
+    probe: Option<ProbeDecoded>,
+    /// Parakeet's re-decode, then Whisper's.
+    redecodes: [Option<Redecode>; 2],
 }
 
-fn optional<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, String> {
-    match std::fs::read_to_string(path) {
-        Ok(text) => serde_json::from_str(&text)
-            .map(Some)
-            .map_err(|e| format!("cannot parse {}: {e}", path.display())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(format!("cannot read {}: {e}", path.display())),
-    }
+/// The rows of the job in `work_dir` its review reads, in one snapshot; an error names the sheet
+/// or the adjudication when either is missing, or the row that does not read.
+fn stored(work_dir: &Path) -> Result<Stored, String> {
+    let missing = |row: &str| {
+        format!(
+            "{} has no {row}",
+            WorkDir::new(work_dir).database().display()
+        )
+    };
+    let stored = pipeline::work_dir::read_stored(work_dir, |read| {
+        Ok((
+            read.output::<Vec<Utterance>>(StepName::DiffSheet, None)?,
+            read.output::<AdjudicationPass>(StepName::Readjudicate, None)?,
+            read.output::<QcReport>(StepName::Qc, None)
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+            read.line_corrections()?,
+            read.output::<ProbeDecoded>(StepName::ProbeDecode, None)?,
+            [
+                read.output::<Redecode>(StepName::RedecodeParakeet, None)?,
+                read.output::<Redecode>(StepName::RedecodeWhisper, None)?,
+            ],
+        ))
+    })
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| missing("outputs/diff_sheet"))?;
+    let (sheet, adjudicated, qc, corrections, probe, redecodes) = stored;
+    Ok(Stored {
+        sheet: sheet.ok_or_else(|| missing("outputs/diff_sheet"))?,
+        adjudicated: adjudicated.ok_or_else(|| missing("outputs/readjudicate"))?,
+        qc,
+        corrections,
+        probe,
+        redecodes,
+    })
 }
 
 #[cfg(test)]

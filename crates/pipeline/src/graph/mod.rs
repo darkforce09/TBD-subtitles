@@ -1,8 +1,8 @@
 //! The step graph: what each step reads, where it runs, whether it needs the GPU, which of the
-//! settings it depends on, and which files it leaves.
+//! settings it depends on, which stored values it reads, and which steps depend on it.
 //!
 //! **Role:** the one table the runner, the resume check and the workers consult; the order is
-//! `StepName::ALL`.
+//! `StepName::ALL`; the documents each step writes are named by `work_dir::store::keys`.
 //!
 //! **Position:** used by `runner`, `resume` and `workers`.
 //!
@@ -12,16 +12,14 @@
 //! Whisper steps run in the ggml binary and nothing else does; a step's revision changes
 //! whenever its code changes what it writes, so older outputs are not reused.
 
-use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use job_model::StepName;
-use job_model::job::{JobSettings, OutputFormat};
-use job_model::onscreen::LocalizedVideoRecord;
-use job_model::outputs::OutputRecord;
+use job_model::job::JobSettings;
 use serde_json::{Value, json};
+use worker_channel::address::{Address, Table};
 
-use crate::work_dir::WorkDir;
+use crate::work_dir::store::keys;
 
 /// The binaries a worker runs in, one per native GPU runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,9 +98,18 @@ pub fn needs_cuda_runtime(step: StepName) -> bool {
     loads_onnx_runtime(step) || placement(step) == Placement::Worker(Binary::Ggml)
 }
 
-/// Whether the step's fingerprint covers the owner's corrections.
+/// Whether the step's fingerprint covers the owner's line corrections.
 pub fn reads_corrections(step: StepName) -> bool {
     step == StepName::Review
+}
+
+/// Whether the step reads the owner's on-screen text corrections, and its fingerprint covers
+/// them while on-screen text is on.
+pub fn reads_text_corrections(step: StepName) -> bool {
+    matches!(
+        step,
+        StepName::TextRead | StepName::TextTranslate | StepName::TextReview
+    )
 }
 
 /// The steps whose outputs a step reads.
@@ -138,10 +145,10 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
         ],
         Cues => &[ProbeDecode, ShotScan, SoundCues, Review],
         TextDetect => &[ProbeDecode, ShotScan],
-        TextRead => &[TextDetect],
+        TextRead => &[ShotScan, TextDetect],
         TextTrack => &[ProbeDecode, ShotScan, TextRead],
-        TextTranslate => &[TextTrack, Cues],
-        TextReview => &[ShotScan, TextTranslate],
+        TextTranslate => &[ShotScan, TextTrack, Cues],
+        TextReview => &[ProbeDecode, ShotScan, TextTranslate],
         TextMask => &[ProbeDecode, TextReview],
         TextInpaint => &[TextMask],
         TextCompose => &[TextReview, TextInpaint],
@@ -150,6 +157,7 @@ pub fn inputs(step: StepName) -> &'static [StepName] {
         Qc => &[
             ProbeDecode,
             Vad,
+            AsrParakeet,
             DiffSheet,
             RedecodeParakeet,
             RedecodeWhisper,
@@ -266,115 +274,55 @@ pub fn timeout(step: StepName) -> Duration {
     Duration::from_secs(minutes * 60)
 }
 
-/// The files a finished step leaves; the step is redone when one is missing.
-pub fn outputs(step: StepName, work: &WorkDir, video: &Path, format: OutputFormat) -> Vec<PathBuf> {
-    use StepName::*;
-    match step {
-        ProbeDecode => vec![work.probe(), work.mix()],
-        ShotScan => vec![work.shots()],
-        Separation => vec![work.vocals(), work.background()],
-        Vad => vec![work.vad()],
-        AsrParakeet => vec![work.asr("parakeet")],
-        AsrWhisper => vec![work.asr("whisper")],
-        DiffSheet => vec![work.sheet(), work.sheet_text()],
-        SoundEvents => vec![work.sound_events()],
-        Adjudicate => vec![work.first_pass()],
-        RedecodeParakeet => vec![work.redecode("parakeet")],
-        RedecodeWhisper => vec![work.redecode("whisper")],
-        Readjudicate => vec![work.adjudicated()],
-        SoundCues => vec![work.sound_cues()],
-        Alignment => vec![work.aligned()],
-        Review => vec![work.reviewed()],
-        Cues => vec![work.cues(), work.dropped_sounds()],
-        TextDetect | TextRead | TextTrack | TextTranslate | TextReview => vec![work.text(step)],
-        TextMask | TextInpaint | TextCompose | TextVerify => vec![work.text(step)],
-        TextTypeset => vec![work.text(step), work.text_ass()],
-        Qc => vec![work.qc()],
-        Output => vec![
-            work.output_record(),
-            stages::output::subtitle_path(video, format),
-        ],
-        LocalizedVideo => vec![work.text(step)],
+/// Every stored value `step` reads: the job record, every document of every step it reads, the
+/// owner's corrections it depends on, and, for the steps that replace a file of their own earlier
+/// run beside the video, that run's record. A worker receives them down its stdin.
+pub fn reads(step: StepName) -> Vec<Address> {
+    let mut reads = vec![keys::job_record_address()];
+    for input in inputs(step) {
+        reads.extend(
+            keys::output_parts(*input)
+                .iter()
+                .map(|part| keys::output_address(*input, *part)),
+        );
     }
+    if reads_corrections(step) || step == StepName::Qc {
+        reads.push(keys::corrections_address(keys::LINE_CORRECTIONS));
+    }
+    if reads_text_corrections(step) {
+        reads.push(keys::corrections_address(keys::TEXT_CORRECTIONS));
+    }
+    if reads_its_earlier_run(step) {
+        reads.push(keys::output_address(step, None));
+    }
+    reads
 }
 
-/// Check declared outputs, the representative crops and the keyframe stills required to resume
-/// text reading and translation.
-pub fn artifacts_valid(step: StepName, work: &WorkDir, video: &Path, format: OutputFormat) -> bool {
-    if !outputs(step, work, video, format)
-        .iter()
-        .all(|path| path.exists())
-    {
-        return false;
-    }
-    match step {
-        StepName::TextDetect => {}
-        StepName::Output => {
-            return recorded_file_present::<OutputRecord>(&work.output_record(), |r| {
-                r.localized.clone()
-            });
-        }
-        StepName::LocalizedVideo => {
-            return recorded_file_present::<LocalizedVideoRecord>(&work.text(step), |r| {
-                r.path.clone()
-            });
-        }
-        _ => return true,
-    }
-    // Deserialize only crop paths, skipping large geometry arrays without retaining them.
-    #[derive(serde::Deserialize)]
-    struct DetectionArtifacts {
-        occurrences: Vec<CropArtifacts>,
-    }
-    #[derive(serde::Deserialize)]
-    struct CropArtifacts {
-        crops: Vec<PathBuf>,
-        #[serde(default)]
-        keyframe: Option<KeyframeArtifact>,
-    }
-    #[derive(serde::Deserialize)]
-    struct KeyframeArtifact {
-        image: PathBuf,
-    }
-    let Ok(file) = std::fs::File::open(work.text(step)) else {
-        return false;
-    };
-    let Ok(artifacts) =
-        serde_json::from_reader::<_, DetectionArtifacts>(std::io::BufReader::new(file))
-    else {
-        return false;
-    };
-    let present = |path: &PathBuf| {
-        path.components().all(|part| {
-            matches!(
-                part,
-                std::path::Component::Normal(_) | std::path::Component::CurDir
-            )
-        }) && std::fs::metadata(work.root().join(path))
-            .is_ok_and(|metadata| metadata.is_file() && metadata.len() > 0)
-    };
-    artifacts.occurrences.iter().all(|item| {
-        !item.crops.is_empty()
-            && item.crops.iter().all(present)
-            && item
-                .keyframe
-                .as_ref()
-                .is_none_or(|keyframe| present(&keyframe.image))
-    })
+/// Whether the step reads the record of its own earlier run: the output and the localized video
+/// replace the files they wrote beside the video before.
+pub fn reads_its_earlier_run(step: StepName) -> bool {
+    matches!(step, StepName::Output | StepName::LocalizedVideo)
 }
 
-/// Whether the file a step's record names, if it names one, still exists.
-fn recorded_file_present<T: serde::de::DeserializeOwned>(
-    record: &Path,
-    named: impl Fn(&T) -> Option<String>,
-) -> bool {
-    let Ok(text) = std::fs::read_to_string(record) else {
-        return false;
-    };
-    let Ok(value) = serde_json::from_str::<T>(&text) else {
-        return false;
-    };
-    named(&value).is_none_or(|path| Path::new(&path).is_file())
+/// Whether a value `step` [`reads`] may be missing: the owner's corrections, of which a job has
+/// none until the owner makes one, and the record of the step's own earlier run.
+pub fn is_optional_read(step: StepName, address: &Address) -> bool {
+    address.table == Table::Corrections
+        || (reads_its_earlier_run(step) && *address == keys::output_address(step, None))
+}
+
+/// Every step that reads `step`, directly or through other steps, in `StepName::ALL` order.
+pub fn dependents(step: StepName) -> Vec<StepName> {
+    let mut found: Vec<StepName> = Vec::new();
+    for later in StepName::ALL {
+        if inputs(later)
+            .iter()
+            .any(|input| *input == step || found.contains(input))
+        {
+            found.push(later);
+        }
+    }
+    found
 }
 
 #[cfg(test)]

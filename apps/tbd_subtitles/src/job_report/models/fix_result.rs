@@ -1,7 +1,7 @@
 //! What Fix It did to a finished job, as the Overview's result card says it.
 //!
 //! **Role:** hold the counts, the problems cleared and left, and a few changed words of the
-//! latest Fix It run of a job, read from its `fix.json` and its corrections.
+//! latest Fix It run of a job, read from its stored record and its corrections.
 //!
 //! **Position:** built by `services::fix_result`, kept in `JobReport::fix_result`, drawn by the
 //! file card's result card.

@@ -40,7 +40,7 @@ pub(crate) enum StepState {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum FinishedStep {
     /// Done in the run that ended, in these seconds, or in a time not known (a failure an older
-    /// window kept, with no `job.json` to read the time from).
+    /// window kept, with no step record to read the time from).
     Done(Option<f64>),
     /// Skipped as still valid from an earlier run.
     StillValid,

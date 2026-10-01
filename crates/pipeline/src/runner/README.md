@@ -1,50 +1,66 @@
 # Step runner
 
 `run_job`: one video through every step, in the order `StepName::ALL` gives, skipping what is still
-valid, running the shot scan beside the other steps, recording each step's measure, and writing
-the report at the end.
+valid, running the shot scan beside the other steps, committing each step's outputs with its
+record, and writing the report at the end.
 
 ## Contents
 
 ```text
 crates/pipeline/src/runner/
-└── mod.rs  `run_job`, `JobOptions` and `JobOutcome`, the CUDA environment and the step records
+├── mod.rs    `run_job`, `JobOptions`, `JobOutcome`, the CUDA environment, `worker_inputs`, `stamp`
+├── rerun.rs  the job record and `--rerun` cleared in one transaction; a record forgotten to rerun
+└── tests/    unit tests for the cleared steps, the per-frame rows and a forgotten record
 ```
 
 ## How it works
 
 `run_job` canonicalises the video, names its work directory with `work_dir::job_id`, opens the
 job's database with `JobStore::open` and holds it until it returns (another process running the
-job makes that open fail with the busy error kind, which names the owner's pid from `job.lock`),
-and opens `job.json`, or starts a new record when there is none or it belongs to
-another video. It records the video's size and modification time and this run's settings, drops
-the steps named in `JobOptions::rerun`, and saves the record. `Progress::JobStarted` names the
-steps this run will do (`resume::stale_steps`), and `Progress::JobDuration` the video's length once
-the probe is there. It then walks the steps, checking `JobOptions::cancel` before each: a valid
-step is skipped; any other runs through `tasks::in_process` or `workers::run_worker`, as
-`graph::placement` says, and is recorded with its fingerprint, finish time and measure; a step
-that fails, or is cancelled, is reported as `Progress::StepFailed` and ends the job with its error.
-A worker gets the cancel token, which its watchdog watches, and a GPU worker first takes the
-machine-wide lock `JobOptions::gpu_lock`. The shot
-scan runs on a scoped thread and is joined before cue building, the first step that reads it; when
-the walk ends with an error the runner sets the cancel token, so the scan stops instead of running
-to its end. The
-CUDA environment, found once through `inference::cuda_runtime` beside the binaries or in the
-runtime folder, goes to GPU workers only. At the end `report::write` renders `report.md`, and
+job makes that open fail with the busy error kind, which names the owner's pid from `job.lock`).
+It builds this run's `JobRecord` (the video's path, size and modification time, the settings, the
+models folder and the digest of the stored line corrections) and `rerun::start` commits it as
+`meta/job_record` in the same write transaction that clears every step `JobOptions::rerun` names
+and every step `graph::dependents` gives for them: their documents in `outputs` and their records
+in `step_records`, and, when `text_mask` or `text_verify` is among them, every `frames` and
+`readings` row. The files those rows named become unnamed and go on the database's next open.
+No file outside the database holds the job record. `Progress::JobStarted` names the steps this run will do
+(`resume::stale_steps`), and `Progress::JobDuration` the video's length once the probe is stored.
+
+It then walks the steps, checking `JobOptions::cancel` before each: a valid step
+(`resume::is_valid` over a fresh snapshot) is skipped; any other has its fingerprint taken, its
+record removed (`rerun::forget`), and runs through `tasks::in_process` on a `StepIo` of the store
+or through `workers::run_worker` with the stored values `worker_inputs` gives it (every
+`graph::reads` value, less the optional ones the job lacks), as `graph::placement` says. Either
+way the outputs the step wrote come back as an uncommitted `StepWrite`, and `stamp` commits them
+with its `StepRecord` (fingerprint, finish time, measure) in one transaction; a step that wrote
+none still commits its record. A step that fails, or is cancelled, is reported as
+`Progress::StepFailed` and ends the job with its error. A worker gets the cancel token, which its
+watchdog watches, and a GPU worker first takes the machine-wide lock `JobOptions::gpu_lock`. The
+shot scan runs on a scoped thread, commits its own outputs there, and is joined before the first
+step that reads it; when the walk ends with an error the runner sets the cancel token, so the
+scan stops instead of running to its end. The CUDA environment, found once through
+`inference::cuda_runtime` beside the binaries or in the runtime folder, goes to GPU workers only.
+At the end `report::write` renders `report.md` from the record and the stored step records, and
 `JobOutcome` names the subtitle file, the report, the quality check and the steps run and skipped.
 
 ## Boundaries
 
 - Depends on: `crate::{graph, resume, tasks, workers, work_dir, report, progress}`;
-  `inference::cuda_runtime` and `inference::model_store`; `job_model`; `stages::output`; `tracing`
-  for the `step{step}` span each step runs in (its workers' and programs' lines, and the shot
-  scan's thread, log inside it), its debug lines (the job, reruns asked for, where each step runs,
-  the CUDA runtime) and the report's path at info.
+  `inference::cuda_runtime` and `inference::model_store`; `job_model`; `stages::output`;
+  `worker_channel::address`; `tracing` for the `step{step}` span each step runs in (its workers'
+  and programs' lines, and the shot scan's thread, log inside it), its debug lines (the job,
+  reruns asked for and cleared, where each step runs, the CUDA runtime) and the report's path at
+  info.
 - Used by: `apps/tbd_subtitles/src/cli/process_command.rs` and the window's job queue, through
-  the re-export at the crate root.
+  the re-export at the crate root; `tools/visual_validation/` (`worker_inputs`).
 - Rules:
-  - `job.json` holds finished steps only and is saved after each, so a killed job resumes from the
-    last finished step (the module header);
+  - a step's record is committed with its outputs, and removed before the step runs again, so a
+    killed job resumes from the last finished step (the module header);
+  - `--rerun` clears a step and every step that reads it, their per-frame rows with the steps
+    that write them, in one transaction, and keeps the owner's corrections
+    (`a_rerun_clears_its_steps_and_their_dependents_in_one_transaction_and_puts_the_record`,
+    `per_frame_rows_stay_when_no_step_that_writes_them_is_cleared` in `tests/rerun.rs`);
   - one worker loads the GPU at a time; the shot scan, which runs beside it, loads none;
   - a step starts only after every step it reads has finished, and none starts once the job is
     cancelled;
@@ -56,3 +72,5 @@ runtime folder, goes to GPU workers only. At the end `report::write` renders `re
 - [Pipeline](/documentation/architecture/pipeline.md#stage-flow) — the stage flow the runner walks.
 - [System overview](/documentation/architecture/system_overview.md#processes) — the processes a job
   starts.
+- [Binary storage plan](/documentation/architecture/binary_storage_plan.md#resume-and-reruns) —
+  the one-transaction rerun and the orphan cleanup.

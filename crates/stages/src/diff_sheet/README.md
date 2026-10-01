@@ -20,8 +20,8 @@ words. It cuts the backbone into utterances at pauses of 0.6 s, at sentence ends
 0.2 s, and at 12 s, and writes each as `U0412 12:03.4 2.1s | Law, the {P:Birdcage|W:bird cage}
 is closing{W:+in}!`. A word every engine heard the same is locked; each utterance keeps every
 engine's own words for the novelty check. The `Utterance` type is `job_model::outputs::Utterance`,
-re-exported from `sheet`, so the pipeline stores the sheet as `sheet.json` and the later stages
-read it back.
+re-exported from `sheet`, so the pipeline stores the sheet as `outputs/diff_sheet` in the job's
+database and the later stages read it back.
 
 `sheet::heard_spans` cuts the same utterances through the same comparison and returns, per
 utterance, the earliest start and latest end of its backbone words and of every other engine's

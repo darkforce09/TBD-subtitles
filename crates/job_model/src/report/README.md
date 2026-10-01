@@ -1,7 +1,8 @@
 # Job report
 
-The quality check's result, as kept in `qc.json` and rendered into `report.md`: every check by
-name, the findings each leaves with a timestamp to look at, and the counts that sum a job up.
+The quality check's result, as kept in the job's database as `outputs/qc` and rendered into
+`report.md`: every check by name, the findings each leaves with a timestamp to look at, and the
+counts that sum a job up.
 
 ## Contents
 

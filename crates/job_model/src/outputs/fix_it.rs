@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::StepName;
-use crate::job::JobRecord;
+use crate::job::StepRecords;
 use crate::report::{QcCheck, QcReport};
 
 /// The kinds of problem Fix It asks about, in the order it asks.
@@ -308,12 +308,12 @@ pub struct FixRecord {
 }
 
 impl FixRecord {
-    /// Whether the record belongs to `job`'s re-adjudication as it stands: its `adjudication` is
-    /// empty, or matches the fingerprint of the job's re-adjudication step.
-    pub fn is_current(&self, job: &JobRecord) -> bool {
+    /// Whether the record belongs to the job's re-adjudication as it stands, given the job's step
+    /// records: its `adjudication` is empty, or matches the fingerprint of the re-adjudication
+    /// step.
+    pub fn is_current(&self, steps: &StepRecords) -> bool {
         self.adjudication.is_empty()
-            || job
-                .steps
+            || steps
                 .get(&StepName::Readjudicate)
                 .is_some_and(|step| step.fingerprint == self.adjudication)
     }

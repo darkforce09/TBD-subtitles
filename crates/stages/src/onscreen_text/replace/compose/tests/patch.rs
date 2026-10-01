@@ -48,7 +48,7 @@ fn files_appear_through_a_rename() {
     let image = image::DynamicImage::ImageRgba8(RgbaImage::new(3, 2));
     write_png(&path, &image).unwrap();
     assert!(path.exists());
-    assert!(!folder.join("0.png.tmp").exists());
+    assert!(!folder.join("0.png.partial").exists());
     assert_eq!(
         image::open(&path).unwrap().into_rgba8().dimensions(),
         (3, 2)

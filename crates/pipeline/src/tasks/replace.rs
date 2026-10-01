@@ -1,12 +1,14 @@
 //! Tasks for in-place replacement: stroke masks, inpainting and lettering composition.
 //!
-//! **Role:** run each replacement step over the reviewed text document and install its
+//! **Role:** run each replacement step over the reviewed text document and store its
 //! `ReplacementDocument`, loading the inpainting model only in its ONNX Runtime worker.
-//! **Position:** pipeline task dispatch above `stages::onscreen_text::replace`.
-//! **Signals and state:** `visual/text_mask.json`, `visual/text_inpaint.json`,
-//! `visual/text_compose.json` and the PNG files they name.
-//! **Invariants:** a job without the localized video writes empty documents and loads nothing;
-//! each document is written atomically after its step's files exist.
+//! **Position:** pipeline task dispatch above `stages::onscreen_text::replace`; every stored
+//! input and output goes through the step's `StepIo`.
+//! **Signals and state:** reads `outputs/text_review`, the probe and the previous replacement
+//! step's document; stores `outputs/text_mask`, `outputs/text_inpaint` or `outputs/text_compose`;
+//! writes the mask, source, plate, patch and preview PNGs those documents name.
+//! **Invariants:** a job without the localized video stores empty documents and loads nothing;
+//! every PNG a document names is synced before the document is handed to the store.
 
 use std::time::Instant;
 
@@ -16,9 +18,8 @@ use job_model::onscreen::{ReplaceStatus, ReplacementDocument, TextDocument};
 use stages::onscreen_text::TextResult;
 use stages::onscreen_text::replace::{self, inpaint::Inpaint};
 
-use super::{Job, StepProgress, TaskReport, since};
+use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, PipelineError, Result};
-use crate::work_dir;
 
 /// Whether the job replaces writing in a localized video.
 pub(crate) fn localized(job: &Job) -> bool {
@@ -26,18 +27,23 @@ pub(crate) fn localized(job: &Job) -> bool {
     text.enabled && text.localized_video
 }
 
-pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<TaskReport> {
+pub(super) fn run(
+    step: StepName,
+    job: &Job,
+    io: &mut StepIo,
+    progress: StepProgress,
+) -> Result<TaskReport> {
     let started = Instant::now();
     let mut report = TaskReport::default();
     if !localized(job) {
-        work_dir::write_json(&job.work.text(step), &ReplacementDocument::default())?;
+        io.put(step, None, &ReplacementDocument::default())?;
         report.note("disabled", true);
         return Ok(report);
     }
-    let reviewed: TextDocument = work_dir::read_json(&job.work.text(StepName::TextReview))?;
     let document = match step {
         StepName::TextMask => {
-            let probe = job.probe()?;
+            let reviewed: TextDocument = io.get(StepName::TextReview, None)?;
+            let probe = io.probe()?;
             let stream = probe.probe.video.as_ref().ok_or_else(|| {
                 PipelineError::new("stroke masks", "the file has no video stream")
             })?;
@@ -48,8 +54,7 @@ pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<T
                 .context("measure the strokes of visible writing")?
         }
         StepName::TextInpaint => {
-            let mut document: ReplacementDocument =
-                work_dir::read_json(&job.work.text(StepName::TextMask))?;
+            let mut document: ReplacementDocument = io.get(StepName::TextMask, None)?;
             let mut model = LamaModel(
                 lama::Lama::open(&job.models()?.join(lama::MODEL), Device::Cuda)
                     .context("open LaMa; download the inpainting model in Settings")?,
@@ -60,8 +65,8 @@ pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<T
             document
         }
         StepName::TextCompose => {
-            let mut document: ReplacementDocument =
-                work_dir::read_json(&job.work.text(StepName::TextInpaint))?;
+            let reviewed: TextDocument = io.get(StepName::TextReview, None)?;
+            let mut document: ReplacementDocument = io.get(StepName::TextInpaint, None)?;
             let fonts = job.models()?.join("latin-fonts");
             replace::compose::compose(&mut document, &reviewed, job.work.root(), &fonts, progress)
                 .context("letter English onto filled backgrounds")?;
@@ -86,7 +91,7 @@ pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<T
         "plates",
         document.texts.iter().map(|t| t.plates.len()).sum::<usize>(),
     );
-    work_dir::write_json(&job.work.text(step), &document)?;
+    io.put(step, None, &document)?;
     Ok(report)
 }
 

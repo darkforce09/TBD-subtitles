@@ -3,6 +3,8 @@
 
 use std::path::Path;
 
+use super::rendering_report::{put_corrections, stored_corrections};
+
 use job_model::outputs::{Chosen, Corrections};
 use job_model::report::{QcCheck, QcFinding};
 
@@ -36,31 +38,30 @@ fn reviewing(name: &str) -> (TbdSubtitlesApp, PathBuf) {
     (app, root)
 }
 
-/// Write the three lines of a job into its work directory `job`, as Check Lines reads them:
-/// `sheet.json` with what each engine heard and `adjudicated.json` with the settled texts, U1
-/// "Blaver!" (unsure), U2 "Go!" and U3 "Franky!", 10, 12 and 14 s in, 1.5 s each.
+/// Store the three lines of the job in `job`, as Check Lines reads them: what each engine heard
+/// and the settled texts, U1 "Blaver!" (unsure), U2 "Go!" and U3 "Franky!", 10, 12 and 14 s in,
+/// 1.5 s each.
 pub(super) fn write_lines(job: &Path) {
-    std::fs::create_dir_all(job).expect("job");
-    let line = |id: &str, start: f64, p: &str, w: &str| {
-        format!(
-            r#"{{"id":"{id}","start_s":{start},"end_s":{},"words":[],"locked":[],"line":"{id}","hypotheses":[["P",["{p}"]],["W",["{w}"]]]}}"#,
-            start + 1.5
-        )
+    let line = |id, start_s, parakeet, whisper, settled, flags| super::job_fixtures::Heard {
+        id,
+        start_s,
+        length_s: 1.5,
+        parakeet,
+        whisper,
+        settled,
+        flags,
     };
-    let sheet = format!(
-        "[{},{},{}]",
-        line("U1", 10.0, "blame!", "flavor!"),
-        line("U2", 12.0, "Go!", "Go!"),
-        line("U3", 14.0, "Frankie!", "Frankie!")
+    super::job_fixtures::put_lines(
+        job,
+        &[
+            line("U1", 10.0, "blame!", "flavor!", "Blaver!", &["UNSURE"]),
+            line("U2", 12.0, "Go!", "Go!", "Go!", &[]),
+            line("U3", 14.0, "Frankie!", "Frankie!", "Franky!", &[]),
+        ],
     );
-    let adjudicated = r#"{"lines":[{"id":"U1","t":"Blaver!","f":["UNSURE"]},{"id":"U2","t":"Go!","f":[]},{"id":"U3","t":"Franky!","f":[]}],
-        "findings":{"missing_ids":[],"duplicate_ids":[],"unknown_ids":[],"novel":[],"removed_locked":[],"too_fast":[]},
-        "calls":1,"input_tokens":0,"output_tokens":0,"cost_usd":0.0}"#;
-    std::fs::write(job.join("sheet.json"), sheet).expect("sheet");
-    std::fs::write(job.join("adjudicated.json"), adjudicated).expect("adjudicated");
 }
 
-/// Write the job's `qc.json` with the findings of `lines` only: U1 unsure, U3 a heard word
+/// Store the job's quality check with the findings of `lines` only: U1 unsure, U3 a heard word
 /// replaced. A correction run drops the findings of the lines it settles, as
 /// `crates/pipeline/src/tasks/layout.rs` does.
 fn write_qc(job: &Path, lines: &[&str]) {
@@ -82,7 +83,7 @@ fn write_qc(job: &Path, lines: &[&str]) {
             .collect(),
         ..QcReport::default()
     };
-    std::fs::write(job.join("qc.json"), serde_json::to_string(&qc).expect("qc")).expect("qc");
+    super::job_fixtures::put_qc(job, &qc);
 }
 
 /// Run a frame per entry of `frames`, each given its events, and return the last frame's actions.
@@ -246,10 +247,7 @@ fn looks_right_keeps_the_language_models_text_until_every_line_is_checked() {
     app.apply(vec![Action::from(ReviewEvent::LooksRight)]);
     settle(&mut app);
     let (_, session) = app.review.as_ref().expect("open");
-    let written: Corrections = serde_json::from_str(
-        &std::fs::read_to_string(session.work_dir.join("review.json")).expect("review.json"),
-    )
-    .expect("json");
+    let written: Corrections = stored_corrections(&session.work_dir);
     assert_eq!(written.lines.len(), 2);
     assert!(
         written
@@ -486,14 +484,14 @@ fn take_back_stays_on_its_line_in_check_lines_while_the_subtitles_update() {
     app.apply(vec![Action::from(ReviewEvent::LooksRight)]);
     settle(&mut app);
     // Taken back from the Checked list, which no longer shows the line: U1 while U3 stays
-    // corrected, then U3, the last correction, which removes `review.json`.
+    // corrected, then U3, the last correction, which removes the corrections row.
     for (line, last) in [("U1", false), ("U3", true)] {
         app.apply(vec![
             Action::from(ReviewEvent::List(LineList::Checked)),
             Action::from(ReviewEvent::Open(line.into())),
             Action::from(ReviewEvent::Revert(line.into())),
         ]);
-        assert_eq!(job.join("review.json").exists(), !last, "{line}");
+        assert_eq!(!stored_corrections(&job).lines.is_empty(), !last, "{line}");
         assert_eq!(open(&app).as_deref(), Some(line), "still on {line}");
         let (text, _) = render(&app);
         assert!(text.contains("Updating subtitles…"), "{line}: {text}");
@@ -524,8 +522,7 @@ fn a_fix_it_change_shows_claude_s_box_and_keep_change_makes_it_the_owner_s() {
             },
         }],
     };
-    let json = serde_json::to_string(&fixed).expect("json");
-    std::fs::write(job.join("review.json"), json).expect("review.json");
+    put_corrections(&job, &fixed);
     // Check Lines reads the lines again when it opens.
     app.apply(vec![
         Action::ShowTab(DetailTab::Overview),
@@ -544,10 +541,7 @@ fn a_fix_it_change_shows_claude_s_box_and_keep_change_makes_it_the_owner_s() {
     }
     assert!(!text.contains("Take Back"), "{text}");
     app.apply(vec![Action::from(ReviewEvent::LooksRight)]);
-    let saved: Corrections = serde_json::from_str(
-        &std::fs::read_to_string(job.join("review.json")).expect("review.json"),
-    )
-    .expect("json");
+    let saved: Corrections = stored_corrections(&job);
     let kept = saved.get("U3").expect("U3");
     assert_eq!(kept.text, "Frankie!");
     assert!(matches!(&kept.chosen, Chosen::KeptFixIt { model, .. } if model == "opus"));

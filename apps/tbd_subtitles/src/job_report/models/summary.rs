@@ -8,7 +8,7 @@ use crate::job_report::models::finding_group::LineGroup;
 pub(crate) struct LineCounts {
     /// The distinct lines with a finding in some group.
     pub(crate) flagged: usize,
-    /// Of those, the lines the owner corrected (in `review.json`).
+    /// Of those, the lines the owner corrected (in the stored corrections).
     pub(crate) checked: usize,
     /// Of those, the lines Claude settled and the owner did not: its changes the owner has not
     /// kept or undone, and the lines whose every finding Fix It answered.

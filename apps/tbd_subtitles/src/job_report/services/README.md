@@ -1,6 +1,6 @@
 # Job report services
 
-Reading a finished job's report or its row's summary from its work directory, counting its lines
+Reading a finished job's report or its row's summary from its database, counting its lines
 worth a listen and its problems, and running Fix It on a thread, with no rendering code.
 
 ## Contents
@@ -8,27 +8,31 @@ worth a listen and its problems, and running Fix It on a thread, with no renderi
 ```text
 apps/tbd_subtitles/src/job_report/services/
 ├── fix_it.rs          Fix It, one thread per run: its progress, its wait for a call, its outcome, Stop
-├── fix_result.rs      `fix_result`: what Fix It did, from `fix.json`, the corrections and the problems
+├── fix_result.rs      `fix_result`: what Fix It did, from its record, the corrections and the problems
 ├── line_counts.rs     lines per group, lines checked, the problems, a row's summary, what Fix It asks
 ├── mod.rs             the module list
-├── report_loading.rs  `load` and `summary`: `job.json`, `qc.json`, `output.json`, `review.json`, `fix.json`
+├── report_loading.rs  `load` and `summary`: the job's rows in one read of its database
 └── tests/             unit tests for the counts and problems, Fix It's result, the loading, its thread
 ```
 
 ## How it works
 
-`report_loading::load` finds the video's work directory as the pipeline names it and reads
-`job.json` (the steps' measures), `qc.json`, `output.json` (the subtitle file, else the path the
-settings give), `review.json` (no corrections while it does not exist) and `fix.json` (Fix It's
-record, none while it does not exist), then counts the lines and problems through `line_counts`
+`report_loading::load` finds the video's work directory as the pipeline names it and reads, in
+one read of the job's database (`pipeline::work_dir::read_stored`), the job record, the step
+records (the steps' measures), the line corrections (none while there are none) and Fix It's
+record (none before Fix It ran), the quality check (`outputs/qc`), the output record
+(`outputs/output`: the subtitle file, else the path the settings give) and, with on-screen text
+on, the typeset text (`outputs/text_typeset`), and counts the lines and problems through `line_counts`
 and what Fix It did through `fix_result`. For a job whose settings write a localized video it
-also reads `visual/localized_video.json` and, before that step ran, `visual/text_verify.json`
-(else `visual/text_compose.json`): how many occurrences were drawn into the video, and the
-localized video and its subtitle file (`output.json`'s `localized`) while they are on disk; a
+also reads the localized video's record (`outputs/localized_video`) and, before that step ran,
+the replacements the read-back check approved (`outputs/text_verify`, else composition's,
+`outputs/text_compose`, while the check has not run): how many occurrences were drawn into the
+video, and the localized video and its subtitle file (the output record's `localized`) while they
+are on disk; a
 missing or broken record of these is absent, never an error. A Fix It record counts only while it belongs to the
-job's re-adjudication as it stands (`FixRecord::is_current`, against `job.json`); a record of an
-earlier one counts for nothing. `report_loading::summary` reads `qc.json`, `review.json` and
-`fix.json` (with `job.json` when there is one), for a sidebar row. `line_counts::line_counts`
+job's re-adjudication as it stands (`FixRecord::is_current`, against the step records); a record
+of an earlier one counts for nothing. `report_loading::summary` reads the quality check, the corrections
+and Fix It's record (none of them for a job with no database), for a sidebar row. `line_counts::line_counts`
 counts the distinct lines named by a finding in some group, once per group they have findings in,
 together with every line the owner corrected, which is checked: a correction run settles a
 corrected line's findings, and the line stays counted, under no group. A line Fix It changed is
@@ -63,17 +67,17 @@ the run's threads inherit.
 
 ## Boundaries
 
-- Depends on: `crate::job_report::models`; `job_model`; `pipeline::work_dir::{job_id, WorkDir}`
+- Depends on: `crate::job_report::models`; `job_model`; `pipeline::work_dir::{job_id, WorkDir,
+  read_stored}`
   and `pipeline::fix_it`; `inference::llm::call_gate::CallSeat`;
   `stages::output::subtitle_path`, `stages::fix_it::items` and `stages::fix_it::changed_words`;
-  `crate::settings::models::claude_models` for the model's name; `crate::core::background::Wake`;
-  `serde` and `serde_json`.
+  `crate::settings::models::claude_models` for the model's name; `crate::core::background::Wake`.
 - Used by: `crate::application::actions` (`report` and `fix_it`) and `crate::application`'s
   environment, which holds the Fix It runner.
 - Rules: nothing here names egui or eframe
   (`dependency_boundaries_and_external_test_placement_are_enforced` in
-  `apps/tbd_subtitles/src/tests/architecture_rules.rs`); a missing or broken file is an error
-  naming it, `output.json` and a missing `review.json` or `fix.json` aside
+  `apps/tbd_subtitles/src/tests/architecture_rules.rs`); a missing or broken row is an error
+  naming it, the output record and missing corrections or Fix It record aside
   (`a_job_without_a_check_names_the_missing_file`,
   `a_finished_job_reads_back_its_check_files_and_steps` in `tests/report_loading.rs`); only a
   current Fix It record counts

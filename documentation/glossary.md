@@ -205,16 +205,17 @@ A bracketed description of a meaningful non-speech sound in SDH, lowercase: `[ex
 
 ### Stage
 
-One part of the pipeline with typed inputs and outputs in the job's work directory, run as one or
-more steps.
+One part of the pipeline with typed inputs and outputs in the job's database and work directory,
+run as one or more steps.
 
 See: [pipeline](/documentation/architecture/pipeline.md#stage-flow)
 
 ### Step
 
-The unit the job runner runs, resumes and times: one output, one fingerprint, one row of time and
-peak memory in the job report. Speech recognition is one step per engine; adjudication is its
-first pass, the re-decode per engine, the second pass and the choice of sound cues.
+The unit the job runner runs, resumes and times: its documents in the job's database
+(`outputs/<step>`), one step record with its fingerprint (`step_records/<step>`), one row of
+time and peak memory in the job report. Speech recognition is one step per engine; adjudication
+is its first pass, the re-decode per engine, the second pass and the choice of sound cues.
 
 In code: `StepName` in `crates/job_model/src/stage/step_name.rs`.
 
@@ -290,7 +291,9 @@ a process.
 
 ### Work directory
 
-The folder of one job, where every stage writes its output and from which a resumed job reads
-what earlier stages wrote. Source videos are never written to.
+The folder of one job: its database, `job.redb`, which holds every step's documents and records,
+the job record and the owner's corrections, beside the large files those rows name (audio
+streams, crops, keyframes, masks, plates, patches), the caches, the logs and `report.md`. A
+resumed job reads what earlier steps stored there. Source videos are never written to.
 
 See: [system overview](/documentation/architecture/system_overview.md#job-work-directory)

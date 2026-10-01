@@ -1,4 +1,4 @@
-use crate::job::{JobSettings, StepMeasure, StepRecord};
+use crate::job::{StepMeasure, StepRecord};
 use crate::report::{QcFinding, QcSummary};
 
 use super::*;
@@ -143,14 +143,8 @@ fn before_keeps_the_counts_the_first_uncovered_speech_and_the_reading_speed() {
 
 #[test]
 fn a_record_is_current_until_the_video_is_adjudicated_again() {
-    let job = |fingerprint: Option<&str>| JobRecord {
-        video: "v.mp4".into(),
-        video_size: 0,
-        video_modified_s: 0,
-        settings: JobSettings::with_glossary(Vec::new()),
-        models_dir: None,
-        corrections: None,
-        steps: fingerprint
+    let job = |fingerprint: Option<&str>| -> crate::job::StepRecords {
+        fingerprint
             .map(|f| {
                 let step = StepRecord {
                     fingerprint: f.into(),
@@ -159,7 +153,7 @@ fn a_record_is_current_until_the_video_is_adjudicated_again() {
                 };
                 BTreeMap::from([(StepName::Readjudicate, step)])
             })
-            .unwrap_or_default(),
+            .unwrap_or_default()
     };
     let record = |adjudication: &str| FixRecord {
         adjudication: adjudication.into(),

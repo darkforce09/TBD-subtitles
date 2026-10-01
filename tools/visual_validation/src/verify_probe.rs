@@ -7,17 +7,17 @@
 //! **Position:** the `verify-probe` command of the validation tool; runs
 //! `replace::verify::verify` with PP-OCRv5 on CUDA (on the host), decoding regions of the job's
 //! source video with FFmpeg.
-//! **Signals and state:** reads the job's `job.json`, `probe.json`, `visual/text_review.json`,
-//! `visual/text_compose.json` and the patch files; writes the finished regions it read only under
-//! `--out`.
+//! **Signals and state:** reads the job record, the probe, the reviewed text and the composed
+//! replacements from the job's database, and the patch files; writes the finished regions it read
+//! only under `--out`.
 //! **Invariants:** the job's work directory and its source video are only read.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use image::RgbImage;
-use job_model::onscreen::{ReplaceStatus, ReplacementDocument, TextDocument};
-use job_model::outputs::VideoStream;
+use job_model::StepName;
+use job_model::onscreen::ReplaceStatus;
 use stages::localize::{colour::Conversion, frame_format};
 use stages::onscreen_text::replace::source::FfmpegRegions;
 use stages::onscreen_text::replace::verify::{self, LocalOcr, Request, Sample};
@@ -25,18 +25,17 @@ use stages::onscreen_text::replace::verify::{self, LocalOcr, Request, Sample};
 /// Check the job in `work`, only the occurrences `ids` when any are given; save each region read
 /// under `out`.
 pub fn run(work: &Path, ids: &[String], out: Option<&Path>) -> Result<()> {
-    let job: serde_json::Value = pipeline::work_dir::read_json(&work.join("job.json"))?;
-    let video = PathBuf::from(job["video"].as_str().context("job.json names no video")?);
-    let models = match job["models_dir"].as_str() {
-        Some(dir) => PathBuf::from(dir),
+    let crate::job_rows::JobSource {
+        video,
+        models,
+        stream,
+    } = crate::job_rows::source(work)?;
+    let models = match models {
+        Some(models) => models,
         None => inference::model_store::models_dir()?,
     };
-    let probe: serde_json::Value = pipeline::work_dir::read_json(&work.join("probe.json"))?;
-    let stream: VideoStream = serde_json::from_value(probe["probe"]["video"].clone())
-        .context("probe.json has no video stream")?;
-    let composed: ReplacementDocument =
-        pipeline::work_dir::read_json(&work.join("visual/text_compose.json"))?;
-    let text: TextDocument = pipeline::work_dir::read_json(&work.join("visual/text_review.json"))?;
+    let composed = crate::job_rows::replacements(work, StepName::TextCompose)?;
+    let text = crate::job_rows::text(work, StepName::TextReview)?;
     if let Some(out) = out {
         std::fs::create_dir_all(out)?;
     }

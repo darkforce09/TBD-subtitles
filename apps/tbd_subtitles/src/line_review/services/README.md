@@ -1,7 +1,7 @@
 # Line review services
 
-The review logic, with no rendering code: a job's lines read from its work directory, filtered
-for the list, the owner's edits saved to `review.json`, and a line's clip and still frame decoded
+The review logic, with no rendering code: a job's lines read from its database, filtered
+for the list, the owner's edits saved to the job's line corrections, and a line's clip and still frame decoded
 by FFmpeg.
 
 ## Contents
@@ -19,10 +19,12 @@ apps/tbd_subtitles/src/line_review/services/
 ## How it works
 
 `review_loading::load` joins, per utterance in sheet order, the engines' readings from
-`sheet.json` (`P`, `W`) and the re-decodes (`ALT p`, `ALT w`), the settled text and flags from
-`adjudicated.json`, the groups of the findings that name it in `qc.json` (each with why in the
+the sheet (`outputs/diff_sheet`: `P`, `W`) and the re-decodes (`outputs/redecode_parakeet`,
+`outputs/redecode_whisper`: `ALT p`, `ALT w`), the settled text and flags from the
+re-adjudication (`outputs/readjudicate`), the groups of the findings that name it in the quality
+check (`outputs/qc`) (each with why in the
 owner's words: the word both engines heard, the reading speed, the layout rule), and the
-corrections in `review.json`; a line with a Fix It change the owner has not checked is in the
+line corrections, all in one read of the job's database; a line with a Fix It change the owner has not checked is in the
 Changed by Claude group first, with what the app had and Claude's reason.
 
 `line_filter::shown` lists To Check (worth a listen, not settled by the owner), Checked (settled
@@ -67,7 +69,7 @@ frame carries a serial, so the view uploads each once.
 
 - Depends on: `crate::line_review::models`; `crate::core::background::Wake`;
   `crate::job_report::models::finding_group`; `job_model`; `media_io::preview`; `child_process`;
-  `pipeline::work_dir::job_id`; `serde` and `serde_json`.
+  `pipeline::work_dir::{job_id, read_stored}` (the job's rows).
 - Used by: `crate::application` (`actions::review`, `actions::report`, `feature_views`,
   `shortcuts`); `crate::line_review::ui` (`line_filter`, `review_editing::{status, is_dirty,
   EDITABLE_FLAGS}`, `clip_player::PAD_S`).

@@ -22,9 +22,9 @@ apps/tbd_subtitles/src/job_report/
 
 When the owner selects a finished job, or the selected job ends, the application reads its report
 through `services::report_loading::load`: the video's work directory is found as the pipeline
-names it (the canonical path's job id under the work folder), then `job.json` gives the steps'
-measures, `qc.json` the quality check, `output.json` the subtitle file, `review.json` (when a line
-was corrected) the corrections and `fix.json` (when Fix It ran) what Fix It answered.
+names it (the canonical path's job id under the work folder), then the job's database gives the
+job record, the steps' measures, the corrections (when a line was corrected), Fix It's record
+(when Fix It ran), the quality check and the output record naming the subtitle file.
 `services::line_counts` counts the lines worth a listen: each finding about a line falls in one
 `LineGroup` (Unsure what was said, Heard word replaced, Word no engine heard, Too fast to read,
 Loosely timed, Layout), a line counts once however many findings name it, and a line the owner
@@ -34,8 +34,8 @@ whose every finding it answered, count as checked by Claude. The findings about 
 become `Problem`s, one per pass rule the job breaks (layout, speech with no subtitle, the
 aligner's offset, a failed language-model call, reading speed), so there are none exactly when
 `QcReport::passes` holds. `services::fix_result` sums up what Fix It did, from its record, the
-corrections and the problems now. `report_loading::summary` reads `qc.json`, `review.json` and
-`fix.json` for a row's `RowSummary` (its problems, lines worth a listen, lines to check and whether
+corrections and the problems now. `report_loading::summary` reads the quality check, the corrections and
+Fix It's record for a row's `RowSummary` (its problems, lines worth a listen, lines to check and whether
 Claude fixed it), which the application keeps for every finished row: read when the window opens,
 after each run of its video and after each correction.
 
@@ -63,7 +63,7 @@ opens it with every line shown, at the line nearest the first stretch of speech 
 
 - Depends on: `job_model` (`JobRecord`, `OutputRecord`, `Corrections`, `FixRecord`, `QcReport`,
   `QcCheck`, `TimingSource`), `pipeline::work_dir::{job_id, WorkDir}`, `pipeline::fix_it`,
-  `stages::output::subtitle_path`, `stages::fix_it`, `serde_json`, `crate::core`,
+  `stages::output::subtitle_path`, `stages::fix_it`, `crate::core`,
   `crate::settings::models::claude_models`; `eframe` in `ui/` only.
 - Used by: `crate::application` (`actions::report`, `actions::fix_it`, `feature_views`,
   `detail_view`); `crate::job_queue` (`models::summary` in `models::view`,

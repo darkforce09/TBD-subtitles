@@ -28,7 +28,9 @@ group and the step fails as cancelled. A GPU step first takes `gpu_lock`, an exc
 holds it; the kernel drops the lock when its holder dies. It reads the device's memory first and
 starts a `measure::gpu_monitor::Monitor` on the worker's pid. A step with inputs gets a piped
 stdin, which `channel::inputs::send_inputs` fills from one read snapshot on a thread of its own;
-without inputs the worker's stdin is `/dev/null`. No step declares inputs yet.
+without inputs the worker's stdin is `/dev/null`. The runner passes every value `graph::reads`
+gives the step (less the optional ones the job does not have), so every worker has at least the
+job record.
 
 The worker's stdout carries only frames of the worker channel (`crates/worker_channel/`), and
 `frames::read_frames` reads them as bytes, never as lines:

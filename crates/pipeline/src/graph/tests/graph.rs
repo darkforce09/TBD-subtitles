@@ -1,3 +1,5 @@
+use job_model::job::OutputFormat;
+
 use super::*;
 
 fn position(step: StepName) -> usize {
@@ -160,32 +162,92 @@ fn the_localized_video_switch_leaves_the_translation_fingerprint_alone() {
 }
 
 #[test]
-fn every_step_leaves_at_least_one_file() {
-    let work = WorkDir::new("/work/job");
+fn a_step_reads_the_job_record_and_every_document_of_every_step_it_reads() {
+    use StepName::*;
+    let names = |step| -> Vec<String> {
+        reads(step)
+            .into_iter()
+            .map(|address| {
+                format!(
+                    "{}/{}",
+                    address.table,
+                    crate::work_dir::store::kinds::shown(&address.key)
+                )
+            })
+            .collect()
+    };
+    assert_eq!(
+        names(Vad),
+        vec!["meta/job_record", "outputs/probe_decode"],
+        "the separation keeps only files"
+    );
+    assert_eq!(
+        names(TextTranslate),
+        vec![
+            "meta/job_record",
+            "outputs/shot_scan",
+            "outputs/text_track",
+            "outputs/cues",
+            "outputs/cues/dropped_sounds",
+            "corrections/text",
+        ]
+    );
+    assert!(names(Review).contains(&"corrections/lines".to_string()));
+    assert!(names(Output).contains(&"outputs/text_typeset/ass".to_string()));
+    assert_eq!(names(ProbeDecode), vec!["meta/job_record"]);
+    assert!(names(LocalizedVideo).contains(&"outputs/localized_video".to_string()));
+    assert!(is_optional_read(
+        Output,
+        &keys::output_address(Output, None)
+    ));
+    assert!(!is_optional_read(Output, &keys::output_address(Cues, None)));
     for step in StepName::ALL {
-        assert!(
-            !outputs(step, &work, Path::new("/v/a.mp4"), OutputFormat::Srt).is_empty(),
-            "{step}"
-        );
+        for address in reads(step) {
+            assert_eq!(
+                is_optional_read(step, &address),
+                address.table == Table::Corrections || address == keys::output_address(step, None),
+            );
+            assert!(
+                crate::work_dir::store::kind(address.table, &address.key).is_ok(),
+                "{step} reads {address:?}, which has no kind"
+            );
+        }
     }
-    assert!(
-        outputs(
-            StepName::Output,
-            &work,
-            Path::new("/v/a.mp4"),
-            OutputFormat::Srt
-        )
-        .contains(&PathBuf::from("/v/a.srt"))
+}
+
+#[test]
+fn a_steps_dependents_are_every_step_that_reads_it_through_any_path() {
+    use StepName::*;
+    assert_eq!(dependents(LocalizedVideo), Vec::<StepName>::new());
+    assert_eq!(
+        dependents(TextVerify),
+        vec![Output, LocalizedVideo],
+        "the typesetting reads the review, not the check"
     );
-    assert!(
-        outputs(
-            StepName::Output,
-            &work,
-            Path::new("/v/a.mp4"),
-            OutputFormat::Ass
-        )
-        .contains(&PathBuf::from("/v/a.ass"))
-    );
+    assert_eq!(dependents(Cues), {
+        vec![
+            TextTranslate,
+            TextReview,
+            TextMask,
+            TextInpaint,
+            TextCompose,
+            TextVerify,
+            TextTypeset,
+            Qc,
+            Output,
+            LocalizedVideo,
+        ]
+    });
+    let all_but_the_scan: Vec<StepName> = StepName::ALL
+        .into_iter()
+        .filter(|step| !matches!(step, ProbeDecode | ShotScan))
+        .collect();
+    assert_eq!(dependents(ProbeDecode), all_but_the_scan);
+    for step in StepName::ALL {
+        for later in dependents(step) {
+            assert!(position(later) > position(step), "{step} before {later}");
+        }
+    }
 }
 
 #[test]
@@ -213,138 +275,20 @@ fn only_the_settings_a_step_reads_reach_its_fingerprint() {
     );
 }
 
-struct ArtifactsFixture(WorkDir);
-
-impl ArtifactsFixture {
-    fn new(name: &str) -> Self {
-        let root = std::env::temp_dir().join(format!(
-            "tbd-graph-artifacts-{name}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(root.join("visual/crops")).unwrap();
-        Self(WorkDir::new(root))
-    }
-
-    fn document(&self, value: Value) {
-        std::fs::write(
-            self.0.text(StepName::TextDetect),
-            serde_json::to_vec(&value).unwrap(),
-        )
-        .unwrap();
-    }
-
-    fn valid(&self) -> bool {
-        artifacts_valid(
-            StepName::TextDetect,
-            &self.0,
-            Path::new("/source/video.mkv"),
-            OutputFormat::Ass,
-        )
-    }
-}
-
-impl Drop for ArtifactsFixture {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(self.0.root());
-    }
-}
-
-#[test]
-fn missing_crop_invalidates_detection_until_its_producer_restores_it() {
-    let fixture = ArtifactsFixture::new("missing-crop");
-    let first = fixture.0.root().join("visual/crops/first.png");
-    let second = fixture.0.root().join("visual/crops/second.png");
-    fixture.document(json!({"occurrences": [
-        {"crops": ["visual/crops/first.png"], "frames": [{"quad": [0, 1, 2, 3]}]},
-        {"crops": ["visual/crops/second.png"]}
-    ]}));
-    std::fs::write(&first, b"first representative crop").unwrap();
-    std::fs::write(&second, b"second representative crop").unwrap();
-    assert!(fixture.valid());
-
-    std::fs::remove_file(&second).unwrap();
-    assert!(fixture.0.text(StepName::TextDetect).is_file());
-    assert!(first.is_file());
-    assert!(!fixture.valid());
-    std::fs::write(&second, b"regenerated representative crop").unwrap();
-    assert!(fixture.valid());
-}
-
-#[test]
-fn invalid_crop_references_and_incomplete_artifacts_cannot_resume_detection() {
-    let fixture = ArtifactsFixture::new("invalid-crop");
-    let crop = fixture.0.root().join("visual/crops/empty.png");
-    let good = fixture.0.root().join("visual/crops/good.png");
-    std::fs::write(&crop, []).unwrap();
-    std::fs::write(&good, b"existing representative crop").unwrap();
-    for crops in [
-        json!([]),
-        json!(["visual/crops/empty.png"]),
-        json!(["visual/crops"]),
-        json!(["visual/crops/../crops/good.png"]),
-        json!([good]),
-    ] {
-        fixture.document(json!({"occurrences": [{"crops": crops}]}));
-        assert!(!fixture.valid());
-    }
-    std::fs::write(fixture.0.text(StepName::TextDetect), b"{\"occurrences\": [").unwrap();
-    assert!(!fixture.valid());
-    fixture.document(json!({}));
-    assert!(!fixture.valid());
-}
-
-#[test]
-fn empty_detection_and_unrelated_audio_outputs_need_no_crop_files() {
-    let fixture = ArtifactsFixture::new("empty-or-audio");
-    fixture.document(serde_json::to_value(job_model::onscreen::TextDocument::default()).unwrap());
-    assert!(fixture.valid());
-    std::fs::remove_file(fixture.0.text(StepName::TextDetect)).unwrap();
-    assert!(!fixture.valid());
-    std::fs::write(fixture.0.vad(), b"{}").unwrap();
-    assert!(artifacts_valid(
-        StepName::Vad,
-        &fixture.0,
-        Path::new("/source/video.mkv"),
-        OutputFormat::Srt,
-    ));
-}
-
-#[test]
-fn a_missing_keyframe_still_invalidates_detection_while_older_records_need_none() {
-    let fixture = ArtifactsFixture::new("keyframe");
-    let crop = fixture.0.root().join("visual/crops/first.png");
-    std::fs::write(&crop, b"representative crop").unwrap();
-    fixture.document(json!({"occurrences": [{"crops": ["visual/crops/first.png"]}]}));
-    assert!(fixture.valid(), "records without a keyframe stay valid");
-    fixture.document(json!({"occurrences": [{
-        "crops": ["visual/crops/first.png"],
-        "keyframe": {"time_s": 1.5, "image": "visual/keyframes/frame-00000036.png"}
-    }]}));
-    assert!(!fixture.valid(), "a referenced keyframe still must exist");
-    std::fs::create_dir_all(fixture.0.root().join("visual/keyframes")).unwrap();
-    let still = fixture.0.root().join("visual/keyframes/frame-00000036.png");
-    std::fs::write(&still, []).unwrap();
-    assert!(!fixture.valid(), "an empty still is not a keyframe");
-    std::fs::write(&still, b"whole-frame still").unwrap();
-    assert!(fixture.valid());
-}
-
 #[test]
 fn the_output_and_the_localized_video_read_the_checked_replacements() {
     use StepName::*;
-    assert_eq!(inputs(TextReview), &[ShotScan, TextTranslate]);
+    assert_eq!(inputs(TextReview), &[ProbeDecode, ShotScan, TextTranslate]);
     assert_eq!(inputs(TextTypeset), &[TextReview]);
     assert_eq!(inputs(Output), &[Cues, TextTypeset, TextVerify]);
     assert_eq!(inputs(LocalizedVideo), &[ProbeDecode, TextVerify, Output]);
     assert_eq!(inputs(TextVerify), &[ProbeDecode, TextReview, TextCompose]);
-    let work = WorkDir::new("/work/job");
     assert_eq!(
-        outputs(TextTypeset, &work, Path::new("/v/a.mp4"), OutputFormat::Ass),
-        vec![work.text(TextTypeset), work.text_ass()],
+        keys::output_keys(TextTypeset),
+        vec![
+            keys::output_key(TextTypeset, None),
+            keys::output_key(TextTypeset, Some(keys::TYPESET_ASS))
+        ],
         "the localized subtitle file has no events of its own"
     );
 }
@@ -358,12 +302,10 @@ fn the_read_back_check_runs_between_composition_and_the_outputs_in_an_ocr_worker
     assert_eq!(StepName::ALL.len(), 29);
     assert_eq!(placement(TextVerify), Placement::Worker(Binary::Main));
     assert!(uses_gpu(TextVerify) && loads_onnx_runtime(TextVerify));
-    let work = WorkDir::new("/work/job");
     assert_eq!(
-        outputs(TextVerify, &work, Path::new("/v/a.mp4"), OutputFormat::Ass),
-        vec![work.text(TextVerify)]
+        keys::output_keys(TextVerify),
+        vec![keys::output_key(TextVerify, None)]
     );
-    assert!(work.text(TextVerify).ends_with("visual/text_verify.json"));
     let mut job = JobSettings::with_glossary(Vec::new());
     let before = settings(TextVerify, &job);
     job.onscreen_text.localized_video = !job.onscreen_text.localized_video;

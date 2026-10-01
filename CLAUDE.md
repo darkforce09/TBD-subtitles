@@ -100,7 +100,8 @@ the [video inpainting pipeline](/documentation/architecture/video_inpainting_pip
    skipped while its record's revision and input fingerprint are current. One process owns a
    job's `job.redb`; values are `rkyv` archives; no JSON fallback, importer or migration
    ([decision](/documentation/decisions/storage.md#2026-09-30--step-outputs-live-in-one-redb-database-per-job-archived-with-rkyv-owned-by-one-process),
-   [plan](/documentation/architecture/binary_storage_plan.md); steps move in its phases 2–4).
+   [plan](/documentation/architecture/binary_storage_plan.md); every step reads and writes its
+   documents only through the job store).
 7. **One worker process per GPU stage.** GPU stages run as subcommands of their assigned binary
    in their own process under the shared GPU lock: exiting frees VRAM and keeps ONNX Runtime,
    ggml and mistral.rs apart.

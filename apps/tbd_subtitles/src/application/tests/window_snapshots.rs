@@ -7,9 +7,9 @@
 //! `TBD_SNAPSHOTS=<folder> cargo test -p tbd_subtitles -- --ignored window_snapshots`.
 //!
 //! **Signals and state:** reads the owner's Dressrosa 11 and 15–17 work folders and copies their
-//! JSON files into a scratch folder; writes PNGs only to `$TBD_SNAPSHOTS`, never into the repo;
+//! job databases into a scratch folder; writes PNGs only to `$TBD_SNAPSHOTS`, never into the repo;
 //! the Check Lines scenes write Dressrosa 15's corrections into the scratch copy and decode still
-//! frames of its video with FFmpeg; the Fix It scene writes Dressrosa 17's `fix.json` and
+//! frames of its video with FFmpeg; the Fix It scene writes Dressrosa 17's Fix It record and
 //! corrections into the scratch copy through a stand-in Fix It.
 //!
 //! **Invariants:** the owner's work folders and videos are only read, and the settings file
@@ -31,16 +31,8 @@ use crate::log_console::events::LogConsoleEvent;
 const EPISODES: [&str; 4] = ["11", "15", "16", "17"];
 /// Episodes queued in the running scene with no work folder: they only wait.
 const WAITING: [u32; 9] = [12, 13, 14, 18, 19, 20, 21, 22, 23];
-/// The files a report and a review read from a work folder.
-const JOB_FILES: [&str; 7] = [
-    "qc.json",
-    "job.json",
-    "output.json",
-    "probe.json",
-    "sheet.json",
-    "adjudicated.json",
-    "review.json",
-];
+/// The file a report and a review read from a work folder: the job's database.
+const JOB_DATABASE: &str = "job.redb";
 
 #[test]
 #[ignore = "renders PNGs for visual review; needs a GPU"]
@@ -173,16 +165,14 @@ fn review_scenes(root: &Path, out: &Path, videos: &[PathBuf]) {
 /// Dressrosa 17's Overview just after Fix It finished, as the owner sees a whole finish: the owner
 /// kept its first flagged line as it was, and a stand-in Fix It answered every other one, so
 /// nothing is left to check; its result card, its toast and its row, with the pointer on no row.
-/// Both write into the scratch copy (`review.json`, `fix.json`), so the scene runs last; the
+/// Both write into the scratch copy's database (the corrections, the Fix It record), so the scene runs last; the
 /// correction run is the stand-in runner's.
 fn fix_it_done_scene(root: &Path, out: &Path, videos: &[PathBuf]) {
     use crate::job_report::events::ReportEvent;
     use job_model::outputs::{AdjudicationPass, Chosen, Correction, Corrections};
     let job = scratch_work_folder(root, "17");
-    let read = |name: &str| std::fs::read_to_string(job.join(name)).expect(name);
-    let qc: QcReport = serde_json::from_str(&read("qc.json")).expect("qc.json parses");
-    let settled: AdjudicationPass =
-        serde_json::from_str(&read("adjudicated.json")).expect("adjudicated.json parses");
+    let qc: QcReport = super::job_fixtures::stored_qc(&job);
+    let settled: AdjudicationPass = super::job_fixtures::stored_settled(&job);
     let first = flagged_lines(&qc)
         .into_iter()
         .next()
@@ -197,8 +187,7 @@ fn fix_it_done_scene(root: &Path, out: &Path, videos: &[PathBuf]) {
             chosen: Chosen::Engine("adjudicated".into()),
         }],
     };
-    let kept = serde_json::to_string(&kept).expect("json");
-    std::fs::write(job.join("review.json"), kept).expect("review.json");
+    super::rendering_report::put_corrections(&job, &kept);
     let _ = std::fs::remove_dir_all(root.join("data"));
     let setup = all_finished(videos);
     let mut harness = harness(root, move |app| {
@@ -298,12 +287,9 @@ fn scene_fix() -> crate::job_report::services::fix_it::FixVideo {
         let job = options.work_root.join(pipeline::work_dir::job_id(
             &std::fs::canonicalize(video).expect("the video"),
         ));
-        let read = |name: &str| std::fs::read_to_string(job.join(name)).unwrap_or_default();
-        let qc: QcReport = serde_json::from_str(&read("qc.json")).expect("qc.json");
-        let settled: AdjudicationPass =
-            serde_json::from_str(&read("adjudicated.json")).expect("adjudicated.json");
-        let mut corrections: Corrections =
-            serde_json::from_str(&read("review.json")).unwrap_or_default();
+        let qc: QcReport = super::job_fixtures::stored_qc(&job);
+        let settled: AdjudicationPass = super::job_fixtures::stored_settled(&job);
+        let mut corrections: Corrections = super::rendering_report::stored_corrections(&job);
         let open: Vec<String> = flagged_lines(&qc)
             .into_iter()
             .filter(|id| !corrections.by_owner(id))
@@ -377,10 +363,9 @@ fn scene_fix() -> crate::job_report::services::fix_it::FixVideo {
             before: Some(before),
             ..FixRecord::default()
         };
-        let corrections_json = serde_json::to_string(&corrections).expect("json");
-        std::fs::write(job.join("review.json"), corrections_json).expect("review.json");
-        let record_json = serde_json::to_string(&record).expect("json");
-        std::fs::write(job.join("fix.json"), record_json).expect("fix.json");
+        super::rendering_report::put_corrections(&job, &corrections);
+        let store = super::job_fixtures::job_store(&job);
+        pipeline::work_dir::put_fix_record(&store, &record).expect("the Fix It record");
         Ok(FixOutcome {
             work_dir: job,
             record,
@@ -469,10 +454,10 @@ fn all_finished(videos: &[PathBuf]) -> impl FnOnce(&mut TbdSubtitlesApp) + use<>
 }
 
 /// Every video finished, Dressrosa 16 with a failed language-model call added to its check: the
-/// needs-attention Overview. It changes the scratch copy of 16's `qc.json`, so it runs after the
+/// needs-attention Overview. It changes the quality check in the scratch copy of 16's database, so it runs after the
 /// scenes that show 16.
 fn attention_scene(root: &Path, out: &Path, videos: &[PathBuf]) {
-    let qc_path = std::fs::read_dir(root.join("work"))
+    let job = std::fs::read_dir(root.join("work"))
         .expect("the scratch work folder")
         .filter_map(Result::ok)
         .map(|entry| entry.path())
@@ -482,11 +467,8 @@ fn attention_scene(root: &Path, out: &Path, videos: &[PathBuf]) {
                     .starts_with("muhn-pace-dressrosa-16-")
             })
         })
-        .expect("Dressrosa 16's work folder")
-        .join("qc.json");
-    let mut qc: QcReport =
-        serde_json::from_str(&std::fs::read_to_string(&qc_path).expect("qc.json"))
-            .expect("qc.json parses");
+        .expect("Dressrosa 16's work folder");
+    let mut qc: QcReport = super::job_fixtures::stored_qc(&job);
     qc.findings.push(job_model::report::QcFinding {
         check: job_model::report::QcCheck::FailedCall,
         time_s: 0.0,
@@ -494,7 +476,7 @@ fn attention_scene(root: &Path, out: &Path, videos: &[PathBuf]) {
         detail: "batch 7 of 12: the model answered with no JSON".into(),
         utterance: None,
     });
-    std::fs::write(&qc_path, serde_json::to_string(&qc).expect("json")).expect("qc.json");
+    super::job_fixtures::put_qc(&job, &qc);
     let _ = std::fs::remove_dir_all(root.join("data"));
     let mut harness = harness(root, all_finished(videos));
     harness.get_by_label("[Muhn Pace] Dressrosa 16").click();
@@ -728,7 +710,7 @@ fn shoot(harness: &mut Harness<'_, TbdSubtitlesApp>, out: &Path, scene: &str) {
     }
 }
 
-/// Copy the JSON files of the owner's work folders into `work`, keeping each folder's name, and
+/// Copy the job databases of the owner's work folders into `work`, keeping each folder's name, and
 /// return the videos they belong to.
 fn copy_work_folders(work: &Path) -> Vec<PathBuf> {
     let source = inference::model_store::app_data_dir()
@@ -747,37 +729,16 @@ fn copy_work_folders(work: &Path) -> Vec<PathBuf> {
             })
             .unwrap_or_else(|| panic!("no work folder {prefix}* in {}", source.display()));
         let copy = work.join(folder.file_name().expect("a folder name"));
-        copy_json(&folder, &copy, &JOB_FILES);
-        let adjudication = folder.join("adjudication");
-        let names: Vec<String> = std::fs::read_dir(&adjudication)
-            .map(|entries| {
-                entries
-                    .filter_map(Result::ok)
-                    .map(|entry| entry.file_name().to_string_lossy().into_owned())
-                    .filter(|name| name.ends_with(".json"))
-                    .collect()
-            })
-            .unwrap_or_default();
-        let names: Vec<&str> = names.iter().map(String::as_str).collect();
-        copy_json(&adjudication, &copy.join("adjudication"), &names);
-        let record: job_model::job::JobRecord = serde_json::from_str(
-            &std::fs::read_to_string(copy.join("job.json")).expect("job.json"),
-        )
-        .expect("job.json parses");
+        std::fs::create_dir_all(&copy).expect("a scratch folder");
+        std::fs::copy(folder.join(JOB_DATABASE), copy.join(JOB_DATABASE))
+            .expect("a copied job database");
+        let record = pipeline::work_dir::read_job(&copy)
+            .expect("the copied job database reads")
+            .expect("a job record")
+            .record;
         videos.push(PathBuf::from(record.video));
     }
     videos
-}
-
-/// Copy each of `names` that exists in `from` into `to`.
-fn copy_json(from: &Path, to: &Path, names: &[&str]) {
-    std::fs::create_dir_all(to).expect("a scratch folder");
-    for name in names {
-        let file = from.join(name);
-        if file.is_file() {
-            std::fs::copy(&file, to.join(name)).expect("a copied file");
-        }
-    }
 }
 
 /// A job's lines as the log window shows them: the owner's action, the job and its steps, a

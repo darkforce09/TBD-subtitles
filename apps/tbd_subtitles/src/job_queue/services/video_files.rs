@@ -11,8 +11,8 @@
 //! folder, by the queue's row menu for a video's subtitle file, and by the job runner and the
 //! application when a job ends, for its localized video.
 //!
-//! **Signals and state:** reads folder listings, file metadata and a job's
-//! `visual/localized_video.json`; writes nothing.
+//! **Signals and state:** reads folder listings, file metadata and, for one read of a job's
+//! database, its localized video record; writes nothing.
 //!
 //! **Invariants:** a video that already has a subtitle file in any format the app writes is never
 //! listed, nor is a `<name>.localized.mkv` the app writes beside a source; the walk under a folder never enters a hidden folder or a symlinked folder, never lists
@@ -24,7 +24,6 @@ use std::path::{Path, PathBuf};
 use job_model::StepName;
 use job_model::job::OutputFormat;
 use job_model::onscreen::LocalizedVideoRecord;
-use pipeline::work_dir::WorkDir;
 
 /// File extensions the queue takes as videos.
 pub(crate) const VIDEO_EXTENSIONS: &[&str] = &["mkv", "mp4", "m4v", "mov", "avi", "webm", "ts"];
@@ -63,11 +62,15 @@ pub(crate) fn is_localized_copy(path: &Path) -> bool {
         .is_some_and(|name| name.ends_with(".localized.mkv"))
 }
 
-/// The localized video the job in `work_dir` recorded, while the file is there.
+/// The localized video the job in `work_dir` recorded, while the file is there; none when the job
+/// has no record or its database does not read.
 pub(crate) fn localized_video(work_dir: &Path) -> Option<PathBuf> {
-    let record = WorkDir::new(work_dir).text(StepName::LocalizedVideo);
-    let text = std::fs::read_to_string(record).ok()?;
-    let record: LocalizedVideoRecord = serde_json::from_str(&text).ok()?;
+    let record = pipeline::work_dir::read_stored(work_dir, |read| {
+        read.output::<LocalizedVideoRecord>(StepName::LocalizedVideo, None)
+    })
+    .ok()
+    .flatten()
+    .flatten()?;
     record.path.map(PathBuf::from).filter(|path| path.is_file())
 }
 

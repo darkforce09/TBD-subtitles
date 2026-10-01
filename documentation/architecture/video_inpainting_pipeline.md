@@ -31,13 +31,13 @@ text_review ─▶ text_mask ─▶ text_inpaint ─▶ text_compose ─▶ text
 
 | Step | Runs in | Reads | Writes |
 |---|---|---|---|
-| `text_mask` | worker, `tbd-subtitles` (CPU; FFmpeg region crops) | `probe.json`, `visual/text_review.json`, the source video | `visual/text_mask.json`, `visual/masks/` |
-| `text_inpaint` | worker, `tbd-subtitles` (ONNX Runtime, GPU lock) | `visual/text_mask.json` and its PNGs | `visual/text_inpaint.json`, `visual/plates/` |
-| `text_compose` | worker, `tbd-subtitles` (CPU) | `visual/text_review.json`, `visual/text_inpaint.json`, the `latin-fonts` model | `visual/text_compose.json`, `visual/patches/` |
-| `text_verify` | worker, `tbd-subtitles` (ONNX Runtime, GPU lock; FFmpeg region crops) | `probe.json`, `visual/text_review.json`, `visual/text_compose.json` and its patches, the source video | `visual/text_verify.json` |
-| `text_typeset` | worker, `tbd-subtitles` (CPU) | `visual/text_review.json` | `visual/text_typeset.json`, `visual/events.ass` |
-| `output` | job runner | the cues, `visual/events.ass`, `visual/text_typeset.json`, `visual/text_verify.json` | `<video>.ass` (or the chosen format), `<video>.localized.ass`, `output.json` |
-| `localized_video` | worker, `tbd-subtitles` (FFmpeg decoder and encoder, GPU lock) | `probe.json`, `visual/text_verify.json` and its patches, the source video | `<video>.localized.mkv`, `visual/localized_video.json` |
+| `text_mask` | worker, `tbd-subtitles` (CPU; FFmpeg region crops) | `outputs/probe_decode`, `outputs/text_review`, the source video | `outputs/text_mask`, `visual/masks/` |
+| `text_inpaint` | worker, `tbd-subtitles` (ONNX Runtime, GPU lock) | `outputs/text_mask` and its PNGs | `outputs/text_inpaint`, `visual/plates/` |
+| `text_compose` | worker, `tbd-subtitles` (CPU) | `outputs/text_review`, `outputs/text_inpaint`, the `latin-fonts` model | `outputs/text_compose`, `visual/patches/` |
+| `text_verify` | worker, `tbd-subtitles` (ONNX Runtime, GPU lock; FFmpeg region crops) | `outputs/probe_decode`, `outputs/text_review`, `outputs/text_compose` and its patches, the source video | `outputs/text_verify` |
+| `text_typeset` | worker, `tbd-subtitles` (CPU) | `outputs/text_review` | `outputs/text_typeset`, `outputs/text_typeset/ass` |
+| `output` | job runner | `outputs/cues`, `outputs/text_typeset` and its ASS events, `outputs/text_verify` | `<video>.ass` (or the chosen format), `<video>.localized.ass`, `outputs/output` |
+| `localized_video` | worker, `tbd-subtitles` (FFmpeg decoder and encoder, GPU lock) | `outputs/probe_decode`, `outputs/text_verify` and its patches, `outputs/output`, the source video | `<video>.localized.mkv`, `outputs/localized_video` |
 
 The three replacement steps and the read-back check pass one `ReplacementDocument`
 ([contract](/crates/job_model/src/onscreen/localize.rs)) from step to step, each adding to it:
@@ -230,11 +230,11 @@ run.
 - **Verdict per occurrence:** it stays baked only when every frame passes; otherwise it falls
   back with “The finished picture still shows Japanese” when any frame showed Japanese, else
   “The English does not read back cleanly”.
-- **Output:** `visual/text_verify.json` is the replacement document with the final statuses at
-  its top level (so it also reads as a plain `ReplacementDocument`) and `checks`: per checked
+- **Output:** `outputs/text_verify` is the replacement document with the final statuses at
+  its top level (so its JSON also reads as a plain `ReplacementDocument`) and `checks`: per checked
   occurrence each frame's Japanese found, English read, similarity and pass. The localized video,
-  the output step, the report and Check Text read it; the window falls back to
-  `visual/text_compose.json` for a job from before the step. A document with nothing baked passes
+  the output step, the report and Check Text read it; the window shows
+  `outputs/text_compose` while the step has not run. A document with nothing baked passes
   through without loading a model.
 - **Measured thresholds:** on Dressrosa 28 (25 baked, 128 frames read in 39 s) every frame that
   read back the English scored 0.8 or more and the one lettering OCR could not read scored 0, so
@@ -250,17 +250,17 @@ run.
 
 ## The localized subtitle file
 
-`text_typeset` writes one event file, `visual/events.ass`, with every displayable occurrence; it
-goes into `<video>.ass` alone. `<video>.localized.ass` holds the dialogue and sound cues and no
+`text_typeset` stores one set of ASS events, `outputs/text_typeset/ass`, with every displayable
+occurrence; it goes into `<video>.ass` alone. `<video>.localized.ass` holds the dialogue and sound cues and no
 on-screen text: the English is in the picture, and writing that could not be replaced stays
-Japanese there, its reason in `visual/text_verify.json`, the report and Check Text (`Not
-replaced in the video: <reason>`). The output step reads `visual/text_verify.json` and
-`visual/text_typeset.json`, turns each sampled frame of every baked occurrence into a rectangle
+Japanese there, its reason in `outputs/text_verify`, the report and Check Text (`Not
+replaced in the video: <reason>`). The output step reads `outputs/text_verify` and
+`outputs/text_typeset`, turns each sampled frame of every baked occurrence into a rectangle
 on the ASS canvas grown by 12 pixels, and moves a cue whose bottom box meets one while both are on
 screen to the top with `{\an8}`
 ([subtitle style rules](/documentation/architecture/subtitle_style_rules.md#on-screen-text-and-the-localized-video)).
 It backs up a different existing file into the job's `backup/` folder and records the file as
-`localized` in `output.json`.
+`localized` in `outputs/output`.
 
 ## The localized video (`localized_video`)
 
@@ -292,7 +292,7 @@ Code: [localize](/crates/stages/src/localize/), the task
   `<video>.localized.mkv` already there is replaced only when this job's record names it as its
   own; any other file fails the step with a message to move it away. A video itself named
   `.localized.mkv` is refused.
-- **Record:** `visual/localized_video.json` holds the path, the encoder, the frames written and
+- **Record:** `outputs/localized_video` holds the path, the encoder, the frames written and
   the occurrences replaced. With the setting turned off it holds no path but keeps the earlier
   path as `earlier`, so turning it on again may overwrite the job's own file. The step's output
   counts as valid only while the recorded file exists; the output step's only while its
@@ -315,7 +315,7 @@ Code: [localize](/crates/stages/src/localize/), the task
 ## Fallbacks
 
 Each occurrence that is not baked stays Japanese in the localized video, with one of these
-reasons in `visual/text_verify.json` and Check Text:
+reasons in `outputs/text_verify` and Check Text:
 
 | Reason | Step | Cause |
 |---|---|---|
@@ -360,8 +360,8 @@ Decode, model and file errors are not fallbacks: they fail the step, which Try A
 
 - [Pipeline](/documentation/architecture/pipeline.md#replacement-and-the-localized-video) — the
   step table and where these steps sit.
-- [System overview](/documentation/architecture/system_overview.md) — workers, the GPU lock and
-  the work directory.
+- [System overview](/documentation/architecture/system_overview.md) — workers, the GPU lock, the
+  job database and the work directory.
 - [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md) — detection,
   translation, review and what the owner sees.
 - [Localized video on Dressrosa 11](/documentation/research/localized_video_dressrosa_11.md) —

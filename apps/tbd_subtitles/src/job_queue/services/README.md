@@ -108,7 +108,8 @@ start, message, finish (its time, RAM, VRAM and notes) or skip as info, its adva
 per tenth, and a failure as an error, never naming the video or step in the words, which the log
 window shows above them. A worker's model call (`Progress::ModelCall`) is not sent to the window's
 queue: `progress_log::emit_call` logs it as the exchange event the log window keeps.
-`time_left::from_history` reads every job's `job.json` and `probe.json` in the work folder for
+`time_left::from_history` reads every job's step records and probe from its database in the work
+folder (skipping a job another process runs) for
 each step's mean seconds per second of video, over the pilot's rates, leaving out the steps each
 job's settings left idle; `estimate` sums the steps still to run, leaving out the shot scan that
 runs beside them and the steps the job's settings leave idle (`idle_steps`, set on the job's
@@ -120,7 +121,7 @@ corrections, and where it failed with the steps it had finished (each with its s
 valid); each of those fields has a default, so a file written before it existed still loads, a
 job there that no longer waits keeping its own settings. `read_finished_steps` runs when the
 window opens: a failure an older file kept, which knows only how many steps it kept, gets the
-steps before its failed one that its job's `job.json` records, with their seconds, else the first
+steps before its failed one that its job's step records hold, with their seconds, else the first
 of them it kept, done in a time not known, and then keeps as many as it lists.
 
 `video_files::is_video` knows a video by its extension (`VIDEO_EXTENSIONS`, any case), and
@@ -129,8 +130,8 @@ of them it kept, done in a time not known, and then keeps as many as it lists.
 it, sorted, leaving out hidden entries, symlinked folders, empty files, videos still downloading,
 videos with a subtitle file and the app's own localized copies (`is_localized_copy`:
 "<name>.localized.mkv"); a folder it cannot read is skipped with a debug line.
-`localized_video` reads a job's `visual/localized_video.json` for the localized video it wrote,
-while the file is there.
+`localized_video` reads a job's localized video record (`outputs/localized_video`, in one read
+of its database) for the localized video it wrote, while the file is there.
 `watch_scan::step` folds one scan's videos, each with its `Sample` (size and modification time),
 into a `WatchScan`: a video whose sample equals the one the scan before saw has stopped changing
 and is reported, and never again by the same `WatchScan`, even after it vanishes and comes back;
@@ -217,10 +218,10 @@ for a frame every `CHECK_EVERY` (1 s) while `any_busy` holds.
     (`done_skipped_and_the_shot_scan_add_nothing_and_a_step_keeps_its_own_pace` in
     `tests/time_left.rs`);
   - a job running when the window closed waits again, a file without the newer fields loads, and
-    a failure an older window kept reads its finished steps from `job.json`
+    a failure an older window kept reads its finished steps from its job database
     (`a_saved_queue_loads_back_with_the_running_job_waiting`,
     `a_file_written_before_the_new_fields_still_loads`,
-    `a_failure_an_older_window_kept_reads_its_finished_steps_from_job_json` in
+    `a_failure_an_older_window_kept_reads_its_finished_steps_from_its_job_database` in
     `tests/queue_store.rs`), and a busy job is saved waiting
     (`a_busy_job_is_saved_waiting_so_the_next_window_tries_it_again`);
   - a busy job is never next, never queued twice, stands in Up Next with no place and a row of

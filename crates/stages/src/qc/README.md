@@ -43,7 +43,7 @@ video; a measure that was not taken shows as `—`, never as 0.
 - Depends on: `crate::cues` (`FrameRules`, `line_break::MAX_LINE`, `segment::MAX_CPS`),
   `subtitle_formats::cue`, `job_model::outputs`, `job_model::report` (`QcCheck`, `QcFinding`,
   `QcSummary`, `QcReport`), `job_model::job::JobRecord` and `job_model::StepName`.
-- Used by: `crates/pipeline/src/tasks/layout.rs` (the QC step, which writes `qc.json`) and
+- Used by: `crates/pipeline/src/tasks/layout.rs` (the QC step, which stores `outputs/qc`) and
   `crates/pipeline/src/report/mod.rs` (which renders `report.md`).
 - Rules:
   - the stage runs inside the job runner, not in a worker, so it loads no model and starts no

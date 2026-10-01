@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use job_model::job::{JobSettings, StepMeasure, StepRecord};
+use job_model::job::{StepMeasure, StepRecord};
 use job_model::onscreen::ReplacedText;
 
 use super::*;
@@ -19,7 +19,7 @@ fn replaced(id: &str, status: ReplaceStatus) -> ReplacedText {
     }
 }
 
-fn record_with(notes: Option<&[(&str, &str)]>) -> JobRecord {
+fn steps_with(notes: Option<&[(&str, &str)]>) -> StepRecords {
     let mut steps = BTreeMap::new();
     if let Some(notes) = notes {
         steps.insert(
@@ -37,15 +37,7 @@ fn record_with(notes: Option<&[(&str, &str)]>) -> JobRecord {
             },
         );
     }
-    JobRecord {
-        video: "/videos/a.mkv".into(),
-        video_size: 10,
-        video_modified_s: 5,
-        settings: JobSettings::with_glossary(Vec::new()),
-        models_dir: None,
-        corrections: None,
-        steps,
-    }
+    steps
 }
 
 #[test]
@@ -81,12 +73,34 @@ fn the_localized_video_lines_count_replacements_and_fallbacks_and_name_the_file(
 
 #[test]
 fn the_section_appears_only_when_the_step_ran_enabled() {
-    assert!(!localized_video_ran(&record_with(None)));
-    assert!(!localized_video_ran(&record_with(Some(&[(
+    assert!(!localized_video_ran(&steps_with(None)));
+    assert!(!localized_video_ran(&steps_with(Some(&[(
         "disabled", "true"
     )]))));
-    assert!(localized_video_ran(&record_with(Some(&[
+    assert!(localized_video_ran(&steps_with(Some(&[
         ("encoder", "libx264"),
         ("frames", "100"),
     ]))));
+}
+
+#[test]
+fn the_report_renders_the_stored_check_and_dropped_sounds_and_names_a_missing_one() {
+    use crate::work_dir::store::scratch::{Scratch, job_record};
+    let scratch = Scratch::new("report-write");
+    let (store, mut record) = (scratch.store(), job_record(&scratch.dir));
+    record.settings.onscreen_text.enabled = false;
+    let qc = QcReport::default();
+    store.put_output(StepName::Qc, None, &qc).unwrap();
+    let error = write(scratch.work(), &record, &steps_with(None)).expect_err("no dropped sounds");
+    assert!(error.to_string().contains("cues/dropped_sounds"), "{error}");
+    let dropped = vec!["[THUNDER]".to_string()];
+    store
+        .put_output(StepName::Cues, Some(keys::DROPPED_SOUNDS), &dropped)
+        .unwrap();
+    assert_eq!(
+        write(scratch.work(), &record, &steps_with(None)).unwrap(),
+        qc
+    );
+    let report = std::fs::read_to_string(scratch.work().report()).unwrap();
+    assert!(report.contains("[THUNDER]"), "{report}");
 }

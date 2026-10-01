@@ -40,6 +40,13 @@ impl Fixture {
         for video in &videos {
             fs::write(video, b"video").expect("video");
         }
+        for index in 0..2 {
+            // Each session's job has a database for its saves to change.
+            pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(
+                root.join(format!("work-{index}")),
+            ))
+            .expect("the session's store");
+        }
         let environment = Environment::scratch(&root, run);
         let mut app = TbdSubtitlesApp::new(environment, videos.to_vec());
         assert!(
@@ -120,6 +127,13 @@ impl Fixture {
             result,
         });
         send
+    }
+
+    /// The on-screen text corrections the database of session `index`'s job holds.
+    fn saved(&self, index: usize) -> TextCorrections {
+        pipeline::work_dir::read_stored(&self.session(index).work, |read| read.text_corrections())
+            .expect("the session's store")
+            .expect("a database")
     }
 
     fn corrections(&self, index: usize) -> usize {
@@ -381,29 +395,42 @@ fn real_visual_stop_cursor_host() {
 
 fn copy_preview_pilot(source: &Path, scratch: &Path) -> PathBuf {
     use job_model::StepName;
-    use job_model::outputs::OutputRecord;
-    use pipeline::work_dir::{self, WorkDir};
+    use job_model::outputs::{OutputRecord, ProbeDecoded};
+    use pipeline::work_dir::{JobStore, WorkDir};
 
-    let source = WorkDir::new(source);
+    let (job, probe, typeset, output) = pipeline::work_dir::read_stored(source, |read| {
+        Ok((
+            read.job_record()?,
+            read.output::<ProbeDecoded>(StepName::ProbeDecode, None)?,
+            read.output::<TextDocument>(StepName::TextTypeset, None)?,
+            read.output::<OutputRecord>(StepName::Output, None)?,
+        ))
+    })
+    .expect("the pilot's database")
+    .expect("a pilot database");
     let destination = WorkDir::new(scratch.join("preview-pilot"));
-    fs::create_dir_all(destination.root().join("visual")).expect("scratch preview folder");
-    for (from, to) in [
-        (source.job_json(), destination.job_json()),
-        (source.probe(), destination.probe()),
-        (
-            source.text(StepName::TextTypeset),
-            destination.text(StepName::TextTypeset),
-        ),
-    ] {
-        fs::copy(&from, to).unwrap_or_else(|error| panic!("copy {}: {error}", from.display()));
-    }
-    let installed = fs::read(source.output_record())
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<OutputRecord>(&bytes).ok())
-        .map(|record| PathBuf::from(record.path));
+    let store = JobStore::open(&destination).expect("the scratch store");
+    store
+        .put_job_record(&job.expect("the pilot's job record"))
+        .expect("job record");
+    store
+        .put_output(
+            StepName::ProbeDecode,
+            None,
+            &probe.expect("the pilot's probe"),
+        )
+        .expect("probe");
+    store
+        .put_output(
+            StepName::TextTypeset,
+            None,
+            &typeset.expect("the pilot's typeset text"),
+        )
+        .expect("typeset");
+    let installed = output.map(|record| PathBuf::from(record.path));
     let (path, bytes) = installed
         .into_iter()
-        .chain([source.root().join("preview.ass")])
+        .chain([source.join("preview.ass")])
         .find_map(|path| {
             let bytes = fs::read(&path).ok()?;
             let text = std::str::from_utf8(&bytes).ok()?;
@@ -413,14 +440,13 @@ fn copy_preview_pilot(source: &Path, scratch: &Path) -> PathBuf {
     let ass = destination.root().join("preview.ass");
     fs::write(&ass, &bytes).expect("scratch copy of the actual pilot ASS");
     assert_eq!(fs::read(path).unwrap(), fs::read(&ass).unwrap());
-    work_dir::write_json(
-        &destination.output_record(),
-        &OutputRecord {
-            path: ass.to_string_lossy().into_owned(),
-            ..Default::default()
-        },
-    )
-    .expect("scratch output record");
+    let output = OutputRecord {
+        path: ass.to_string_lossy().into_owned(),
+        ..Default::default()
+    };
+    store
+        .put_output(StepName::Output, None, &output)
+        .expect("scratch output record");
     destination.root().into()
 }
 
@@ -510,12 +536,9 @@ fn returning_to_a_video_restores_its_saving_state_without_discarding_other_saves
     );
     assert_eq!(fixture.app.text.parked_saves.len(), 1);
     fixture.app.apply_text(Event::Save);
-    assert!(
-        !fixture
-            .session(0)
-            .work
-            .join("visual/corrections.json")
-            .exists(),
+    assert_eq!(
+        fixture.saved(0),
+        TextCorrections::default(),
         "duplicate save stays disabled"
     );
     original.send(Ok(())).expect("original save");
@@ -571,9 +594,7 @@ fn actual_async_write_survives_navigation_and_queues_only_its_saved_video() {
         fixture.app.poll_text();
         std::thread::sleep(Duration::from_millis(2));
     }
-    let corrections: TextCorrections =
-        pipeline::work_dir::read_json(&fixture.session(0).work.join("visual/corrections.json"))
-            .expect("actual persisted correction");
+    let corrections = fixture.saved(0);
     assert_eq!(
         corrections.edits["sign"].english.as_deref(),
         Some("English 0")
@@ -585,8 +606,9 @@ fn actual_async_write_survives_navigation_and_queues_only_its_saved_video() {
 }
 
 #[test]
-fn legacy_resume_and_correction_start_without_visual_models_required_only_by_new_jobs() {
+fn a_kept_job_without_visual_text_resumes_and_corrects_without_the_visual_models() {
     use job_model::job::{JobRecord, JobSettings, OutputFormat};
+    use job_model::onscreen::TextSettings;
     use pipeline::work_dir::{self, WorkDir};
 
     for correction in [false, true] {
@@ -627,23 +649,22 @@ fn legacy_resume_and_correction_start_without_visual_models_required_only_by_new
             video: fixture.videos[0].to_string_lossy().into_owned(),
             video_size: 5,
             video_modified_s: 0,
-            settings: JobSettings::with_glossary(Vec::new()),
+            settings: JobSettings {
+                onscreen_text: TextSettings::default(),
+                ..JobSettings::with_glossary(Vec::new())
+            },
             models_dir: None,
             corrections: None,
-            steps: Default::default(),
         };
-        let mut legacy = serde_json::to_value(record).expect("legacy record");
-        legacy["settings"]
-            .as_object_mut()
-            .expect("settings object")
-            .remove("onscreen_text");
-        work_dir::write_json(&work.job_json(), &legacy)
-            .expect("record from before visual translation");
+        work_dir::JobStore::open(&work)
+            .expect("the store")
+            .put_job_record(&record)
+            .expect("a record with visual text off");
         fixture
             .app
             .queue
             .get_mut(fixture.ids[0])
-            .expect("legacy row")
+            .expect("kept row")
             .keep_settings = true;
         assert!(!fixture.app.models_missing_for(fixture.ids[0]));
         assert!(
@@ -658,7 +679,7 @@ fn legacy_resume_and_correction_start_without_visual_models_required_only_by_new
                 .app
                 .queue
                 .get_mut(fixture.ids[0])
-                .expect("legacy row")
+                .expect("kept row")
                 .state = JobState::Cancelled { kept_steps: 2 };
             fixture
                 .app
@@ -666,7 +687,7 @@ fn legacy_resume_and_correction_start_without_visual_models_required_only_by_new
         }
         let (video, settings) = started
             .recv_timeout(Duration::from_secs(2))
-            .expect("legacy job starts despite missing visual downloads");
+            .expect("the kept job starts despite missing visual downloads");
         assert_eq!(video, fixture.videos[0]);
         assert!(!settings.onscreen_text.enabled);
         assert_eq!(settings.effective_output_format(), OutputFormat::Srt);
@@ -763,9 +784,7 @@ fn selecting_another_video_stops_its_hidden_preview_and_finishes_the_original_as
     }
     fixture.app.poll_text();
     assert_eq!((fixture.corrections(0), fixture.corrections(1)), (1, 0));
-    let saved: TextCorrections =
-        pipeline::work_dir::read_json(&fixture.session(0).work.join("visual/corrections.json"))
-            .expect("original correction persisted");
+    let saved = fixture.saved(0);
     assert_eq!(saved.edits["sign"].english.as_deref(), Some("English 0"));
     assert!(fixture.app.text.parked_saves.is_empty());
     assert_eq!(fixture.app.queue.selected, Some(fixture.ids[1]));

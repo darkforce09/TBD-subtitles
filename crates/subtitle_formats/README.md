@@ -20,8 +20,8 @@ into text: a `CueTrack` is the video's `FrameRate` and its cues in time order, a
 from frame `start` up to, not including, frame `end`, with one or two `CueLine`s (plain or italic)
 and a `CueKind` (dialogue, sound or music). Times are whole frames, so nothing downstream can place
 a cue between frames; `FrameRate` converts frames to seconds and milliseconds and seconds back to
-frames. The track is stored as `cues.json` in the job's work directory, and archives with rkyv for
-the job database (`tbd-subtitles dump` prints it).
+frames. The track archives with rkyv and is stored as `outputs/cues` in the job's database
+(`tbd-subtitles dump` prints it).
 
 `writers::srt` turns a track into SubRip text, rounding each frame to the nearest millisecond.
 `writers::vtt`, `writers::ass` and `import` hold only their headers. `src/README.md` describes

@@ -278,10 +278,10 @@ fn fragmented_namecard_consolidates_before_contained_ruby_grouping() {
 }
 
 #[test]
-#[ignore = "set TBD_VISUAL_READ_FIXTURE to the annotated name-card text_read.json"]
+#[ignore = "set TBD_VISUAL_READ_FIXTURE to the annotated name-card job's `tbd-subtitles dump <job> outputs text_read`"]
 fn annotated_namecard_pilot_has_two_base_lines_without_losing_unknowns() {
     let path = std::env::var_os("TBD_VISUAL_READ_FIXTURE").expect("fixture path");
-    let mut input: TextDocument = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let mut input: TextDocument = dumped(path);
     let unknown_ids: Vec<_> = input
         .occurrences
         .iter()
@@ -367,4 +367,10 @@ fn cache_keys_separate_crop_content_and_decoder_revisions() {
         reading_key(b"image", READING_CACHE_REVISION),
         reading_key(b"image", READING_CACHE_REVISION + 1)
     );
+}
+
+/// The document of the row `tbd-subtitles dump <job> outputs <step>` printed to `path`.
+fn dumped<T: serde::de::DeserializeOwned>(path: impl AsRef<Path>) -> T {
+    let mut row: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    serde_json::from_value(row["value"].take()).unwrap()
 }

@@ -193,6 +193,7 @@ pub(super) fn build_requests(
     let input = TranslationInput {
         root,
         dialogue: &dialogue,
+        cuts: &ShotChanges::default(),
         glossary,
         settings: &settings,
         corrections,
@@ -299,6 +300,7 @@ fn execute(
     let input = TranslationInput {
         root,
         dialogue: &dialogue,
+        cuts: &ShotChanges::default(),
         glossary: &glossary,
         settings,
         corrections,
@@ -453,6 +455,7 @@ impl Stage {
         let input = TranslationInput {
             root: &self.temp.0,
             dialogue: &dialogue,
+            cuts: &ShotChanges::default(),
             glossary: &[],
             settings: &self.settings,
             corrections: &self.corrections,
@@ -489,6 +492,7 @@ fn a_cached_keyframe_answer_translates_both_regions_without_opening_the_local_mo
     let input = TranslationInput {
         root,
         dialogue: &dialogue,
+        cuts: &ShotChanges::default(),
         glossary: &[],
         settings: &stage.settings,
         corrections: &stage.corrections,
@@ -706,6 +710,7 @@ fn a_failing_local_opener_is_an_explicit_job_failure() {
     let input = TranslationInput {
         root: &temp.0,
         dialogue: &dialogue,
+        cuts: &ShotChanges::default(),
         glossary: &[],
         settings: &settings,
         corrections: &corrections,

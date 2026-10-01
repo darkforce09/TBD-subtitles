@@ -2,7 +2,8 @@
 //!
 //! **Role:** exercise all visual steps without repeating speech inference during validation.
 //! **Position:** validation command above pipeline tasks, resume and workers.
-//! **Signals and state:** a dedicated work directory, six stage artifacts and a preview ASS.
+//! **Signals and state:** a dedicated work directory and its job database, six stage outputs and
+//! a preview ASS.
 //! **Invariants:** source media and its installed subtitles remain untouched; measurements are real.
 
 use anyhow::{Context, Result, ensure};
@@ -10,16 +11,16 @@ use inference::{cuda_runtime::CudaRuntime, model_store};
 use job_model::{
     StepName,
     job::{JobRecord, JobSettings, StepRecord},
-    outputs::ProbeDecoded,
+    outputs::{ProbeDecoded, ShotChanges},
 };
 use pipeline::{
     cancel::CancelToken,
     graph::{self, Placement},
     progress::Progress,
-    resume,
-    tasks::{self, Job},
+    resume, runner,
+    tasks::{self, Job, StepIo},
     work_dir::{self, JobStore, WorkDir},
-    workers::{self, Binaries, WorkerData},
+    workers::{self, Binaries, StepWrite, WorkerData},
 };
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -43,8 +44,7 @@ pub fn run(
     ensure!(meta.is_file(), "pilot input must be a video file");
     let modified_s = meta.modified()?.duration_since(UNIX_EPOCH)?.as_secs() as i64;
     let glossary = stages::adjudication::glossary::one_piece();
-    let mut record = if work.job_json().exists() {
-        let record: JobRecord = work_dir::read_json(&work.job_json())?;
+    let mut record = if let Some(record) = work_dir::load_job_record(&store)? {
         ensure!(
             Path::new(&record.video) == video,
             "work directory belongs to another video"
@@ -62,18 +62,21 @@ pub fn run(
             settings: JobSettings::with_glossary(glossary.clone()),
             models_dir: None,
             corrections: None,
-            steps: Default::default(),
         }
     };
     record.settings.glossary = glossary;
     record.settings.onscreen_text.enabled = true;
     record.settings.onscreen_text.claude_fallback = claude;
     let programs = media_io::Programs::beside_current_exe();
-    if !work.probe().exists() {
+    let stored_probe = |store: &JobStore| -> Result<Option<ProbeDecoded>> {
+        Ok(store.read()?.output(StepName::ProbeDecode, None)?)
+    };
+    if stored_probe(&store)?.is_none() {
         let probe = media_io::probe::probe(&programs, &video)?;
         let track = media_io::probe::english_track(&probe)?.clone();
-        work_dir::write_json(
-            &work.probe(),
+        store.put_output(
+            StepName::ProbeDecode,
+            None,
             &ProbeDecoded {
                 probe,
                 track,
@@ -81,7 +84,7 @@ pub fn run(
             },
         )?;
     }
-    let probe: ProbeDecoded = work_dir::read_json(&work.probe())?;
+    let probe = stored_probe(&store)?.context("the probe is stored")?;
     let stream = probe.probe.video.as_ref().context("pilot has no video")?;
     let frame_rate = FrameRate::new(stream.frame_rate_num, stream.frame_rate_den)
         .context("invalid frame rate")?;
@@ -93,35 +96,40 @@ pub fn run(
             cues: Vec::new(),
         }
     };
-    let same_cues =
-        work_dir::read_json::<CueTrack>(&work.cues()).is_ok_and(|previous| previous == cues);
-    if !same_cues || !record.steps.contains_key(&StepName::Cues) {
+    let same_cues = store
+        .read()?
+        .output::<CueTrack>(StepName::Cues, None)
+        .ok()
+        .flatten()
+        .is_some_and(|previous| previous == cues);
+    store.put_job_record(&record)?;
+    let finished = |fingerprint: &str| StepRecord {
+        fingerprint: fingerprint.into(),
+        finished_ns: now(),
+        measure: Default::default(),
+    };
+    if !same_cues || store.read()?.step_record(StepName::Cues)?.is_none() {
         if !same_cues {
-            work_dir::write_json(&work.cues(), &cues)?;
+            store.put_output(StepName::Cues, None, &cues)?;
+            let dropped: Vec<String> = Vec::new();
+            store.put_output(
+                StepName::Cues,
+                Some(work_dir::store::keys::DROPPED_SOUNDS),
+                &dropped,
+            )?;
         }
-        record.steps.insert(
-            StepName::Cues,
-            StepRecord {
-                fingerprint: "validation dialogue input".into(),
-                finished_ns: now(),
-                measure: Default::default(),
-            },
-        );
+        store.put_step_record(StepName::Cues, &finished("validation dialogue input"))?;
     }
-    if !work.shots().exists() {
+    let shots_stored = store
+        .read()?
+        .output::<ShotChanges>(StepName::ShotScan, None)?
+        .is_some();
+    if !shots_stored {
         let shots =
             media_io::shot_changes::scan(&programs, &video, false, Duration::from_secs(3600))?;
-        work_dir::write_json(&work.shots(), &shots)?;
-        record.steps.insert(
-            StepName::ShotScan,
-            StepRecord {
-                fingerprint: "validation shot scan".into(),
-                finished_ns: now(),
-                measure: Default::default(),
-            },
-        );
+        store.put_output(StepName::ShotScan, None, &shots)?;
+        store.put_step_record(StepName::ShotScan, &finished("validation shot scan"))?;
     }
-    work_dir::write_json(&work.job_json(), &record)?;
     let paths = Binaries {
         main: binaries.join("tbd-subtitles"),
         ggml: binaries.join("tbd-subtitles-ggml"),
@@ -139,11 +147,14 @@ pub fn run(
         StepName::TextTypeset,
     ];
     for step in steps {
-        if resume::is_valid(step, &record, &work) {
+        let read = store.read()?;
+        if resume::is_valid(step, &record, &read, &work) {
             eprintln!("{step}: resumed");
             continue;
         }
-        let fingerprint = resume::fingerprint_in_work(step, &record, &work);
+        let fingerprint = resume::fingerprint(step, &record, &read)?;
+        let inputs = runner::worker_inputs(step, &read)?;
+        drop(read);
         eprintln!("{step}: running");
         let progress = |event| match event {
             Progress::StepAdvanced { done, total, .. } if done == total || done % 240 == 0 => {
@@ -164,7 +175,7 @@ pub fn run(
             Placement::Worker(binary) => {
                 let data = WorkerData {
                     store: &store,
-                    inputs: &[],
+                    inputs: &inputs,
                 };
                 let run = workers::run_worker(
                     paths.path(binary),
@@ -177,17 +188,15 @@ pub fn run(
                 )?;
                 (run.measure, run.outputs)
             }
-            Placement::InProcess => (
-                tasks::in_process(
-                    step,
-                    &Job {
-                        work: work.clone(),
-                        record: record.clone(),
-                    },
-                    &|_, _| {},
-                )?,
-                None,
-            ),
+            Placement::InProcess => {
+                let mut io = StepIo::in_process(&store)?;
+                let job = Job {
+                    work: work.clone(),
+                    record: record.clone(),
+                };
+                let measure = tasks::in_process(step, &job, &mut io, &|_, _| {})?;
+                (measure, io.into_outputs())
+            }
         };
         eprintln!(
             "{step}: {:.2}s, RAM {:?} MiB, VRAM {:?} MiB",
@@ -198,18 +207,22 @@ pub fn run(
             finished_ns: now(),
             measure,
         };
-        if let Some(outputs) = outputs {
-            outputs.commit(step, &stamped)?;
-        }
-        record.steps.insert(step, stamped);
-        work_dir::write_json(&work.job_json(), &record)?;
+        outputs
+            .unwrap_or_else(|| StepWrite::new(store.clone()))
+            .commit(step, &stamped)?;
     }
     let mut rendered = ass::write(&cues);
-    rendered.push_str(&std::fs::read_to_string(work.text_ass())?);
+    let events: String = store
+        .read()?
+        .output(
+            StepName::TextTypeset,
+            Some(work_dir::store::keys::TYPESET_ASS),
+        )?
+        .context("the typeset ASS events are stored")?;
+    rendered.push_str(&events);
     work_dir::write_text(&work.root().join("preview.ass"), &rendered)?;
     let duration = probe.probe.duration_s;
-    let elapsed: f64 = record
-        .steps
+    let elapsed: f64 = work_dir::load_step_records(&store)?
         .iter()
         .filter(|(step, _)| steps.contains(step))
         .map(|(_, r)| r.measure.wall_s)

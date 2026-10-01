@@ -186,16 +186,14 @@ fn a_refitted_lettering_area_is_the_obstacle_for_its_whole_span() {
 fn the_localized_subtitles_carry_dialogue_alone_moved_above_lettered_writing() {
     use job_model::job::{JobRecord, JobSettings};
     use subtitle_formats::cue::{Cue, CueKind, CueLine};
-    let dir = std::env::temp_dir().join(format!("tbd-layout-localized-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    let work = crate::work_dir::WorkDir::new(dir.join("job"));
-    std::fs::create_dir_all(work.root().join("visual")).unwrap();
+    let scratch = crate::work_dir::store::scratch::Scratch::new("layout-localized");
+    let (store, dir) = (scratch.store(), scratch.dir.clone());
     let mut settings = JobSettings::with_glossary(vec![]);
     settings.onscreen_text.enabled = true;
     settings.onscreen_text.localized_video = true;
     let video = dir.join("episode.mkv");
     let job = Job {
-        work: work.clone(),
+        work: scratch.work().clone(),
         record: JobRecord {
             video: video.to_string_lossy().into_owned(),
             video_size: 1,
@@ -203,7 +201,6 @@ fn the_localized_subtitles_carry_dialogue_alone_moved_above_lettered_writing() {
             settings,
             models_dir: Some("/no/models".into()),
             corrections: None,
-            steps: Default::default(),
         },
     };
     let cue = |start, end, text: &str| Cue {
@@ -216,22 +213,33 @@ fn the_localized_subtitles_carry_dialogue_alone_moved_above_lettered_writing() {
         frame_rate: FrameRate::FILM,
         cues: vec![cue(24, 72, "Who's there?"), cue(240, 288, "Nobody.")],
     };
-    work_dir::write_json(&work.cues(), &track).unwrap();
+    store.put_output(StepName::Cues, None, &track).unwrap();
     let sign = "Dialogue: 0,0:00:01.00,0:00:03.00,Sign,,0,0,0,,Rebecca\n";
-    work_dir::write_text(&work.text_ass(), sign).unwrap();
+    store
+        .put_output(
+            StepName::TextTypeset,
+            Some(keys::TYPESET_ASS),
+            &sign.to_string(),
+        )
+        .unwrap();
     let lower_third = quad(400.0, 620.0, 880.0, 700.0);
     let text = text_document(vec![
         occurrence("card", 0.5, 4.0, &[(0.5, lower_third.clone())]),
         occurrence("busy", 9.0, 13.0, &[(9.0, lower_third)]),
     ]);
-    work_dir::write_json(&work.text(StepName::TextTypeset), &text).unwrap();
+    store
+        .put_output(StepName::TextTypeset, None, &text)
+        .unwrap();
     let verified = job_model::onscreen::VerifiedReplacements {
         document: composition("card", "busy"),
         checks: Vec::new(),
     };
-    work_dir::write_json(&work.text(StepName::TextVerify), &verified).unwrap();
+    store
+        .put_output(StepName::TextVerify, None, &verified)
+        .unwrap();
 
-    let report = output(&job).expect("output");
+    let mut io = crate::tasks::StepIo::in_process(store).unwrap();
+    let report = output(&job, &mut io, &|_, _| {}).expect("output");
     let normal = std::fs::read_to_string(dir.join("episode.ass")).unwrap();
     let localized = std::fs::read_to_string(dir.join("episode.localized.ass")).unwrap();
     assert!(normal.ends_with(sign), "{normal}");
@@ -252,10 +260,18 @@ fn the_localized_subtitles_carry_dialogue_alone_moved_above_lettered_writing() {
         Some("1")
     );
 
-    std::fs::remove_file(work.text(StepName::TextVerify)).unwrap();
+    drop(io);
+    let mut write = store.write().unwrap();
+    let verify = keys::output_key(StepName::TextVerify, None);
     assert!(
-        output(&job).is_err(),
+        write
+            .remove(worker_channel::address::Table::Outputs, &verify)
+            .unwrap()
+    );
+    write.commit().unwrap();
+    let mut io = crate::tasks::StepIo::in_process(store).unwrap();
+    assert!(
+        output(&job, &mut io, &|_, _| {}).is_err(),
         "the localized subtitles need the checked replacements"
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }

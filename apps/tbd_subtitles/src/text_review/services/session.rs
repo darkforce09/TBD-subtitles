@@ -3,18 +3,19 @@
 //! **Role:** join visual results with the job, probe, output, current corrections and, for a job
 //! that writes a localized video, its replacements and the selected occurrence's pictures.
 //! **Position:** called off the window thread by application actions; depends on plain models.
-//! **Signals and state:** reads job files and crops; locks and atomically writes visual corrections.
-//! **Invariants:** existing corrections are reread under lock; thumbnails have bounded total size;
+//! **Signals and state:** reads the job's rows in one snapshot of its database, and its crops;
+//! changes the on-screen text corrections in one write transaction of it.
+//! **Invariants:** a change rereads the corrections inside its own write transaction, so a change
+//! committed meanwhile is kept; thumbnails have bounded total size;
 //! absent visual results never masquerade as a completed scan.
 
-use std::fs::OpenOptions;
 use std::path::{Component, Path};
 
 use job_model::StepName;
 use job_model::job::JobRecord;
-use job_model::onscreen::{TextCorrections, TextDocument, TextEdit};
+use job_model::onscreen::{TextCorrections, TextDocument, TextEdit, TextOccurrence};
 use job_model::outputs::{OutputRecord, ProbeDecoded};
-use pipeline::work_dir::{self, WorkDir};
+use pipeline::work_dir::{self, JobStore, WorkDir};
 
 use super::{localized, player};
 use crate::text_review::models::{Event, LocalizedReview, Picture, ReplacementPictures, Session};
@@ -24,18 +25,14 @@ const THUMBNAIL_BUDGET: usize = 32 * 1024 * 1024;
 
 /// Read one job's visual results, with bounded representative thumbnails.
 pub(crate) fn load(work: &Path) -> Result<Session, String> {
-    let work_dir = WorkDir::new(work);
-    let path = [StepName::TextTypeset, StepName::TextReview]
-        .into_iter()
-        .map(|step| work_dir.text(step))
-        .find(|path| path.is_file())
-        .ok_or_else(|| "This job has no on-screen text results. Enable on-screen translation in Settings and run the video again.".to_string())?;
-    let document: TextDocument = read(&path)?;
-    let job: JobRecord = read(&work_dir.job_json())?;
-    let probe: ProbeDecoded = read(&work_dir.probe())?;
-    let output: OutputRecord = read(&work_dir.output_record()).map_err(|error| {
-        format!("The exported subtitle record is unavailable. Finish or rerun this video to generate its combined ASS file. {error}")
-    })?;
+    let Stored {
+        document,
+        job,
+        probe,
+        output,
+        corrections,
+        localized,
+    } = stored(work)?;
     if !Path::new(&output.path).is_file() {
         return Err(format!(
             "The exported ASS file is missing: {}. Run this video again to regenerate it.",
@@ -54,7 +51,6 @@ pub(crate) fn load(work: &Path) -> Result<Session, String> {
     if !probe.probe.duration_s.is_finite() || probe.probe.duration_s <= 0.0 {
         return Err("This video's duration is unavailable.".into());
     }
-    let corrections = corrections(&work_dir)?;
     let selected = document
         .occurrences
         .iter()
@@ -84,7 +80,7 @@ pub(crate) fn load(work: &Path) -> Result<Session, String> {
             thumbnail
         })
         .collect();
-    let mut localized = localized::load(&work_dir, &job, &output, &document);
+    let mut localized = localized::load(work, localized, &job, &output, &document);
     if let Some(review) = localized.as_mut() {
         review.pictures = selected_pictures(review, &document, selected);
     }
@@ -136,22 +132,23 @@ pub(crate) fn save(session: &Session, event: &Event) -> Result<(), String> {
         Event::DiscardOrphans => None,
         _ => return Err("This action does not save an on-screen text correction.".into()),
     };
-    let work = WorkDir::new(&session.work);
-    let path = work.text_corrections();
-    let parent = path
-        .parent()
-        .ok_or("The corrections folder is unavailable.")?;
-    std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    let lock_path = path.with_extension("json.lock");
-    let lock = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&lock_path)
-        .map_err(|error| format!("Cannot open {}: {error}", lock_path.display()))?;
-    lock.lock()
-        .map_err(|error| format!("Cannot lock {}: {error}", lock_path.display()))?;
-    let mut current = corrections(&work)?;
+    let store = JobStore::open_existing(&WorkDir::new(&session.work))
+        .map_err(|error| format!("Cannot save the correction: {error}"))?;
+    work_dir::update_text_corrections(&store, |current| {
+        change(current, session, selected, edit, event)
+    })
+    .map_err(|error| format!("Cannot save the correction: {error}"))?;
+    Ok(())
+}
+
+/// Apply `event` on the selected occurrence `selected` to the stored `current` corrections.
+fn change(
+    current: &mut TextCorrections,
+    session: &Session,
+    selected: Option<&TextOccurrence>,
+    edit: Option<TextEdit>,
+    event: &Event,
+) {
     match event {
         Event::Save => {
             current.edits.insert(
@@ -177,9 +174,6 @@ pub(crate) fn save(session: &Session, event: &Event) -> Result<(), String> {
         }),
         _ => unreachable!("validated correction action"),
     }
-    work_dir::write_json(&path, &current).map_err(|error| error.to_string())?;
-    drop(lock);
-    Ok(())
 }
 
 /// The pictures of occurrence `index`'s replacement, when it has one.
@@ -193,19 +187,52 @@ pub(crate) fn selected_pictures(
     Some(localized::pictures(id, replacement))
 }
 
-fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
-    work_dir::read_json(path).map_err(|error| error.to_string())
+/// What Check Text reads from the job's database.
+struct Stored {
+    document: TextDocument,
+    job: JobRecord,
+    probe: ProbeDecoded,
+    output: OutputRecord,
+    corrections: TextCorrections,
+    localized: localized::Rows,
 }
 
-fn corrections(work: &WorkDir) -> Result<TextCorrections, String> {
-    match std::fs::read(work.text_corrections()) {
-        Ok(bytes) => serde_json::from_slice(&bytes)
-            .map_err(|error| format!("Cannot read visual corrections: {error}")),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(TextCorrections::default())
-        }
-        Err(error) => Err(format!("Cannot read visual corrections: {error}")),
-    }
+/// The rows of the job in `work` Check Text reads, in one snapshot: the typeset text (the reviewed
+/// text before typesetting ran), the job record, the probe, the output record, the owner's text
+/// corrections and the localized video's rows. An error says in the owner's words what is missing.
+fn stored(work: &Path) -> Result<Stored, String> {
+    const NO_TEXT: &str = "This job has no on-screen text results. Enable on-screen translation in Settings and run the video again.";
+    let rows = work_dir::read_stored(work, |read| {
+        let document = match read.output::<TextDocument>(StepName::TextTypeset, None)? {
+            Some(document) => Some(document),
+            None => read.output(StepName::TextReview, None)?,
+        };
+        Ok((
+            document,
+            read.job_record()?,
+            read.output::<ProbeDecoded>(StepName::ProbeDecode, None)?,
+            read.output::<OutputRecord>(StepName::Output, None),
+            read.text_corrections(),
+            localized::rows(read),
+        ))
+    })
+    .map_err(|error| error.to_string())?;
+    let (document, job, probe, output, corrections, localized) = rows.ok_or(NO_TEXT)?;
+    let missing = |what: &str| format!("This job has no {what}. Run this video again.");
+    let output = output
+        .map_err(|error| error.to_string())
+        .and_then(|output| output.ok_or_else(|| "it has not been written".to_string()));
+    Ok(Stored {
+        document: document.ok_or(NO_TEXT)?,
+        job: job.ok_or_else(|| missing("job record"))?,
+        probe: probe.ok_or_else(|| missing("probe of its video"))?,
+        output: output.map_err(|error| {
+            format!("The exported subtitle record is unavailable. Finish or rerun this video to generate its combined ASS file. {error}")
+        })?,
+        corrections: corrections
+            .map_err(|error| format!("Cannot read visual corrections: {error}"))?,
+        localized,
+    })
 }
 
 fn thumbnail(work: &Path, relative: &Path) -> Option<Picture> {

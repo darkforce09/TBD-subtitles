@@ -5,8 +5,9 @@
 //! occurrences that show one sign with their furigana folded in.
 //! **Position:** visual stage logic invoked by the isolated local-model worker; its private
 //! modules build the keyframe requests and send them through the Claude CLI.
-//! **Signals and state:** per-request JSON caches under `visual/translations`; the local model
-//! opens on demand once every Claude request has finished.
+//! **Signals and state:** the dialogue and shot changes the caller passes; per-request JSON caches
+//! under `visual/translations`; the local model opens on demand once every Claude request has
+//! finished.
 //! **Invariants:** unreadable text is never invented; invalid answers are flagged and fall back to
 //! the local model, infrastructure errors are returned; no local model is open while Claude
 //! requests run, and a document Claude fully answers never opens one.
@@ -20,6 +21,7 @@ use super::unify::{TRANSLATION_NEEDS_REVIEW, unify};
 use super::{TextResult, read, reference};
 use inference::llm::{LanguageModel, claude_cli::ClaudeCli};
 use job_model::onscreen::{TextCorrections, TextDocument, TextOccurrence, TextSettings};
+use job_model::outputs::ShotChanges;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -52,6 +54,8 @@ struct Cached<T> {
 pub struct TranslationInput<'a> {
     pub root: &'a Path,
     pub dialogue: &'a CueTrack,
+    /// The video's shot changes, which consolidation and joining never cross.
+    pub cuts: &'a ShotChanges,
     pub glossary: &'a [String],
     pub settings: &'a TextSettings,
     pub corrections: &'a TextCorrections,
@@ -157,9 +161,8 @@ fn run(
                 .push(format!("{TRANSLATION_NEEDS_REVIEW} {reason}"));
         }
     }
-    let cuts = read::load_cuts(input.root)?;
-    read::consolidate_readings(document, &cuts);
-    unify(document, &cuts);
+    read::consolidate_readings(document, input.cuts);
+    unify(document, input.cuts);
     progress(total, total);
     Ok(())
 }

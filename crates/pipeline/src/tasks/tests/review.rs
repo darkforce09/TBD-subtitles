@@ -1,8 +1,17 @@
-use job_model::job::{JobRecord, JobSettings};
+use job_model::job::{JobRecord, JobSettings, StepMeasure, StepRecord};
 use job_model::outputs::{AlignedWord, Chosen, Correction, TimingSource};
 
 use super::*;
-use crate::work_dir::WorkDir;
+use crate::work_dir::store::scratch::Scratch;
+
+/// A record for a step a test ran.
+fn finished() -> StepRecord {
+    StepRecord {
+        fingerprint: "test".into(),
+        finished_ns: 1,
+        measure: StepMeasure::default(),
+    }
+}
 
 fn line(id: &str, t: &str, f: &[&str]) -> Line {
     Line {
@@ -37,10 +46,7 @@ fn a_correction_replaces_the_text_and_flags_of_its_line_only() {
 
 #[test]
 fn with_no_corrections_the_reviewed_words_are_the_aligned_words() {
-    let dir = std::env::temp_dir().join(format!("tbd-review-none-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("dir");
-    let work = WorkDir::new(&dir);
+    let scratch = Scratch::new("review-none");
     let aligned = Aligned {
         utterances: vec![AlignedUtterance {
             id: "U1".into(),
@@ -60,9 +66,12 @@ fn with_no_corrections_the_reviewed_words_are_the_aligned_words() {
         offset_s: None,
         errors: vec![],
     };
-    work_dir::write_json(&work.aligned(), &aligned).expect("aligned");
+    scratch
+        .store()
+        .put_output(StepName::Alignment, None, &aligned)
+        .expect("aligned");
     let job = Job {
-        work: work.clone(),
+        work: scratch.work().clone(),
         record: JobRecord {
             video: "a.mp4".into(),
             video_size: 1,
@@ -70,15 +79,23 @@ fn with_no_corrections_the_reviewed_words_are_the_aligned_words() {
             settings: JobSettings::with_glossary(vec![]),
             models_dir: Some("/no/models".into()),
             corrections: None,
-            steps: Default::default(),
         },
     };
-    let report = review(&job).expect("review");
+    let mut io = StepIo::in_process(scratch.store()).expect("io");
+    let report = review(&job, &mut io, &|_, _| {}).expect("review");
+    io.into_outputs()
+        .expect("the pending write")
+        .commit(StepName::Review, &finished())
+        .expect("commit");
     assert_eq!(
         report.notes.get("corrections").map(String::as_str),
         Some("0")
     );
-    let reviewed: Aligned = work_dir::read_json(&work.reviewed()).expect("reviewed");
-    assert_eq!(reviewed, aligned);
-    let _ = std::fs::remove_dir_all(&dir);
+    let reviewed: Option<Aligned> = scratch
+        .store()
+        .read()
+        .expect("read")
+        .output(StepName::Review, None)
+        .expect("reviewed");
+    assert_eq!(reviewed, Some(aligned));
 }

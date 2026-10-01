@@ -3,7 +3,8 @@
 //! **Role:** render the summary, the findings per check, every flagged line with a timestamp,
 //! and one row per step with its time and peak memory, plus the projection to a 120-minute video.
 //!
-//! **Position:** called by the QC step with the check's result and the job record.
+//! **Position:** called by the job report with the check's result, the job record and the step
+//! records.
 //!
 //! **Signals and state:** none; returns the text.
 //!
@@ -13,7 +14,7 @@
 use std::fmt::Write;
 
 use job_model::StepName;
-use job_model::job::JobRecord;
+use job_model::job::{JobRecord, StepRecords};
 use job_model::report::QcReport;
 
 use super::CPS_TARGET;
@@ -21,11 +22,12 @@ use super::CPS_TARGET;
 /// The length the performance budget is written for.
 pub const BUDGET_VIDEO_S: f64 = 7200.0;
 
-/// The report as Markdown. `output` names the subtitle file, `dropped_sounds` the sound cues
-/// that found no place.
+/// The report as Markdown, with `steps` in its step table. `output` names the subtitle file,
+/// `dropped_sounds` the sound cues that found no place.
 pub fn render(
     report: &QcReport,
     record: &JobRecord,
+    steps: &StepRecords,
     output: &str,
     dropped_sounds: &[String],
 ) -> String {
@@ -133,7 +135,7 @@ pub fn render(
     let mut peak_ram: Option<f64> = None;
     let mut peak_vram: Option<f64> = None;
     for step in StepName::ALL {
-        let Some(r) = record.steps.get(&step) else {
+        let Some(r) = steps.get(&step) else {
             continue;
         };
         let m = &r.measure;

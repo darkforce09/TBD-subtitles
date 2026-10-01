@@ -49,7 +49,7 @@ every model is on disk, without turning the queue on, and a toast says whether i
 not start (in red, with the reason), runs next ("from Hear the speech", while the queue runs or for
 a correction run), is first in line waiting for Start Queue, or waits for the models; a video with
 another run waiting or running is not put back ("… is already in the list."). Run Again compares the settings saved now
-with the ones in the job's `job.json` first, and when they are the same queues nothing and says
+with the ones in the job's record first, and when they are the same queues nothing and says
 so. Check Lines selects the job and opens its review; Show in Folder and Open in Player go to the
 desktop portal through `open_with_desktop`, which says so in a toast and, when the desktop answers
 that it could not, in a red one; a copied subtitle path says so in a toast; Fix All goes to
@@ -63,7 +63,7 @@ waits while another run of its video runs, and the full lane waits while a revie
 video runs. A pause ends once the full
 lane is idle. A job starts only
 when every model is on disk, with options built from the saved settings until it first starts,
-and from its own `job.json` after that (a review run always), with the steps it is to run again
+and from its own job record after that (a review run always), with the steps it is to run again
 as `JobOptions.rerun`; starting marks the job as keeping its settings. The runners' events fold
 into the queue: progress into the running job (its first event empties the steps to run again,
 which the pipeline has recorded by then, so a job failing before it keeps them), the end into a
@@ -135,7 +135,7 @@ event, so a job tried or run again shows as it is now), parking its unsaved edit
 of its saved lines under the job until it opens again; a parked review follows its video's
 runs too. It applies the owner's picks, typing and flags to the open line's draft,
 the list, the search and the group; on Save Correction, Looks Right (Keep Change for a Fix It
-change), Undo Change or Take Back it writes `review.json` and queues a review run of the video,
+change), Undo Change or Take Back it stores the job's line corrections and queues a review run of the video,
 or adds the correction to the one that waits
 (Take Back on a line with no correction does nothing), and a line that cannot be saved (an empty text not dropped) says why in a red toast. Play starts
 the clip player on the open line with 0.75 s either side, with the video's sound or the vocal

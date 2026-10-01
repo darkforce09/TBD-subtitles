@@ -148,20 +148,16 @@ fn a_job_s_localized_video_is_the_recorded_file_while_it_is_there() {
         replaced: 2,
         ..LocalizedVideoRecord::default()
     };
-    let at = WorkDir::new(&work).text(StepName::LocalizedVideo);
-    write(
-        &at,
-        serde_json::to_string(&record(None))
-            .expect("json")
-            .as_bytes(),
-    );
+    let store = pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(&work))
+        .expect("the store");
+    let put = |record: &LocalizedVideoRecord| {
+        store
+            .put_output(StepName::LocalizedVideo, None, record)
+            .expect("record");
+    };
+    put(&record(None));
     assert_eq!(localized_video(&work), None, "a job that wrote none");
-    write(
-        &at,
-        serde_json::to_string(&record(Some(&video)))
-            .expect("json")
-            .as_bytes(),
-    );
+    put(&record(Some(&video)));
     assert_eq!(localized_video(&work), None, "the file is gone");
     write(&video, b"x");
     assert_eq!(localized_video(&work), Some(video));

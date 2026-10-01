@@ -20,7 +20,7 @@ crates/pipeline/src/
 ├── resume/    step fingerprints and whether a recorded output is reusable
 ├── runner/    `run_job`: one video through every step, in order, with resume and the shot scan
 ├── tasks/     the body of every step, shared by the runner and the `worker` subcommands
-├── work_dir/  the path of every job file, the job id, complete JSON writes and the job store
+├── work_dir/  the path of every job file, the job id, complete file writes and the job store
 └── workers/   starting a step's worker binary, its inputs and outputs, its frames and progress
 ```
 
@@ -29,37 +29,42 @@ crates/pipeline/src/
 ```text
 runner ──▶ resume ──▶ graph            is the step's record still valid?
    │
-   ├─ graph::placement = InProcess  ──▶ tasks::in_process ──▶ tasks::run ──▶ stages
-   └─ graph::placement = Worker(b)  ──▶ workers::run_worker
+   ├─ graph::placement = InProcess  ──▶ tasks::in_process(StepIo) ──▶ tasks::run ──▶ stages
+   └─ graph::placement = Worker(b)  ──▶ workers::run_worker (graph::reads down stdin)
                                           └─ `<b> worker <step> <job dir>`
                                                └─ tasks::worker_main ──▶ tasks::run
    │
-   ├─ after each step: its outputs committed with its StepRecord in job.redb, job.json through
-   │  work_dir, Progress::StepFinished
+   ├─ after each step: its outputs committed with its StepRecord in job.redb,
+   │  Progress::StepFinished
    └─ at the end: report::write ──▶ report.md
 ```
 
-`runner` owns the loop and the job record. `graph` is the one table every other module asks: what
-a step reads, where it runs, whether it needs the GPU, which settings it depends on, how long it
-may run and which files it leaves. `resume` hashes that into a fingerprint. `work_dir` names
-every path and writes JSON through a part file, so a file that exists is complete; its `store`
-owns `job.redb`, which the runner and Fix It hold open while they work (one process at a time,
-one shared handle in it, its pid in `job.lock`), with the record kind of every row
-(`work_dir::store::kinds`), and which no step writes to yet. `tasks` holds the body of each step;
+`runner` owns the loop and the job record, and clears `--rerun` in one transaction. `graph` is the
+one table every other module asks: what a step reads, which stored values that is, which steps
+depend on it, where it runs, whether it needs the GPU, which settings it depends on and how long it
+may run. `resume` hashes that into a fingerprint and checks a step's stored rows and the files
+they name. `work_dir` names every path and writes the files that stay outside the database
+(the report, the sheet for reading, Fix It's call cache) through a part file, so a file that
+exists is complete; its `store` owns `job.redb`, which the runner, Fix It and the app's readers
+hold open while they work (one process at a time, one shared handle in it, its pid in `job.lock`),
+with the name (`work_dir::store::keys`) and record kind (`work_dir::store::kinds`) of every row,
+and removes the files no row names when it opens. `tasks` holds the body of each step, which
+reads and writes stored documents through its `tasks::StepIo`;
 a worker binary calls `tasks::worker_main`, which sends `Progress`, `ModelCall`, `Measure` and
 `Done` (or `Failed`) frames of the worker channel (`crates/worker_channel/`) on its stdout, and
 `workers` turns those into progress events and a `StepMeasure`, adding the VRAM that
 `measure::gpu_monitor` sampled. `workers::channel` carries a step's stored inputs down its
 worker's stdin and its `Output` frames straight into the job database, uncommitted until the
-runner commits them with the step's record; no step sends either yet. `report` renders `report.md` after every run. Every fallible call
-returns `PipelineError`, whose `ErrorKind` says whether it failed, was cancelled, or found the job
-owned by another process (`Busy`, with that process's pid when known).
+runner commits them with the step's record. `report` renders `report.md` from the stored
+quality check and records after every run. Every fallible call returns `PipelineError`, whose
+`ErrorKind` says whether it failed, was cancelled, or found the job owned by another process
+(`Busy`, with that process's pid when known).
 
 `fix_it` works beside the runner, on a finished job: it holds the job's store, reads the job's
-outputs, runs `stages::fix_it` with a `claude` backend the cancel token stops, keeps each answered call in
-`fix/calls/`, writes `fix.json`, and puts the kept changes into `review.json` through
-`work_dir::update_corrections`. The caller then runs the job again, and the corrections' digest
-makes only the review step and the steps after it run.
+stored documents, runs `stages::fix_it` with a `claude` backend the cancel token stops, keeps
+each answered call in `fix/calls/`, and stores its record (`corrections/fix`) and the kept
+changes in the line corrections (`corrections/lines`) in one transaction. The caller then runs
+the job again, and the corrections' digest makes only the review step and the steps after it run.
 
 ## Public surface
 
@@ -90,11 +95,12 @@ makes only the review step and the steps after it run.
 - Used by: `apps/tbd_subtitles/src/cli/`, `apps/tbd_subtitles_ggml/src/main.rs`,
   `tools/stack_spike/src/measure/` and `tools/visual_validation/src/pilot.rs`.
 - Rules:
-  - no module but `runner` writes the job record, and it writes it after each finished step only
-    (the header of `runner/mod.rs`);
+  - no module but `runner` writes the job record and the step records: the job record once, at
+    the start of a run, and each step record with that step's outputs (the header of
+    `runner/mod.rs`);
   - every step's placement, inputs and outputs come from `graph`, never from a second table
     (`graph/tests/graph.rs`);
-  - every JSON file goes through a part file and a rename
+  - every file `work_dir` writes goes through a part file and a rename
     (`json_round_trips_and_leaves_no_part_file` in `work_dir/tests/work_dir.rs`);
   - a worker's outputs are stored only with its step's record, in one transaction, and a step that
     does not finish stores nothing (`workers/channel/tests/channel.rs`).

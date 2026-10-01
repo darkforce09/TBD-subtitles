@@ -1,103 +1,154 @@
-use std::collections::BTreeMap;
+use std::path::PathBuf;
 
-use job_model::job::{JobSettings, StepMeasure, StepRecord};
+use job_model::job::{StepMeasure, StepRecord};
+use job_model::onscreen::{
+    LocalizedVideoRecord, ReplacementDocument, TextDocument, TextKeyframe, TextOccurrence,
+    VerifiedReplacements,
+};
+use job_model::outputs::{Chosen, Correction, OutputRecord};
+use worker_channel::address::Key;
 
 use super::*;
-
-fn scratch(name: &str) -> WorkDir {
-    let dir = std::env::temp_dir().join(format!("tbd-resume-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).expect("scratch");
-    WorkDir::new(dir)
-}
-
-fn record() -> JobRecord {
-    JobRecord {
-        video: "/videos/a.mp4".into(),
-        video_size: 10,
-        video_modified_s: 5,
-        settings: JobSettings::with_glossary(vec!["Luffy".into()]),
-        models_dir: None,
-        corrections: None,
-        steps: BTreeMap::new(),
-    }
-}
+use crate::work_dir::store::scratch::{Scratch, job_record};
+use crate::work_dir::{self, JobStore};
 
 /// Record `step` as finished at `ns` with its current fingerprint.
-fn finish(record: &mut JobRecord, step: StepName, ns: u128) {
-    let fingerprint = fingerprint(step, record);
-    record.steps.insert(
-        step,
-        StepRecord {
-            fingerprint,
-            finished_ns: ns,
-            measure: StepMeasure::default(),
-        },
-    );
+fn finish(store: &JobStore, record: &JobRecord, step: StepName, ns: u128) {
+    let fingerprint = fingerprint(step, record, &store.read().unwrap()).unwrap();
+    store
+        .put_step_record(
+            step,
+            &StepRecord {
+                fingerprint,
+                finished_ns: ns,
+                measure: StepMeasure::default(),
+            },
+        )
+        .unwrap();
 }
 
-fn touch(paths: &[std::path::PathBuf]) {
-    for p in paths {
-        fs::create_dir_all(p.parent().expect("parent")).expect("dir");
-        fs::write(p, b"x").expect("file");
-    }
+fn current(step: StepName, record: &JobRecord, store: &JobStore) -> String {
+    fingerprint(step, record, &store.read().unwrap()).unwrap()
 }
 
-/// The records whose contents the resume check reads, as a finished step leaves them.
-fn write_records(step: StepName, work: &WorkDir) {
+fn put_bytes(store: &JobStore, key: &Key) {
+    let mut write = store.write().unwrap();
+    write.put(Table::Outputs, key, &0u32).unwrap();
+    write.commit().unwrap();
+}
+
+/// Every document `step` writes, and the files its rows name, as a finished step leaves them.
+fn leave_outputs(scratch: &Scratch, record: &JobRecord, step: StepName) {
+    let store = scratch.store();
     match step {
-        StepName::Output => fs::write(
-            work.output_record(),
-            br#"{"path":"a.srt","unchanged":false}"#,
-        )
-        .unwrap(),
-        StepName::LocalizedVideo => fs::write(
-            work.text(step),
-            br#"{"path":null,"encoder":"","frames":0,"replaced":0}"#,
-        )
-        .unwrap(),
-        _ => {}
+        StepName::ProbeDecode => {
+            scratch.file("audio/mix_16k.f32", b"x");
+            put_bytes(store, &keys::output_key(step, None));
+        }
+        StepName::Separation => {
+            scratch.file("audio/vocals_16k.f32", b"x");
+            scratch.file("audio/background_16k.f32", b"x");
+        }
+        StepName::TextDetect => {
+            scratch.file("visual/crops/one.png", b"x");
+            let document = TextDocument {
+                occurrences: vec![occurrence("visual/crops/one.png")],
+                ..TextDocument::default()
+            };
+            store.put_output(step, None, &document).unwrap();
+        }
+        StepName::Output => {
+            let subtitles = PathBuf::from(&record.video).with_extension("ass");
+            std::fs::write(&subtitles, b"").unwrap();
+            let output = OutputRecord {
+                path: subtitles.to_string_lossy().into_owned(),
+                ..OutputRecord::default()
+            };
+            store.put_output(step, None, &output).unwrap();
+        }
+        StepName::LocalizedVideo => {
+            store
+                .put_output(step, None, &LocalizedVideoRecord::default())
+                .unwrap();
+        }
+        StepName::TextRead
+        | StepName::TextTrack
+        | StepName::TextTranslate
+        | StepName::TextReview => {
+            store
+                .put_output(step, None, &TextDocument::default())
+                .unwrap();
+        }
+        StepName::TextTypeset => {
+            store
+                .put_output(step, None, &TextDocument::default())
+                .unwrap();
+            store
+                .put_output(step, Some(keys::TYPESET_ASS), &String::new())
+                .unwrap();
+        }
+        StepName::TextMask | StepName::TextInpaint | StepName::TextCompose => {
+            store
+                .put_output(step, None, &ReplacementDocument::default())
+                .unwrap();
+        }
+        StepName::TextVerify => {
+            store
+                .put_output(step, None, &VerifiedReplacements::default())
+                .unwrap();
+        }
+        _ => {
+            for key in keys::output_keys(step) {
+                put_bytes(store, &key);
+            }
+        }
     }
+}
+
+fn occurrence(crop: &str) -> TextOccurrence {
+    TextOccurrence {
+        id: "t1".into(),
+        start_s: 1.0,
+        end_s: 2.0,
+        japanese: "海".into(),
+        english: None,
+        confidence: 0.9,
+        crops: vec![crop.into()],
+        frames: Vec::new(),
+        provenance: Default::default(),
+        presentation: Default::default(),
+        warnings: Vec::new(),
+        reviewed: false,
+        rendered: None,
+        source_fingerprint: None,
+        keyframe: None::<TextKeyframe>,
+        ruby: Vec::new(),
+    }
+}
+
+/// A job with every step finished in order.
+fn finished_job(name: &str) -> (Scratch, JobRecord) {
+    let scratch = Scratch::new(name);
+    let record = job_record(&scratch.dir);
+    scratch.store().put_job_record(&record).unwrap();
+    for (index, step) in StepName::ALL.into_iter().enumerate() {
+        leave_outputs(&scratch, &record, step);
+        finish(scratch.store(), &record, step, index as u128 + 1);
+    }
+    (scratch, record)
+}
+
+fn stale(scratch: &Scratch, record: &JobRecord) -> Vec<StepName> {
+    stale_steps(record, &scratch.store().read().unwrap(), scratch.work())
 }
 
 #[test]
-fn missing_visual_crop_invalidates_visual_descendants_without_repeating_audio() {
-    let work = scratch("missing-visual-crop");
-    let mut r = record();
-    r.video = work
-        .root()
-        .join("episode.mp4")
-        .to_string_lossy()
-        .into_owned();
-    for (index, step) in StepName::ALL.into_iter().enumerate() {
-        touch(&graph::outputs(
-            step,
-            &work,
-            Path::new(&r.video),
-            r.settings.effective_output_format(),
-        ));
-        if step == StepName::TextDetect {
-            fs::write(
-                work.text(step),
-                br#"{"occurrences":[{"crops":["visual/crops/one.png"]}]}"#,
-            )
-            .unwrap();
-            touch(&[work.root().join("visual/crops/one.png")]);
-        }
-        write_records(step, &work);
-        r.steps.insert(
-            step,
-            StepRecord {
-                fingerprint: fingerprint_in_work(step, &r, &work),
-                finished_ns: index as u128 + 1,
-                measure: StepMeasure::default(),
-            },
-        );
-    }
-    assert!(stale_steps(&r, &work).is_empty());
-    fs::remove_file(work.root().join("visual/crops/one.png")).unwrap();
+fn a_missing_visual_crop_invalidates_the_visual_steps_without_repeating_audio() {
+    let (scratch, record) = finished_job("resume-crop");
+    assert!(stale(&scratch, &record).is_empty(), "a finished job");
+    std::fs::remove_file(scratch.dir.join("visual/crops/one.png")).unwrap();
     assert_eq!(
-        stale_steps(&r, &work),
+        stale(&scratch, &record),
         vec![
             StepName::TextDetect,
             StepName::TextRead,
@@ -114,90 +165,108 @@ fn missing_visual_crop_invalidates_visual_descendants_without_repeating_audio() 
             StepName::LocalizedVideo,
         ]
     );
-    let _ = fs::remove_dir_all(work.root());
 }
 
 #[test]
-fn a_finished_step_with_its_files_is_reused_and_a_missing_file_reruns_it() {
-    let work = scratch("files");
-    let mut r = record();
-    finish(&mut r, StepName::ProbeDecode, 1);
-    assert!(!is_valid(StepName::ProbeDecode, &r, &work), "no files yet");
-    touch(&[work.probe(), work.mix()]);
-    assert!(is_valid(StepName::ProbeDecode, &r, &work));
-    fs::remove_file(work.mix()).expect("remove");
-    assert!(!is_valid(StepName::ProbeDecode, &r, &work));
+fn a_finished_step_with_its_rows_and_files_is_reused_and_a_missing_one_reruns_it() {
+    let scratch = Scratch::new("resume-files");
+    let store = scratch.store();
+    let record = job_record(&scratch.dir);
+    let valid = || {
+        is_valid(
+            StepName::ProbeDecode,
+            &record,
+            &store.read().unwrap(),
+            scratch.work(),
+        )
+    };
+    finish(store, &record, StepName::ProbeDecode, 1);
+    assert!(!valid(), "no document and no file yet");
+    let mix = scratch.file("audio/mix_16k.f32", b"x");
+    assert!(!valid(), "no document yet");
+    put_bytes(store, &keys::output_key(StepName::ProbeDecode, None));
+    assert!(valid());
+    std::fs::remove_file(&mix).unwrap();
+    assert!(!valid());
     // A part file left by a killed run is not an output.
-    touch(&[work.mix().with_extension("f32.part")]);
-    assert!(!is_valid(StepName::ProbeDecode, &r, &work));
-    let _ = fs::remove_dir_all(work.root());
+    scratch.file("audio/mix_16k.f32.part", b"x");
+    assert!(!valid());
+    scratch.file("audio/mix_16k.f32", b"x");
+    let mut write = store.write().unwrap();
+    write
+        .remove(
+            Table::Outputs,
+            &keys::output_key(StepName::ProbeDecode, None),
+        )
+        .unwrap();
+    write.commit().unwrap();
+    assert!(!valid(), "the document went");
 }
 
 #[test]
 fn a_rerun_upstream_step_invalidates_every_step_that_reads_it() {
-    let mut r = record();
-    finish(&mut r, StepName::ProbeDecode, 1);
-    finish(&mut r, StepName::Separation, 2);
-    finish(&mut r, StepName::Vad, 3);
-    let vad = fingerprint(StepName::Vad, &r);
-    assert_eq!(vad, r.steps[&StepName::Vad].fingerprint);
+    let scratch = Scratch::new("resume-upstream");
+    let store = scratch.store();
+    let r = job_record(&scratch.dir);
+    finish(store, &r, StepName::ProbeDecode, 1);
+    finish(store, &r, StepName::Separation, 2);
+    finish(store, &r, StepName::Vad, 3);
+    let vad = current(StepName::Vad, &r, store);
+    let stored = store.read().unwrap().step_record(StepName::Vad).unwrap();
+    assert_eq!(vad, stored.unwrap().fingerprint);
     // Separation runs again: same settings, a new finish time.
-    finish(&mut r, StepName::Separation, 9);
-    assert_ne!(fingerprint(StepName::Vad, &r), vad);
+    finish(store, &r, StepName::Separation, 9);
+    assert_ne!(current(StepName::Vad, &r, store), vad);
     // The shot scan reads nothing but the video and is untouched.
-    let shots = fingerprint(StepName::ShotScan, &r);
-    finish(&mut r, StepName::ProbeDecode, 10);
-    assert_eq!(fingerprint(StepName::ShotScan, &r), shots);
+    let shots = current(StepName::ShotScan, &r, store);
+    finish(store, &r, StepName::ProbeDecode, 10);
+    assert_eq!(current(StepName::ShotScan, &r, store), shots);
 }
 
 #[test]
 fn a_setting_changes_only_the_steps_that_read_it_and_the_video_changes_the_first() {
-    let r = record();
+    let scratch = Scratch::new("resume-settings");
+    let store = scratch.store();
+    let r = job_record(&scratch.dir);
     let mut tuned = r.clone();
     tuned.settings.cut_score = 35.0;
     assert_ne!(
-        fingerprint(StepName::Cues, &r),
-        fingerprint(StepName::Cues, &tuned)
+        current(StepName::Cues, &r, store),
+        current(StepName::Cues, &tuned, store)
     );
     assert_eq!(
-        fingerprint(StepName::Alignment, &r),
-        fingerprint(StepName::Alignment, &tuned)
+        current(StepName::Alignment, &r, store),
+        current(StepName::Alignment, &tuned, store)
     );
     let mut touched = r.clone();
     touched.video_modified_s = 6;
     assert_ne!(
-        fingerprint(StepName::ProbeDecode, &r),
-        fingerprint(StepName::ProbeDecode, &touched)
+        current(StepName::ProbeDecode, &r, store),
+        current(StepName::ProbeDecode, &touched, store)
     );
     assert_eq!(
-        fingerprint(StepName::Vad, &r),
-        fingerprint(StepName::Vad, &touched)
+        current(StepName::Vad, &r, store),
+        current(StepName::Vad, &touched, store)
     );
 }
 
 #[test]
 fn the_stale_steps_are_the_invalid_ones_and_everything_that_reads_them() {
-    let work = scratch("stale");
-    let mut r = record();
-    r.video = work.root().join("a.mp4").to_string_lossy().into_owned();
-    assert_eq!(stale_steps(&r, &work), StepName::ALL.to_vec(), "a new job");
-    for (ns, step) in StepName::ALL.into_iter().enumerate() {
-        finish(&mut r, step, ns as u128 + 1);
-        touch(&graph::outputs(
-            step,
-            &work,
-            Path::new(&r.video),
-            r.settings.effective_output_format(),
-        ));
-        if step == StepName::TextDetect {
-            fs::write(work.text(step), br#"{"occurrences":[]}"#).unwrap();
-        }
-        write_records(step, &work);
-    }
-    assert!(stale_steps(&r, &work).is_empty(), "a finished job");
-    r.steps.remove(&StepName::Cues);
+    let scratch = Scratch::new("resume-new");
+    let record = job_record(&scratch.dir);
     assert_eq!(
-        stale_steps(&r, &work),
+        stale(&scratch, &record),
+        StepName::ALL.to_vec(),
+        "a new job"
+    );
+    let (scratch, record) = finished_job("resume-stale");
+    let mut write = scratch.store().write().unwrap();
+    write
+        .remove(Table::StepRecords, &keys::record_key(StepName::Cues))
+        .unwrap();
+    write.commit().unwrap();
+    assert_eq!(
+        stale(&scratch, &record),
         vec![
             StepName::Cues,
             StepName::TextTranslate,
@@ -212,16 +281,65 @@ fn the_stale_steps_are_the_invalid_ones_and_everything_that_reads_them() {
             StepName::LocalizedVideo
         ]
     );
-    let _ = fs::remove_dir_all(work.root());
 }
 
 #[test]
-fn the_corrections_reach_the_review_step_alone() {
-    let mut a = record();
-    let before: Vec<String> = StepName::ALL.iter().map(|s| fingerprint(*s, &a)).collect();
-    a.corrections = Some("abc".into());
+fn the_line_corrections_reach_the_review_step_alone() {
+    let scratch = Scratch::new("resume-corrections");
+    let store = scratch.store();
+    let r = job_record(&scratch.dir);
+    let before: Vec<String> = StepName::ALL
+        .iter()
+        .map(|s| current(*s, &r, store))
+        .collect();
+    work_dir::update_corrections(store, |c| {
+        c.set(Correction {
+            id: "U0001".into(),
+            text: "Line.".into(),
+            flags: Vec::new(),
+            chosen: Chosen::Typed,
+        })
+    })
+    .unwrap();
     for (step, old) in StepName::ALL.iter().zip(&before) {
-        let changed = fingerprint(*step, &a) != *old;
+        let changed = current(*step, &r, store) != *old;
         assert_eq!(changed, *step == StepName::Review, "{step}");
     }
+}
+
+#[test]
+fn the_text_corrections_reach_reading_translation_and_review_alone() {
+    let scratch = Scratch::new("resume-text-corrections");
+    let store = scratch.store();
+    let mut r = job_record(&scratch.dir);
+    r.settings.onscreen_text.enabled = true;
+    let before: Vec<String> = StepName::ALL
+        .iter()
+        .map(|s| current(*s, &r, store))
+        .collect();
+    work_dir::update_text_corrections(store, |c| c.retry.push("t1".into())).unwrap();
+    for (step, old) in StepName::ALL.iter().zip(&before) {
+        let changed = current(*step, &r, store) != *old;
+        let reads = matches!(
+            step,
+            StepName::TextRead | StepName::TextTranslate | StepName::TextReview
+        );
+        assert_eq!(changed, reads, "{step}");
+    }
+}
+
+#[test]
+fn a_changed_table_layout_changes_every_fingerprint() {
+    let scratch = Scratch::new("resume-layout");
+    let store = scratch.store();
+    let r = job_record(&scratch.dir);
+    let before = current(StepName::ShotScan, &r, store);
+    let mut layouts = TableLayouts::default();
+    layouts.versions.insert("outputs".into(), 99);
+    let mut write = store.write().unwrap();
+    write
+        .put(Table::Meta, &keys::named(keys::LAYOUT), &layouts)
+        .unwrap();
+    write.commit().unwrap();
+    assert_ne!(current(StepName::ShotScan, &r, store), before);
 }

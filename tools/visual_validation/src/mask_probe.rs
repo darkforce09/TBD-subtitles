@@ -7,8 +7,9 @@
 //! the job recorded.
 //! **Position:** the `mask-probe` command of the validation tool; runs the production
 //! `replace::mask` code on the CPU, decoding regions of the job's source video with FFmpeg.
-//! **Signals and state:** reads the job's `job.json`, `probe.json`, `visual/text_review.json` and
-//! `visual/text_mask.json`; writes keyframe plates, masks and a rerun's files only under `--out`.
+//! **Signals and state:** reads the job record, the probe, the reviewed text, the stroke masks
+//! and the inpainting document from the job's database; writes keyframe plates, masks and a
+//! rerun's files only under `--out`.
 //! **Invariants:** the job's work directory and its source video are only read.
 
 use std::collections::HashMap;
@@ -16,10 +17,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use image::{GrayImage, Rgb, RgbImage};
-use job_model::onscreen::{
-    Point, Quad, ReplaceStatus, ReplacementDocument, TextDocument, TextOccurrence,
-};
-use job_model::outputs::VideoStream;
+use job_model::StepName;
+use job_model::onscreen::{Point, Quad, ReplaceStatus, TextDocument, TextOccurrence};
 use stages::onscreen_text::replace::inpaint;
 use stages::onscreen_text::replace::mask::{self, Diagnosis, Following, Reading};
 use stages::onscreen_text::replace::source::FfmpegRegions;
@@ -52,8 +51,7 @@ pub fn parse_box(text: &str) -> Result<Quad> {
 }
 
 pub fn run(request: &Request) -> Result<()> {
-    let reviewed: TextDocument =
-        pipeline::work_dir::read_json(&request.work.join("visual/text_review.json"))?;
+    let reviewed = crate::job_rows::text(&request.work, StepName::TextReview)?;
     let mut source = open_source(&request.work)?;
     for id in &request.ids {
         let mut occurrence = reviewed
@@ -87,11 +85,7 @@ pub fn run(request: &Request) -> Result<()> {
 
 /// The job's source video with its probed stream.
 fn open_source(work: &Path) -> Result<FfmpegRegions> {
-    let job: serde_json::Value = pipeline::work_dir::read_json(&work.join("job.json"))?;
-    let video = PathBuf::from(job["video"].as_str().context("job.json names no video")?);
-    let probe: serde_json::Value = pipeline::work_dir::read_json(&work.join("probe.json"))?;
-    let stream: VideoStream = serde_json::from_value(probe["probe"]["video"].clone())
-        .context("probe.json has no video stream")?;
+    let crate::job_rows::JobSource { video, stream, .. } = crate::job_rows::source(work)?;
     let programs = media_io::Programs::beside_current_exe();
     FfmpegRegions::open(&programs, &video, &stream).map_err(|e| anyhow::anyhow!("{e}"))
 }
@@ -274,8 +268,7 @@ fn compare_all(
     source: &mut FfmpegRegions,
     out: &Path,
 ) -> Result<()> {
-    let recorded: ReplacementDocument =
-        pipeline::work_dir::read_json(&work.join("visual/text_mask.json"))?;
+    let recorded = crate::job_rows::replacements(work, StepName::TextMask)?;
     let before: HashMap<&str, &ReplaceStatus> = recorded
         .texts
         .iter()
@@ -323,8 +316,7 @@ fn compare_all(
 /// plate's erased pixels that still look like the lettering, and whether the residue check
 /// would retry it.
 pub fn residue(work: &Path) -> Result<()> {
-    let filled: ReplacementDocument =
-        pipeline::work_dir::read_json(&work.join("visual/text_inpaint.json"))?;
+    let filled = crate::job_rows::replacements(work, StepName::TextInpaint)?;
     let (mut checked, mut above) = (0, 0);
     for text in &filled.texts {
         let Some(style) = &text.style else { continue };

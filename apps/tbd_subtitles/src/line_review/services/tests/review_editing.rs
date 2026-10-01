@@ -103,10 +103,7 @@ fn a_picked_reading_is_saved_as_that_engines_and_the_list_moves_on() {
     assert_eq!(c.flags, ["SPK"]);
     assert_eq!(c.chosen, Chosen::Engine("P".into()));
     assert!(s.drafts.is_empty());
-    let written: Corrections = serde_json::from_str(
-        &std::fs::read_to_string(s.work_dir.join("review.json")).expect("file"),
-    )
-    .expect("json");
+    let written: Corrections = stored_corrections(&s.work_dir);
     assert_eq!(written, s.corrections);
     s.list = LineList::All;
     open(&mut s, "U2");
@@ -151,7 +148,7 @@ fn looks_right_saves_the_language_models_text_unchanged() {
 fn reverting_the_last_correction_removes_the_file_and_waits_for_a_run() {
     let mut s = session("revert");
     save(&mut s).expect("save");
-    assert!(s.work_dir.join("review.json").exists());
+    assert!(!stored_corrections(&s.work_dir).lines.is_empty());
     run_started(&mut s);
     run_ended(&mut s, true);
     assert_eq!(s.run("U1"), Some(RunState::Updated));
@@ -159,7 +156,7 @@ fn reverting_the_last_correction_removes_the_file_and_waits_for_a_run() {
     open(&mut s, "U1");
     assert_eq!(revert(&mut s, "U1"), Ok(true));
     assert!(s.correction("U1").is_none());
-    assert!(!s.work_dir.join("review.json").exists());
+    assert!(stored_corrections(&s.work_dir).lines.is_empty());
     assert_eq!(
         s.run("U1"),
         Some(RunState::Saved),
@@ -266,8 +263,9 @@ fn fixed_by_claude(s: &mut ReviewSession, id: &str, text: &str) {
         },
     };
     let work = pipeline::work_dir::WorkDir::new(&s.work_dir);
+    let store = pipeline::work_dir::JobStore::open(&work).expect("the store");
     let (corrections, ()) =
-        pipeline::work_dir::update_corrections(&work, |c| c.set(fix)).expect("write");
+        pipeline::work_dir::update_corrections(&store, |c| c.set(fix)).expect("write");
     s.corrections = corrections;
 }
 
@@ -315,10 +313,7 @@ fn a_save_keeps_a_fix_it_change_written_meanwhile() {
     save(&mut s).expect("save");
     assert_eq!(s.corrections.lines.len(), 2);
     assert!(s.unchecked_fix("U3"));
-    let on_disk: Corrections = serde_json::from_str(
-        &std::fs::read_to_string(s.work_dir.join("review.json")).expect("file"),
-    )
-    .expect("json");
+    let on_disk: Corrections = stored_corrections(&s.work_dir);
     assert_eq!(on_disk, s.corrections);
     let _ = std::fs::remove_dir_all(&s.work_dir);
 }
@@ -334,4 +329,11 @@ fn lines_fix_it_changed_are_marked_saved_for_their_run() {
             ("U3".to_string(), RunState::Saved)
         ]
     );
+}
+
+/// The line corrections the job database in `job` holds.
+fn stored_corrections(job: &std::path::Path) -> job_model::outputs::Corrections {
+    let store = pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(job))
+        .expect("the store");
+    pipeline::work_dir::read_corrections(&store).expect("the corrections")
 }

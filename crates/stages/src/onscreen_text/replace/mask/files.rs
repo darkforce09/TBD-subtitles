@@ -5,7 +5,7 @@
 //! **Signals and state:** one folder per occurrence under `visual/masks/`; folder names claimed
 //! during one extraction.
 //! **Invariants:** folder names use only `[A-Za-z0-9_-]` and are unique within a job; a file
-//! appears under its final name only once it is complete.
+//! appears under its final name only once it is complete and synced.
 
 use std::collections::HashSet;
 use std::fs;
@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use image::{EncodableLayout, ImageBuffer, ImageFormat, PixelWithColorType};
 
-use crate::onscreen_text::TextResult;
+use crate::onscreen_text::{TextResult, png};
 
 /// The folder of every occurrence's masks and source plates, relative to the job directory.
 pub(super) const MASKS: &str = "visual/masks";
@@ -44,12 +44,9 @@ impl Folder {
         P: PixelWithColorType,
         [P::Subpixel]: EncodableLayout,
     {
-        let target = self.absolute.join(name);
-        let temporary = self.absolute.join(format!("{name}.partial"));
-        image
-            .save_with_format(&temporary, ImageFormat::Png)
-            .map_err(|e| format!("write {}: {e}", temporary.display()))?;
-        fs::rename(&temporary, &target).map_err(|e| format!("write {}: {e}", target.display()))?;
+        png::write(&self.absolute.join(name), |out| {
+            image.write_to(out, ImageFormat::Png)
+        })?;
         Ok(self.relative.join(name))
     }
 

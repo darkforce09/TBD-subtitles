@@ -31,10 +31,14 @@ Annotations contain source frame rate, height and expected occurrences with text
 - `run` executes all six visual steps with production workers, resume fingerprints and measured
   time/RAM/VRAM. It accepts optional dialogue cues, uses the One Piece glossary and writes a preview
   ASS in a dedicated work directory. Source videos and installed subtitles remain untouched.
-- `inspect` prints compact occurrence readings, translations, confidence and review flags.
+- `inspect <work> [--step <step>]` prints a job's compact occurrence readings, translations,
+  confidence and review flags from its database (`text_typeset` unless `--step` names another
+  on-screen text step).
 - `scenarios` creates an eight-second Japanese source fixture and independent annotations for
   scrolling credits, fading lyrics, vertical writing, a brief sign, a cut and repeated writing.
-- `evaluate` writes a machine-readable verdict and exits unsuccessfully when acceptance fails.
+- `evaluate <work> <annotations> <verdict>` checks a pilot job's typeset text, read from its
+  database, against the annotations, writes a machine-readable verdict and exits unsuccessfully
+  when acceptance fails.
 - `mask-probe <work> <id>…` prints, for occurrences of a finished job, every figure the stroke-mask
   step judges them by (rectangles, line height, the sampled quads and their offset from the
   keyframe quad, each colour partition's reading, coverage, cut share, largest piece and failed
@@ -47,7 +51,7 @@ Annotations contain source frame rate, height and expected occurrences with text
 - `residue-probe <work>` prints how much of each filled plate's mask still looks like the
   lettering, through the production `replace::inpaint::residue_share`.
 - `verify-probe <work> [<id>…]` runs the production read-back check (`replace::verify::verify`)
-  over a finished job's `visual/text_compose.json` on the host GPU and prints, per sampled frame,
+  over a finished job's composed replacements, read from its database, on the host GPU and prints, per sampled frame,
   the region, lettering and line height read, every line found with its box score, reading,
   confidence and whether it counts as the English (E) or where the writing was (J), the
   similarity and the verdict; then each occurrence's result and the similarity distribution.

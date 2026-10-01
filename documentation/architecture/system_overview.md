@@ -41,7 +41,7 @@ packaged host checks and owner acceptance remain in progress
       tbd-subtitles-llm worker text_translate (mistral.rs; optional claude)
                             | reads and writes
                             v
-                 work/<job id>/  audio, visual artifacts, job.json, report.md
+                 work/<job id>/  job.redb, audio, visual artifacts, report.md
                             | text_review / text_typeset / QC / output in runner
                             v
                  <video folder>/<video base name>.ass
@@ -56,8 +56,9 @@ packaged host checks and owner acceptance remain in progress
 - **process** — headless run for one or more files; used by the Dolphin entry and watch folders
   ([automation](/documentation/features/automation.md)).
 - **worker `<step>`** — one step in its own process: it loads its model once, processes the whole
-  job, writes its output, sends its progress, model calls, own measure and end or failure to the
-  runner as binary frames on a private copy of its stdout pipe
+  job, takes the stored documents it reads as `Input` frames on stdin, sends its outputs as
+  `Output` frames and its progress, model calls, own measure and end or failure to the runner as
+  binary frames on a private copy of its stdout pipe
   ([worker channel](/crates/worker_channel/)), and exits; descriptor 1 points at stderr, so
   whatever a native library prints lands in the step log. This frees VRAM and keeps native
   libraries apart. ONNX models run in `tbd-subtitles`, Whisper in
@@ -90,8 +91,8 @@ crates/
 │                         stdin the caller streams into, and death with their parent
 ├── inference/            backends behind traits: onnx (ort), ggml, candle, llm (claude CLI, mistral.rs),
 │                         model store, CUDA runtime locator
-├── job_model/            serde types for the job record, stage and step names, stage outputs, the QC
-│                         report — the contracts
+├── job_model/            serde and rkyv types for the job record, stage and step names, stage
+│                         outputs, the QC report — the contracts
 ├── media_io/             ffprobe JSON, FFmpeg PCM and timestamped RGB streaming, region crops and
 │                         native frames, shot-change scan, the localized-video encode
 ├── pipeline/             step graph, resume, work directory, worker processes, measurements, tasks,
@@ -114,53 +115,48 @@ depends only on crates of a lower layer, never a sibling (`cargo gates crate-lay
 depends only on the crates listed for it in `tools/repo_gates/src/layout.rs`. Inside the app,
 feature folders keep rendering out of their models and services (the tests in
 `apps/tbd_subtitles/src/tests/architecture_rules.rs`). All boundaries are Rust to Rust, so the
-stage contracts are the serde types in `job_model`; the external contracts, the language model's
-JSON answers, use structured schemas in the stage that makes the call.
+stage contracts are the serde and rkyv types in `job_model`; the external contracts, the
+language model's JSON answers, use structured schemas in the stage that makes the call.
 
 ## Job work directory
 
 ```text
 work/<job id>/            <video file stem as a slug>-<8 hex of its path>
-├── job.json              the video, its size and time, the settings, and each finished step's
-│                         fingerprint, finish time and measure
-├── job.redb              the job database, open read-write by the one process running the job
+├── job.redb              the job database, open read-write by the one process running the job:
+│                         the job record (meta/job_record), every step's record
+│                         (step_records/<step>) and documents (outputs/<step>, plus
+│                         outputs/cues/dropped_sounds and outputs/text_typeset/ass), the owner's
+│                         line and text corrections and Fix It's record (corrections/lines, text,
+│                         fix), and the per-frame tables
 ├── job.lock              the pid of that process, written once it has `job.redb` open
-├── probe.json            the probe result and the decoded audio track
 ├── audio/                mix_16k.f32, vocals_16k.f32, background_16k.f32 (streamed, chunked)
-├── shots.json            every shot change with its scdet score
-├── vad.json              speech regions and chunk plan
-├── asr/                  parakeet.json, whisper.json: words with times and confidences
-├── sheet.json, sheet.txt the diff sheet for adjudication
-├── sound_events.json     the detector's events on both stems
-├── adjudication/         first.json (first pass), redecode_parakeet.json, redecode_whisper.json
-├── adjudicated.json      final text per utterance, flags and the checks' findings
-├── sound_cues.json       candidates and the chosen, worded sound cues
-├── aligned.json          final words with times and their timing source
-├── review.json           the corrections: the owner's, written by the window, and Fix It's
-├── review.json.lock      the lock the two writers of review.json take in turn
-├── fix.json, fix/        Fix It's last run; its answered calls until a run finishes
-├── reviewed.json         the aligned words with the corrected lines timed again
-├── cues.json             finished cues, in frames (and cues_dropped_sounds.json)
-├── visual/               nine text_<step>.json documents, corrections.json, events.ass,
-│                         localized_video.json, representative crops,
-│                         keyframe stills, cached readings and translations, and masks/,
-│                         plates/ and patches/ of the writing replaced in the video
-├── qc.json               the quality check
-├── output.json           where the subtitle file (and the localized one) went and what it replaced
+├── sheet.txt             the diff sheet for reading
+├── visual/               crops/ and keyframes/ of the detected writing; masks/, plates/ and
+│                         patches/ of the writing replaced in the video; the reading cache
+│                         readings/ and the translation cache translations/ (with the cached
+│                         claude-*.json answers)
+├── fix/calls/            Fix It's answered model calls, kept until a run finishes
 ├── report.md             QC results, flagged lines with timestamps, step timings and memory
 ├── logs/                 each worker's stderr
 ├── backup/               subtitle files the output step replaced, the localized one included
 └── claude-cwd/           the empty folder `claude -p` runs in
 ```
 
-A step is skipped when `job.json` holds its current fingerprint and its outputs exist. The
-fingerprint covers the settings the step reads and what its inputs were, so a changed setting
-reruns only its dependent steps. Visual fingerprints also cover pinned model identities and
+A file outside the database is written and synced before the row that names it commits. When a
+job's database opens, the files under `audio/` and `visual/{crops,keyframes,masks,plates,patches}`
+that no row names are removed; the caches, `fix/calls/`, `logs/`, `sheet.txt` and `report.md`
+stay. A job from before the database is not imported: it runs again.
+
+A step is skipped when its step record holds its current fingerprint, its documents are stored
+and the files its rows name exist. The fingerprint covers the settings the step reads, the stored
+table layouts and what its inputs were, so a changed setting reruns only its dependent steps.
+Visual fingerprints also cover pinned model identities and
 installed-file metadata, reference ASS contents, and the relevant corrections. English wording
 or placement edits invalidate visual review/typesetting and final output; selected retries also
 invalidate reading/translation. Valid audio artifacts remain reusable. A step records the
 fingerprint captured before execution, so an edit during a run still makes its result stale.
-Deleting a step's output, or `--rerun <step>`, reruns that step and its dependants.
+A missing file a step's rows name reruns that step and its dependants; `--rerun <step>` clears
+that step and every step that reads it in one transaction.
 
 Records without visual settings keep that branch disabled until an explicit rerun enables it,
 and records without the localized-video setting keep the localized video off. New jobs enable
@@ -200,7 +196,7 @@ precedence over the selected format and writes ASS. A missing file means the def
 unknown key or a bad value stops the run with its name. The window edits the file and the command
 line reads it; `tbd-subtitles process --help` lists the options that win over it for one run,
 plus the audio track and the steps to run again. The job record keeps the job's settings in
-`job.json`, so a resumed job knows what its outputs were made with.
+`job.redb` (`meta/job_record`), so a resumed job knows what its outputs were made with.
 
 ## Hardware and host rules
 

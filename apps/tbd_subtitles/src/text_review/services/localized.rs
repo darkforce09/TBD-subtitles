@@ -1,14 +1,13 @@
 //! A job's localized video as Check Text shows it: its files, each occurrence's replacement, the
 //! selected occurrence's pictures, and the words and geometry the preview draws them with.
 //!
-//! **Role:** read `visual/localized_video.json`, `visual/text_verify.json` (else, in a job from
-//! before the read-back check, `visual/text_compose.json`) and the localized subtitle file named
-//! in `output.json`; find each occurrence's keyframe plate as composition chose it; decode its
+//! **Role:** take the localized video's record and the replacements the read-back check left
+//! from the job's database, and the localized subtitle file the output record names; find each occurrence's keyframe plate as composition chose it; decode its
 //! replaced plate and erase mask at a bounded size; say whether it was replaced and what the
 //! read-back check read; place a plate's rectangle on the picture.
 //! **Position:** called by `session::load` and by application actions off the window thread; the
 //! pure helpers are also read by the preview.
-//! **Signals and state:** reads job files and PNGs; writes nothing.
+//! **Signals and state:** reads rows of a snapshot the caller holds, and PNGs; writes nothing.
 //! **Invariants:** a job without the localized video yields nothing; a missing or broken record
 //! or picture is never an error, only absent; paths from documents stay inside the job folder;
 //! decoded pictures are at most `PICTURE_EDGE` pixels on a side.
@@ -19,11 +18,11 @@ use std::path::{Component, Path, PathBuf};
 use job_model::StepName;
 use job_model::job::JobRecord;
 use job_model::onscreen::{
-    LocalizedVideoRecord, PixelRect, Plate, ReplaceStatus, ReplacedText, ReplacementDocument,
-    TextCheck, TextDocument, TextOccurrence, VerifiedReplacements, VerifyReading,
+    LocalizedVideoRecord, PixelRect, Plate, ReplaceStatus, ReplacedText, TextCheck, TextDocument,
+    TextOccurrence, VerifiedReplacements, VerifyReading,
 };
 use job_model::outputs::OutputRecord;
-use pipeline::work_dir::{self, WorkDir};
+use pipeline::work_dir::store::StoreRead;
 
 use super::player;
 use crate::text_review::models::{
@@ -33,9 +32,27 @@ use crate::text_review::models::{
 /// The longest side of a decoded replaced plate or erase mask.
 const PICTURE_EDGE: u32 = 720;
 
-/// The localized video of the job in `work`, when its settings write one.
+/// The rows of the localized video's steps; each is `None` while missing or broken.
+#[derive(Debug, Default)]
+pub(crate) struct Rows {
+    pub(crate) written: Option<LocalizedVideoRecord>,
+    pub(crate) verified: Option<VerifiedReplacements>,
+}
+
+/// The localized video's rows in `read`: its record and the replacements the read-back check
+/// left.
+pub(crate) fn rows(read: &StoreRead) -> Rows {
+    Rows {
+        written: read.output(StepName::LocalizedVideo, None).ok().flatten(),
+        verified: read.output(StepName::TextVerify, None).ok().flatten(),
+    }
+}
+
+/// The localized video of the job in the folder `root`, from its `rows`, when its settings write
+/// one.
 pub(crate) fn load(
-    work: &WorkDir,
+    root: &Path,
+    rows: Rows,
     job: &JobRecord,
     output: &OutputRecord,
     document: &TextDocument,
@@ -44,8 +61,8 @@ pub(crate) fn load(
     if !(text.enabled && text.localized_video) {
         return None;
     }
-    let video = work_dir::read_json::<LocalizedVideoRecord>(&work.text(StepName::LocalizedVideo))
-        .ok()
+    let video = rows
+        .written
         .and_then(|record| record.path)
         .map(PathBuf::from)
         .filter(|path| path.is_file());
@@ -54,8 +71,9 @@ pub(crate) fn load(
         .as_ref()
         .map(PathBuf::from)
         .filter(|path| path.is_file());
-    let replacements = checked_replacements(work)
-        .map(|verified| replacements(work.root(), &verified, document))
+    let replacements = rows
+        .verified
+        .map(|verified| replacements(root, &verified, document))
         .unwrap_or_default();
     Some(LocalizedReview {
         mode: default_mode(),
@@ -71,21 +89,6 @@ pub(crate) fn load(
 /// or its replaced plates until it is written.
 pub(crate) fn default_mode() -> PreviewMode {
     PreviewMode::Localized
-}
-
-/// The replacements as the read-back check left them, else, in a job from before the check, as
-/// composition left them, without checks.
-pub(crate) fn checked_replacements(work: &WorkDir) -> Option<VerifiedReplacements> {
-    work_dir::read_json::<VerifiedReplacements>(&work.text(StepName::TextVerify))
-        .ok()
-        .or_else(|| {
-            work_dir::read_json::<ReplacementDocument>(&work.text(StepName::TextCompose))
-                .ok()
-                .map(|document| VerifiedReplacements {
-                    document,
-                    checks: Vec::new(),
-                })
-        })
 }
 
 /// Each occurrence's replacement by id, with its keyframe plate's erase mask and what the

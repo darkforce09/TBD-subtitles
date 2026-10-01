@@ -167,3 +167,79 @@ fn a_store_dumps_one_row_pretty_or_a_table_as_json_lines() {
     drop(store);
     let _ = fs::remove_dir_all(&root);
 }
+
+#[test]
+fn every_row_the_pipeline_keeps_prints_as_its_record() {
+    use job_model::StepName;
+    use job_model::job::{JobRecord, JobSettings};
+    use job_model::outputs::FixRecord;
+    use pipeline::work_dir::store::keys;
+    let root = scratch("every-row");
+    let store = JobStore::open(&WorkDir::new(root.join("job"))).expect("store");
+    store
+        .put_job_record(&JobRecord {
+            video: "/videos/episode.mkv".into(),
+            video_size: 1,
+            video_modified_s: 0,
+            settings: JobSettings::with_glossary(Vec::new()),
+            models_dir: None,
+            corrections: None,
+        })
+        .expect("record");
+    store
+        .put_step_record(StepName::TextTypeset, &step_record())
+        .expect("step");
+    store
+        .put_output(
+            StepName::TextTypeset,
+            Some(keys::TYPESET_ASS),
+            &"Dialogue: 0,0:00:01.00".to_string(),
+        )
+        .expect("ass");
+    store
+        .put_output(
+            StepName::Cues,
+            Some(keys::DROPPED_SOUNDS),
+            &vec!["[THUD]".to_string()],
+        )
+        .expect("dropped");
+    pipeline::work_dir::put_fix_record(&store, &FixRecord::default()).expect("fix");
+    pipeline::work_dir::update_text_corrections(&store, |c| c.retry.push("t1".into()))
+        .expect("text corrections");
+    let read = store.read().expect("read");
+    for (table, expected) in [
+        (Table::Meta, vec!["job_record", "layout"]),
+        (Table::StepRecords, vec!["text_typeset"]),
+        (
+            Table::Outputs,
+            vec!["cues/dropped_sounds", "text_typeset/ass"],
+        ),
+        (Table::Corrections, vec!["fix", "text"]),
+    ] {
+        let mut out = Vec::new();
+        assert!(print(&read, table, None, &mut out).unwrap());
+        let lines: Vec<Value> = String::from_utf8(out)
+            .expect("UTF-8")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("JSON"))
+            .collect();
+        let keys: Vec<&str> = lines
+            .iter()
+            .map(|line| line["key"].as_str().expect("a key"))
+            .collect();
+        assert_eq!(keys, expected, "{table}");
+        for line in &lines {
+            assert!(!line["value"].is_null(), "{table} {line}");
+        }
+    }
+    let mut out = Vec::new();
+    let key = Key::Name("text_typeset/ass".into());
+    assert!(print(&read, Table::Outputs, Some(&key), &mut out).unwrap());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&out).unwrap(),
+        "Dialogue: 0,0:00:01.00"
+    );
+    drop(read);
+    drop(store);
+    let _ = fs::remove_dir_all(&root);
+}

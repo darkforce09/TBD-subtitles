@@ -12,14 +12,14 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use image::{GrayImage, RgbImage, imageops};
+use image::{GrayImage, ImageFormat, RgbImage, imageops};
 use imageproc::geometric_transformations::{Interpolation, Projection, warp_into};
 use inference::ocr::TextDetection;
 use job_model::onscreen::{Point, Quad, TextDocument, TextKeyframe, TextOccurrence};
 
 use super::regions::{SAME_REGION, overlap, signature};
 use super::source::FrameSource;
-use crate::onscreen_text::{TextResult, geometry};
+use crate::onscreen_text::{TextResult, geometry, png};
 
 /// Stills requested from the frame source at once.
 const STILL_CHUNK: usize = 4;
@@ -130,7 +130,10 @@ pub(super) fn confirm(
         frame.surface_rgb = surface;
     }
     let crop_path = PathBuf::from(format!("visual/crops/{}.png", item.id));
-    crop(still, quad).save(root.join(&crop_path))?;
+    let rectified = crop(still, quad);
+    png::write(&root.join(&crop_path), |out| {
+        rectified.write_to(out, ImageFormat::Png)
+    })?;
     item.crops = vec![crop_path];
     item.keyframe = Some(TextKeyframe {
         time_s,
@@ -148,20 +151,18 @@ pub(super) fn picture_at(frame: &RgbImage, anchor_box: Quad) -> GrayImage {
 /// Saves a still at most 1280 pixels wide, keeping its aspect.
 pub(super) fn save_keyframe(still: &RgbImage, path: &Path) -> TextResult<()> {
     if still.width() <= KEYFRAME_WIDTH {
-        still.save(path)?;
-        return Ok(());
+        return png::write(path, |out| still.write_to(out, ImageFormat::Png));
     }
     let height = (f64::from(still.height()) * f64::from(KEYFRAME_WIDTH) / f64::from(still.width()))
         .round()
         .max(1.0) as u32;
-    imageops::resize(
+    let resized = imageops::resize(
         still,
         KEYFRAME_WIDTH,
         height,
         imageops::FilterType::Triangle,
-    )
-    .save(path)?;
-    Ok(())
+    );
+    png::write(path, |out| resized.write_to(out, ImageFormat::Png))
 }
 
 /// The quad's lettering plane rectified to an upright image; an axis-aligned or degenerate quad

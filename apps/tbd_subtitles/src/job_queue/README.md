@@ -67,7 +67,7 @@ some and the right side shows a card with the add buttons; while files are dragg
 window, an overlay says to drop them.
 
 A job takes the settings saved now until it first starts; from then on it keeps its own, the ones
-in its `job.json`, as a review run always does, and `queue.json` remembers that across windows.
+in its job record, as a review run always does, and `queue.json` remembers that across windows.
 Try Again puts a failed or cancelled job first in line, resuming after the steps it kept, and Run
 Again puts a finished one first in line with the settings saved now, so only the steps they change
 run again; either starts at once when its lane is idle, without turning the queue on, else it

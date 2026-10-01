@@ -44,7 +44,7 @@ Dressrosa 11 pilot. Now do milestone M2, the desktop GUI.
 2. What exists: the eframe window (glow renderer) with a queue panel and the feature folders
    job_queue/, job_report/, line_review/ and settings/ (models/, services/, ui/; the rules are
    held by apps/tbd_subtitles/src/tests/architecture_rules.rs). The job runner is
-   `pipeline::run_job` with `Progress` events, `job.json`, `qc.json` and `report.md` per job;
+   `pipeline::run_job` with `Progress` events, a `job.redb` database and `report.md` per job;
    the CLI in apps/tbd_subtitles/src/cli/process_command.rs shows how it is called.
 
 3. Environment: you run in the claude-desktop distrobox (no CUDA driver, old FFmpeg, no display).

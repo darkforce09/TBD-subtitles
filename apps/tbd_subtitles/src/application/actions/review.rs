@@ -10,7 +10,7 @@
 //! starts or ends, and after a job ends; uses `line_review::services` and the queue's editing.
 //!
 //! **Signals and state:** the review session, the clip player, the open line's still frame and
-//! the parked edits and runs of closed reviews; `review.json` through `review_editing`.
+//! the parked edits and runs of closed reviews; the stored corrections through `review_editing`.
 //!
 //! **Invariants:** a saved correction always queues one review run of its job; a review run never
 //! starts while a full run of the same video runs; a review that cannot open, or a line that

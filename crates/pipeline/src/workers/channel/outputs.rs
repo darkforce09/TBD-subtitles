@@ -1,12 +1,14 @@
 //! A step's outputs as its worker sends them: kept in one write transaction of the job database
 //! and committed with the step's record.
 //!
-//! **Role:** `StepWrite` begins the step's write transaction on the first `Output` frame, reads
-//! each archive from the worker's pipe into the row redb reserves for it, checks it against its
-//! record kind, and commits every row with the step's record.
+//! **Role:** `StepWrite` begins the step's write transaction on the first output, reads each
+//! archive from the worker's pipe into the row redb reserves for it and checks it against its
+//! record kind, or copies in the archive a task in the runner made, and commits every row with
+//! the step's record.
 //!
-//! **Position:** fed by `workers::frames::read_frames`, handed back by `workers::run_worker`, and
-//! committed by the runner once the step's record is built; uses `work_dir::store`.
+//! **Position:** fed by `workers::frames::read_frames` and by `tasks::StepIo` in the runner,
+//! handed back by `workers::run_worker` and `StepIo::into_outputs`, and committed by the runner
+//! once the step's record is built; uses `work_dir::store`.
 //!
 //! **Signals and state:** holds the job's store and, from the first output on, the database's one
 //! write transaction; while it is open, another step's first output waits for it.
@@ -22,7 +24,7 @@ use job_model::StepName;
 use job_model::job::StepRecord;
 use worker_channel::address::{Address, Key, Table};
 
-use crate::error::Result;
+use crate::error::{PipelineError, Result};
 use crate::work_dir::JobStore;
 use crate::work_dir::store::{self, StoreWrite, kinds};
 
@@ -87,6 +89,28 @@ impl StepWrite {
                     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
             })
             .map_err(|error| format!("the worker's output {shown} was refused: {error}"))?;
+        self.received += 1;
+        Ok(())
+    }
+
+    /// Keep the output at `address` whose archive a task in this process made. A task writes
+    /// only the tables a worker may write.
+    pub fn put(&mut self, address: &Address, archive: &[u8]) -> Result<()> {
+        let shown = format!("{} {}", address.table, kinds::shown(&address.key));
+        if !writable(address.table) {
+            return Err(PipelineError::new(
+                format!("the output {shown}"),
+                format!("a step never writes the {} table", address.table),
+            ));
+        }
+        let write = match &mut self.write {
+            Some(write) => write,
+            empty => empty.insert(self.store.write()?),
+        };
+        write.reserve(address.table, &address.key, archive.len(), |slot| {
+            slot.copy_from_slice(archive);
+            Ok(())
+        })?;
         self.received += 1;
         Ok(())
     }

@@ -9,7 +9,7 @@ job's corrections, where a correction run then times them.
 ```text
 crates/pipeline/src/fix_it/
 ├── cache.rs   each answered call kept in `fix/calls/`, so a stopped run resumes at no cost
-├── inputs.rs  whether the job is ready, and everything Fix It reads from its work directory
+├── inputs.rs  whether the job is ready, and everything Fix It reads from the job's store
 ├── merge.rs   the kept changes into the corrections, the owner's own corrections first
 ├── mod.rs     `fix_video`, `fix_job`, `FixOptions`, `FixStage`, `FixProgress` and `FixOutcome`
 └── tests/     unit tests for the merge, whole runs, a stop, a second run and a stale record
@@ -20,7 +20,7 @@ crates/pipeline/src/fix_it/
 ```text
 fix_video ─▶ JobStore ─▶ inputs::load ─▶ stages::fix_it::run (claude, through cache)
                                                    │
-             review.json ◀─ update_corrections(merge) ◀─ fix.json
+       corrections/lines + corrections/fix ◀─ save(merge), one write transaction
 ```
 
 `fix_video` makes one `ClaudeCli` of the chosen model per worker, with the cancel token's flag,
@@ -31,9 +31,12 @@ started earlier go first, a Stop ends a wait, and a busy answer is asked again a
 job of the same video running in this process and failing with the busy error kind when another
 process owns the job, and refuses a job
 whose quality check or output step has not finished, or whose corrections changed since its last
-run ("your latest corrections are not in the subtitles yet"). It reads the sheet with the
-re-decoded alternatives, the lines with the corrections in place, the corrections, `qc.json`,
-`reviewed.json`, the main engine's words and the earlier runs' `fix.json` when it is current
+run ("your latest corrections are not in the subtitles yet"). It reads, from one snapshot of
+the store, the job and step records, the sheet (`outputs/diff_sheet`) with the re-decoded
+alternatives (`outputs/redecode_parakeet`, `outputs/redecode_whisper`), the lines
+(`outputs/readjudicate`) with the corrections in place, the corrections, the quality check
+(`outputs/qc`), the timing (`outputs/review`), the main engine's words (`outputs/asr_parakeet`)
+and the earlier runs' record (`corrections/fix`) when it is current
 (`FixRecord::is_current`: its `adjudication` is empty or matches the job's re-adjudication
 fingerprint; a missing, unreadable or stale one counts as none). What that record answered
 (`stages::fix_it::items::Answered`) is not asked again. It runs the passes with each model wrapped in
@@ -42,15 +45,16 @@ cost and without a slot at the gate, and every new answer is kept first. Progres
 family, checking, saving) with the calls done.
 
 A stopped run returns a cancelled `PipelineError` and changes nothing; its answered calls stay, so
-the next run asks only what is left. A finished run writes `fix.json`, then puts each kept or
-accepted line of this run into `review.json` inside `work_dir::update_corrections` as a
-`Chosen::FixIt` correction with the model and the reason, writes `fix.json` again with what was
-applied, and removes `fix/calls/`. A line the owner settled, even one saved while Fix It ran,
+the next run asks only what is left. A finished run puts each kept or accepted line of this
+run into the line corrections as a `Chosen::FixIt` correction with the model and the reason, and
+stores its record with what was applied, both in one write transaction of the store that reads
+the corrections inside it; then it removes `fix/calls/`. A finished job whose store lacks a
+document Fix It reads is refused, naming the step. A line the owner settled, even one saved while Fix It ran,
 keeps the owner's correction and is listed in `kept_yours`.
 
 The written record is this run's lines and the earlier record's lines this run did not ask about,
 sorted by id; its calls, cached calls, tokens, cost and failed calls add to the earlier ones.
-`before` is the earlier record's, or `FixBefore::of` this run's `qc.json` when there is none, so
+`before` is the earlier record's, or `FixBefore::of` the job's quality check when there is none, so
 it keeps the problems before the first run. `adjudication` is the job's re-adjudication
 fingerprint, empty when the job has none.
 
@@ -67,8 +71,8 @@ reused from an earlier run", with its purpose.
 ## Boundaries
 
 - Depends on: `stages::fix_it`, `stages::adjudication::redecode`, `inference::llm`,
-  `crate::work_dir` (its `JobStore` too), `crate::tasks::corrected_lines`, `job_model`,
-  `sha2`.
+  `crate::work_dir` (its `JobStore`, its keys and the corrections' digest), `worker_channel`
+  (the table names), `crate::tasks::corrected_lines`, `job_model`, `sha2`.
 - Used by: `apps/tbd_subtitles/src/application/` (the window's Fix It) and
   `apps/tbd_subtitles/src/cli/` (the `fix` subcommand).
 - Rules:

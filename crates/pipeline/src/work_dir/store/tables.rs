@@ -37,7 +37,7 @@ pub const LAYOUT_KEY: &str = "layout";
 /// the steps that wrote it run again ("Adding a field" in
 /// `documentation/architecture/binary_storage_plan.md`).
 pub const LAYOUT_VERSIONS: [(Table, u32); 6] = [
-    (Table::Meta, 1),
+    (Table::Meta, 2),
     (Table::StepRecords, 1),
     (Table::Outputs, 1),
     (Table::Corrections, 1),

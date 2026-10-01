@@ -1,58 +1,57 @@
 //! Tasks for the six resumable visual steps of a normal video job.
 //!
-//! **Role:** load models only in their dedicated workers and install typed visual artifacts.
-//! **Position:** pipeline task dispatch above the on-screen stages.
-//! **Signals and state:** visual JSON, representative crops, keyframe stills, translations and
-//! ASS events.
-//! **Invariants:** disabled visual jobs need no visual model; each output is written atomically;
-//! the local translation model loads only when Claude leaves an occurrence unanswered.
+//! **Role:** load models only in their dedicated workers and store each step's typed text
+//! document.
+//! **Position:** pipeline task dispatch above the on-screen stages; every stored input and output
+//! goes through the step's `StepIo`.
+//! **Signals and state:** reads the probe, the shot changes, the cue track, the owner's text
+//! corrections (`corrections/text`) and the previous visual step's document; stores
+//! `outputs/<step>` and, for typesetting, the ASS events as `outputs/text_typeset/ass`; writes
+//! representative crops and keyframe stills under `visual/`, and the readings, translation and
+//! Claude caches.
+//! **Invariants:** disabled visual jobs need no visual model and store empty documents; every PNG
+//! a document names is synced before the document is handed to the store; the local translation
+//! model loads only when Claude leaves an occurrence unanswered.
 
-use super::{Job, StepProgress, TaskReport, since};
+use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, PipelineError, Result};
-use crate::work_dir;
+use crate::work_dir::store::keys;
 use inference::ocr::{OcrDetector, OcrReader, TextDetection};
 use job_model::StepName;
-use job_model::onscreen::{TextCorrections, TextDocument};
-use job_model::outputs::ShotChanges;
+use job_model::onscreen::TextDocument;
+use job_model::outputs::{ProbeDecoded, ShotChanges, VideoStream};
 use stages::onscreen_text;
 use std::time::Instant;
 
-pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<TaskReport> {
+pub(super) fn run(
+    step: StepName,
+    job: &Job,
+    io: &mut StepIo,
+    progress: StepProgress,
+) -> Result<TaskReport> {
     let started = Instant::now();
     let mut report = TaskReport::default();
     if !job.settings().onscreen_text.enabled {
-        work_dir::write_json(&job.work.text(step), &TextDocument::default())?;
+        io.put(step, None, &TextDocument::default())?;
         if step == StepName::TextTypeset {
-            work_dir::write_text(&job.work.text_ass(), "")?;
+            io.put(step, Some(keys::TYPESET_ASS), &String::new())?;
         }
         report.note("disabled", true);
         return Ok(report);
     }
-    let probe = job.probe()?;
-    let stream =
-        probe.probe.video.as_ref().ok_or_else(|| {
-            PipelineError::new("visual translation", "the file has no video stream")
-        })?;
-    let programs = media_io::Programs::beside_current_exe();
-    let upstream = match step {
-        StepName::TextRead => StepName::TextDetect,
-        StepName::TextTrack => StepName::TextRead,
-        StepName::TextTranslate => StepName::TextTrack,
-        StepName::TextReview => StepName::TextTranslate,
-        StepName::TextTypeset => StepName::TextReview,
-        _ => StepName::TextDetect,
-    };
-    let mut document = if step == StepName::TextDetect {
-        TextDocument::default()
-    } else {
-        work_dir::read_json(&job.work.text(upstream))?
+    let mut document = match upstream(step) {
+        Some(upstream) => io.get(upstream, None)?,
+        None => TextDocument::default(),
     };
     match step {
         StepName::TextDetect => {
+            let probe = io.probe()?;
+            let stream = video_stream(&probe)?;
+            let programs = media_io::Programs::beside_current_exe();
             let mut detector = OcrDetector::open(&job.models()?)
                 .context("open PP-OCRv5 detector; download visual models in Settings")?;
             report.load_s = since(started);
-            let shots: ShotChanges = work_dir::read_json(&job.work.shots())?;
+            let shots: ShotChanges = io.get(StepName::ShotScan, None)?;
             let estimated_frames =
                 (probe.probe.duration_s * stream.fps().unwrap_or(24.0)).ceil() as usize;
             let advance = |done, total| {
@@ -82,28 +81,34 @@ pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<T
             let mut reader = OcrReader::open(&job.models()?)
                 .context("open local text readers; download visual models in Settings")?;
             report.load_s = since(started);
+            let shots: ShotChanges = io.get(StepName::ShotScan, None)?;
             onscreen_text::read::read(
                 &mut document,
                 job.work.root(),
                 &mut reader,
-                &corrections(job)?,
+                &io.text_corrections()?,
+                &shots,
                 progress,
             )
             .context("read visible writing")?;
         }
-        StepName::TextTrack => onscreen_text::track::track(&mut document, stream, progress)
-            .context("check visible writing geometry")?,
-        StepName::TextTranslate => translate(job, &mut document, progress, &mut report)?,
+        StepName::TextTrack => {
+            let probe = io.probe()?;
+            onscreen_text::track::track(&mut document, video_stream(&probe)?, progress)
+                .context("check visible writing geometry")?
+        }
+        StepName::TextTranslate => translate(job, io, &mut document, progress, &mut report)?,
         StepName::TextReview => {
-            onscreen_text::review::apply(&mut document, &corrections(job)?, probe.probe.duration_s)
+            let duration_s = io.probe()?.probe.duration_s;
+            onscreen_text::review::apply(&mut document, &io.text_corrections()?, duration_s)
                 .context("apply visual corrections")?;
-            let shots: ShotChanges = work_dir::read_json(&job.work.shots())?;
+            let shots: ShotChanges = io.get(StepName::ShotScan, None)?;
             onscreen_text::unify::unify(&mut document, &shots);
         }
         StepName::TextTypeset => {
             let events = onscreen_text::typeset::events(&mut document)
                 .context("typeset visible translations")?;
-            work_dir::write_text(&job.work.text_ass(), &events)?;
+            io.put(step, Some(keys::TYPESET_ASS), &events)?;
         }
         _ => return Err(PipelineError::new("visual step", "unexpected task")),
     }
@@ -114,21 +119,35 @@ pub(super) fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<T
     report.note("fallback", summary.fallback);
     report.note("unresolved", summary.unresolved);
     report.note("flagged", summary.flagged);
-    work_dir::write_json(&job.work.text(step), &document)?;
+    io.put(step, None, &document)?;
     Ok(report)
 }
 
-fn corrections(job: &Job) -> Result<TextCorrections> {
-    if job.work.text_corrections().exists() {
-        work_dir::read_json(&job.work.text_corrections())
-    } else {
-        Ok(TextCorrections::default())
+/// The visual step whose document `step` continues; `None` for detection, which starts one.
+fn upstream(step: StepName) -> Option<StepName> {
+    match step {
+        StepName::TextRead => Some(StepName::TextDetect),
+        StepName::TextTrack => Some(StepName::TextRead),
+        StepName::TextTranslate => Some(StepName::TextTrack),
+        StepName::TextReview => Some(StepName::TextTranslate),
+        StepName::TextTypeset => Some(StepName::TextReview),
+        _ => None,
     }
+}
+
+/// The probed video stream; a file without one has no writing to find.
+fn video_stream(probe: &ProbeDecoded) -> Result<&VideoStream> {
+    probe
+        .probe
+        .video
+        .as_ref()
+        .ok_or_else(|| PipelineError::new("visual translation", "the file has no video stream"))
 }
 
 #[cfg(feature = "mistralrs")]
 fn translate(
     job: &Job,
+    io: &StepIo,
     document: &mut TextDocument,
     progress: StepProgress,
     report: &mut TaskReport,
@@ -136,6 +155,7 @@ fn translate(
     use inference::llm::{LanguageModel, claude_cli::ClaudeCli, mistral_rs::MistralRs};
     use onscreen_text::translate::{TranslationInput, translate};
     use std::cell::Cell;
+    use subtitle_formats::cue::CueTrack;
     let models = job.models()?;
     let load_s = Cell::new(0.0);
     // The local model loads only for occurrences Claude leaves, so its load time is measured
@@ -148,12 +168,14 @@ fn translate(
         Ok(Box::new(local))
     };
     let mut claude = ClaudeCli::new(&job.settings().llm_model, job.work.claude_cwd());
-    let dialogue = work_dir::read_json(&job.work.cues())?;
-    let corrections = corrections(job)?;
+    let dialogue: CueTrack = io.get(StepName::Cues, None)?;
+    let shots: ShotChanges = io.get(StepName::ShotScan, None)?;
+    let corrections = io.text_corrections()?;
     let own_output = job.video().with_extension("ass");
     let input = TranslationInput {
         root: job.work.root(),
         dialogue: &dialogue,
+        cuts: &shots,
         glossary: &job.settings().glossary,
         settings: &job.settings().onscreen_text,
         corrections: &corrections,
@@ -175,6 +197,7 @@ fn translate(
 #[cfg(not(feature = "mistralrs"))]
 fn translate(
     _job: &Job,
+    _io: &StepIo,
     _document: &mut TextDocument,
     _progress: StepProgress,
     _report: &mut TaskReport,
@@ -184,3 +207,7 @@ fn translate(
         "this worker has no mistral.rs backend; build tbd-subtitles-llm with --features mistralrs or reinstall the AppImage",
     ))
 }
+
+#[cfg(test)]
+#[path = "tests/onscreen.rs"]
+mod tests;

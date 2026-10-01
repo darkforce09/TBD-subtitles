@@ -11,8 +11,8 @@
 //! **Signals and state:** none; one static kind per type.
 //!
 //! **Invariants:** a key that names no record type is an error, never a guess; an `outputs` key is
-//! a step's name, or `<step>/<part>` for a step's second document; `frames` and `readings` have no
-//! record type yet; a kind's check and its JSON read the same type.
+//! one `keys::output_parts` lists; `frames` and `readings` have no record type yet; a kind's check
+//! and its JSON read the same type.
 
 use job_model::StepName;
 use job_model::job::{JobRecord, StepRecord};
@@ -20,8 +20,8 @@ use job_model::onscreen::{
     LocalizedVideoRecord, ReplacementDocument, TextCorrections, TextDocument, VerifiedReplacements,
 };
 use job_model::outputs::{
-    AdjudicationPass, Aligned, Corrections, EngineTranscript, OutputRecord, ProbeDecoded, Redecode,
-    ShotChanges, SoundCues, SoundEvent, SpeechPlan, Utterance,
+    AdjudicationPass, Aligned, Corrections, EngineTranscript, FixRecord, OutputRecord,
+    ProbeDecoded, Redecode, ShotChanges, SoundCues, SoundEvent, SpeechPlan, Utterance,
 };
 use job_model::report::QcReport;
 use job_model::store::TableLayouts;
@@ -32,6 +32,7 @@ use rkyv::{Archive, Deserialize};
 use subtitle_formats::cue::CueTrack;
 use worker_channel::address::{Key, Table};
 
+use super::keys;
 use crate::error::{PipelineError, Result};
 
 /// The type one row archives: its name, how to check an archive of it, and how to print one.
@@ -105,6 +106,8 @@ static TABLE_LAYOUTS: RecordKind = RecordKind::of::<TableLayouts>("TableLayouts"
 static STEP_RECORD: RecordKind = RecordKind::of::<StepRecord>("StepRecord");
 static CORRECTIONS: RecordKind = RecordKind::of::<Corrections>("Corrections");
 static TEXT_CORRECTIONS: RecordKind = RecordKind::of::<TextCorrections>("TextCorrections");
+static FIX: RecordKind = RecordKind::of::<FixRecord>("FixRecord");
+static TEXT: RecordKind = RecordKind::of::<String>("String");
 static PROBE_DECODED: RecordKind = RecordKind::of::<ProbeDecoded>("ProbeDecoded");
 static SHOT_CHANGES: RecordKind = RecordKind::of::<ShotChanges>("ShotChanges");
 static SPEECH_PLAN: RecordKind = RecordKind::of::<SpeechPlan>("SpeechPlan");
@@ -144,14 +147,15 @@ pub fn kind(table: Table, key: &Key) -> Result<&'static RecordKind> {
     };
     let found = match table {
         Table::Meta => match name.as_str() {
-            "job_record" => Some(&JOB_RECORD),
-            "layout" => Some(&TABLE_LAYOUTS),
+            keys::JOB_RECORD => Some(&JOB_RECORD),
+            keys::LAYOUT => Some(&TABLE_LAYOUTS),
             _ => None,
         },
         Table::StepRecords => name.parse::<StepName>().ok().map(|_| &STEP_RECORD),
         Table::Corrections => match name.as_str() {
-            "lines" => Some(&CORRECTIONS),
-            "text" => Some(&TEXT_CORRECTIONS),
+            keys::LINE_CORRECTIONS => Some(&CORRECTIONS),
+            keys::TEXT_CORRECTIONS => Some(&TEXT_CORRECTIONS),
+            keys::FIX_RECORD => Some(&FIX),
             _ => None,
         },
         Table::Outputs => output(name),
@@ -160,21 +164,17 @@ pub fn kind(table: Table, key: &Key) -> Result<&'static RecordKind> {
     found.ok_or_else(|| PipelineError::new(at, "no record type is defined for this key"))
 }
 
-/// The kind of an `outputs` key: a step's document, or `<step>/<part>` for its second one.
+/// The kind of an `outputs` key: a step's document, or `<step>/<part>` for a further one.
 fn output(name: &str) -> Option<&'static RecordKind> {
-    let (step, part) = match name.split_once('/') {
-        Some((step, part)) => (step, Some(part)),
-        None => (name, None),
-    };
-    let step = step.parse::<StepName>().ok()?;
-    match (step, part) {
-        (StepName::Cues, Some("dropped_sounds")) => Some(&DROPPED_SOUNDS),
+    match keys::parse_output(name)? {
+        (StepName::Cues, Some(keys::DROPPED_SOUNDS)) => Some(&DROPPED_SOUNDS),
+        (StepName::TextTypeset, Some(keys::TYPESET_ASS)) => Some(&TEXT),
         (_, Some(_)) => None,
         (step, None) => step_document(step),
     }
 }
 
-/// The kind of the document `step` writes today; `None` for a step that writes none.
+/// The kind of `step`'s main document; `None` for a step that writes none.
 fn step_document(step: StepName) -> Option<&'static RecordKind> {
     Some(match step {
         StepName::ProbeDecode => &PROBE_DECODED,

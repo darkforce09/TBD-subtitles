@@ -15,6 +15,7 @@ crates/stages/src/onscreen_text/
 ├── glyphs.rs             portable vector outlines for perspective lettering
 ├── keyframe_requests.rs  keyframe grouping, Claude prompts, answer schema and checks, added writing
 ├── mod.rs                stage module exports
+├── png.rs                synced PNG writes: crops, stills, masks, plates, patches and previews
 ├── read.rs               Japanese readings and compatible adjacent fragments
 ├── reference.rs          scene-validated reference wording
 ├── replace/              stroke masks, inpainted plates and English lettering for the localized video
@@ -43,7 +44,8 @@ finds outside the listed regions becomes a flagged nearby occurrence. A retry ge
 refreshes a request once and then resumes its cached result. Local readings with at least four
 katakana characters plus kanji cap their local translation confidence at 0.84.
 
-Reading and translation consolidate compatible adjacent occurrences without crossing known cuts;
+Reading and translation consolidate compatible adjacent occurrences without crossing the shot
+changes the caller passes;
 translated wording and confidence bands must agree, and a gap of up to one and a half of the
 shortest frame counts as one missing frame, which the earlier sighting then covers. All observed
 frames and crops survive. A kana-only line folds into the one kanji line it sits on as ruby: its
@@ -82,7 +84,7 @@ buffer limit fails explicitly.
 
 - Depends on: `job_model`, `media_io`, `inference`, `subtitle_formats` and pure Rust geometry and font libraries.
 - Used by: `pipeline::tasks::onscreen`.
-- Rules: source videos remain read-only; no model conversion or full-video image extraction; an uncertain mask never covers foreground artwork.
+- Rules: source videos remain read-only; no model conversion or full-video image extraction; an uncertain mask never covers foreground artwork; stages read no step document from the job folder, the caller passes it; every PNG a document names is written through `png.rs`, synced before the stage returns.
 
 ## Related documentation
 

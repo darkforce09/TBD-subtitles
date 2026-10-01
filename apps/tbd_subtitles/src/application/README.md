@@ -291,8 +291,8 @@ everything onto disk (the frame asks for a redraw when it goes).
     (`the_window_draws_in_the_desktops_scheme`, `a_change_of_the_desktops_scheme_is_followed`);
     the rendering harness installs the theme;
   - the tests never write the owner's files (`Environment::scratch`), and read them only in the
-    ignored snapshot test `window_snapshots` (`tests/window_snapshots.rs`), which copies the JSON
-    files of the Dressrosa 11 and 15–17 work folders into a scratch folder and writes PNGs of the
+    ignored snapshot test `window_snapshots` (`tests/window_snapshots.rs`), which copies the job
+    databases of the Dressrosa 11 and 15–17 work folders into a scratch folder and writes PNGs of the
     finished queue, the Dressrosa 15 Overview, then scrolled to its open Details and Step times
     (`overview_d15`), its lines to check, the Settings window, the log window with a job's lines
     (`log`), a line open below the list (`log_detail`) and its model call (`log_calls`), the
@@ -309,7 +309,7 @@ everything onto disk (the frame asks for a redraw when it goes).
     (`check_lines_first`, `after_use`, `after_looks_right`, `group_filter`, `all_checked`, whose
     corrections go to the scratch copy), and Dressrosa 17 just after a stand-in Fix It answered
     every line the owner had not checked, with its result card, its toast and every line checked
-    (`fix_it_done`, whose `fix.json` and corrections go to the scratch copy), light and dark, at
+    (`fix_it_done`, whose Fix It record and corrections go to the scratch copy's database), light and dark, at
     1280 by 800, to `$TBD_SNAPSHOTS`:
     `TBD_SNAPSHOTS=<folder> cargo test -p tbd_subtitles -- --ignored window_snapshots`, on the
     host, since it renders with wgpu;

@@ -27,7 +27,7 @@ it keeps its own settings (once it has started), the steps its next run does aga
 review run, how many corrections it carries. A `Failure` names the step that failed (none when
 the job failed before its first step), the message, and the steps it had finished, each a
 `FinishedStep`: done in that run with its seconds (or in a time not known, for a failure an older
-window kept with no `job.json` to read), or still valid from an earlier run; its count of kept
+window kept with no job record to read), or still valid from an earlier run; its count of kept
 steps is the list's length once the list is known. A `JobProgress`
 holds the work directory, the video's length, the steps the job's settings leave idle (which add
 no time left) and a row per step: whether this run does it, and pending, still valid, running (since when, how far, its last line), done (its time) or failed;

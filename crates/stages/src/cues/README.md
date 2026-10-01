@@ -26,11 +26,11 @@ ends after the video. `build` then runs the passes over `Draft`s, cues whose lin
 span and frames are still being settled:
 
 ```text
-aligned.json ─▶ segment::units ─▶ segment::drafts ─▶ timing::initial ─▶ shots::snap
+word timings ─▶ segment::units ─▶ segment::drafts ─▶ timing::initial ─▶ shots::snap
                                                                            │
                                                           (extend, separate) ×2
                                                                            │
-cues.json ◀─ timing::clamp ◀─ timing::chain ◀─ sound::place ◀─ short::resolve
+cue track ◀─ timing::clamp ◀─ timing::chain ◀─ sound::place ◀─ short::resolve
 ```
 
 `segment` splits each speaker's turn at sentence ends, then clauses, then pauses of 250 ms, until
@@ -70,9 +70,10 @@ duration, then the shot rules.
 
 - Depends on: `subtitle_formats::cue` (`FrameRate`, `Cue`, `CueKind`, `CueLine`, `CueTrack`),
   `job_model::outputs` (`Aligned`, `ShotChanges`, `SoundCue`).
-- Used by: `crates/pipeline/src/tasks/layout.rs` (the cue step, which writes `cues.json` and the
-  dropped sound cues); `crates/stages/src/qc/`, which checks cues with `FrameRules`,
-  `line_break::MAX_LINE` and `segment::MAX_CPS`.
+- Used by: `crates/pipeline/src/tasks/layout.rs` (the cue step, which stores the cue track
+  as `outputs/cues` and the dropped sound cues as `outputs/cues/dropped_sounds`);
+  `crates/stages/src/qc/`, which checks cues with `FrameRules`, `line_break::MAX_LINE` and
+  `segment::MAX_CPS`.
 - Rules:
   - the stage runs inside the job runner, not in a worker, so it loads no model and starts no
     child process (`placement` in `crates/pipeline/src/graph/mod.rs`);

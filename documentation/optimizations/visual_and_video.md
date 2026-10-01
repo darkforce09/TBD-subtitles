@@ -79,7 +79,8 @@ action, occasionally generating 1-frame dropouts or detached 2-frame initial fra
 - A 1D Kalman filter runs over the bounding box coordinate series stored in `job.redb`.
 - Brief 1-to-2 frame dropouts are interpolated smoothly.
 - The entrance and exit boundaries of an occurrence snap automatically to the nearest shot cut
-  from `shots.json`, preventing replacement patches from lingering into an unrelated cut.
+  from the shot scan (`outputs/shot_scan`), preventing replacement patches from lingering into an
+  unrelated cut.
 
 ## 5. Multi-modal audio-visual synchronization
 
@@ -88,8 +89,8 @@ percussive sound effects or narrator speech onsets.
 
 ### The solution
 
-- The visual pipeline cross-references `visual/text_detect` entries with `sound_events` and speech
-  word starts from `aligned`.
+- The visual pipeline cross-references `outputs/text_detect` entries with `outputs/sound_events`
+  and speech word starts from `outputs/alignment`.
 - When an occurrence entrance lands within 3 frames of a verified sound event or narrator dialogue
   start, its start frame snaps to that exact acoustic timestamp.
 - Subtitle appearances achieve director-intended cinematic synchrony.

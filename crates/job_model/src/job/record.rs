@@ -1,13 +1,14 @@
-//! What `job.json` records: the video it is for, the settings, and each finished step with its
-//! fingerprint, finish time and measurements; plus what a worker process reports about itself.
+//! What the job database records of a job: the video it is for and the settings (`meta/job_record`),
+//! and each finished step with its fingerprint, finish time and measurements (`step_records/<step>`);
+//! plus what a worker process reports about itself.
 //!
-//! **Role:** the record the job runner keeps of one job and resumes from.
+//! **Role:** the records the job runner keeps of one job and resumes from.
 //!
 //! **Position:** written and read by `pipeline`; built from the settings the app gives it.
 //!
-//! **Signals and state:** none; plain data, written as JSON and archived with rkyv.
+//! **Signals and state:** none; plain data, archived with rkyv and printed as JSON.
 //!
-//! **Invariants:** a step is in `steps` only once it finished; a measure of `None` means not
+//! **Invariants:** a step has a record only once it finished; a measure of `None` means not
 //! measured, never zero.
 
 use std::collections::BTreeMap;
@@ -39,14 +40,14 @@ pub struct JobRecord {
     /// changes a step's output, so no fingerprint covers it.
     #[serde(default)]
     pub models_dir: Option<String>,
-    /// The SHA-256 of the owner's corrections (`review.json`) when this run started; `None` when
-    /// there are none. The review step's fingerprint covers it.
+    /// The SHA-256 of the owner's stored line corrections when this run started; `None` when
+    /// there are none. Fix It refuses a job whose corrections changed since.
     #[serde(default)]
     pub corrections: Option<String>,
-    /// Every step that finished, with what it was run on.
-    #[serde(default)]
-    pub steps: BTreeMap<StepName, StepRecord>,
 }
+
+/// Every finished step of a job with what it was run on, as the `step_records` table holds them.
+pub type StepRecords = BTreeMap<StepName, StepRecord>;
 
 /// One finished step.
 #[derive(

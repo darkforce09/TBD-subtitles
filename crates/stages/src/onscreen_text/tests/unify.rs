@@ -332,12 +332,11 @@ fn only_numbered_c_suffixes_mark_claude_found_writing() {
 }
 
 #[test]
-#[ignore = "set TBD_VISUAL_TRANSLATE_FIXTURE to a job's visual/text_translate.json"]
+#[ignore = "set TBD_VISUAL_TRANSLATE_FIXTURE and TBD_VISUAL_SHOTS_FIXTURE to a job's `tbd-subtitles dump <job> outputs text_translate` and `… outputs shot_scan`"]
 fn a_translated_job_keeps_one_occurrence_per_sign() {
-    let path = PathBuf::from(std::env::var_os("TBD_VISUAL_TRANSLATE_FIXTURE").expect("fixture"));
-    let mut input: TextDocument = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    let shots_path = path.parent().unwrap().parent().unwrap().join("shots.json");
-    let shots: ShotChanges = serde_json::from_slice(&std::fs::read(shots_path).unwrap()).unwrap();
+    let fixture = |name| PathBuf::from(std::env::var_os(name).expect("fixture"));
+    let mut input: TextDocument = dumped(fixture("TBD_VISUAL_TRANSLATE_FIXTURE"));
+    let shots: ShotChanges = dumped(fixture("TBD_VISUAL_SHOTS_FIXTURE"));
     let before = input.occurrences.len();
     unify(&mut input, &shots);
     println!(
@@ -369,4 +368,10 @@ fn a_translated_job_keeps_one_occurrence_per_sign() {
             assert!(same_sign(a, b, &shots).is_none(), "{} and {}", a.id, b.id);
         }
     }
+}
+
+/// The document of the row `tbd-subtitles dump <job> outputs <step>` printed to `path`.
+fn dumped<T: serde::de::DeserializeOwned>(path: PathBuf) -> T {
+    let mut row: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    serde_json::from_value(row["value"].take()).unwrap()
 }

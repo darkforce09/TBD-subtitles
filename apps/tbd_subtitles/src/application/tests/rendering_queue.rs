@@ -233,13 +233,11 @@ fn run_again_with_the_settings_it_ran_with_runs_nothing() {
         settings,
         models_dir: None,
         corrections: None,
-        steps: Default::default(),
     };
-    std::fs::write(
-        job.join("job.json"),
-        serde_json::to_string(&record).expect("json"),
-    )
-    .expect("w");
+    pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(&job))
+        .expect("the store")
+        .put_job_record(&record)
+        .expect("the record");
     let id = app.queue.items[0].id;
     app.apply(vec![Action::from(JobQueueEvent::RunAgain(id))]);
     assert_eq!(app.queue.items[0].state, JobState::FinishedBefore);
@@ -248,7 +246,7 @@ fn run_again_with_the_settings_it_ran_with_runs_nothing() {
         text.contains("Nothing to run again: Dressrosa 14 was made with the current settings."),
         "{text}"
     );
-    std::fs::remove_file(job.join("job.json")).expect("removed");
+    std::fs::remove_file(job.join("job.redb")).expect("removed");
     app.apply(vec![Action::from(JobQueueEvent::RunAgain(id))]);
     assert!(
         app.queue.items[0].state.is_running(),

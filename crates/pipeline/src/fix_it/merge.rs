@@ -4,7 +4,7 @@
 //! reason, and leave every line the owner settled, even one settled while Fix It ran.
 //!
 //! **Position:** called by `fix_it::fix_job` inside `work_dir::update_corrections`, so it sees
-//! `review.json` as it is on disk at that moment.
+//! the stored corrections as that write transaction reads them.
 //!
 //! **Signals and state:** changes the corrections and marks each line it applied.
 //!

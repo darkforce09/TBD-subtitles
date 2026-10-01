@@ -35,7 +35,7 @@ use crate::work_dir::{self, JobStore};
 use worker_channel::address::Address;
 
 pub mod channel;
-mod frames;
+pub(crate) mod frames;
 pub mod gpu_lock;
 
 pub use channel::StepWrite;

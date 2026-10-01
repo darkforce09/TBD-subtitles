@@ -1,14 +1,14 @@
 # Resume
 
-Whether a step's recorded output can be reused. A step is reused when the job record holds its
-current fingerprint and every file it leaves exists. Keeping two runs off one job is the job
+Whether a step's stored output can be reused. A step is reused when its step record holds its
+current fingerprint, every document it writes is stored and every file its rows name exists. Keeping two runs off one job is the job
 store's work (`crates/pipeline/src/work_dir/store/`), not this module's.
 
 ## Contents
 
 ```text
 crates/pipeline/src/resume/
-├── mod.rs  `fingerprint`, `fingerprint_in_work`, `is_valid` and `stale_steps`
+├── mod.rs  `fingerprint`, `is_valid` and `stale_steps`, each over one snapshot of the job's store
 └── tests/  unit tests for reuse and invalidation by settings, video and upstream steps
 ```
 
@@ -16,21 +16,33 @@ crates/pipeline/src/resume/
 
 A fingerprint is the SHA-256 of a JSON value holding the step's name, its revision, the settings it
 reads (`graph::settings`), the video's path, size and modification time when the step reads the
-video itself, and the fingerprint and finish time of each step it reads. Re-running a step gives it
-a new finish time, so every step that reads it gets a new fingerprint and runs again.
-`fingerprint_in_work` also covers the on-screen text corrections kept in the job's folder.
+video itself, the stored layout version of every table, and the fingerprint and finish time of
+each step it reads, from `step_records`. Re-running a step gives it a new finish time, so every
+step that reads it gets a new fingerprint and runs again. The review's fingerprint also covers the
+digest of the stored line corrections, and reading, translation and review, with on-screen text
+on, the stored text corrections (all of them for the review, the occurrences to retry for the
+other two), besides the model files and the reference folder. `is_valid` also needs every key
+`keys::output_keys` gives the step and `work_dir::store::files::named_files` present: the files
+the step's rows name, the same list the store's orphan cleanup keeps.
 `stale_steps` lists, in order, the steps a run would do now: each step that is not valid and each
 step that reads one of them.
 
 ## Boundaries
 
-- Depends on: `crate::graph` (inputs, revision, settings, outputs), `crate::work_dir`, `job_model`
-  (`StepName`, `JobRecord`), `serde_json` and `sha2`.
-- Used by: `crate::runner`, before each step and when a job starts.
+- Depends on: `crate::graph` (inputs, revision, settings, the corrections a step reads),
+  `crate::work_dir` (the store, its keys, `files` and the corrections' digest), `job_model`
+  (`StepName`, `JobRecord`, `TableLayouts`), `serde_json` and `sha2`.
+- Used by: `crate::runner`, before each step and when a job starts;
+  `tools/visual_validation/`.
 - Rules:
-  - a missing output file reruns its step, and a part file is not an output
-    (`a_finished_step_with_its_files_is_reused_and_a_missing_file_reruns_it` in
-    `tests/resume.rs`);
+  - a missing document or file reruns its step, and a part file is not an output
+    (`a_finished_step_with_its_rows_and_files_is_reused_and_a_missing_one_reruns_it` in
+    `tests/resume.rs`), and a missing crop reruns the visual steps alone
+    (`a_missing_visual_crop_invalidates_the_visual_steps_without_repeating_audio`);
+  - the corrections reach only the steps that read them, and a changed table layout every step
+    (`the_line_corrections_reach_the_review_step_alone`,
+    `the_text_corrections_reach_reading_translation_and_review_alone`,
+    `a_changed_table_layout_changes_every_fingerprint`);
   - a rerun step invalidates every step that reads it and no other
     (`a_rerun_upstream_step_invalidates_every_step_that_reads_it`);
   - a setting changes only the steps that read it, and the video's identity only the steps that

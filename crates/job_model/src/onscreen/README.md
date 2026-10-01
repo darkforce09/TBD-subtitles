@@ -18,8 +18,8 @@ crates/job_model/src/onscreen/
 `TextDocument` holds occurrences in source-pixel coordinates and presentation seconds. Crops stay
 relative to the job folder. `TextCorrections` keeps owner edits separate from generated results.
 `TextSettings::new_job` enables translation; missing settings in a saved job leave it disabled.
-`VerifiedReplacements` flattens its `ReplacementDocument` into the top level of
-`visual/text_verify.json`, so the file also reads as a plain document, and adds `checks`: per
+`VerifiedReplacements` flattens its `ReplacementDocument` into the top level of its JSON (as
+`dump` prints `outputs/text_verify`), so it also reads as a plain document, and adds `checks`: per
 checked occurrence each sampled frame's `VerifyReading`.
 
 ## Boundaries

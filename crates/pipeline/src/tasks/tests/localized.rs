@@ -88,3 +88,67 @@ fn the_part_file_sits_beside_the_output() {
         PathBuf::from("/videos/episode.localized.mkv.part")
     );
 }
+
+#[test]
+fn a_job_without_the_localized_video_keeps_its_claim_on_the_stored_earlier_video() {
+    use job_model::job::{StepMeasure, StepRecord};
+    use worker_channel::address::Table;
+
+    use crate::work_dir::store::scratch::{Scratch, job_record};
+
+    let scratch = Scratch::new("localized-disabled");
+    let mut job_row = job_record(&scratch.dir);
+    job_row.settings.onscreen_text.localized_video = false;
+    let store = scratch.store();
+    store.put_job_record(&job_row).unwrap();
+    let earlier = scratch.dir.join("episode.localized.mkv");
+    store
+        .put_output(StepName::LocalizedVideo, None, &record(Some(&earlier)))
+        .unwrap();
+    let read = store.read().unwrap();
+    let inputs = crate::graph::reads(StepName::LocalizedVideo)
+        .into_iter()
+        .filter_map(|address| {
+            let bytes = read.raw(address.table, &address.key).unwrap()?;
+            Some((address, bytes))
+        })
+        .collect();
+    drop(read);
+    let job = Job {
+        work: scratch.work().clone(),
+        record: job_row,
+    };
+    let mut io = StepIo::on_pipe(inputs, std::io::sink());
+    run(&job, &mut io, &|_, _| {}).expect("the worker's reads are enough");
+    let mut io = StepIo::in_process(store).unwrap();
+    let report = run(&job, &mut io, &|_, _| {}).unwrap();
+    assert_eq!(
+        report.notes.get("disabled").map(String::as_str),
+        Some("true")
+    );
+    let step_record = StepRecord {
+        fingerprint: "f".into(),
+        finished_ns: 1,
+        measure: StepMeasure::default(),
+    };
+    io.into_outputs()
+        .unwrap()
+        .commit(StepName::LocalizedVideo, &step_record)
+        .unwrap();
+    let stored: LocalizedVideoRecord = store
+        .read()
+        .unwrap()
+        .get(
+            Table::Outputs,
+            &keys::output_key(StepName::LocalizedVideo, None),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        stored,
+        LocalizedVideoRecord {
+            earlier: Some(earlier.to_string_lossy().into_owned()),
+            ..LocalizedVideoRecord::default()
+        }
+    );
+}

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use rkyv::rancor::Error;
 
 use super::{JobRecord, JobSettings, OutputFormat, Separator, StepMeasure, StepRecord};
-use super::{WhisperModel, WorkerMeasure};
+use super::{StepRecords, WhisperModel, WorkerMeasure};
 use crate::archive_round_trip::{misaligned, round_trip};
 use crate::onscreen::TextSettings;
 use crate::stage::{ArchivedStepName, StepName};
@@ -64,17 +64,25 @@ fn record() -> JobRecord {
         settings: settings(),
         models_dir: Some("/models".into()),
         corrections: Some("abc123".into()),
-        steps: StepName::ALL
-            .into_iter()
-            .enumerate()
-            .map(|(n, name)| (name, step(n)))
-            .collect(),
     }
+}
+
+fn steps() -> StepRecords {
+    StepName::ALL
+        .into_iter()
+        .enumerate()
+        .map(|(n, name)| (name, step(n)))
+        .collect()
 }
 
 #[test]
 fn job_record_round_trips() {
     round_trip(&record());
+}
+
+#[test]
+fn step_records_round_trip() {
+    round_trip(&steps());
 }
 
 #[test]
@@ -149,29 +157,28 @@ fn settings_enums_round_trip() {
 
 #[test]
 fn archived_steps_are_found_by_archived_step_name() {
-    let job = record();
+    let job = steps();
     let bytes = rkyv::to_bytes::<Error>(&job).unwrap();
     let (buffer, start) = misaligned(&bytes);
     let archived =
-        rkyv::access::<rkyv::Archived<JobRecord>, Error>(&buffer[start..start + bytes.len()])
+        rkyv::access::<rkyv::Archived<StepRecords>, Error>(&buffer[start..start + bytes.len()])
             .unwrap();
 
     let found = archived
-        .steps
         .get(&ArchivedStepName::Readjudicate)
         .expect("the step is in the archived map");
     assert_eq!(
         found.fingerprint.as_str(),
-        job.steps[&StepName::Readjudicate].fingerprint
+        job[&StepName::Readjudicate].fingerprint
     );
     assert_eq!(
         found.finished_ns.to_native(),
-        job.steps[&StepName::Readjudicate].finished_ns
+        job[&StepName::Readjudicate].finished_ns
     );
 
     let mut expected = StepName::ALL.into_iter();
     let mut visited = 0;
-    archived.steps.visit(|name, _| {
+    archived.visit(|name, _| {
         assert_eq!(name, &expected.next().expect("no more keys than steps"));
         visited += 1;
         ControlFlow::<()>::Continue(())

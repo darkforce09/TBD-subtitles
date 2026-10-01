@@ -15,7 +15,10 @@ use crate::job_queue::models::queue::{Failure, JobState};
 use crate::job_queue::services::job_runner::RunJob;
 use crate::job_queue::services::queue_editing;
 use crate::settings::events::SettingsEvent;
+use rendering_report::stored_corrections;
 
+#[path = "job_fixtures.rs"]
+mod job_fixtures;
 #[path = "rendering_automation.rs"]
 mod rendering_automation;
 #[path = "rendering_console.rs"]
@@ -539,13 +542,18 @@ fn a_saved_correction_queues_a_review_run_that_runs_at_once() {
     let job = root.join("work").join(pipeline::work_dir::job_id(
         &std::fs::canonicalize(&video).expect("c"),
     ));
-    std::fs::create_dir_all(&job).expect("job");
-    let sheet = r#"[{"id":"U1","start_s":10.0,"end_s":11.0,"words":[],"locked":[],"line":"U1","hypotheses":[["P",["blame!"]],["W",["flavor!"]]]}]"#;
-    let adjudicated = r#"{"lines":[{"id":"U1","t":"Blaver!","f":["UNSURE"]}],
-        "findings":{"missing_ids":[],"duplicate_ids":[],"unknown_ids":[],"novel":[],"removed_locked":[],"too_fast":[]},
-        "calls":1,"input_tokens":0,"output_tokens":0,"cost_usd":0.0}"#;
-    std::fs::write(job.join("sheet.json"), sheet).expect("sheet");
-    std::fs::write(job.join("adjudicated.json"), adjudicated).expect("adjudicated");
+    job_fixtures::put_lines(
+        &job,
+        &[job_fixtures::Heard {
+            id: "U1",
+            start_s: 10.0,
+            length_s: 1.0,
+            parakeet: "blame!",
+            whisper: "flavor!",
+            settled: "Blaver!",
+            flags: &["UNSURE"],
+        }],
+    );
     let qc = QcReport {
         findings: vec![job_model::report::QcFinding {
             check: job_model::report::QcCheck::Unsure,
@@ -556,7 +564,7 @@ fn a_saved_correction_queues_a_review_run_that_runs_at_once() {
         }],
         ..QcReport::default()
     };
-    std::fs::write(job.join("qc.json"), serde_json::to_string(&qc).expect("qc")).expect("qc");
+    job_fixtures::put_qc(&job, &qc);
     let id = app.queue.items[0].id;
     app.apply(vec![
         Action::from(JobQueueEvent::Select(id)),
@@ -579,7 +587,7 @@ fn a_saved_correction_queues_a_review_run_that_runs_at_once() {
         Action::from(crate::line_review::events::ReviewEvent::Pick("P".into())),
         Action::from(crate::line_review::events::ReviewEvent::Save),
     ]);
-    assert!(job.join("review.json").exists());
+    assert!(!stored_corrections(&job).lines.is_empty());
     let review_runs = app
         .queue
         .items

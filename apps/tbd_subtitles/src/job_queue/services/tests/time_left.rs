@@ -182,33 +182,15 @@ fn history_replaces_the_pilot_rate_of_each_step_it_measured() {
     let _ = std::fs::remove_dir_all(&root);
     let job = root.join("job-a");
     std::fs::create_dir_all(&job).expect("dir");
-    let mut record = JobRecord {
+    let record = JobRecord {
         video: "a.mp4".into(),
         video_size: 1,
         video_modified_s: 0,
         settings: JobSettings::with_glossary(vec![]),
         models_dir: None,
         corrections: None,
-        steps: Default::default(),
     };
-    record.steps.insert(
-        StepName::Separation,
-        StepRecord {
-            fingerprint: String::new(),
-            finished_ns: 0,
-            measure: StepMeasure {
-                wall_s: 200.0,
-                ..StepMeasure::default()
-            },
-        },
-    );
-    std::fs::write(
-        job.join("job.json"),
-        serde_json::to_string(&record).expect("json"),
-    )
-    .expect("write");
-    let probe = r#"{"probe":{"duration_s":1000.0,"video":null,"audio":[]},"track":{"index":1,"audio_position":0,"codec":"aac","language":null,"channels":2,"sample_rate":48000,"start_time_s":0.0},"samples":0}"#;
-    std::fs::write(job.join("probe.json"), probe).expect("write");
+    stored_job(&job, &record, &[(StepName::Separation, 200.0)]);
     let rates = from_history(&root);
     assert_eq!(rates.per_step.get(&StepName::Separation), Some(&0.2));
     assert_eq!(
@@ -224,35 +206,19 @@ fn history_ignores_the_time_of_a_step_the_job_left_idle() {
     let _ = std::fs::remove_dir_all(&root);
     let job = root.join("job-a");
     std::fs::create_dir_all(&job).expect("dir");
-    let mut record = JobRecord {
+    let record = JobRecord {
         video: "a.mp4".into(),
         video_size: 1,
         video_modified_s: 0,
         settings: settings(true, false),
         models_dir: None,
         corrections: None,
-        steps: Default::default(),
     };
-    for (step, wall_s) in [(StepName::TextMask, 0.01), (StepName::TextDetect, 300.0)] {
-        record.steps.insert(
-            step,
-            StepRecord {
-                fingerprint: String::new(),
-                finished_ns: 0,
-                measure: StepMeasure {
-                    wall_s,
-                    ..StepMeasure::default()
-                },
-            },
-        );
-    }
-    std::fs::write(
-        job.join("job.json"),
-        serde_json::to_string(&record).expect("json"),
-    )
-    .expect("write");
-    let probe = r#"{"probe":{"duration_s":1000.0,"video":null,"audio":[]},"track":{"index":1,"audio_position":0,"codec":"aac","language":null,"channels":2,"sample_rate":48000,"start_time_s":0.0},"samples":0}"#;
-    std::fs::write(job.join("probe.json"), probe).expect("write");
+    stored_job(
+        &job,
+        &record,
+        &[(StepName::TextMask, 0.01), (StepName::TextDetect, 300.0)],
+    );
     let rates = from_history(&root);
     assert_eq!(rates.per_step.get(&StepName::TextDetect), Some(&0.3));
     assert_eq!(
@@ -261,4 +227,28 @@ fn history_ignores_the_time_of_a_step_the_job_left_idle() {
         "an idle run teaches no rate"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The job in `job`, stored as a finished run leaves it: its record, the steps with their wall
+/// times, and a probe of 1000 seconds.
+fn stored_job(job: &std::path::Path, record: &JobRecord, steps: &[(StepName, f64)]) {
+    let store = pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(job))
+        .expect("the store");
+    store.put_job_record(record).expect("the record");
+    for (step, wall_s) in steps {
+        let done = StepRecord {
+            fingerprint: String::new(),
+            finished_ns: 0,
+            measure: StepMeasure {
+                wall_s: *wall_s,
+                ..StepMeasure::default()
+            },
+        };
+        store.put_step_record(*step, &done).expect("the step");
+    }
+    let probe = r#"{"probe":{"duration_s":1000.0,"video":null,"audio":[]},"track":{"index":1,"audio_position":0,"codec":"aac","language":null,"channels":2,"sample_rate":48000,"start_time_s":0.0},"samples":0}"#;
+    let probe: ProbeDecoded = serde_json::from_str(probe).expect("the probe");
+    store
+        .put_output(StepName::ProbeDecode, None, &probe)
+        .expect("the probe");
 }

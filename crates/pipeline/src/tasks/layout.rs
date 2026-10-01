@@ -6,11 +6,13 @@
 //! **Position:** called by `tasks::run` inside the job runner; calls `stages::{cues, qc, output}`
 //! and the subtitle writers.
 //!
-//! **Signals and state:** reads the outputs of the earlier steps (the words from `reviewed.json`;
-//! for the check, the corrections, and the re-decodes so Fix It's words are held against every
-//! hypothesis; for a localized video, `visual/text_verify.json` and `visual/text_typeset.json`);
-//! writes `cues.json`, `cues_dropped_sounds.json`, `qc.json`, `output.json`, the subtitle file
-//! beside the video and, for a localized video, its own subtitle file.
+//! **Signals and state:** reads the documents of the earlier steps through the step's `StepIo`
+//! (the words from `outputs/review`; for the check, the line corrections, and the re-decodes so
+//! Fix It's words are held against every hypothesis; for the output, the typeset ASS events
+//! `outputs/text_typeset/ass` and, for a localized video, `outputs/text_verify` and
+//! `outputs/text_typeset`); stores `outputs/cues`, `outputs/cues/dropped_sounds`, `outputs/qc` and
+//! `outputs/output`; writes the subtitle file beside the video and, for a localized video, its own
+//! subtitle file.
 //!
 //! **Invariants:** the frame rate comes from the probe (24/1 when the video has none); the subtitle
 //! files are the only files written outside the work directory; the localized video's subtitle
@@ -24,7 +26,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use job_model::StepName;
 use job_model::job::OutputFormat;
-use job_model::onscreen::{Quad, ReplacementDocument, TextDocument};
+use job_model::onscreen::{Quad, ReplacementDocument, TextDocument, VerifiedReplacements};
 use job_model::outputs::{
     AdjudicationPass, Aligned, Corrections, EngineTranscript, Line, OutputRecord, Redecode,
     ShotChanges, SoundCues, SpeechPlan, TimeSpan, Utterance,
@@ -35,15 +37,15 @@ use subtitle_formats::cue::{CueTrack, FrameRate};
 use subtitle_formats::writers::ass::{self, Obstacle};
 use subtitle_formats::writers::{srt, vtt};
 
-use super::{Job, TaskReport, since};
+use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, Result};
-use crate::work_dir;
+use crate::work_dir::store::keys;
 
-pub(super) fn cues(job: &Job) -> Result<TaskReport> {
-    let probe = job.probe()?;
-    let aligned: Aligned = work_dir::read_json(&job.work.reviewed())?;
-    let sounds: SoundCues = work_dir::read_json(&job.work.sound_cues())?;
-    let shots: ShotChanges = work_dir::read_json(&job.work.shots())?;
+pub(super) fn cues(job: &Job, io: &mut StepIo, _progress: StepProgress) -> Result<TaskReport> {
+    let probe = io.probe()?;
+    let aligned: Aligned = io.get(StepName::Review, None)?;
+    let sounds: SoundCues = io.get(StepName::SoundCues, None)?;
+    let shots: ShotChanges = io.get(StepName::ShotScan, None)?;
     let rate = probe
         .probe
         .video
@@ -66,36 +68,33 @@ pub(super) fn cues(job: &Job) -> Result<TaskReport> {
     report.note("cues", built.track.cues.len());
     report.note("dropped_sounds", built.dropped_sounds.len());
     report.note("frame_rate", format!("{}/{}", rate.num(), rate.den()));
-    work_dir::write_json(&job.work.cues(), &built.track)?;
-    work_dir::write_json(&job.work.dropped_sounds(), &built.dropped_sounds)?;
+    io.put(StepName::Cues, None, &built.track)?;
+    io.put(
+        StepName::Cues,
+        Some(keys::DROPPED_SOUNDS),
+        &built.dropped_sounds,
+    )?;
     Ok(report)
 }
 
-pub(super) fn qc(job: &Job) -> Result<TaskReport> {
-    let probe = job.probe()?;
-    let track: CueTrack = work_dir::read_json(&job.work.cues())?;
-    let aligned: Aligned = work_dir::read_json(&job.work.reviewed())?;
-    let corrections: Corrections = if job.work.review().exists() {
-        work_dir::read_json(&job.work.review())?
-    } else {
-        Corrections::default()
-    };
-    let sheet: Vec<Utterance> = work_dir::read_json(&job.work.sheet())?;
-    let redecoded = |engine: &str| work_dir::read_json::<Redecode>(&job.work.redecode(engine)).ok();
-    let (again_p, again_w) = (redecoded("parakeet"), redecoded("whisper"));
-    let alternatives: Vec<(&str, &Redecode)> = [("p", &again_p), ("w", &again_w)]
-        .into_iter()
-        .filter_map(|(tag, r)| r.as_ref().map(|r| (tag, r)))
-        .collect();
+pub(super) fn qc(job: &Job, io: &mut StepIo, _progress: StepProgress) -> Result<TaskReport> {
+    let probe = io.probe()?;
+    let track: CueTrack = io.get(StepName::Cues, None)?;
+    let aligned: Aligned = io.get(StepName::Review, None)?;
+    let corrections: Corrections = io.corrections()?;
+    let sheet: Vec<Utterance> = io.get(StepName::DiffSheet, None)?;
+    let again_p: Redecode = io.get(StepName::RedecodeParakeet, None)?;
+    let again_w: Redecode = io.get(StepName::RedecodeWhisper, None)?;
+    let alternatives: [(&str, &Redecode); 2] = [("p", &again_p), ("w", &again_w)];
     let adjudicated = settled(
-        work_dir::read_json::<AdjudicationPass>(&job.work.adjudicated())?,
+        io.get::<AdjudicationPass>(StepName::Readjudicate, None)?,
         &corrections,
         &redecode::with_alternatives(&sheet, &alternatives),
         &job.glossary(),
     );
-    let sound_cues: SoundCues = work_dir::read_json(&job.work.sound_cues())?;
-    let speech: SpeechPlan = work_dir::read_json(&job.work.vad())?;
-    let parakeet: EngineTranscript = work_dir::read_json(&job.work.asr("parakeet"))?;
+    let sound_cues: SoundCues = io.get(StepName::SoundCues, None)?;
+    let speech: SpeechPlan = io.get(StepName::Vad, None)?;
+    let parakeet: EngineTranscript = io.get(StepName::AsrParakeet, None)?;
     // The backbone times words closely; Whisper stretches and shifts them, and hears laughs the
     // language model rightly drops.
     let heard = qc::coverage::heard_spans(&[&parakeet]);
@@ -130,7 +129,7 @@ pub(super) fn qc(job: &Job) -> Result<TaskReport> {
         ..TaskReport::default()
     };
     if job.settings().onscreen_text.enabled {
-        note_text_quality(job, &mut report)?;
+        note_text_quality(io, &mut report)?;
     }
     report.note("findings", result.findings.len());
     report.note(
@@ -145,13 +144,13 @@ pub(super) fn qc(job: &Job) -> Result<TaskReport> {
         "cps_ok_share",
         format!("{:.3}", result.summary.cps_ok_share),
     );
-    work_dir::write_json(&job.work.qc(), &result)?;
+    io.put(StepName::Qc, None, &result)?;
     Ok(report)
 }
 
 /// Visual warnings keep their occurrence IDs and do not become dialogue findings.
-fn note_text_quality(job: &Job, report: &mut TaskReport) -> Result<()> {
-    let text: TextDocument = work_dir::read_json(&job.work.text(StepName::TextTypeset))?;
+fn note_text_quality(io: &StepIo, report: &mut TaskReport) -> Result<()> {
+    let text: TextDocument = io.get(StepName::TextTypeset, None)?;
     let summary = text.summary();
     report.note("text_detected", summary.detected);
     report.note("text_translated", summary.translated);
@@ -207,8 +206,8 @@ fn settled(
     pass
 }
 
-pub(super) fn output(job: &Job) -> Result<TaskReport> {
-    let track: CueTrack = work_dir::read_json(&job.work.cues())?;
+pub(super) fn output(job: &Job, io: &mut StepIo, _progress: StepProgress) -> Result<TaskReport> {
+    let track: CueTrack = io.get(StepName::Cues, None)?;
     let started = Instant::now();
     let format = job.settings().effective_output_format();
     let mut text = match format {
@@ -217,16 +216,15 @@ pub(super) fn output(job: &Job) -> Result<TaskReport> {
         OutputFormat::Ass => ass::write(&track),
     };
     if job.settings().onscreen_text.enabled {
-        let events = std::fs::read_to_string(job.work.text_ass())
-            .context("cannot read typeset on-screen text events")?;
+        let events: String = io.get(StepName::TextTypeset, Some(keys::TYPESET_ASS))?;
         text.push_str(&events);
     }
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
         .to_string();
-    let earlier = work_dir::read_json::<OutputRecord>(&job.work.output_record())
-        .ok()
+    let earlier = io
+        .read::<OutputRecord>(&keys::output_address(StepName::Output, None))?
         .map(|r| PathBuf::from(r.path));
     let installed = output::install(
         &job.video(),
@@ -254,11 +252,9 @@ pub(super) fn output(job: &Job) -> Result<TaskReport> {
         report.note("retired", &retired);
     }
     let localized = if super::replace::localized(job) {
-        let replacement: ReplacementDocument =
-            work_dir::read_json(&job.work.text(StepName::TextVerify))
-                .context("cannot read the English lettered into the localized video")?;
-        let text: TextDocument = work_dir::read_json(&job.work.text(StepName::TextTypeset))?;
-        let localized_text = ass::write_with(&track, &lettered_writing(&replacement, &text));
+        let verified: VerifiedReplacements = io.get(StepName::TextVerify, None)?;
+        let text: TextDocument = io.get(StepName::TextTypeset, None)?;
+        let localized_text = ass::write_with(&track, &lettered_writing(&verified.document, &text));
         report.note(
             "localized_moved_up",
             localized_text.matches(",,{\\an8}").count(),
@@ -288,7 +284,7 @@ pub(super) fn output(job: &Job) -> Result<TaskReport> {
         retired: shown(&installed.retired),
         localized,
     };
-    work_dir::write_json(&job.work.output_record(), &record)?;
+    io.put(StepName::Output, None, &record)?;
     Ok(report)
 }
 

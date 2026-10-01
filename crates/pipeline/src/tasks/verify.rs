@@ -1,14 +1,14 @@
 //! The read-back check task: approve each lettered replacement from its finished picture.
 //!
 //! **Role:** read the composed replacements, let a local OCR read each baked one back off the
-//! finished frames, and install `visual/text_verify.json` with the final statuses and readings.
+//! finished frames, and store `outputs/text_verify` with the final statuses and readings.
 //! **Position:** pipeline task dispatch above `stages::onscreen_text::replace::verify`; runs in a
 //! `tbd-subtitles` ONNX Runtime worker under the GPU lock, PP-OCRv5 on CUDA.
-//! **Signals and state:** reads `visual/text_compose.json`, `visual/text_review.json`, the probe,
-//! the patch files and the source video; writes `visual/text_verify.json`.
-//! **Invariants:** a job without the localized video writes an empty document and loads nothing;
+//! **Signals and state:** reads `outputs/text_compose`, `outputs/text_review` and the probe through
+//! the step's `StepIo`, the patch files and the source video; stores `outputs/text_verify`.
+//! **Invariants:** a job without the localized video stores an empty document and loads nothing;
 //! a document with nothing baked is passed on unchanged without loading a model; the document is
-//! written atomically.
+//! stored with the step's record or not at all.
 
 use std::time::Instant;
 
@@ -18,21 +18,19 @@ use stages::localize::{colour::Conversion, frame_format};
 use stages::onscreen_text::replace::source::FfmpegRegions;
 use stages::onscreen_text::replace::verify::{self, LocalOcr, Request, verdict};
 
-use super::{Job, StepProgress, TaskReport, since};
+use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, PipelineError, Result};
 use crate::tasks::replace::localized;
-use crate::work_dir;
 
-pub(super) fn run(job: &Job, progress: StepProgress) -> Result<TaskReport> {
+pub(super) fn run(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<TaskReport> {
     let started = Instant::now();
     let mut report = TaskReport::default();
-    let output = job.work.text(StepName::TextVerify);
     if !localized(job) {
-        work_dir::write_json(&output, &VerifiedReplacements::default())?;
+        io.put(StepName::TextVerify, None, &VerifiedReplacements::default())?;
         report.note("disabled", true);
         return Ok(report);
     }
-    let composed: ReplacementDocument = work_dir::read_json(&job.work.text(StepName::TextCompose))?;
+    let composed: ReplacementDocument = io.get(StepName::TextCompose, None)?;
     let baked = composed.baked().count();
     report.note("baked", baked);
     let verified = if baked == 0 {
@@ -41,8 +39,8 @@ pub(super) fn run(job: &Job, progress: StepProgress) -> Result<TaskReport> {
             checks: Vec::new(),
         }
     } else {
-        let text: TextDocument = work_dir::read_json(&job.work.text(StepName::TextReview))?;
-        let probe = job.probe()?;
+        let text: TextDocument = io.get(StepName::TextReview, None)?;
+        let probe = io.probe()?;
         let stream =
             probe.probe.video.as_ref().ok_or_else(|| {
                 PipelineError::new("read-back check", "the file has no video stream")
@@ -87,6 +85,10 @@ pub(super) fn run(job: &Job, progress: StepProgress) -> Result<TaskReport> {
             .sum::<usize>(),
     );
     report.process_s = (since(started) - report.load_s).max(0.0);
-    work_dir::write_json(&output, &verified)?;
+    io.put(StepName::TextVerify, None, &verified)?;
     Ok(report)
 }
+
+#[cfg(test)]
+#[path = "tests/verify.rs"]
+mod tests;

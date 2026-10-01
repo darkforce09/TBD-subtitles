@@ -9,8 +9,10 @@ use subtitle_formats::cue::FrameRate;
 
 use super::*;
 
-/// Bytes no archive of any stored type checks: every relative pointer runs out of the buffer.
-const GARBAGE: [u8; 40] = [0xff; 40];
+/// Bytes no archive of any stored type checks: every relative pointer runs out of the buffer, and
+/// as an inline string they are not UTF-8 (all `0xff` would be the empty string, whose inline
+/// form pads with `0xff`).
+const GARBAGE: [u8; 40] = [0xc3; 40];
 
 fn archive<T>(value: &T) -> Vec<u8>
 where
@@ -66,7 +68,6 @@ fn job_record() -> JobRecord {
         settings: JobSettings::with_glossary(Vec::new()),
         models_dir: None,
         corrections: None,
-        steps: BTreeMap::from([(StepName::Vad, step_record())]),
     }
 }
 
@@ -96,6 +97,7 @@ fn every_document() -> Vec<(Table, &'static str, Vec<u8>)> {
             "text",
             archive(&TextCorrections::default()),
         ),
+        (Table::Corrections, "fix", archive(&FixRecord::default())),
         (Table::Outputs, "probe_decode", archive(&probe_decoded())),
         (
             Table::Outputs,
@@ -142,6 +144,11 @@ fn every_document() -> Vec<(Table, &'static str, Vec<u8>)> {
             archive(&VerifiedReplacements::default()),
         ),
         (Table::Outputs, "text_typeset", text),
+        (
+            Table::Outputs,
+            "text_typeset/ass",
+            archive(&"Dialogue: 0,0:00:01.00".to_string()),
+        ),
         (Table::Outputs, "qc", archive(&QcReport::default())),
         (Table::Outputs, "output", archive(&OutputRecord::default())),
         (
@@ -186,6 +193,25 @@ fn every_step_but_separation_has_an_output_document() {
 }
 
 #[test]
+fn every_output_key_of_every_step_has_a_kind_and_a_sample() {
+    let documents = every_document();
+    for step in StepName::ALL {
+        for key in keys::output_keys(step) {
+            assert!(kind(Table::Outputs, &key).is_ok(), "{key:?}");
+            let Key::Name(key) = key else {
+                panic!("an output key is a name")
+            };
+            assert!(
+                documents
+                    .iter()
+                    .any(|(table, listed, _)| *table == Table::Outputs && *listed == key),
+                "{key} has no sample"
+            );
+        }
+    }
+}
+
+#[test]
 fn a_kind_prints_its_record_as_json() {
     let value = STEP_RECORD.json(&archive(&step_record())).expect("json");
     assert_eq!(value["fingerprint"], "ab12");
@@ -207,6 +233,8 @@ fn unknown_keys_are_errors() {
         (Table::Outputs, "not_a_step"),
         (Table::Outputs, "cues/other"),
         (Table::Outputs, "probe_decode/dropped_sounds"),
+        (Table::Outputs, "text_typeset/ass_localized"),
+        (Table::Outputs, "fix"),
         (Table::Outputs, ""),
     ] {
         let error = kind(table, &name(key)).expect_err(key);

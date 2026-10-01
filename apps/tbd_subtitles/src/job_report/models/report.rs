@@ -37,7 +37,7 @@ pub(crate) struct JobReport {
     /// `report.md` in the work directory.
     pub(crate) report_file: PathBuf,
     pub(crate) qc: QcReport,
-    /// The corrections, from `review.json`: the owner's and Fix It's; none before the first.
+    /// The corrections, from the job database: the owner's and Fix It's; none before the first.
     pub(crate) corrections: Corrections,
     /// Why it does not pass the quality check; empty when it passes.
     pub(crate) problems: Vec<Problem>,

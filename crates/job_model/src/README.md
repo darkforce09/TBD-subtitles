@@ -9,7 +9,7 @@ quality-check report.
 ```text
 crates/job_model/src/
 ├── onscreen/   typed visual observations, translations, corrections and presentation
-├── job/         the job record kept in `job.json`: video, settings, finished steps and their measures
+├── job/         the job record and step records: video, settings, finished steps and their measures
 ├── lib.rs       the crate root: the module list and the `StageName` and `StepName` re-exports
 ├── model_call/  one language-model call for the app's log window, whose JSON a worker sends it
 ├── outputs/     the typed output of each step, one JSON file per step in the work directory
@@ -53,11 +53,11 @@ UTF-8 strings.
 
 - Depends on: `serde` and `rkyv` (with `unaligned`) for the derives.
 - Used by: every other product crate and both app binaries.
-- Rules: the JSON names never change once a step writes them, so a resumed job reads what an
-  earlier run wrote (`json_names_match_the_command_line_names` in `stage/tests/stage_name.rs`,
-  `steps_serialise_by_name` in `stage/tests/step_name.rs`); every data type round-trips through
-  rkyv from a misaligned slice (`round_trip` in `tests/archive_round_trip.rs`, run by each
-  module's `tests/archive.rs`).
+- Rules: the step names never change, since they spell the keys of a job's rows and their JSON,
+  so a resumed job reads what an earlier run stored (`json_names_match_the_command_line_names`
+  in `stage/tests/stage_name.rs`, `steps_serialise_by_name` in `stage/tests/step_name.rs`); every
+  data type round-trips through rkyv from a misaligned slice (`round_trip` in
+  `tests/archive_round_trip.rs`, run by each module's `tests/archive.rs`).
 
 ## Related documentation
 

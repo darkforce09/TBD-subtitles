@@ -4,6 +4,8 @@ use job_model::job::{JobSettings, StepMeasure, StepRecord};
 use job_model::outputs::{Chosen, Correction, FixVerdict, LineFix};
 use job_model::report::{QcCheck, QcFinding};
 
+use worker_channel::address::Table;
+
 use super::*;
 use crate::job_report::models::report::LocalizedOutput;
 
@@ -14,8 +16,36 @@ fn scratch(name: &str) -> std::path::PathBuf {
     root
 }
 
-fn write(path: &Path, value: &impl serde::Serialize) {
-    std::fs::write(path, serde_json::to_string(value).expect("json")).expect("write");
+/// This process's handle of the database of the job in `job`.
+fn store(job: &Path) -> std::sync::Arc<pipeline::work_dir::JobStore> {
+    pipeline::work_dir::JobStore::open(&WorkDir::new(job)).expect("the store")
+}
+
+/// Store the job in `job` as a finished run leaves it: `record` and the records of `steps`.
+fn store_job(job: &Path, record: &JobRecord, steps: StepRecords) {
+    let store = store(job);
+    store.put_job_record(record).expect("the record");
+    for (step, done) in &steps {
+        store.put_step_record(*step, done).expect("the step");
+    }
+}
+
+/// Put `bytes`, which need not read, as the row `name` of `table` of the job in `job`.
+fn put_raw(job: &Path, table: Table, name: &str, bytes: &[u8]) {
+    let store = store(job);
+    let mut write = store.write().expect("write");
+    write
+        .reserve(
+            table,
+            &pipeline::work_dir::store::keys::named(name),
+            bytes.len(),
+            |slot| {
+                slot.copy_from_slice(bytes);
+                Ok(())
+            },
+        )
+        .expect("reserve");
+    write.commit().expect("commit");
 }
 
 #[test]
@@ -46,8 +76,8 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
             },
         );
     }
-    write(
-        &job.join("job.json"),
+    store_job(
+        &job,
         &JobRecord {
             video: video.to_string_lossy().into_owned(),
             video_size: 5,
@@ -58,8 +88,8 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
             },
             models_dir: None,
             corrections: None,
-            steps,
         },
+        steps,
     );
     let qc = QcReport {
         findings: vec![QcFinding {
@@ -71,13 +101,13 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
         }],
         ..QcReport::default()
     };
-    write(&job.join("qc.json"), &qc);
+    store(&job).put_output(StepName::Qc, None, &qc).expect("qc");
     let report = load(&video, &work_root).expect("report");
     assert_eq!(report.qc, qc);
     assert_eq!(
         report.corrections,
         Corrections::default(),
-        "no review.json yet"
+        "no corrections yet"
     );
     assert_eq!(report.lines.to_check(), 1);
     assert!(report.problems.is_empty());
@@ -103,7 +133,7 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
             fixable: 1,
         })
     );
-    assert_eq!(report.fix_result, None, "no fix.json yet");
+    assert_eq!(report.fix_result, None, "no Fix It record yet");
     let corrections = Corrections {
         lines: vec![Correction {
             id: "U0053".into(),
@@ -112,7 +142,8 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
             chosen: Chosen::Engine("W".into()),
         }],
     };
-    write(&job.join("review.json"), &corrections);
+    let saved = corrections.clone();
+    pipeline::work_dir::update_corrections(&store(&job), |c| *c = saved).expect("corrections");
     let report = load(&video, &work_root).expect("report");
     assert_eq!(report.corrections, corrections);
     assert_eq!((report.lines.flagged, report.lines.checked), (1, 1));
@@ -122,9 +153,9 @@ fn a_finished_job_reads_back_its_check_files_and_steps() {
         0,
         "the corrected line is checked"
     );
-    std::fs::write(job.join("review.json"), b"{").expect("broken");
-    let error = summary(&video, &work_root).expect_err("broken review.json");
-    assert!(error.contains("review.json"), "{error}");
+    put_raw(&job, Table::Corrections, "lines", &[0xc3; 40]);
+    let error = summary(&video, &work_root).expect_err("broken corrections");
+    assert!(error.contains("corrections"), "{error}");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -147,8 +178,8 @@ fn a_current_fix_record_checks_the_lines_it_answered_and_a_stale_one_counts_for_
             measure: StepMeasure::default(),
         },
     );
-    write(
-        &job.join("job.json"),
+    store_job(
+        &job,
         &JobRecord {
             video: video.to_string_lossy().into_owned(),
             video_size: 5,
@@ -159,8 +190,8 @@ fn a_current_fix_record_checks_the_lines_it_answered_and_a_stale_one_counts_for_
             },
             models_dir: None,
             corrections: None,
-            steps,
         },
+        steps,
     );
     let finding = |id: &str| QcFinding {
         check: QcCheck::Unsure,
@@ -169,13 +200,11 @@ fn a_current_fix_record_checks_the_lines_it_answered_and_a_stale_one_counts_for_
         detail: String::new(),
         utterance: Some(id.into()),
     };
-    write(
-        &job.join("qc.json"),
-        &QcReport {
-            findings: vec![finding("U1"), finding("U2")],
-            ..QcReport::default()
-        },
-    );
+    let qc = QcReport {
+        findings: vec![finding("U1"), finding("U2")],
+        ..QcReport::default()
+    };
+    store(&job).put_output(StepName::Qc, None, &qc).expect("qc");
     let line = LineFix {
         id: "U1".into(),
         problems: Vec::new(),
@@ -196,7 +225,7 @@ fn a_current_fix_record_checks_the_lines_it_answered_and_a_stale_one_counts_for_
         adjudication: "adjudication-1".into(),
         ..FixRecord::default()
     };
-    write(&job.join("fix.json"), &record);
+    pipeline::work_dir::put_fix_record(&store(&job), &record).expect("the Fix It record");
     let report = load(&video, &work_root).expect("report");
     assert_eq!(
         (
@@ -217,7 +246,7 @@ fn a_current_fix_record_checks_the_lines_it_answered_and_a_stale_one_counts_for_
     assert_eq!(row, report.summary());
     assert!(row.fixed_by_claude);
     record.adjudication = "adjudication-0".into();
-    write(&job.join("fix.json"), &record);
+    pipeline::work_dir::put_fix_record(&store(&job), &record).expect("the Fix It record");
     let stale = load(&video, &work_root).expect("report");
     assert_eq!(
         (stale.lines.by_claude, stale.fixable, stale.fix_result),
@@ -225,9 +254,9 @@ fn a_current_fix_record_checks_the_lines_it_answered_and_a_stale_one_counts_for_
         "a record of an earlier re-adjudication counts for nothing"
     );
     assert!(!summary(&video, &work_root).expect("row").fixed_by_claude);
-    std::fs::write(job.join("fix.json"), b"{").expect("broken");
-    let error = summary(&video, &work_root).expect_err("broken fix.json");
-    assert!(error.contains("fix.json"), "{error}");
+    put_raw(&job, Table::Corrections, "fix", &[0xc3; 40]);
+    let error = summary(&video, &work_root).expect_err("a broken Fix It record");
+    assert!(error.contains("fix"), "{error}");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -237,7 +266,7 @@ fn a_job_without_a_check_names_the_missing_file() {
     let video = root.join("b.mp4");
     std::fs::write(&video, b"video").expect("video");
     let error = load(&video, &root.join("work")).expect_err("no job");
-    assert!(error.contains("job.json"), "{error}");
+    assert!(error.contains("job.redb"), "{error}");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -259,8 +288,8 @@ fn visual_job(video: &Path, work_root: &Path, localized: bool, steps: &[StepName
         };
         (*step, done)
     };
-    write(
-        &job.join("job.json"),
+    store_job(
+        &job,
         &JobRecord {
             video: video.to_string_lossy().into_owned(),
             video_size: 5,
@@ -268,14 +297,16 @@ fn visual_job(video: &Path, work_root: &Path, localized: bool, steps: &[StepName
             settings,
             models_dir: None,
             corrections: None,
-            steps: steps.iter().map(record).collect(),
         },
+        steps.iter().map(record).collect(),
     );
-    write(&job.join("qc.json"), &QcReport::default());
-    write(
-        &job.join("visual/text_typeset.json"),
-        &job_model::onscreen::TextDocument::default(),
-    );
+    let store = store(&job);
+    store
+        .put_output(StepName::Qc, None, &QcReport::default())
+        .expect("qc");
+    store
+        .put_output(StepName::TextTypeset, None, &TextDocument::default())
+        .expect("typeset");
     job
 }
 
@@ -315,10 +346,13 @@ fn a_job_without_the_localized_video_reports_none() {
     std::fs::write(&video, b"video").expect("video");
     let work_root = root.join("work");
     let job = visual_job(&video, &work_root, false, &[StepName::LocalizedVideo]);
-    write(
-        &job.join("visual/localized_video.json"),
-        &LocalizedVideoRecord::default(),
-    );
+    store(&job)
+        .put_output(
+            StepName::LocalizedVideo,
+            None,
+            &LocalizedVideoRecord::default(),
+        )
+        .expect("record");
     let report = load(&video, &work_root).expect("report");
     assert_eq!(report.localized, None);
     assert!(report.visual.is_some());
@@ -336,7 +370,9 @@ fn a_localized_video_reports_what_it_replaced_and_its_files_while_they_are_there
     assert_eq!(report.localized, Some(LocalizedOutput::default()));
 
     let job = visual_job(&video, &work_root, true, &[StepName::TextCompose]);
-    write(&job.join("visual/text_compose.json"), &composed(3));
+    store(&job)
+        .put_output(StepName::TextCompose, None, &composed(3))
+        .expect("composed");
     let report = load(&video, &work_root).expect("report");
     let localized = report.localized.expect("localized");
     assert_eq!(localized.replaced, Some(3), "counted from the composition");
@@ -344,7 +380,13 @@ fn a_localized_video_reports_what_it_replaced_and_its_files_while_they_are_there
 
     let steps = [StepName::TextCompose, StepName::TextVerify];
     let job = visual_job(&video, &work_root, true, &steps);
-    write(&job.join("visual/text_verify.json"), &composed(1));
+    let verified = VerifiedReplacements {
+        document: composed(1),
+        checks: Vec::new(),
+    };
+    store(&job)
+        .put_output(StepName::TextVerify, None, &verified)
+        .expect("verified");
     let report = load(&video, &work_root).expect("report");
     assert_eq!(
         report.localized.and_then(|l| l.replaced),
@@ -356,23 +398,24 @@ fn a_localized_video_reports_what_it_replaced_and_its_files_while_they_are_there
     let job = visual_job(&video, &work_root, true, &steps);
     let mkv = root.join("a.localized.mkv");
     let ass = root.join("a.localized.ass");
-    write(
-        &job.join("visual/localized_video.json"),
-        &LocalizedVideoRecord {
-            path: Some(mkv.display().to_string()),
-            frames: 10,
-            replaced: 2,
-            ..LocalizedVideoRecord::default()
-        },
-    );
-    write(
-        &job.join("output.json"),
-        &OutputRecord {
-            path: root.join("a.ass").display().to_string(),
-            localized: Some(ass.display().to_string()),
-            ..OutputRecord::default()
-        },
-    );
+    let written = LocalizedVideoRecord {
+        path: Some(mkv.display().to_string()),
+        frames: 10,
+        replaced: 2,
+        ..LocalizedVideoRecord::default()
+    };
+    let output = OutputRecord {
+        path: root.join("a.ass").display().to_string(),
+        localized: Some(ass.display().to_string()),
+        ..OutputRecord::default()
+    };
+    let store = store(&job);
+    store
+        .put_output(StepName::LocalizedVideo, None, &written)
+        .expect("record");
+    store
+        .put_output(StepName::Output, None, &output)
+        .expect("output");
     let report = load(&video, &work_root).expect("report");
     let localized = report.localized.clone().expect("localized");
     assert_eq!(localized.replaced, Some(2), "the video's own count");
@@ -392,7 +435,7 @@ fn a_localized_video_reports_what_it_replaced_and_its_files_while_they_are_there
             subtitles: Some(ass),
         })
     );
-    std::fs::write(job.join("visual/localized_video.json"), b"not json").expect("broken");
+    put_raw(&job, Table::Outputs, "localized_video", &[0xc3; 40]);
     let report = load(&video, &work_root).expect("a broken record is no error");
     assert_eq!(report.localized.expect("localized").video, None);
     let _ = std::fs::remove_dir_all(&root);

@@ -19,11 +19,10 @@ fn a_job_id_is_a_slug_of_the_name_and_a_hash_of_the_path() {
 fn json_round_trips_and_leaves_no_part_file() {
     let dir = std::env::temp_dir().join(format!("tbd-work-dir-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
-    let work = WorkDir::new(&dir);
-    write_json(&work.asr("parakeet"), &vec![1, 2, 3]).expect("write");
-    let back: Vec<i32> = read_json(&work.asr("parakeet")).expect("read");
+    write_json(&dir.join("asr/parakeet.json"), &vec![1, 2, 3]).expect("write");
+    let back: Vec<i32> = read_json(&dir.join("asr/parakeet.json")).expect("read");
     assert_eq!(back, vec![1, 2, 3]);
     assert!(!dir.join("asr/parakeet.json.part").exists());
-    assert!(read_json::<Vec<i32>>(&work.cues()).is_err());
+    assert!(read_json::<Vec<i32>>(&dir.join("cues.json")).is_err());
     let _ = fs::remove_dir_all(&dir);
 }

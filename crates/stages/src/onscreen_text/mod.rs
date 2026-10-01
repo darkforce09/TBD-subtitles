@@ -10,6 +10,7 @@ mod event_buffer;
 mod furigana;
 pub mod geometry;
 mod glyphs;
+mod png;
 pub mod read;
 pub mod reference;
 pub mod replace;

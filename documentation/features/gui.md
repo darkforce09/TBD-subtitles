@@ -425,17 +425,17 @@ nothing.
 - Models and the CUDA runtime libraries: under `~/.local/share/tbd-subtitles/`, the models in
   the settings' models folder when it names another.
 - Jobs: each job's [work directory](/documentation/glossary.md#work-directory)
-  ([system overview](/documentation/architecture/system_overview.md#job-work-directory)). The
-  window reads `job.json` and the step records for progress and the time left, `qc.json`,
-  `output.json`, `report.md` and `fix.json` for the Overview, and `sheet.json`, `adjudicated.json`, the
-  re-decodes, `probe.json` and `audio/vocals_16k.f32` for Check Lines. Check Text reads the visual
-  documents/crops and exported ASS (and `visual/text_verify.json`, else `visual/text_compose.json` in a
-  job from before the read-back check, `visual/localized_video.json`,
-  the masks and previews for the localized video), and writes locked `visual/corrections.json`. Line review writes
-  `review.json`, the corrections the review step reads, under its lock `review.json.lock`, which
-  Fix It takes too; Fix It also writes `fix.json` and, while it runs, `fix/calls/`. Each finished
-  row's verdict and lines to check are read from `qc.json` and `review.json` when the window opens
-  and after each run and correction of its video.
+  ([system overview](/documentation/architecture/system_overview.md#job-work-directory)) and its
+  database, `job.redb`, read through this process's one handle. The window reads the job record
+  and step records for progress and the time left; `outputs/qc`, `outputs/output`,
+  `corrections/fix`, `report.md` and the visual rows for the Overview; the sheet, the
+  re-adjudication, the re-decodes, `outputs/probe_decode`, `corrections/lines` and
+  `audio/vocals_16k.f32` for Check Lines; and `outputs/text_review`, `outputs/text_typeset`,
+  `outputs/text_verify`, `outputs/localized_video`, the crops, masks and plates for Check Text.
+  Line review writes `corrections/lines` and Check Text `corrections/text`, each change in one
+  write transaction that rereads the row; Fix It writes `corrections/lines` with its record
+  `corrections/fix` and, while it runs, `fix/calls/`. A job a terminal run owns shows as busy.
+  Each finished row's verdict and lines to check come from `outputs/qc` and `corrections/lines`.
 - The log: `~/.local/state/tbd-subtitles/tbd-subtitles.log` (under `XDG_STATE_HOME` when set),
   written as the window runs, since a launcher such as Gear Lever drops stderr, and emptied at each
   start; the [log window](#the-log-window) shows the same lines from memory.

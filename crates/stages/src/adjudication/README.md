@@ -47,11 +47,11 @@ phrase, lowercase except words the glossary holds. A kept cue takes its candidat
 song candidate becomes a music cue, worded by the model or `[music playing]`.
 
 ```text
-sheet ─▶ adjudicate ─▶ first.json ─▶ unsure_ids ─▶ spans ─▶ (engines hear again)
+sheet ─▶ adjudicate ─▶ first pass ─▶ unsure_ids ─▶ spans ─▶ (engines hear again)
                                                                   │
-adjudicated.json ◀─ merge ◀─ readjudicate ◀─ with_alternatives ◀──┘
+adjudicated      ◀─ merge ◀─ readjudicate ◀─ with_alternatives ◀──┘
         │
-        └─▶ (candidates from sound_events) ─▶ sound_cues::choose ─▶ sound_cues.json
+        └─▶ (candidates from sound_events) ─▶ sound_cues::choose ─▶ sound cues
 ```
 
 ## Public surface

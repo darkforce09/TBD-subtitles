@@ -121,7 +121,7 @@ settings are planned.
 - Settings (planned): `~/.config/tbd-subtitles/settings.toml`.
 - Jobs (planned): each job's
   [work directory](/documentation/architecture/system_overview.md#job-work-directory); the window
-  reads `job.json`, `report.md` and the stage outputs, and listens to the runner's progress events.
+  reads the job's database, `report.md` and the stage outputs, and listens to the runner's progress events.
 
 ## Design
 

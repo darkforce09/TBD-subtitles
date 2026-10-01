@@ -1,22 +1,27 @@
-//! The body of every step: read its inputs from the work directory, call the stage, write its
-//! output. The same code runs inside the job runner (CPU steps) and inside a worker process.
+//! The body of every step: read its inputs through its `StepIo`, call the stage, write its
+//! outputs through it. The same code runs inside the job runner (CPU steps) and inside a worker
+//! process.
 //!
 //! **Role:** dispatch a step to its task, time it, and, in a worker, send the runner the step's
 //! progress, its load time, processing time and peak memory, and its end or its failure as frames
 //! of the worker channel.
 //!
-//! **Position:** called by `runner` (in process) and by the `worker` subcommand of both app
-//! binaries; each task module calls `stages` and the backends.
+//! **Position:** called by `runner` (in process) and by the `worker` subcommand of the three app
+//! binaries; each task module calls `stages` and the backends; `io` carries every stored input
+//! and output.
 //!
-//! **Signals and state:** reads `job.json` and the step's inputs; writes the step's outputs; a
-//! worker installs the worker channel, which points its descriptor 1 at stderr.
+//! **Signals and state:** a worker reads the job record and the step's inputs from the `Input`
+//! frames on its stdin and installs the worker channel, which points its descriptor 1 at stderr;
+//! the files a task streams (audio, crops, plates) are written in the job folder.
 //!
-//! **Invariants:** a task writes its outputs completely or not at all (part files, renamed); a
+//! **Invariants:** a task's stored outputs are committed with its step's record or not at all;
+//! a file a task writes is written through a part file and renamed; a
 //! Whisper step runs only in a binary built with the `crispasr` feature, and nothing else needs
 //! it; a worker installs its channel before anything else, so no native library prints into the
 //! frame stream, and it ends with `Measure` then `Done`, or with `Failed`.
 
 mod alignment;
+pub mod io;
 mod layout;
 mod llm;
 mod localized;
@@ -28,6 +33,7 @@ mod sounds;
 mod speech;
 mod verify;
 
+pub use io::StepIo;
 pub(crate) use review::corrected_lines;
 
 use std::collections::BTreeMap;
@@ -36,12 +42,11 @@ use std::time::Instant;
 
 use job_model::StepName;
 use job_model::job::{JobRecord, JobSettings, StepMeasure, WorkerMeasure};
-use job_model::outputs::ProbeDecoded;
 
 use crate::error::{Context, PipelineError, Result};
 use crate::graph::{self, Binary, Placement};
 use crate::measure::memory;
-use crate::work_dir::{self, WorkDir};
+use crate::work_dir::WorkDir;
 
 /// A job as a task sees it: its folder and its record.
 #[derive(Debug, Clone)]
@@ -51,11 +56,12 @@ pub struct Job {
 }
 
 impl Job {
-    /// The job whose folder is `dir`, from its `job.json`.
-    pub fn load(dir: &Path) -> Result<Job> {
-        let work = WorkDir::new(dir);
-        let record = work_dir::read_json(&work.job_json())?;
-        Ok(Job { work, record })
+    /// The job whose folder is `dir`, with the job record `io` received.
+    pub fn received(dir: &Path, io: &StepIo) -> Result<Job> {
+        Ok(Job {
+            work: WorkDir::new(dir),
+            record: io.job_record()?,
+        })
     }
 
     pub fn video(&self) -> PathBuf {
@@ -64,11 +70,6 @@ impl Job {
 
     pub fn settings(&self) -> &JobSettings {
         &self.record.settings
-    }
-
-    /// The probe-and-decode result.
-    pub fn probe(&self) -> Result<ProbeDecoded> {
-        work_dir::read_json(&self.work.probe())
     }
 
     /// The folder models are read from: the one the run named, else the default.
@@ -111,47 +112,58 @@ pub(crate) fn since(start: Instant) -> f64 {
 /// Where a task reports `(done, total)`; shared by the threads of a concurrent task.
 pub type StepProgress<'a> = &'a (dyn Fn(usize, usize) + Sync);
 
-/// Run `step`'s task; `progress` hears `(done, total)`.
-pub fn run(step: StepName, job: &Job, progress: StepProgress) -> Result<TaskReport> {
+/// Run `step`'s task on `io`; `progress` hears `(done, total)`.
+pub fn run(
+    step: StepName,
+    job: &Job,
+    io: &mut StepIo,
+    progress: StepProgress,
+) -> Result<TaskReport> {
     let result = match step {
-        StepName::ProbeDecode => media::probe_decode(job, progress),
-        StepName::ShotScan => media::shot_scan(job),
-        StepName::Separation => media::separation(job, progress),
-        StepName::Vad => speech::vad(job),
-        StepName::AsrParakeet => speech::asr_parakeet(job, progress),
-        StepName::AsrWhisper => speech::asr_whisper(job, progress),
-        StepName::DiffSheet => speech::diff_sheet(job),
-        StepName::SoundEvents => sounds::sound_events(job, progress),
-        StepName::Adjudicate => llm::adjudicate(job, progress),
-        StepName::RedecodeParakeet => speech::redecode_parakeet(job, progress),
-        StepName::RedecodeWhisper => speech::redecode_whisper(job, progress),
-        StepName::Readjudicate => llm::readjudicate(job, progress),
-        StepName::SoundCues => sounds::sound_cues(job, progress),
-        StepName::Alignment => alignment::alignment(job, progress),
-        StepName::Review => review::review(job),
-        StepName::Cues => layout::cues(job),
+        StepName::ProbeDecode => media::probe_decode(job, io, progress),
+        StepName::ShotScan => media::shot_scan(job, io, progress),
+        StepName::Separation => media::separation(job, io, progress),
+        StepName::Vad => speech::vad(job, io, progress),
+        StepName::AsrParakeet => speech::asr_parakeet(job, io, progress),
+        StepName::AsrWhisper => speech::asr_whisper(job, io, progress),
+        StepName::DiffSheet => speech::diff_sheet(job, io, progress),
+        StepName::SoundEvents => sounds::sound_events(job, io, progress),
+        StepName::Adjudicate => llm::adjudicate(job, io, progress),
+        StepName::RedecodeParakeet => speech::redecode_parakeet(job, io, progress),
+        StepName::RedecodeWhisper => speech::redecode_whisper(job, io, progress),
+        StepName::Readjudicate => llm::readjudicate(job, io, progress),
+        StepName::SoundCues => sounds::sound_cues(job, io, progress),
+        StepName::Alignment => alignment::alignment(job, io, progress),
+        StepName::Review => review::review(job, io, progress),
+        StepName::Cues => layout::cues(job, io, progress),
         StepName::TextDetect
         | StepName::TextRead
         | StepName::TextTrack
         | StepName::TextTranslate
         | StepName::TextReview
-        | StepName::TextTypeset => onscreen::run(step, job, progress),
-        StepName::Qc => layout::qc(job),
+        | StepName::TextTypeset => onscreen::run(step, job, io, progress),
+        StepName::Qc => layout::qc(job, io, progress),
         StepName::TextMask | StepName::TextInpaint | StepName::TextCompose => {
-            replace::run(step, job, progress)
+            replace::run(step, job, io, progress)
         }
-        StepName::TextVerify => verify::run(job, progress),
-        StepName::Output => layout::output(job),
-        StepName::LocalizedVideo => localized::run(job, progress),
+        StepName::TextVerify => verify::run(job, io, progress),
+        StepName::Output => layout::output(job, io, progress),
+        StepName::LocalizedVideo => localized::run(job, io, progress),
     };
     result.map_err(|e| PipelineError::new(format!("step {step}"), e))
 }
 
-/// Run `step` inside this process and measure it.
-pub fn in_process(step: StepName, job: &Job, progress: StepProgress) -> Result<StepMeasure> {
+/// Run `step` inside this process on `io` and measure it; its outputs stay in `io` for the
+/// runner to commit with the step's record.
+pub fn in_process(
+    step: StepName,
+    job: &Job,
+    io: &mut StepIo,
+    progress: StepProgress,
+) -> Result<StepMeasure> {
     let reset = memory::reset_peak_ram();
     let started = Instant::now();
-    let report = run(step, job, progress)?;
+    let report = run(step, job, io, progress)?;
     Ok(StepMeasure {
         wall_s: since(started),
         load_s: Some(report.load_s),
@@ -164,8 +176,8 @@ pub fn in_process(step: StepName, job: &Job, progress: StepProgress) -> Result<S
 }
 
 /// The `worker <step> <job dir>` subcommand of the binary `binary`: install the worker channel,
-/// run the step, and send its progress and measure, then its end; any error is sent as a
-/// `Failed` frame and returned.
+/// read the step's inputs from stdin, run the step, and send its outputs, progress and measure,
+/// then its end; any error is sent as a `Failed` frame and returned.
 pub fn worker_main(step: StepName, job_dir: &Path, binary: Binary) -> Result<()> {
     worker_channel::worker::install().map_err(|error| {
         PipelineError::new(
@@ -198,11 +210,14 @@ fn run_in_worker(step: StepName, job_dir: &Path, binary: Binary) -> Result<()> {
             format!("the step runs in `{name}`"),
         ));
     }
-    let job = Job::load(job_dir)?;
+    let inputs = worker_channel::worker::read_inputs(&mut std::io::stdin().lock())
+        .context(format!("{context}: cannot read the step's inputs"))?;
+    let mut io = StepIo::in_worker(inputs);
+    let job = Job::received(job_dir, &io)?;
     let send = |done: usize, total: usize| {
         worker_channel::worker::progress(done as u64, total as u64);
     };
-    let report = run(step, &job, &send)?;
+    let report = run(step, &job, &mut io, &send)?;
     let measure = WorkerMeasure {
         load_s: report.load_s,
         process_s: report.process_s,

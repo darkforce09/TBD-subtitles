@@ -1,37 +1,47 @@
-//! The job report: `report.md` rendered from the quality check and the job record, written after
-//! every run so its step table shows the latest times.
+//! The job report: `report.md` rendered from the quality check, the job record and the step
+//! records, written after every run so its step table shows the latest times.
 //!
 //! **Role:** render the quality check, then the on-screen text section and, when the localized
 //! video was written, its replacements, fallbacks, path and encoder.
-//! **Position:** called by the runner at the end of every job; reads what the steps wrote.
-//! **Signals and state:** reads `qc.json`, the dropped sounds, `visual/text_typeset.json`,
-//! `visual/text_verify.json` and `visual/localized_video.json`; writes `report.md`.
+//! **Position:** called by the runner at the end of every job; reads what the steps stored.
+//! **Signals and state:** reads `outputs/qc`, `outputs/cues/dropped_sounds`,
+//! `outputs/text_typeset`, `outputs/text_verify` and `outputs/localized_video` from one snapshot
+//! of the job's store, through the process's one handle of it; writes `report.md`.
 //! **Invariants:** the localized-video lines appear only when that step ran without recording
-//! itself disabled; the report is written whole through a part file.
+//! itself disabled; a document the report reads and does not find is an error naming it; the
+//! report is written whole through a part file.
 
 use job_model::StepName;
-use job_model::job::JobRecord;
-use job_model::onscreen::{LocalizedVideoRecord, ReplaceStatus, ReplacementDocument};
+use job_model::job::{JobRecord, StepRecords};
+use job_model::onscreen::{
+    LocalizedVideoRecord, ReplaceStatus, ReplacementDocument, TextDocument, VerifiedReplacements,
+};
 use job_model::report::QcReport;
+use rkyv::api::high::{HighDeserializer, HighValidator};
+use rkyv::bytecheck::CheckBytes;
+use rkyv::rancor::Error as ArchiveError;
 
-use crate::error::Result;
-use crate::work_dir::{self, WorkDir};
+use crate::error::{PipelineError, Result};
+use crate::work_dir::store::{StoreRead, keys};
+use crate::work_dir::{self, JobStore, WorkDir};
 
-/// Write `report.md` and return the quality check it shows.
-pub fn write(work: &WorkDir, record: &JobRecord) -> Result<QcReport> {
-    let qc: QcReport = work_dir::read_json(&work.qc())?;
-    let dropped: Vec<String> = work_dir::read_json(&work.dropped_sounds()).unwrap_or_default();
+/// Write `report.md` from the job's record and its step records, and return the quality check
+/// it shows.
+pub fn write(work: &WorkDir, record: &JobRecord, steps: &StepRecords) -> Result<QcReport> {
+    // The runner's handle: a job runs in one process, which shares one handle of its database.
+    let read = JobStore::open(work)?.read()?;
+    let qc: QcReport = stored(&read, StepName::Qc, None)?;
+    let dropped: Vec<String> = stored(&read, StepName::Cues, Some(keys::DROPPED_SOUNDS))?;
     let output = stages::output::subtitle_path(
         std::path::Path::new(&record.video),
         record.settings.effective_output_format(),
     );
-    let mut text = stages::qc::markdown::render(&qc, record, &output.to_string_lossy(), &dropped);
+    let mut text =
+        stages::qc::markdown::render(&qc, record, steps, &output.to_string_lossy(), &dropped);
     if record.settings.onscreen_text.enabled {
-        let visual: job_model::onscreen::TextDocument =
-            work_dir::read_json(&work.text(job_model::StepName::TextTypeset))?;
+        let visual: TextDocument = stored(&read, StepName::TextTypeset, None)?;
         let summary = visual.summary();
-        let seconds: f64 = record
-            .steps
+        let seconds: f64 = steps
             .iter()
             .filter(|(step, _)| step.stage() == job_model::StageName::OnscreenText)
             .map(|(_, done)| done.measure.wall_s)
@@ -52,22 +62,37 @@ pub fn write(work: &WorkDir, record: &JobRecord) -> Result<QcReport> {
                 item.warnings.join("; ")
             ));
         }
-        if localized_video_ran(record) {
-            let replacements: ReplacementDocument =
-                work_dir::read_json(&work.text(StepName::TextVerify))?;
-            let video: LocalizedVideoRecord =
-                work_dir::read_json(&work.text(StepName::LocalizedVideo))?;
-            text.push_str(&localized_lines(&replacements, &video));
+        if localized_video_ran(steps) {
+            let verified: VerifiedReplacements = stored(&read, StepName::TextVerify, None)?;
+            let video: LocalizedVideoRecord = stored(&read, StepName::LocalizedVideo, None)?;
+            text.push_str(&localized_lines(&verified.document, &video));
         }
     }
     work_dir::write_text(&work.report(), &text)?;
     Ok(qc)
 }
 
+/// `step`'s document `part` in `read`; missing is an error naming it.
+fn stored<T>(read: &StoreRead, step: StepName, part: Option<&str>) -> Result<T>
+where
+    T: rkyv::Archive,
+    T::Archived: for<'a> CheckBytes<HighValidator<'a, ArchiveError>>
+        + rkyv::Deserialize<T, HighDeserializer<ArchiveError>>,
+{
+    read.output(step, part)?.ok_or_else(|| {
+        PipelineError::new(
+            "the job report",
+            format!(
+                "the job database holds no {} document",
+                keys::output_name(step, part)
+            ),
+        )
+    })
+}
+
 /// Whether the localized-video step ran and wrote a video rather than recording itself disabled.
-fn localized_video_ran(record: &JobRecord) -> bool {
-    record
-        .steps
+fn localized_video_ran(steps: &StepRecords) -> bool {
+    steps
         .get(&StepName::LocalizedVideo)
         .is_some_and(|step| !step.measure.notes.contains_key("disabled"))
 }

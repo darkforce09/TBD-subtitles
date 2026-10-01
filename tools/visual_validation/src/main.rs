@@ -6,6 +6,7 @@
 //! **Invariants:** missing readable occurrences fail; uncertain tracks require explicit fallback.
 
 mod evaluate;
+mod job_rows;
 mod mask_probe;
 mod pilot;
 mod scenarios;
@@ -48,14 +49,21 @@ enum Command {
     Fetch,
     /// Recognize a still with the production local detector and readers (run on the host).
     Image { image: PathBuf, output: PathBuf },
-    /// Validate a visual document against hand-annotated occurrences and frame geometry.
+    /// Validate a pilot job's typeset text against hand-annotated occurrences and frame geometry.
     Evaluate {
-        actual: PathBuf,
+        /// The pilot's work directory, as `run` wrote it.
+        work: PathBuf,
         annotations: PathBuf,
         output: PathBuf,
     },
-    /// Print compact occurrence readings, translations, confidence and review flags.
-    Inspect { document: PathBuf },
+    /// Print a job's compact occurrence readings, translations, confidence and review flags.
+    Inspect {
+        /// The job's work directory.
+        work: PathBuf,
+        /// The on-screen text step whose document is printed.
+        #[arg(long, default_value = "text_typeset")]
+        step: String,
+    },
     /// Print the stroke-mask figures of occurrences in a finished job (CPU only).
     MaskProbe {
         /// The job's work directory.
@@ -139,11 +147,11 @@ fn main() -> Result<()> {
         }
         Command::Image { image, output } => recognize(&image, &output)?,
         Command::Evaluate {
-            actual,
+            work,
             annotations,
             output,
-        } => evaluate::run(&actual, &annotations, &output)?,
-        Command::Inspect { document } => inspect(&document)?,
+        } => evaluate::run(&work, &annotations, &output)?,
+        Command::Inspect { work, step } => inspect(&work, &step)?,
         Command::MaskProbe {
             work,
             ids,
@@ -205,8 +213,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn inspect(path: &std::path::Path) -> Result<()> {
-    let document: TextDocument = pipeline::work_dir::read_json(path)?;
+fn inspect(work: &std::path::Path, step: &str) -> Result<()> {
+    let step: job_model::StepName = step
+        .parse()
+        .map_err(|error| anyhow::anyhow!("{step}: {error}"))?;
+    let document = job_rows::text(work, step)?;
     println!(
         "{}",
         serde_json::json!({"summary":document.summary(),"width":document.width,"height":document.height,"decoded_frames":document.decoded_frames})

@@ -1,18 +1,22 @@
 # Job store
 
 The one handle of a job's database, `job.redb`, that a process holds: who owns it, the six tables
-and the layout version of each, rkyv rows written in one transaction and read back typed, in
-place or as bytes, and the record kind of every row.
+and the layout version of each, the name of every row, rkyv rows written in one transaction and
+read back typed, in place or as bytes, the record kind of every row, and the files outside the
+database that rows name.
 
 ## Contents
 
 ```text
 crates/pipeline/src/work_dir/store/
-├── kinds.rs    `RecordKind` and `kind`: the type each table and key archives, checked and as JSON
-├── mod.rs      `JobStore`: the open, the registry, `job.lock`, the layout check and transactions
-├── records.rs  `StoreWrite` (put, reserve, remove, commit) and `StoreRead` (get, view, raw, keys)
-├── tables.rs   one redb definition per table and `LAYOUT_VERSIONS`
-└── tests/      unit tests for ownership, the shared handle, the layout check, the rows and kinds
+├── files.rs     the files each step's rows name, whether they are there, and the orphan cleanup
+├── job_rows.rs  the job record and step records typed, the `put_*` fixtures, `read_job`
+├── keys.rs      the name of every row: `output_key`, `output_parts`, `record_key`, the constants
+├── kinds.rs     `RecordKind` and `kind`: the type each table and key archives, checked and as JSON
+├── mod.rs       `JobStore`: the open, the registry, `job.lock`, the layout check and transactions
+├── records.rs   `StoreWrite` (put, reserve, get, remove, clear, commit), `StoreRead` (get, view, …)
+├── tables.rs    one redb definition per table and `LAYOUT_VERSIONS`
+└── tests/       unit tests of the store and `scratch.rs`, the crate's test job database
 ```
 
 ## How it works
@@ -36,7 +40,10 @@ creates nothing when it does not.
 Every fresh open runs one transaction: it reads the `TableLayouts` under the `meta` key `layout`,
 drops each table whose stored version differs from `LAYOUT_VERSIONS` (or has none while the table
 exists), creates the six tables and stores the current versions. There is no migration: a
-dropped table's steps run again.
+dropped table's steps run again. Then `files::remove_orphans` removes every file under `audio/`
+and `visual/{crops,keyframes,masks,plates,patches}` that no stored row names (a failure is
+logged, never fatal); caches (`visual/readings/`, `visual/translations/`, `claude-*.json`,
+`fix/calls/`), `logs/`, `report.md` and `sheet.txt` are never touched.
 
 | Table | Key | Definition |
 |---|---|---|
@@ -53,7 +60,25 @@ place (such as straight from a worker's pipe) and leaves no row when the fill fa
 takes a row out, and `commit` makes them visible at once. `JobStore::read` gives a `StoreRead`
 snapshot: `get` checks and copies a row out, `view` checks the archive and reads it in place,
 `raw` copies the bytes and `keys` lists a table. Each takes a `worker_channel::address` table and
-key; a key whose kind is not its table's is an error. No step writes here yet.
+key; a key whose kind is not its table's is an error. `StoreWrite::get` reads a row inside the
+write, for a read-change-write, and `clear` empties a table.
+
+`keys` names every row: a step's documents are `outputs/<step>`, and `outputs/<step>/<part>` for
+the further ones `output_parts` lists (`cues/dropped_sounds`, `text_typeset/ass`); its record is
+`step_records/<step>`; the job record is `meta/job_record`; the owner's corrections are
+`corrections/lines` and `corrections/text`, and Fix It's record is `corrections/fix`.
+`job_rows` reads the job record and the step records typed (`StoreRead::job_record`,
+`step_record`, `step_records`, `output`), puts one row per committed transaction
+(`JobStore::put_output`, `put_job_record`, `put_step_record`, for the runner's fixtures and the
+tests of the crate and the app), and reads a job from its folder for a caller that holds no store
+(`read_job`, `read_stored`).
+
+`files::named_files` lists the files one step's rows name: the probe's mix, the separation's
+stems, the crops and keyframe stills of every on-screen text document, the sources, masks, fills,
+patches and previews of every replacement document, and the subtitle files and the localized
+video beside the video. A reference that is not a plain relative path, or a detection with an
+occurrence that names no crop, is malformed. `resume::is_valid` and the orphan cleanup both read
+it, so what a step must keep and what a cleanup keeps are one list.
 
 `kinds::kind` names the type behind a table and key as a `RecordKind`, whose `check` runs rkyv's
 bytecheck over an archive and whose `json` reads it back and turns it into JSON. The worker
@@ -64,9 +89,9 @@ channel checks every output a worker sends with it before the row is kept
 |---|---|---|
 | `meta` | `job_record`, `layout` | `JobRecord`, `TableLayouts` |
 | `step_records` | any step name | `StepRecord` |
-| `corrections` | `lines`, `text` | `Corrections` (today `review.json`), `TextCorrections` (today `visual/corrections.json`) |
-| `outputs` | a step name | the document the step writes today: `ProbeDecoded`, `ShotChanges`, `SpeechPlan`, `EngineTranscript` (both ASR steps), `Vec<Utterance>` (`diff_sheet`), `Vec<SoundEvent>`, `AdjudicationPass` (`adjudicate`, `readjudicate`), `Redecode` (both redecodes), `SoundCues`, `Aligned` (`alignment`, `review`), `CueTrack` (`cues`), `TextDocument` (`text_detect` … `text_review`, `text_typeset`), `ReplacementDocument` (`text_mask`, `text_inpaint`, `text_compose`), `VerifiedReplacements`, `QcReport`, `OutputRecord`, `LocalizedVideoRecord` |
-| `outputs` | `<step>/<part>` | a step's second document: `cues/dropped_sounds` is `Vec<String>` |
+| `corrections` | `lines`, `text`, `fix` | `Corrections`, `TextCorrections`, `FixRecord` |
+| `outputs` | a step name | the document the step writes: `ProbeDecoded`, `ShotChanges`, `SpeechPlan`, `EngineTranscript` (both ASR steps), `Vec<Utterance>` (`diff_sheet`), `Vec<SoundEvent>`, `AdjudicationPass` (`adjudicate`, `readjudicate`), `Redecode` (both redecodes), `SoundCues`, `Aligned` (`alignment`, `review`), `CueTrack` (`cues`), `TextDocument` (`text_detect` … `text_review`, `text_typeset`), `ReplacementDocument` (`text_mask`, `text_inpaint`, `text_compose`), `VerifiedReplacements`, `QcReport`, `OutputRecord`, `LocalizedVideoRecord` |
+| `outputs` | `<step>/<part>` | a step's further document: `cues/dropped_sounds` is `Vec<String>`, `text_typeset/ass` is `String` |
 | `frames`, `readings` | (occurrence, frame) | none yet |
 
 `separation` writes no document (its stems are files), so its key has no kind, nor has any other
@@ -81,7 +106,12 @@ key the table does not list. `kinds::shown` writes a key as the owner types it: 
   `super::{WorkDir, write_text}`.
 - Used by: `crate::runner::run_job` and `crate::fix_it::fix_job`, which hold a `JobStore` while
   they run; `crate::workers` (the worker channel's inputs, outputs and their kinds);
-  `tools/visual_validation/src/pilot.rs`; `apps/tbd_subtitles/src/cli/dump_command.rs` (`kind`).
+  `crate::tasks::StepIo` and `crate::graph` (the keys); `crate::resume` (the rows and
+  `named_files`); `crate::runner::rerun` and `crate::report` (the rows they clear and read);
+  `tools/visual_validation/src/pilot.rs` (`JobStore`) and
+  `tools/visual_validation/src/job_rows.rs` (`read_stored`); the app's `dump` subcommand (`kind`),
+  and its queue (`job_queue/services/video_files`, `queue_store`, `time_left`), report, line
+  review and text review (`read_job`, `read_stored`, `JobStore`, `StoreRead`).
 - Rules:
   - an open creates the six tables, the layout and `job.lock`
     (`an_open_creates_the_six_tables_the_layout_and_the_lock` in `tests/store.rs`);
@@ -101,14 +131,27 @@ key the table does not list. `kinds::shown` writes a key as the owner types it: 
   - a reserved row is filled in place and a failed fill leaves none, and nothing is visible before
     `commit` (`a_reserved_row_is_filled_in_place_and_a_failed_fill_leaves_none`,
     `a_removed_row_is_gone_and_an_uncommitted_write_changes_nothing`);
-  - every document a task or the owner writes today has a record kind whose check accepts its
+  - every document a task or the owner writes has a record kind whose check accepts its
     archive and refuses garbage, every step but `separation` has one, and a key that names no
     type is an error
     (`every_document_a_task_writes_has_a_kind_that_checks_it_and_refuses_garbage`,
     `every_step_but_separation_has_an_output_document`, `unknown_keys_are_errors` in
     `tests/kinds.rs`);
+  - every output key of every step has a kind and a sample
+    (`every_output_key_of_every_step_has_a_kind_and_a_sample`), and every listed name parses
+    back to its step and part (`every_listed_output_name_parses_back_and_nothing_else_does` in
+    `tests/keys.rs`);
+  - the job record and step records read back as they were put, and a reader without a store
+    creates nothing (`tests/job_rows.rs`);
+  - a missing or malformed file a record names makes it unresumable, and an open removes exactly
+    the owned files no row names
+    (`opening_a_job_removes_the_owned_files_no_row_names_and_nothing_else`,
+    `a_stored_mask_document_keeps_its_masks_and_an_unnamed_mask_is_removed_on_open` and
+    `the_checked_replacements_name_their_files_and_the_localized_video_its_file` in
+    `tests/files.rs`);
   - whoever changes a type stored in a table bumps that table's version in `LAYOUT_VERSIONS`,
-    and whoever adds a document a step writes adds its kind (review).
+    and whoever adds a document a step writes lists it in `keys::output_parts` and adds its kind
+    (review).
 
 ## Related documentation
 

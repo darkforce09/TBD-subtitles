@@ -1,17 +1,18 @@
-//! The job's work directory: where every step's output lives, the job id, and JSON written so a
-//! killed job never leaves half a file.
+//! The job's work directory: the paths of its database, its large files and its logs, and the
+//! job id.
 //!
-//! **Role:** name every path of a job (`job.json`, `job.redb`, `audio/`, `asr/`, `adjudication/`,
-//! `logs/`, the outputs) in one place, read and write the JSON files, and hold the job's database
-//! through `store`.
+//! **Role:** name every path of a job (`job.redb`, `job.lock`, `audio/`, `visual/`, `logs/`,
+//! `report.md`, `sheet.txt`) in one place, write files so a killed job never leaves half of one
+//! (Fix It's call cache is JSON), hold the job's database through `store`, and keep the owner's
+//! corrections in it through `corrections`.
 //!
 //! **Position:** used by every other module of the crate and by the worker tasks.
 //!
 //! **Signals and state:** creates folders and files under the job's folder only; `store` keeps a
 //! process-wide registry of the open job databases.
 //!
-//! **Invariants:** every JSON file is written to `<name>.part` and renamed, so a file that exists
-//! is complete; the job id depends only on the video's path.
+//! **Invariants:** every file written here goes to `<name>.part` and is renamed, so a file that
+//! exists is complete; the job id depends only on the video's path.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,11 +24,14 @@ use sha2::{Digest, Sha256};
 
 use crate::error::{Context, Result};
 
-mod corrections;
+pub(crate) mod corrections;
 pub mod store;
 
-pub use corrections::{corrections_digest, read_corrections, update_corrections};
-pub use store::JobStore;
+pub use corrections::{
+    corrections_digest, put_fix_record, read_corrections, read_fix_record, read_text_corrections,
+    update_corrections, update_text_corrections,
+};
+pub use store::{JobStore, StoredJob, load_job_record, load_step_records, read_job, read_stored};
 
 /// One job's folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,9 +52,6 @@ impl WorkDir {
         self.root.join(relative)
     }
 
-    pub fn job_json(&self) -> PathBuf {
-        self.at("job.json")
-    }
     /// The job database, owned by the one process that has it open.
     pub fn database(&self) -> PathBuf {
         self.at("job.redb")
@@ -58,9 +59,6 @@ impl WorkDir {
     /// The pid of the process that has the job database open, written once the open succeeds.
     pub fn lock(&self) -> PathBuf {
         self.at("job.lock")
-    }
-    pub fn probe(&self) -> PathBuf {
-        self.at("probe.json")
     }
     pub fn mix(&self) -> PathBuf {
         self.at("audio/mix_16k.f32")
@@ -71,76 +69,12 @@ impl WorkDir {
     pub fn background(&self) -> PathBuf {
         self.at("audio/background_16k.f32")
     }
-    pub fn shots(&self) -> PathBuf {
-        self.at("shots.json")
-    }
-    pub fn vad(&self) -> PathBuf {
-        self.at("vad.json")
-    }
-    pub fn asr(&self, engine: &str) -> PathBuf {
-        self.at(&format!("asr/{engine}.json"))
-    }
-    pub fn sheet(&self) -> PathBuf {
-        self.at("sheet.json")
-    }
     pub fn sheet_text(&self) -> PathBuf {
         self.at("sheet.txt")
-    }
-    pub fn sound_events(&self) -> PathBuf {
-        self.at("sound_events.json")
-    }
-    pub fn first_pass(&self) -> PathBuf {
-        self.at("adjudication/first.json")
-    }
-    pub fn redecode(&self, engine: &str) -> PathBuf {
-        self.at(&format!("adjudication/redecode_{engine}.json"))
-    }
-    pub fn adjudicated(&self) -> PathBuf {
-        self.at("adjudicated.json")
-    }
-    pub fn sound_cues(&self) -> PathBuf {
-        self.at("sound_cues.json")
-    }
-    pub fn aligned(&self) -> PathBuf {
-        self.at("aligned.json")
-    }
-    /// The corrections, written by the window and by Fix It.
-    pub fn review(&self) -> PathBuf {
-        self.at("review.json")
-    }
-    /// The lock the writers of `review.json` take in turn.
-    pub fn corrections_lock(&self) -> PathBuf {
-        self.at("review.json.lock")
-    }
-    /// Fix It's record of its last run.
-    pub fn fix_record(&self) -> PathBuf {
-        self.at("fix.json")
     }
     /// Fix It's answered model calls, kept until a run finishes.
     pub fn fix_calls(&self) -> PathBuf {
         self.at("fix/calls")
-    }
-    /// The aligned words with the corrected lines timed again.
-    pub fn reviewed(&self) -> PathBuf {
-        self.at("reviewed.json")
-    }
-    pub fn cues(&self) -> PathBuf {
-        self.at("cues.json")
-    }
-    pub fn dropped_sounds(&self) -> PathBuf {
-        self.at("cues_dropped_sounds.json")
-    }
-    /// One on-screen text step's observations, tracks, translations or presentation.
-    pub fn text(&self, step: StepName) -> PathBuf {
-        self.at(&format!("visual/{step}.json"))
-    }
-    /// The owner's on-screen text corrections.
-    pub fn text_corrections(&self) -> PathBuf {
-        self.at("visual/corrections.json")
-    }
-    /// The typeset on-screen text events included in the combined ASS output.
-    pub fn text_ass(&self) -> PathBuf {
-        self.at("visual/events.ass")
     }
     /// Erase masks and the original pixels behind each plate, relative to the job folder.
     pub fn masks_relative() -> &'static str {
@@ -154,14 +88,8 @@ impl WorkDir {
     pub fn patches_relative() -> &'static str {
         "visual/patches"
     }
-    pub fn qc(&self) -> PathBuf {
-        self.at("qc.json")
-    }
     pub fn report(&self) -> PathBuf {
         self.at("report.md")
-    }
-    pub fn output_record(&self) -> PathBuf {
-        self.at("output.json")
     }
     /// The empty folder the `claude` CLI runs in.
     pub fn claude_cwd(&self) -> PathBuf {
@@ -238,6 +166,13 @@ pub fn write_text(path: &Path, text: &str) -> Result<()> {
     let part = PathBuf::from(part);
     fs::write(&part, text).context(format!("cannot write {}", part.display()))?;
     fs::rename(&part, path).context(format!("cannot rename {}", part.display()))
+}
+
+/// Flush a file a step wrote to the disk, so the record that names it never commits before it.
+pub fn sync_file(path: &Path) -> Result<()> {
+    fs::File::open(path)
+        .and_then(|file| file.sync_all())
+        .context(format!("cannot sync {}", path.display()))
 }
 
 #[cfg(test)]

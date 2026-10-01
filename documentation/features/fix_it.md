@@ -66,8 +66,9 @@ four.
    it reads right in the scene and for the character, and each word taken out is truly filler, a
    stutter, a stray from another voice or a mishearing. Restyling and anything in doubt is turned
    down.
-4. **Updating the subtitles** (4 of 4): the kept changes go into `review.json`, and a
-   [correction run](/documentation/glossary.md#correction-run) times them and rebuilds the cues,
+4. **Updating the subtitles** (4 of 4): the kept changes go into the line corrections
+   (`corrections/lines`), and a [correction run](/documentation/glossary.md#correction-run) times
+   them and rebuilds the cues,
    the quality check and the subtitle file. The Overview's note says "Fixing with Claude Opus ·
    updating the subtitles (4 of 4)…". When Claude changed nothing, there is no step 4: Fix It
    finishes at once, with no correction run.
@@ -85,7 +86,7 @@ A 27-minute episode takes about ten calls.
         ▼
   Fixing with Claude Opus · reading the whole video (1 of 4)…                        [Stop]
         │  sidebar: "Fixing with Claude · 1 of 4", with the working spinner
-        ▼  kept changes go into review.json ──▶ a correction run times them
+        ▼  kept changes go into corrections/lines ──▶ a correction run times them
   Fixing with Claude Opus · updating the subtitles (4 of 4)…
         │
         ▼  the correction run ends
@@ -159,15 +160,15 @@ When Claude changed nothing, Fix It finishes at once, with no correction run, an
   └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Where:** in the file card, right under its heading. It shows while the video's `fix.json`
-  counts (the video has not been adjudicated again since Fix It ran), never while Fix It runs or
-  the subtitles are updating.
+- **Where:** in the file card, right under its heading. It shows while the video's Fix It record
+  (`corrections/fix`) counts (the video has not been adjudicated again since Fix It ran), never
+  while Fix It runs or the subtitles are updating.
 - **Title:** "Fixed by Claude" and the Fix It model's name: "Fixed by Claude Opus".
 - **Counts:** the lines changed and the lines Claude answered with no change: "17 lines changed ·
   21 were already right".
 - **Cleared:** each problem from before the first run that the quality check no longer finds,
-  with a green check. A `fix.json` written before Fix It kept those problems shows no cleared
-  list.
+  with a green check. A record that holds no problems from before the first run shows no
+  cleared list.
 - **Left:** each problem still there, as "Claude could not fix: …", with its usual button (the
   [whole-video problems](/documentation/features/gui.md#whole-video-problems)).
 - **Examples:** two changes in plain words: a replaced word as “Heaven dish” → “Cavendish”, an
@@ -196,11 +197,12 @@ When Claude changed nothing, Fix It finishes at once, with no correction run, an
   first. `fix_after_run`, the switch "Fix It after each
   job" beside it (off by default), starts Fix It on each video when its job finishes, if it has
   lines to fix. A file written before either setting existed loads their defaults.
-- `review.json`: each kept change as a correction whose `chosen` is `fix_it` with the model and
-  the reason; Keep Change makes it `kept_fix_it`, the owner's. The window and Fix It change the
-  file only under its lock, `review.json.lock`.
-- `fix.json`: every Fix It run of the video since it was last adjudicated: the last run's brief;
-  for each line asked about, by id, its problems and the checks behind them, each change that
+- `corrections/lines`, in the job's database: each kept change as a correction whose `chosen` is
+  `fix_it` with the model and the reason; Keep Change makes it `kept_fix_it`, the owner's. The
+  window and Fix It each change the row in one write transaction that reads it again, so neither
+  loses the other's change, and Fix It writes it together with its record.
+- `corrections/fix`, in the job's database: every Fix It run of the video since it was last
+  adjudicated: the last run's brief; for each line asked about, by id, its problems and the checks behind them, each change that
   passed the guard, the proposals refused, the heard words left out, the verdict and whether it
   was applied; the calls, tokens and cost of all the runs; the quality check's problems before
   the first run (the count per check, where the first speech with no subtitle starts, the share

@@ -1,16 +1,16 @@
 //! The owner's edits of a review's lines: open a line, take an engine's reading or type a text,
 //! set its flags, discard the edit, save it or keep the line as it is (Looks Right, or Keep Change
-//! for a Fix It change) to `review.json`, undo a Fix It change, take a correction back, follow
+//! for a Fix It change) to the job's line corrections, undo a Fix It change, take a correction back, follow
 //! each saved line's correction run, and carry the edits over when the lines are read again.
 //!
-//! **Role:** every change the review view can make to the session and to the corrections file.
+//! **Role:** every change the review view can make to the session and to the stored corrections.
 //!
 //! **Position:** called by the application's review actions; uses `line_filter` for the line the
 //! editor shows and the line after it.
 //!
-//! **Signals and state:** changes `review.json` in the job's work directory under its lock
-//! (`pipeline::work_dir::update_corrections`), so a Fix It change written meanwhile is kept, or
-//! removes it when the last correction is taken back.
+//! **Signals and state:** changes the line corrections in the job's database in one write
+//! transaction (`pipeline::work_dir::update_corrections`), so a Fix It change written meanwhile is
+//! kept, or removes them when the last correction is taken back.
 //!
 //! **Invariants:** a line keeps its words unless the owner saves a correction or Fix It changed
 //! it; Keep Change keeps Fix It's words as the owner's, and Undo Change saves the language
@@ -118,7 +118,7 @@ pub(crate) fn discard(session: &mut ReviewSession) {
     }
 }
 
-/// Save the line the editor shows, as edited, as its correction and write `review.json`; the
+/// Save the line the editor shows, as edited, as its correction and store it; the
 /// next line of the list, which the editor then shows.
 pub(crate) fn save(session: &mut ReviewSession) -> Result<Option<String>, String> {
     let line = line_filter::open_line(session)
@@ -202,7 +202,7 @@ fn commit(session: &mut ReviewSession, correction: Correction) -> Result<Option<
     Ok(next)
 }
 
-/// Take back the correction of line `id` and write `review.json`; the editor stays on the line,
+/// Take back the correction of line `id` and store the rest; the editor stays on the line,
 /// on the list of every line when its list (Checked) no longer shows it, so its run's status
 /// shows. Only a search that no longer matches moves it on. Whether there was a correction to
 /// take back.
@@ -340,8 +340,9 @@ fn update<R>(
     work_dir: &Path,
     change: impl FnOnce(&mut Corrections) -> R,
 ) -> Result<(Corrections, R), String> {
-    pipeline::work_dir::update_corrections(&WorkDir::new(work_dir), change)
-        .map_err(|e| e.to_string())
+    let store =
+        pipeline::work_dir::JobStore::open(&WorkDir::new(work_dir)).map_err(|e| e.to_string())?;
+    pipeline::work_dir::update_corrections(&store, change).map_err(|e| e.to_string())
 }
 
 /// Mark `ids`, which Fix It changed, as saved and waiting for their correction run, in the runs

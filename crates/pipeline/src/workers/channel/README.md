@@ -29,7 +29,7 @@ the database's page) and closes the pipe; a value missing from the database ends
 `workers::run_worker` joins it after the worker's frames are read, and a failed send fails only a
 step that otherwise finished, since a worker that ends early closes the pipe on it.
 
-`StepWrite` begins the database's one write transaction on the first `Output` frame. For each one
+`StepWrite` begins the database's one write transaction on its first output. For each `Output` frame
 it looks up the row's record kind (`work_dir::store::kinds`) before anything reaches the store: a
 table a worker never writes (`meta`, `step_records`, `corrections`) or a key with no record kind
 is a protocol error. It then calls `StoreWrite::reserve` for the archive's length and reads the
@@ -41,10 +41,13 @@ refuses a `StepWrite` that leaves any of it unread. `commit` puts the step's `St
 `commit` (a protocol break, a `Failed` frame, a missing `Measure` or `Done`, a non-zero exit, a
 cancelled run) stores nothing. While a step's transaction is open, another step's first output
 waits for it: the runner commits a step's outputs as soon as its record is built, the background
-shot scan on its own thread.
+shot scan on its own thread. `StepWrite::put` keeps an archive a task in the runner made
+(`tasks::StepIo::in_process`), with the same refusal of the tables a step never writes, so an
+in-process step and a worker step commit their outputs the same way.
 
-No step declares inputs or sends outputs yet: every step still writes its JSON files, and the
-runner passes no inputs.
+The runner sends every worker the values `graph::reads` gives its step; the steps converted to the
+store (the probe, the shot scan, voice activity) read and write only through the channel, and the
+rest still write their JSON files beside it.
 
 ## Boundaries
 

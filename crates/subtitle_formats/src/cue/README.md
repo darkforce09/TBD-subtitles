@@ -21,8 +21,8 @@ the time a frame starts in seconds (`seconds`) and in whole milliseconds rounded
 its `frames`, its characters over all lines (`chars`, line breaks not counted) and its reading
 speed (`cps`). A `CueLine` is plain or italic text. `CueKind` is `dialogue` (spoken lines, perhaps
 with a sound line added), `sound` or `music`. A `CueTrack` holds the frame rate and the cues in
-time order, serialises to the `cues.json` of the job's work directory, and archives with rkyv
-for the job database.
+time order, serialises to JSON (as `dump` prints it), and archives with rkyv for the job
+database, where it is `outputs/cues`.
 
 ## Boundaries
 

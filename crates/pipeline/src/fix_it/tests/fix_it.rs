@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -8,8 +7,8 @@ use inference::llm::{Completion, LlmError};
 use job_model::StepName;
 use job_model::job::{JobRecord, JobSettings, StepMeasure, StepRecord};
 use job_model::outputs::{
-    AdjudicationPass, Aligned, Chosen, ChunkWords, Correction, EngineTranscript, Line, TimeSpan,
-    TimedWord, Utterance,
+    AdjudicationPass, Aligned, Chosen, ChunkWords, Correction, EngineTranscript, Line, Redecode,
+    TimeSpan, TimedWord, Utterance,
 };
 use job_model::report::{QcCheck, QcFinding, QcReport};
 use serde_json::{Value, json};
@@ -90,6 +89,11 @@ fn utterance(id: &str, start_s: f64, end_s: f64, p: &[&str], w: &[&str]) -> Utte
     }
 }
 
+/// This process's handle of the job database in `work`.
+fn store(work: &WorkDir) -> Arc<JobStore> {
+    JobStore::open(work).unwrap()
+}
+
 /// A finished job of three lines whose second lost a heard "Uh", in a scratch work root.
 fn finished_job(name: &str) -> (WorkDir, PathBuf, FixOptions) {
     let root = std::env::temp_dir().join(format!("tbd-fix-it-{name}-{}", std::process::id()));
@@ -108,15 +112,20 @@ fn finished_job(name: &str) -> (WorkDir, PathBuf, FixOptions) {
         settings: JobSettings::with_glossary(vec!["Rebecca".into()]),
         models_dir: None,
         corrections: None,
-        steps: BTreeMap::from([(StepName::Qc, step.clone()), (StepName::Output, step)]),
     };
-    work_dir::write_json(&work.job_json(), &record).unwrap();
+    let job = store(&work);
+    job.put_job_record(&record).unwrap();
+    job.put_step_record(StepName::Qc, &step).unwrap();
+    job.put_step_record(StepName::Output, &step).unwrap();
     let sheet = vec![
         utterance("U1", 0.0, 1.0, &["Look!"], &["Look!"]),
         utterance("U2", 1.5, 3.0, &["Uh", "go!"], &["Go!"]),
         utterance("U3", 5.0, 6.0, &["Now!"], &["Now!"]),
     ];
-    work_dir::write_json(&work.sheet(), &sheet).unwrap();
+    job.put_output(StepName::DiffSheet, None, &sheet).unwrap();
+    for again in [StepName::RedecodeParakeet, StepName::RedecodeWhisper] {
+        job.put_output(again, None, &Redecode::default()).unwrap();
+    }
     let line = |id: &str, t: &str, f: &[&str]| Line {
         id: id.into(),
         t: t.into(),
@@ -130,7 +139,8 @@ fn finished_job(name: &str) -> (WorkDir, PathBuf, FixOptions) {
         ],
         ..AdjudicationPass::default()
     };
-    work_dir::write_json(&work.adjudicated(), &adjudicated).unwrap();
+    job.put_output(StepName::Readjudicate, None, &adjudicated)
+        .unwrap();
     let qc = QcReport {
         findings: vec![QcFinding {
             check: QcCheck::UncoveredSpeech,
@@ -141,8 +151,9 @@ fn finished_job(name: &str) -> (WorkDir, PathBuf, FixOptions) {
         }],
         ..QcReport::default()
     };
-    work_dir::write_json(&work.qc(), &qc).unwrap();
-    work_dir::write_json(&work.reviewed(), &Aligned::default()).unwrap();
+    job.put_output(StepName::Qc, None, &qc).unwrap();
+    job.put_output(StepName::Review, None, &Aligned::default())
+        .unwrap();
     let heard = EngineTranscript {
         chunks: vec![ChunkWords {
             span: TimeSpan::new(0.0, 6.0),
@@ -155,7 +166,8 @@ fn finished_job(name: &str) -> (WorkDir, PathBuf, FixOptions) {
         }],
         ..EngineTranscript::default()
     };
-    work_dir::write_json(&work.asr("parakeet"), &heard).unwrap();
+    job.put_output(StepName::AsrParakeet, None, &heard).unwrap();
+    drop(job);
     let options = FixOptions {
         work_root: root.join("work"),
         model: "opus".into(),
@@ -178,7 +190,7 @@ fn kept_changes_become_fix_it_corrections_and_the_run_is_recorded() {
     })
     .unwrap();
     assert_eq!(outcome.changed, ["U1", "U2"]);
-    let corrections = work_dir::read_corrections(&work).unwrap();
+    let corrections = work_dir::read_corrections(&store(&work)).unwrap();
     let u2 = corrections.get("U2").unwrap();
     assert_eq!(u2.text, "Uh, go!");
     assert!(
@@ -186,7 +198,7 @@ fn kept_changes_become_fix_it_corrections_and_the_run_is_recorded() {
     );
     let u1 = corrections.get("U1").unwrap();
     assert_eq!(u1.text, "Look!");
-    let record: FixRecord = work_dir::read_json(&work.fix_record()).unwrap();
+    let record: FixRecord = work_dir::read_fix_record(&store(&work)).unwrap().unwrap();
     assert!(record.lines.iter().all(|l| l.applied));
     assert_eq!(record.brief.show, "One Piece");
     assert_eq!((record.calls, record.cached_calls), (3, 0));
@@ -204,7 +216,7 @@ fn a_correction_the_owner_saves_during_the_run_wins() {
     let owner_work = work.clone();
     let script = move |system: &str, user: &str| {
         if system == prompt::JUDGE {
-            work_dir::update_corrections(&owner_work, |c| {
+            work_dir::update_corrections(&store(&owner_work), |c| {
                 c.set(Correction {
                     id: "U2".into(),
                     text: "Go, go!".into(),
@@ -220,7 +232,7 @@ fn a_correction_the_owner_saves_during_the_run_wins() {
     let outcome = fix_job(&video, &work, &options, &make, &|_| {}).unwrap();
     assert_eq!(outcome.kept_yours, ["U2"]);
     assert_eq!(outcome.changed, ["U1"]);
-    let corrections = work_dir::read_corrections(&work).unwrap();
+    let corrections = work_dir::read_corrections(&store(&work)).unwrap();
     assert_eq!(corrections.get("U2").unwrap().chosen, Chosen::Typed);
     let _ = std::fs::remove_dir_all(options.work_root.parent().unwrap());
 }
@@ -238,7 +250,10 @@ fn a_stopped_run_changes_nothing_and_the_next_run_reuses_its_answers() {
     let make = maker(Arc::new(script), Arc::new(AtomicUsize::new(0)));
     let stopped = fix_job(&video, &work, &options, &make, &|_| {}).unwrap_err();
     assert!(stopped.is_cancelled());
-    assert!(!work.review().exists());
+    assert_eq!(
+        work_dir::read_corrections(&store(&work)).unwrap(),
+        Default::default()
+    );
     assert!(work.fix_calls().read_dir().unwrap().count() >= 2);
 
     let again = FixOptions {
@@ -261,7 +276,7 @@ fn a_stopped_run_changes_nothing_and_the_next_run_reuses_its_answers() {
 fn a_job_that_is_not_ready_is_refused() {
     let (work, video, options) = finished_job("refused");
     let make = maker(Arc::new(answer), Arc::new(AtomicUsize::new(0)));
-    work_dir::update_corrections(&work, |c| {
+    work_dir::update_corrections(&store(&work), |c| {
         c.set(Correction {
             id: "U3".into(),
             text: "Now.".into(),
@@ -275,10 +290,19 @@ fn a_job_that_is_not_ready_is_refused() {
         error.message.contains("not in the subtitles yet"),
         "{error}"
     );
-    let mut record: JobRecord = work_dir::read_json(&work.job_json()).unwrap();
-    record.corrections = work_dir::corrections_digest(&work);
-    record.steps.remove(&StepName::Output);
-    work_dir::write_json(&work.job_json(), &record).unwrap();
+    let job = store(&work);
+    let mut record: JobRecord = work_dir::load_job_record(&job).unwrap().unwrap();
+    record.corrections = work_dir::corrections_digest(&job).unwrap();
+    job.put_job_record(&record).unwrap();
+    let mut write = job.write().unwrap();
+    write
+        .remove(
+            worker_channel::address::Table::StepRecords,
+            &crate::work_dir::store::keys::record_key(StepName::Output),
+        )
+        .unwrap();
+    write.commit().unwrap();
+    drop(job);
     let error = fix_job(&video, &work, &options, &make, &|_| {}).unwrap_err();
     assert!(error.message.contains("no finished subtitles"), "{error}");
     let _ = std::fs::remove_dir_all(options.work_root.parent().unwrap());
@@ -297,20 +321,21 @@ fn finding(check: QcCheck, id: Option<&str>, time_s: f64, detail: &str) -> QcFin
 /// The job as a correction run leaves it: its subtitles hold every correction, its quality check
 /// finds `findings`, and its re-adjudication has `fingerprint`.
 fn checked_again(work: &WorkDir, findings: Vec<QcFinding>, fingerprint: &str) -> QcReport {
-    let mut record: JobRecord = work_dir::read_json(&work.job_json()).unwrap();
-    record.corrections = work_dir::corrections_digest(work);
+    let job = store(work);
+    let mut record: JobRecord = work_dir::load_job_record(&job).unwrap().unwrap();
+    record.corrections = work_dir::corrections_digest(&job).unwrap();
+    job.put_job_record(&record).unwrap();
     let step = StepRecord {
         fingerprint: fingerprint.into(),
         finished_ns: 0,
         measure: StepMeasure::default(),
     };
-    record.steps.insert(StepName::Readjudicate, step);
-    work_dir::write_json(&work.job_json(), &record).unwrap();
+    job.put_step_record(StepName::Readjudicate, &step).unwrap();
     let qc = QcReport {
         findings,
         ..QcReport::default()
     };
-    work_dir::write_json(&work.qc(), &qc).unwrap();
+    job.put_output(StepName::Qc, None, &qc).unwrap();
     qc
 }
 
@@ -363,7 +388,7 @@ fn a_second_run_asks_only_what_is_left_and_keeps_what_the_first_answered() {
         "U1 was answered about being too short"
     );
     assert_eq!(outcome.changed, ["U3"]);
-    let record: FixRecord = work_dir::read_json(&work.fix_record()).unwrap();
+    let record: FixRecord = work_dir::read_fix_record(&store(&work)).unwrap().unwrap();
     assert_eq!(record, outcome.record);
     let ids: Vec<&str> = record.lines.iter().map(|l| l.id.as_str()).collect();
     assert_eq!(ids, ["U1", "U2", "U3"]);
@@ -414,8 +439,12 @@ fn a_run_that_cannot_make_its_brief_changes_nothing() {
     let error = fix_job(&video, &work, &options, &make, &|_| {}).unwrap_err();
     assert!(error.message.contains("not logged in"), "{error}");
     assert!(!error.is_cancelled());
-    assert!(!work.review().exists());
-    assert!(!work.fix_record().exists());
+    let job = store(&work);
+    assert_eq!(
+        work_dir::read_corrections(&job).unwrap(),
+        Default::default()
+    );
+    assert_eq!(work_dir::read_fix_record(&job).unwrap(), None);
     let _ = std::fs::remove_dir_all(options.work_root.parent().unwrap());
 }
 

@@ -6,8 +6,9 @@
 //!
 //! **Position:** called by `tasks::run` inside a worker of the main binary (ONNX Runtime).
 //!
-//! **Signals and state:** reads `sheet.json`, `adjudicated.json`, `probe.json`, both engines'
-//! transcripts and the vocal stem; writes `aligned.json`.
+//! **Signals and state:** reads the vocal stem and, through the step's `StepIo`, the sheet, the
+//! adjudicated lines, the probe and both engines' transcripts; stores the aligned words
+//! (`outputs/alignment`).
 //!
 //! **Invariants:** the model loads once per job; a job where every aligner call failed is an error,
 //! not a job timed from the backbone alone; the heard spans are cut like the sheet, one per
@@ -18,15 +19,15 @@ use std::time::Instant;
 
 use inference::onnx::Device;
 use inference::onnx::parakeet_ctc::{self, ParakeetCtc};
+use job_model::StepName;
 use job_model::outputs::{AdjudicationPass, EngineTranscript, TimeSpan, TimingSource, Utterance};
 use media_io::pcm_stream::read_f32_range;
 use stages::alignment::run::{self, WordAligner};
 use stages::alignment::{self, WordTimes, blocks};
 use stages::diff_sheet::sheet;
 
-use super::{Job, TaskReport, since};
+use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, Result};
-use crate::work_dir;
 
 /// Samples per second of the stems.
 const RATE: f64 = 16_000.0;
@@ -81,12 +82,12 @@ impl WordAligner for CtcAligner {
 }
 
 /// Where any engine heard each utterance of `sheet`, cut from the transcripts as the diff-sheet
-/// step cut them: Parakeet as the backbone, Whisper, when its transcript is there, beside it.
+/// step cut them: Parakeet as the backbone, Whisper beside it.
 /// Empty, so every window stays the backbone's, when the cut does not match the sheet.
-pub(super) fn heard_spans(job: &Job, sheet: &[Utterance]) -> Result<Vec<(f64, f64)>> {
-    let parakeet: EngineTranscript = work_dir::read_json(&job.work.asr("parakeet"))?;
-    let whisper: Option<EngineTranscript> = work_dir::read_json(&job.work.asr("whisper")).ok();
-    let spans = sheet::heard_spans(&parakeet, &whisper.iter().collect::<Vec<_>>());
+pub(super) fn heard_spans(io: &StepIo, sheet: &[Utterance]) -> Result<Vec<(f64, f64)>> {
+    let parakeet: EngineTranscript = io.get(StepName::AsrParakeet, None)?;
+    let whisper: EngineTranscript = io.get(StepName::AsrWhisper, None)?;
+    let spans = sheet::heard_spans(&parakeet, &[&whisper]);
     if spans.len() != sheet.len() {
         tracing::warn!(
             "the transcripts cut {} utterances, the sheet holds {}; aligning in the backbone's windows",
@@ -98,12 +99,18 @@ pub(super) fn heard_spans(job: &Job, sheet: &[Utterance]) -> Result<Vec<(f64, f6
     Ok(spans)
 }
 
-pub(super) fn alignment(job: &Job, progress: &dyn Fn(usize, usize)) -> Result<TaskReport> {
-    let sheet: Vec<Utterance> = work_dir::read_json(&job.work.sheet())?;
-    let adjudicated: AdjudicationPass = work_dir::read_json(&job.work.adjudicated())?;
-    let duration = job.probe()?.probe.duration_s;
-    let spans = heard_spans(job, &sheet)?;
-    let kept = blocks::kept(&sheet, &adjudicated.lines, &spans);
+/// What the alignment reads, all of it before its model loads: the utterances it keeps, each
+/// with its final words and where it was heard, and the video's duration.
+fn read_inputs(io: &StepIo) -> Result<(Vec<blocks::Kept>, f64)> {
+    let sheet: Vec<Utterance> = io.get(StepName::DiffSheet, None)?;
+    let adjudicated: AdjudicationPass = io.get(StepName::Readjudicate, None)?;
+    let duration = io.probe()?.probe.duration_s;
+    let spans = heard_spans(io, &sheet)?;
+    Ok((blocks::kept(&sheet, &adjudicated.lines, &spans), duration))
+}
+
+pub(super) fn alignment(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<TaskReport> {
+    let (kept, duration) = read_inputs(io)?;
     let load = Instant::now();
     let mut aligner = CtcAligner::open(job, Device::Cuda)?;
     let mut report = TaskReport {
@@ -133,6 +140,10 @@ pub(super) fn alignment(job: &Job, progress: &dyn Fn(usize, usize)) -> Result<Ta
             format!("every call failed: {:?}", aligned.errors.first()),
         ));
     }
-    work_dir::write_json(&job.work.aligned(), &aligned)?;
+    io.put(StepName::Alignment, None, &aligned)?;
     Ok(report)
 }
+
+#[cfg(test)]
+#[path = "tests/alignment.rs"]
+mod tests;

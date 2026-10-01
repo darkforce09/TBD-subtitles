@@ -29,75 +29,72 @@ pub(super) fn utterance(id: &str, start_s: f64, p: &str, w: &str) -> Utterance {
     }
 }
 
-fn write(path: &Path, value: &impl serde::Serialize) {
-    if let Some(folder) = path.parent() {
-        std::fs::create_dir_all(folder).expect("dir");
-    }
-    std::fs::write(path, serde_json::to_string(value).expect("json")).expect("write");
+/// This process's handle of the database of the job in `job`.
+fn store(job: &Path) -> std::sync::Arc<pipeline::work_dir::JobStore> {
+    pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(job)).expect("the store")
 }
 
 /// A work directory with two utterances; the first unsure and heard again, the second settled.
 pub(super) fn job(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("tbd-review-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    write(
-        &dir.join("sheet.json"),
-        &vec![
-            utterance("U1", 10.0, "blame!", "flavor!"),
-            utterance("U2", 12.0, "Go!", "Go!"),
-        ],
-    );
-    write(
-        &dir.join("adjudicated.json"),
-        &AdjudicationPass {
-            lines: vec![
-                Line {
-                    id: "U1".into(),
-                    t: "Blaver!".into(),
-                    f: vec!["UNSURE".into()],
-                },
-                Line {
-                    id: "U2".into(),
-                    t: "Go!".into(),
-                    f: vec!["SPK".into()],
-                },
-            ],
-            findings: Findings::default(),
-            redecoded: vec!["U1".into()],
-            calls: 1,
-            input_tokens: 0,
-            output_tokens: 0,
-            cost_usd: 0.0,
-            failed_calls: vec![],
-        },
-    );
-    write(
-        &dir.join("adjudication").join("redecode_parakeet.json"),
-        &Redecode {
-            ids: vec!["U1".into()],
-            transcript: EngineTranscript {
-                engine: "parakeet".into(),
-                input: "vocals".into(),
-                chunks: vec![ChunkWords {
-                    span: TimeSpan::new(9.5, 11.5),
-                    words: vec![word("Brave!")],
-                }],
+    let store = store(&dir);
+    let sheet = vec![
+        utterance("U1", 10.0, "blame!", "flavor!"),
+        utterance("U2", 12.0, "Go!", "Go!"),
+    ];
+    store
+        .put_output(StepName::DiffSheet, None, &sheet)
+        .expect("sheet");
+    let adjudicated = AdjudicationPass {
+        lines: vec![
+            Line {
+                id: "U1".into(),
+                t: "Blaver!".into(),
+                f: vec!["UNSURE".into()],
             },
-        },
-    );
-    write(
-        &dir.join("qc.json"),
-        &QcReport {
-            findings: vec![QcFinding {
-                check: QcCheck::Unsure,
-                time_s: 10.0,
-                text: "Blaver!".into(),
-                detail: "U1".into(),
-                utterance: Some("U1".into()),
+            Line {
+                id: "U2".into(),
+                t: "Go!".into(),
+                f: vec!["SPK".into()],
+            },
+        ],
+        findings: Findings::default(),
+        redecoded: vec!["U1".into()],
+        calls: 1,
+        input_tokens: 0,
+        output_tokens: 0,
+        cost_usd: 0.0,
+        failed_calls: vec![],
+    };
+    store
+        .put_output(StepName::Readjudicate, None, &adjudicated)
+        .expect("adjudicated");
+    let redecode = Redecode {
+        ids: vec!["U1".into()],
+        transcript: EngineTranscript {
+            engine: "parakeet".into(),
+            input: "vocals".into(),
+            chunks: vec![ChunkWords {
+                span: TimeSpan::new(9.5, 11.5),
+                words: vec![word("Brave!")],
             }],
-            ..QcReport::default()
         },
-    );
+    };
+    store
+        .put_output(StepName::RedecodeParakeet, None, &redecode)
+        .expect("redecode");
+    let qc = QcReport {
+        findings: vec![QcFinding {
+            check: QcCheck::Unsure,
+            time_s: 10.0,
+            text: "Blaver!".into(),
+            detail: "U1".into(),
+            utterance: Some("U1".into()),
+        }],
+        ..QcReport::default()
+    };
+    store.put_output(StepName::Qc, None, &qc).expect("qc");
     dir
 }
 
@@ -134,7 +131,7 @@ fn every_reading_of_a_line_is_gathered_in_sheet_order() {
 #[test]
 fn a_job_without_a_sheet_names_it() {
     let error = load(Path::new("/v/a.mp4"), Path::new("/no/such/job")).expect_err("missing");
-    assert!(error.contains("sheet.json"), "{error}");
+    assert!(error.contains("diff_sheet"), "{error}");
 }
 
 #[test]
@@ -167,8 +164,8 @@ fn why_a_line_is_flagged_names_the_word_or_the_number() {
 #[test]
 fn a_line_fix_it_changed_is_in_claude_s_group_first_with_what_the_app_had() {
     let dir = job("fix-it");
-    write(
-        &dir.join("review.json"),
+    put_corrections(
+        &dir,
         &Corrections {
             lines: vec![job_model::outputs::Correction {
                 id: "U1".into(),
@@ -192,4 +189,10 @@ fn a_line_fix_it_changed_is_in_claude_s_group_first_with_what_the_app_had() {
     );
     assert!(session.unchecked_fix("U1"));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Store `corrections` as the line corrections of the job in `job`.
+fn put_corrections(job: &Path, corrections: &Corrections) {
+    pipeline::work_dir::update_corrections(&store(job), |c| *c = corrections.clone())
+        .expect("the corrections");
 }

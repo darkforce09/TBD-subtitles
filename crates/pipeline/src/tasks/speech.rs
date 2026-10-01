@@ -7,9 +7,10 @@
 //! **Position:** called by `tasks::run`: Parakeet in the main binary, Whisper in the ggml binary
 //! (the `crispasr` feature), the plan and the sheet in the job runner.
 //!
-//! **Signals and state:** reads the audio files, `vad.json`, `sheet.json` and
-//! `adjudication/first.json`; writes `vad.json`, `asr/<engine>.json`, `sheet.json`, `sheet.txt`
-//! and `adjudication/redecode_<engine>.json`.
+//! **Signals and state:** reads the audio files and, through the step's `StepIo`, the probe, the
+//! chunk plan, both transcripts, the sheet and the first pass; stores the chunk plan
+//! (`outputs/vad`), each transcript (`outputs/asr_<engine>`), the sheet (`outputs/diff_sheet`) and
+//! each re-decode (`outputs/redecode_<engine>`); writes `sheet.txt`, the sheet for reading.
 //!
 //! **Invariants:** every engine hears the same chunk plan; the re-decode loads no model when
 //! nothing is unsure; a binary without CrispASR refuses Whisper instead of skipping it.
@@ -18,13 +19,14 @@ use std::time::Instant;
 
 use inference::onnx::Device;
 use inference::onnx::parakeet_tdt::{self, ParakeetTdt};
-use job_model::outputs::{AdjudicationPass, EngineTranscript, Redecode, SpeechPlan};
+use job_model::StepName;
+use job_model::outputs::{AdjudicationPass, EngineTranscript, Redecode, SpeechPlan, Utterance};
 use stages::adjudication::redecode;
 use stages::asr::{self, SpeechEngine};
 use stages::diff_sheet::sheet;
 use stages::vad::{self, VadSettings};
 
-use super::{Job, TaskReport, since};
+use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, PipelineError, Result};
 use crate::work_dir;
 
@@ -32,8 +34,8 @@ use crate::work_dir;
 #[cfg_attr(not(feature = "crispasr"), allow(dead_code))]
 const WHISPER_THREADS: i32 = 8;
 
-pub(super) fn vad(job: &Job) -> Result<TaskReport> {
-    let duration = job.probe()?.probe.duration_s;
+pub(super) fn vad(job: &Job, io: &mut StepIo, _progress: StepProgress) -> Result<TaskReport> {
+    let duration = io.probe()?.probe.duration_s;
     let started = Instant::now();
     let scores = vad::score_file(&job.work.vocals()).context("score the vocal stem")?;
     let plan = vad::plan(&scores, duration, &VadSettings::default());
@@ -44,12 +46,16 @@ pub(super) fn vad(job: &Job) -> Result<TaskReport> {
     report.note("regions", plan.regions.len());
     report.note("chunks", plan.chunks.len());
     report.note("speech_s", format!("{:.1}", plan.speech_s()));
-    work_dir::write_json(&job.work.vad(), &plan)?;
+    io.put(StepName::Vad, None, &plan)?;
     Ok(report)
 }
 
-pub(super) fn asr_parakeet(job: &Job, progress: &dyn Fn(usize, usize)) -> Result<TaskReport> {
-    let plan: SpeechPlan = work_dir::read_json(&job.work.vad())?;
+pub(super) fn asr_parakeet(
+    job: &Job,
+    io: &mut StepIo,
+    progress: StepProgress,
+) -> Result<TaskReport> {
+    let plan: SpeechPlan = io.get(StepName::Vad, None)?;
     let load = Instant::now();
     let mut engine = parakeet(job)?;
     let mut report = TaskReport {
@@ -61,12 +67,16 @@ pub(super) fn asr_parakeet(job: &Job, progress: &dyn Fn(usize, usize)) -> Result
         .map_err(|e| PipelineError::new("Parakeet", e))?;
     report.process_s = since(started);
     report.note("words", transcript.words().count());
-    work_dir::write_json(&job.work.asr("parakeet"), &transcript)?;
+    io.put(StepName::AsrParakeet, None, &transcript)?;
     Ok(report)
 }
 
-pub(super) fn asr_whisper(job: &Job, progress: &dyn Fn(usize, usize)) -> Result<TaskReport> {
-    let plan: SpeechPlan = work_dir::read_json(&job.work.vad())?;
+pub(super) fn asr_whisper(
+    job: &Job,
+    io: &mut StepIo,
+    progress: StepProgress,
+) -> Result<TaskReport> {
+    let plan: SpeechPlan = io.get(StepName::Vad, None)?;
     let load = Instant::now();
     let mut engine = whisper(job)?;
     let mut report = TaskReport {
@@ -78,13 +88,17 @@ pub(super) fn asr_whisper(job: &Job, progress: &dyn Fn(usize, usize)) -> Result<
         .map_err(|e| PipelineError::new("Whisper", e))?;
     report.process_s = since(started);
     report.note("words", transcript.words().count());
-    work_dir::write_json(&job.work.asr("whisper"), &transcript)?;
+    io.put(StepName::AsrWhisper, None, &transcript)?;
     Ok(report)
 }
 
-pub(super) fn diff_sheet(job: &Job) -> Result<TaskReport> {
-    let parakeet: EngineTranscript = work_dir::read_json(&job.work.asr("parakeet"))?;
-    let whisper: EngineTranscript = work_dir::read_json(&job.work.asr("whisper"))?;
+pub(super) fn diff_sheet(
+    job: &Job,
+    io: &mut StepIo,
+    _progress: StepProgress,
+) -> Result<TaskReport> {
+    let parakeet: EngineTranscript = io.get(StepName::AsrParakeet, None)?;
+    let whisper: EngineTranscript = io.get(StepName::AsrWhisper, None)?;
     let started = Instant::now();
     let utterances = sheet::build(&parakeet, &[&whisper], &["P", "W"]);
     let mut report = TaskReport {
@@ -103,31 +117,53 @@ pub(super) fn diff_sheet(job: &Job) -> Result<TaskReport> {
         format!("{:.3}", locked as f64 / words.max(1) as f64),
     );
     let text: String = utterances.iter().map(|u| format!("{}\n", u.line)).collect();
-    work_dir::write_json(&job.work.sheet(), &utterances)?;
+    io.put(StepName::DiffSheet, None, &utterances)?;
     work_dir::write_text(&job.work.sheet_text(), &text)?;
     Ok(report)
 }
 
-pub(super) fn redecode_parakeet(job: &Job, progress: &dyn Fn(usize, usize)) -> Result<TaskReport> {
-    redecode_with(job, "parakeet", progress, &|| {
-        Ok(Box::new(parakeet(job)?) as Box<dyn SpeechEngine>)
-    })
+pub(super) fn redecode_parakeet(
+    job: &Job,
+    io: &mut StepIo,
+    progress: StepProgress,
+) -> Result<TaskReport> {
+    redecode_with(
+        job,
+        io,
+        StepName::RedecodeParakeet,
+        "parakeet",
+        progress,
+        &|| Ok(Box::new(parakeet(job)?) as Box<dyn SpeechEngine>),
+    )
 }
 
-pub(super) fn redecode_whisper(job: &Job, progress: &dyn Fn(usize, usize)) -> Result<TaskReport> {
-    redecode_with(job, "whisper", progress, &|| whisper(job))
+pub(super) fn redecode_whisper(
+    job: &Job,
+    io: &mut StepIo,
+    progress: StepProgress,
+) -> Result<TaskReport> {
+    redecode_with(
+        job,
+        io,
+        StepName::RedecodeWhisper,
+        "whisper",
+        progress,
+        &|| whisper(job),
+    )
 }
 
 /// Hear every unsure utterance again on the vocal stem; no model is loaded when there is none.
 fn redecode_with(
     job: &Job,
+    io: &mut StepIo,
+    step: StepName,
     engine_name: &str,
     progress: &dyn Fn(usize, usize),
     open: &dyn Fn() -> Result<Box<dyn SpeechEngine>>,
 ) -> Result<TaskReport> {
-    let first: AdjudicationPass = work_dir::read_json(&job.work.first_pass())?;
-    let utterances: Vec<job_model::outputs::Utterance> = work_dir::read_json(&job.work.sheet())?;
-    let duration = job.probe()?.probe.duration_s;
+    let first: AdjudicationPass = io.get(StepName::Adjudicate, None)?;
+    let utterances: Vec<Utterance> = io.get(StepName::DiffSheet, None)?;
+    let duration = io.probe()?.probe.duration_s;
     let ids = redecode::unsure_ids(&first.lines);
     let mut report = TaskReport::default();
     report.note("unsure", ids.len());
@@ -158,7 +194,7 @@ fn redecode_with(
         .map_err(|e| PipelineError::new(engine_name.to_string(), e))?;
         report.process_s = since(started);
     }
-    work_dir::write_json(&job.work.redecode(engine_name), &output)?;
+    io.put(step, None, &output)?;
     Ok(report)
 }
 

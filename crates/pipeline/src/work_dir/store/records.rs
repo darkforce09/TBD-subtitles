@@ -1,8 +1,8 @@
 //! Rows of `job.redb`: rkyv archives written in one transaction and read back typed, in place or
 //! as bytes.
 //!
-//! **Role:** `StoreWrite` puts, reserves and removes rows inside one write transaction that
-//! commits them together; `StoreRead` gets a row back as its type, views its archive in place,
+//! **Role:** `StoreWrite` puts, reserves, reads back, removes and clears rows inside one write
+//! transaction that commits them together; `StoreRead` gets a row back as its type, views its archive in place,
 //! copies its bytes or lists a table's keys, all from one snapshot.
 //!
 //! **Position:** made by `JobStore::write` and `JobStore::read`; uses `tables` for each table's
@@ -18,7 +18,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use redb::{ReadTransaction, ReadableTable, WriteTransaction};
+use redb::{ReadTransaction, ReadableTable, ReadableTableMetadata, WriteTransaction};
 use rkyv::api::high::{HighDeserializer, HighSerializer, HighValidator};
 use rkyv::bytecheck::CheckBytes;
 use rkyv::rancor::Error as ArchiveError;
@@ -133,6 +133,51 @@ impl StoreWrite {
             Row::Framed(definition, occurrence, frame) => {
                 let mut open = self.transaction.open_table(definition).context(&at)?;
                 Ok(open.remove((occurrence, frame)).context(&at)?.is_some())
+            }
+        }
+    }
+
+    /// The row of `key` in `table` as this transaction sees it, checked and copied out of its
+    /// archive; a read-change-write in one transaction sees no other writer's change.
+    pub fn get<T>(&self, table: Table, key: &Key) -> Result<Option<T>>
+    where
+        T: Archive,
+        T::Archived: for<'a> CheckBytes<HighValidator<'a, ArchiveError>>
+            + Deserialize<T, HighDeserializer<ArchiveError>>,
+    {
+        let at = context(&self.database, table);
+        let read = |bytes: &[u8]| {
+            rkyv::from_bytes::<T, ArchiveError>(bytes).context(format!("{at}: cannot read {key:?}"))
+        };
+        match row(table, key, &self.database)? {
+            Row::Named(definition, name) => {
+                let open = self.transaction.open_table(definition).context(&at)?;
+                let found = open.get(name).context(&at)?;
+                found.map(|guard| read(guard.value())).transpose()
+            }
+            Row::Framed(definition, occurrence, frame) => {
+                let open = self.transaction.open_table(definition).context(&at)?;
+                let found = open.get((occurrence, frame)).context(&at)?;
+                found.map(|guard| read(guard.value())).transpose()
+            }
+        }
+    }
+
+    /// Remove every row of `table`; how many there were.
+    pub fn clear(&mut self, table: Table) -> Result<u64> {
+        let at = context(&self.database, table);
+        match tables::definition(table) {
+            Definition::Named(definition) => {
+                let mut open = self.transaction.open_table(definition).context(&at)?;
+                let count = open.len().context(&at)?;
+                open.retain(|_, _| false).context(&at)?;
+                Ok(count)
+            }
+            Definition::Framed(definition) => {
+                let mut open = self.transaction.open_table(definition).context(&at)?;
+                let count = open.len().context(&at)?;
+                open.retain(|_, _| false).context(&at)?;
+                Ok(count)
             }
         }
     }

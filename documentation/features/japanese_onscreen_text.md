@@ -293,29 +293,33 @@ retirement mechanism.
 
 ## Data
 
-All visual files belong to the same [work directory](/documentation/glossary.md#work-directory)
-as the audio stages:
+The visual steps keep their documents in the job's database, `job.redb`, beside the audio
+stages', and their large files in the same
+[work directory](/documentation/glossary.md#work-directory):
 
-| File or contract | Purpose |
+| Row or file | Purpose |
 |---|---|
-| `job.json` | Job settings, model location and stage fingerprints/measurements, including visual processing. |
-| `visual/text_detect.json` through `visual/text_review.json`, and `visual/text_typeset.json` | Typed `TextDocument` outputs: readings, tracks, provenance, warnings, source identity, presentation and rendered status, plus review warnings without a current occurrence. |
-| `visual/text_mask.json`, `visual/text_inpaint.json`, `visual/text_compose.json`, `visual/text_verify.json` | The `ReplacementDocument` each replacement step writes: per occurrence its frame span, status (pending, baked or fallback with its reason), measured lettering style, container and plates; the read-back check's adds `checks`, what it read from each sampled finished frame. |
+| `meta/job_record`, `step_records/<step>` | Job settings, model location and step fingerprints/measurements, including visual processing. |
+| `outputs/text_detect` through `outputs/text_review`, and `outputs/text_typeset` | Typed `TextDocument` outputs: readings, tracks, provenance, warnings, source identity, presentation and rendered status, plus review warnings without a current occurrence. |
+| `outputs/text_mask`, `outputs/text_inpaint`, `outputs/text_compose`, `outputs/text_verify` | The `ReplacementDocument` each replacement step writes: per occurrence its frame span, status (pending, baked or fallback with its reason), measured lettering style, container and plates; the read-back check's `VerifiedReplacements` adds `checks`, what it read from each sampled finished frame. |
 | `visual/masks/`, `visual/plates/`, `visual/patches/` | Per occurrence: [stroke masks](/documentation/glossary.md#stroke-mask) and source crops, inpainted [plates](/documentation/glossary.md#plate), and RGBA [patches](/documentation/glossary.md#patch) with a `preview.png` for Check Text. |
 | `visual/crops/` | Representative full-resolution crops from each keyframe, used by OCR, Claude image requests and review thumbnails. |
 | `visual/keyframes/` | One 1280-wide whole-frame still per keyframe frame, sent to Claude with the crops it holds. |
 | `visual/readings/` | Cached readings keyed by crop, OCR model pins and retry generation. |
 | `visual/translations/` | Cached structured replies keyed by request, model identity/pins and retry generation; a keyframe request also includes the still, its crops and the highest retry generation among its regions. |
-| `visual/corrections.json` | Per-occurrence `TextEdit` values with original-source fingerprints and retry requests; written atomically under `visual/corrections.json.lock`. |
-| `visual/events.ass` | Typeset visual events merged into the final ASS. |
-| `visual/localized_video.json` | The localized video's path, encoder, frames written and occurrences replaced; the earlier path while the setting is off. |
-| `output.json` | The exported subtitle path, the localized subtitle path, and any backup or retired output. |
+| `corrections/text` | Per-occurrence `TextEdit` values with original-source fingerprints and retry requests; each change is one write transaction that reads the row again. |
+| `outputs/text_typeset/ass` | Typeset visual events merged into the final ASS. |
+| `outputs/localized_video` | The localized video's path, encoder, frames written and occurrences replaced; the earlier path while the setting is off. |
+| `outputs/output` | The exported subtitle path, the localized subtitle path, and any backup or retired output. |
+
+A file a row names is synced before the row commits, and an open of the database removes the
+crops, keyframes, masks, plates and patches no row names; the caches stay.
 
 The [visible-text contracts](/crates/job_model/src/onscreen/) keep visual geometry separate from
 dialogue layout. Times use the normalized presentation timeline and positions use source pixels;
 the typesetter maps them to the ASS script canvas. Model identities, relevant settings, reference
 contents and correction inputs participate in resume decisions. Editing an occurrence does not
-change the source video or the dialogue correction file. Beside the source, a job with the
+change the source video or the line corrections. Beside the source, a job with the
 localized video writes `<name>.localized.mkv` and `<name>.localized.ass` next to `<name>.ass`;
 watch folders and folder adds never queue a `*.localized.mkv`.
 

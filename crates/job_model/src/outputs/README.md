@@ -25,32 +25,33 @@ crates/job_model/src/outputs/
 
 ## How it works
 
-Each type is the file one step writes and the steps after it read:
+Each type is the document one step writes and the steps after it read, in the job's database
+(`outputs/<step>`):
 
-| File | Type | Written by |
+| Document | Type | Written by |
 |---|---|---|
-| `probe.json` | `ProbeDecoded` (a `ProbeResult`, the `AudioStream` decoded, the samples) | probe and decode |
-| `shots.json` | `ShotChanges` | the shot scan |
-| `vad.json` | `SpeechPlan` | voice activity |
-| `asr/<engine>.json` | `EngineTranscript` | speech recognition, one per engine |
-| `sheet.json` | a list of `Utterance` | the diff sheet |
-| `sound_events.json` | a list of `SoundEvent` | sound events |
-| `adjudication/first.json` | `AdjudicationPass` | the first adjudication pass |
-| `adjudication/redecode_<engine>.json` | `Redecode` | the re-decode, one per engine |
-| `adjudicated.json` | `AdjudicationPass` | the second pass, merged with the first |
-| `sound_cues.json` | `SoundCues` | the sound-cue choice |
-| `aligned.json` | `Aligned` | forced alignment |
-| `review.json` | `Corrections` | the window's line review, and Fix It |
-| `fix.json` | `FixRecord` | Fix It |
-| `reviewed.json` | `Aligned` | the review step |
-| `output.json` | `OutputRecord` | the output step |
+| `outputs/probe_decode` | `ProbeDecoded` (a `ProbeResult`, the `AudioStream` decoded, the samples) | probe and decode |
+| `outputs/shot_scan` | `ShotChanges` | the shot scan |
+| `outputs/vad` | `SpeechPlan` | voice activity |
+| `outputs/asr_parakeet`, `outputs/asr_whisper` | `EngineTranscript` | speech recognition, one per engine |
+| `outputs/diff_sheet` | a list of `Utterance` | the diff sheet |
+| `outputs/sound_events` | a list of `SoundEvent` | sound events |
+| `outputs/adjudicate` | `AdjudicationPass` | the first adjudication pass |
+| `outputs/redecode_parakeet`, `outputs/redecode_whisper` | `Redecode` | the re-decode, one per engine |
+| `outputs/readjudicate` | `AdjudicationPass` | the second pass, merged with the first |
+| `outputs/sound_cues` | `SoundCues` | the sound-cue choice |
+| `outputs/alignment` | `Aligned` | forced alignment |
+| `corrections/lines` | `Corrections` | the window's line review, and Fix It |
+| `corrections/fix` | `FixRecord` | Fix It |
+| `outputs/review` | `Aligned` | the review step |
+| `outputs/output` | `OutputRecord` | the output step |
 
 A `Line` is one adjudicated utterance as the model returns it: its id, its final text (`||` marks
 a speaker change) and its flags (`NARR`, `LYRIC`, `DROP`, `UNSURE`). An `AlignedWord` records its
 `TimingSource`, best first: `ctc`, `ctc_utterance`, `backbone` or `interpolated`. A
 `SoundCandidate` is an `effect`, a `voice`, a Whisper `tag` or a `song`; a `SoundCue` is a chosen
-candidate at the candidate's times with its bracketed text. The cue track in `cues.json` is
-`subtitle_formats::cue::CueTrack`, and the quality check's `qc.json` is `crate::report::QcReport`.
+candidate at the candidate's times with its bracketed text. The cue track in `outputs/cues` is
+`subtitle_formats::cue::CueTrack`, and the quality check's `outputs/qc` is `crate::report::QcReport`.
 
 A `Correction` says where its text came from in `Chosen`: an engine's hypothesis, text the owner
 typed, a Fix It change the owner has not checked yet (`fix_it`, with the model and its reason), or

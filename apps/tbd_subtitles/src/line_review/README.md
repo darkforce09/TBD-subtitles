@@ -24,9 +24,9 @@ apps/tbd_subtitles/src/line_review/
 
 ```text
 Check Lines tab / Check Lines / a group's row ──▶ review_loading::load (sheet, re-decodes,
-                                                  adjudicated, qc, review.json, probe)
+                                                  adjudicated, qc, corrections, probe)
 list ──▶ line_filter (To Check / Checked / All, group, search) ──▶ open line
-editor ──▶ ReviewEvent ──▶ review_editing (drafts; save, keep, undo, take back ──▶ review.json)
+editor ──▶ ReviewEvent ──▶ review_editing (drafts; save, keep, undo, take back ──▶ corrections)
                       └──▶ clip_player (FFmpeg: sound to pulse, frames to the window; a still)
 save ──▶ the queue: a review run of the video ──▶ review, cues, qc, output
 run starts / ends ──▶ review_editing::run_started / run_ended ──▶ the status chip
@@ -62,8 +62,8 @@ third FFmpeg decodes the frame at its start on a thread (about 150 ms), shown be
 
 - Depends on: `job_model::outputs` (the sheet, re-decodes, adjudication, corrections),
   `job_model::report`, `crate::job_report::models::finding_group` (the groups), `media_io::preview`,
-  `child_process`, `pipeline::work_dir::job_id`, `crate::core`, `serde_json`; `eframe` in `ui/`
-  only.
+  `child_process`, `pipeline::work_dir::{job_id, read_stored}`, `crate::core`; `eframe` in
+  `ui/` only.
 - Used by: `crate::application` (`actions::review`, `actions::report`, `feature_views`,
   `shortcuts`).
 - Rules: the folder keeps `models/mod.rs`, `services/mod.rs` and `ui/mod.rs`, `models/` and

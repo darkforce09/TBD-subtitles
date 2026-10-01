@@ -19,32 +19,39 @@ crates/pipeline/
 ```text
 tbd-subtitles process <video>
   └─▶ runner::run_job
-        ├─ work_dir   job id from the video's path, job.json, every output path, and the
-        │             JobStore that owns job.redb (job.lock names the owning process)
-        ├─ resume     fingerprint each step; reuse it when the record matches and the files exist
-        ├─ graph      inputs, placement, GPU flag, settings, timeout and outputs of each step
-        ├─ in process ──▶ tasks::in_process ──▶ stages
+        ├─ work_dir   job id from the video's path, every file path, and the JobStore that owns
+        │             job.redb (job.lock names the owning process): job record, step records,
+        │             outputs, corrections
+        ├─ resume     fingerprint each step; reuse it when its record matches, its documents are
+        │             stored and the files its rows name exist
+        ├─ graph      inputs, stored reads, dependents, placement, GPU flag, settings, timeout
+        ├─ in process ──▶ tasks::in_process(StepIo over the store) ──▶ stages
         ├─ worker     ──▶ workers::run_worker ──▶ `<binary> worker <step> <job dir>`
         │                   │ inputs on stdin       └─▶ tasks::worker_main ──▶ stages, inference
         │                   ▲ frames on stdout, outputs straight into job.redb
         ├─ measure    peak RAM of this process and its children; peak VRAM per worker through NVML
         ├─ progress   events to the caller's sink
-        └─ report     report.md from qc.json and the job record
+        └─ report     report.md from outputs/qc, the job record and the step records
 ```
 
 `run_job` canonicalises the video, derives the job's folder under the work root, opens the job's
 database (`work_dir::JobStore`, which one process owns at a time; another process running the job
-is a busy error naming its pid) and writes `job.json` with the settings of this run. No step
-writes to the database yet: every output is still a JSON file. The path is in place: a worker's
-`Output` frames go straight into the step's write transaction, checked against their record kind,
-and the runner commits them with the step's record once the step finishes; a step can be sent
-stored values as `Input` frames on its stdin. It then walks the steps: a step whose
-recorded fingerprint and output files are intact is skipped; any other runs, in process (voice
-activity, the diff sheet, cue building, the quality check and the output) or in a worker of
-`tbd-subtitles` (FFmpeg, ONNX Runtime and the `claude` CLI) or `tbd-subtitles-ggml` (Whisper). The
+is a busy error naming its pid; the open removes the files no row names) and, in one transaction,
+puts the job record of this run and clears the steps `--rerun` names with every step that reads
+them. A task reads and writes stored documents through its `tasks::StepIo`: in the runner from a
+snapshot and into the step's pending write, in a worker from the `Input` frames the runner sends
+down its stdin (`graph::reads`) and as `Output` frames that go straight into the step's write
+transaction, checked against their record kind. Every step keeps its documents only there; the
+files that stay outside (audio streams, crops, keyframes, masks, plates, patches) are synced
+before the record that names them commits. It then walks the steps: a step whose stored
+fingerprint, documents and named files are intact is skipped; any other runs, in process (voice
+activity, the diff sheet, cue building, the on-screen text review, the quality check and the
+output) or in a worker of `tbd-subtitles` (FFmpeg, ONNX Runtime and the `claude` CLI),
+`tbd-subtitles-ggml` (Whisper) or `tbd-subtitles-llm` (the on-screen translation). The
 shot scan runs on a scoped thread beside the other steps and is joined before the first step that
-reads it. After every step `job.json` records its fingerprint, finish time and measure, so a
-killed job resumes from the last finished step. The step's code lives in `tasks`, which both
+reads it. Every step's outputs are committed with its step record (fingerprint, finish time and
+measure) in one transaction, and a step about to run again loses its record first, so a killed
+job resumes from the last finished step. The step's code lives in `tasks`, which both
 binaries share, so the same body runs in the runner or in a worker. A worker reports to the runner
 only in frames of the worker channel (`crates/worker_channel/`) on its stdout: its progress, its
 model calls, its measure and its end or failure; its stderr is the step's log. `src/README.md`
@@ -67,7 +74,7 @@ worker binaries must sit beside the running binary.
 ## Configuration
 
 The crate reads no settings file. What changes a job's output is the `JobSettings` the caller
-passes in `JobOptions`, recorded in the job's `job.json` (`crates/job_model/src/job/settings.rs`);
+passes in `JobOptions`, recorded in the job record (`crates/job_model/src/job/settings.rs`);
 `graph::settings` picks the part each step reads. Other inputs:
 
 - the work root: `JobOptions::work_root`, by default `<data home>/tbd-subtitles/work` from
@@ -84,6 +91,9 @@ passes in `JobOptions`, recorded in the job's `job.json` (`crates/job_model/src/
 - `run_job`, `JobOptions`, `JobOutcome` and `CancelToken` at the crate root: one job end to end,
   stoppable, for the `process` subcommand in `apps/tbd_subtitles/src/cli/process_command.rs` and
   the window's job queue.
+- `tasks::{in_process, StepIo, Job}`: one step's task on its stored inputs and outputs, for the
+  runner and `tools/visual_validation/`; `resume::{fingerprint, is_valid, stale_steps}` and
+  `runner::worker_inputs` for the same tool.
 - `tasks::worker_main`: the body of the `worker` subcommand of both binaries
   (`apps/tbd_subtitles/src/cli/worker_command.rs`, `apps/tbd_subtitles_ggml/src/main.rs`).
 - `graph::{placement, Placement, Binary}`: which binary a step's worker runs in, which the
@@ -95,7 +105,12 @@ passes in `JobOptions`, recorded in the job's `job.json` (`crates/job_model/src/
   `tools/stack_spike/`.
 - `work_dir::JobStore` with `work_dir::store::{StoreRead, StoreWrite, LAYOUT_VERSIONS}`: the job
   database a job runner owns; `work_dir::store::{kind, RecordKind}`: the type of every row, which
-  checks an archive and prints it as JSON, for the app's `dump` subcommand.
+  checks an archive and prints it as JSON, for the app's `dump` subcommand;
+  `work_dir::store::keys`: the name of every row; `work_dir::{load_job_record, load_step_records,
+  read_job, read_stored}` and the `JobStore::put_*` fixtures: the job's rows for the app's
+  readers and tests; `work_dir::{read_corrections, update_corrections, corrections_digest,
+  read_text_corrections, update_text_corrections, read_fix_record, put_fix_record}`: the owner's
+  corrections and Fix It's record.
 - `workers::{run_worker, WorkerData, WorkerRun, StepWrite}`: one step in its worker, with its
   inputs from the job database and its outputs uncommitted, for the runner and
   `tools/visual_validation/`.
@@ -120,9 +135,9 @@ passes in `JobOptions`, recorded in the job's `job.json` (`crates/job_model/src/
   - a step reads only earlier steps, every GPU step runs in a worker, and only the Whisper steps
     run in the ggml binary, so ONNX Runtime and ggml never share a process
     (`crates/pipeline/src/graph/tests/graph.rs`);
-  - one worker runs at a time besides the shot scan, which loads no GPU, and `job.json` holds
-    finished steps only, so a killed job resumes from the last one (the header of
-    `crates/pipeline/src/runner/mod.rs`);
+  - one worker runs at a time besides the shot scan, which loads no GPU, and a step record exists
+    only beside the outputs it was committed with, so a killed job resumes from the last finished
+    step (the header of `crates/pipeline/src/runner/mod.rs`);
   - a changed setting, video or upstream step reruns exactly the steps that read it, and a missing
     output reruns its step (`crates/pipeline/src/resume/tests/resume.rs`);
   - one process owns a job's database, and every caller in it shares one handle

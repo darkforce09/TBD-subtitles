@@ -6,27 +6,34 @@
 //! **Position:** called by `tasks::run` inside workers of the main binary (FFmpeg as their child;
 //! ONNX Runtime for separation).
 //!
-//! **Signals and state:** reads the video; writes `probe.json`, `audio/mix_16k.f32`, `shots.json`
-//! and both stems.
+//! **Signals and state:** reads the video and the probe; stores the probe (`outputs/probe_decode`)
+//! and the shot changes (`outputs/shot_scan`); streams `audio/mix_16k.f32` and both stems.
 //!
-//! **Invariants:** the video is only read; audio is streamed, never held whole.
+//! **Invariants:** the video is only read; audio is streamed, never held whole; the separation's
+//! stems are files its step record names, with no document of their own.
 
 use std::time::{Duration, Instant};
 
 use inference::onnx::separation::{MdxNet, MelRoformer, mdx_net};
+use job_model::StepName;
 use job_model::job::Separator;
 use job_model::outputs::ProbeDecoded;
 use media_io::{Programs, shot_changes};
 use stages::separation::{self, SeparationRequest};
 
-use super::{Job, StepProgress, TaskReport, since};
+use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::{Context, Result};
-use crate::{models, work_dir};
+use crate::models;
+use crate::work_dir;
 
 /// The longest a shot scan or a separation may keep FFmpeg running.
 const MEDIA_DEADLINE: Duration = Duration::from_secs(3 * 3600);
 
-pub(super) fn probe_decode(job: &Job, progress: StepProgress) -> Result<TaskReport> {
+pub(super) fn probe_decode(
+    job: &Job,
+    io: &mut StepIo,
+    progress: StepProgress,
+) -> Result<TaskReport> {
     audio_folder(job)?;
     let started = Instant::now();
     let decoded = stages::probe_decode::probe_and_decode(
@@ -37,6 +44,7 @@ pub(super) fn probe_decode(job: &Job, progress: StepProgress) -> Result<TaskRepo
         progress,
     )
     .context("probe and decode")?;
+    work_dir::sync_file(&job.work.mix())?;
     let mut report = TaskReport {
         process_s: since(started),
         ..TaskReport::default()
@@ -51,11 +59,11 @@ pub(super) fn probe_decode(job: &Job, progress: StepProgress) -> Result<TaskRepo
         track: decoded.track,
         samples: decoded.samples,
     };
-    work_dir::write_json(&job.work.probe(), &output)?;
+    io.put(StepName::ProbeDecode, None, &output)?;
     Ok(report)
 }
 
-pub(super) fn shot_scan(job: &Job) -> Result<TaskReport> {
+pub(super) fn shot_scan(job: &Job, io: &mut StepIo, _progress: StepProgress) -> Result<TaskReport> {
     let started = Instant::now();
     let shots = shot_changes::scan(
         &Programs::beside_current_exe(),
@@ -73,13 +81,13 @@ pub(super) fn shot_scan(job: &Job) -> Result<TaskReport> {
         "cuts_at_cut_score",
         shots.times_at_least(job.settings().cut_score).len(),
     );
-    work_dir::write_json(&job.work.shots(), &shots)?;
+    io.put(StepName::ShotScan, None, &shots)?;
     Ok(report)
 }
 
-pub(super) fn separation(job: &Job, progress: StepProgress) -> Result<TaskReport> {
+pub(super) fn separation(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<TaskReport> {
     audio_folder(job)?;
-    let probe = job.probe()?;
+    let probe = io.probe()?;
     let root = job.models()?;
     let programs = Programs::beside_current_exe();
     let (vocals, background) = (job.work.vocals(), job.work.background());
@@ -111,6 +119,8 @@ pub(super) fn separation(job: &Job, progress: StepProgress) -> Result<TaskReport
             separation::separate(model, &request).context("separate")?.0
         }
     };
+    work_dir::sync_file(&vocals)?;
+    work_dir::sync_file(&background)?;
     report.process_s = since(load) - report.load_s;
     report.note("decode_s", format!("{:.1}", summary.decode_s));
     report.note("samples_16k", summary.samples_16k);

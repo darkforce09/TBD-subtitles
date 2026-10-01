@@ -3,7 +3,7 @@
 use std::fs;
 
 use job_model::job::JobSettings;
-use job_model::onscreen::TextKeyframe;
+use job_model::onscreen::{ReplacementDocument, TextKeyframe};
 
 use super::*;
 
@@ -207,7 +207,7 @@ fn replacements_take_the_keyframe_plate_s_mask_and_keep_paths_inside_the_job() {
 }
 
 /// A job folder under the temp folder with job settings `enabled` and `localized_video`.
-fn job(name: &str, enabled: bool, localized_video: bool) -> (PathBuf, WorkDir, JobRecord) {
+fn job(name: &str, enabled: bool, localized_video: bool) -> (PathBuf, PathBuf, JobRecord) {
     let root = std::env::temp_dir().join(format!("tbd-localized-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(root.join("work/visual")).expect("work folder");
@@ -221,18 +221,35 @@ fn job(name: &str, enabled: bool, localized_video: bool) -> (PathBuf, WorkDir, J
         settings,
         models_dir: None,
         corrections: None,
-        steps: Default::default(),
     };
-    (root.clone(), WorkDir::new(root.join("work")), record)
+    (root.clone(), root.join("work"), record)
 }
 
 #[test]
 fn a_job_without_the_localized_video_has_none() {
     let (root, work, record) = job("off", true, false);
     let document = TextDocument::default();
-    assert!(load(&work, &record, &OutputRecord::default(), &document).is_none());
+    assert!(
+        load(
+            &work,
+            Rows::default(),
+            &record,
+            &OutputRecord::default(),
+            &document
+        )
+        .is_none()
+    );
     let (_, _, off) = job("off", false, true);
-    assert!(load(&work, &off, &OutputRecord::default(), &document).is_none());
+    assert!(
+        load(
+            &work,
+            Rows::default(),
+            &off,
+            &OutputRecord::default(),
+            &document
+        )
+        .is_none()
+    );
     let _ = fs::remove_dir_all(root);
 }
 
@@ -243,7 +260,14 @@ fn missing_records_are_not_written_yet_and_written_ones_name_their_files() {
         occurrences: vec![occurrence("a", 10.0, 12.0, None)],
         ..TextDocument::default()
     };
-    let review = load(&work, &record, &OutputRecord::default(), &document).expect("review");
+    let review = load(
+        &work,
+        Rows::default(),
+        &record,
+        &OutputRecord::default(),
+        &document,
+    )
+    .expect("review");
     assert_eq!((review.video, review.subtitles), (None, None));
     assert!(review.replacements.is_empty());
     assert_eq!(review.mode, PreviewMode::Localized);
@@ -257,26 +281,26 @@ fn missing_records_are_not_written_yet_and_written_ones_name_their_files() {
         replaced: 1,
         ..LocalizedVideoRecord::default()
     };
-    work_dir::write_json(&work.text(StepName::LocalizedVideo), &written).expect("record");
     let composed = ReplacementDocument {
         texts: vec![replaced("a", ReplaceStatus::Baked, Vec::new())],
         ..ReplacementDocument::default()
     };
-    work_dir::write_json(&work.text(StepName::TextCompose), &composed).expect("compose");
     let output = OutputRecord {
         localized: Some(ass.display().to_string()),
         ..OutputRecord::default()
     };
-    let review = load(&work, &record, &output, &document).expect("review");
+    let written_only = Rows {
+        written: Some(written.clone()),
+        verified: None,
+    };
+    let review = load(&work, written_only, &record, &output, &document).expect("review");
     assert_eq!(review.video, Some(mkv));
     assert_eq!(review.subtitles, Some(ass));
-    assert_eq!(
-        review.replacements["a"].status,
-        ReplaceStatus::Baked,
-        "a job from before the read-back check shows its composition"
+    assert!(
+        review.replacements.is_empty(),
+        "no replacements before the read-back check"
     );
-    assert_eq!(review.replacements["a"].check, None);
-    let mut checked = composed.clone();
+    let mut checked = composed;
     checked.texts[0].status =
         ReplaceStatus::Fallback("The finished picture still shows Japanese".into());
     let verified = VerifiedReplacements {
@@ -291,8 +315,11 @@ fn missing_records_are_not_written_yet_and_written_ones_name_their_files() {
             }],
         }],
     };
-    work_dir::write_json(&work.text(StepName::TextVerify), &verified).expect("verify");
-    let review = load(&work, &record, &output, &document).expect("review");
+    let rows = Rows {
+        written: Some(written),
+        verified: Some(verified),
+    };
+    let review = load(&work, rows, &record, &output, &document).expect("review");
     let a = &review.replacements["a"];
     assert_eq!(
         status_line(Some(a)),
@@ -308,11 +335,11 @@ fn missing_records_are_not_written_yet_and_written_ones_name_their_files() {
 #[test]
 fn pictures_decode_the_plate_and_mask_within_bounds() {
     let (root, work, _) = job("pictures", true, true);
-    let preview = work.root().join("preview.png");
+    let preview = work.join("preview.png");
     image::RgbImage::from_pixel(1440, 360, image::Rgb([200, 30, 30]))
         .save(&preview)
         .expect("preview");
-    let mask_path = work.root().join("mask.png");
+    let mask_path = work.join("mask.png");
     let mut mask = image::GrayImage::new(40, 20);
     mask.put_pixel(3, 4, image::Luma([255]));
     mask.save(&mask_path).expect("mask");

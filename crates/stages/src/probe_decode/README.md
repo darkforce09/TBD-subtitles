@@ -21,7 +21,7 @@ one-second chunks into the mix file, which `media_io` writes as a part file and 
 FFmpeg has finished cleanly; after each chunk its progress callback hears the seconds decoded of
 the probed length. The
 returned `Decoded` holds the probe result, the chosen track and the samples written; the pipeline
-keeps it as `probe.json` (`job_model::outputs::ProbeDecoded`).
+stores it as `outputs/probe_decode` (`job_model::outputs::ProbeDecoded`).
 
 ## Boundaries
 

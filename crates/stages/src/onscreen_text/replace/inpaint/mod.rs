@@ -29,7 +29,7 @@ use std::path::Path;
 use image::{ImageFormat, RgbImage};
 use job_model::onscreen::{LetteringStyle, Plate, ReplaceStatus, ReplacementDocument};
 
-use crate::onscreen_text::TextResult;
+use crate::onscreen_text::{TextResult, png};
 pub use residue::{MAX_RESIDUE_SHARE, residue_share};
 
 /// The folder of filled plates, relative to the job directory.
@@ -110,9 +110,9 @@ fn clean_fill(
     }
     let widened = residue::widened(&mask, style.line_height_px);
     let relative = folder.join(format!("{index}-mask.png"));
-    widened
-        .save_with_format(root.join(&relative), ImageFormat::Png)
-        .map_err(|e| format!("writing {}: {e}", root.join(&relative).display()))?;
+    png::write(&root.join(&relative), |out| {
+        widened.write_to(out, ImageFormat::Png)
+    })?;
     plate.mask = relative;
     let filled = filled_plate(plate, root, model, cache)?;
     let share = residue_share(&filled, &widened, style);
@@ -183,14 +183,9 @@ fn size_error(path: &Path, size: (u32, u32), expected: (u32, u32)) -> inference:
     .into()
 }
 
-/// Write `image` as a PNG under a temporary name, then move it into place.
+/// Write `image` as a PNG under a temporary name, sync it and move it into place.
 fn write_png(image: &RgbImage, path: &Path) -> TextResult<()> {
-    let partial = path.with_extension("png.partial");
-    image
-        .save_with_format(&partial, ImageFormat::Png)
-        .map_err(|e| format!("writing {}: {e}", partial.display()))?;
-    fs::rename(&partial, path).map_err(|e| format!("moving {} into place: {e}", path.display()))?;
-    Ok(())
+    png::write(path, |out| image.write_to(out, ImageFormat::Png))
 }
 
 /// A folder name for `id` made of ASCII letters, digits, `-` and `_`, distinct from every name

@@ -23,11 +23,12 @@ has one name, used on the command line, in file names and in JSON: `Display`, `F
 serde's `snake_case` all spell it. The app's `worker` subcommands and the `process` subcommand's
 `--rerun` option parse step names through `FromStr`.
 
-`job` holds the record kept in `job.json`: the video, the `JobSettings` the job runs with, and
-each finished step's fingerprint, finish time and measurements. `outputs` holds what each step
-writes, from `probe.json` through the transcripts, the diff sheet, the language model's passes and
-the sound cues to `aligned.json`. `report` holds the quality check's result, kept in `qc.json` and
-rendered into `report.md`. `src/README.md` describes each module.
+`job` holds the job record kept in the job's database: the video and the `JobSettings` the job
+runs with, and each finished step's record of fingerprint, finish time and measurements.
+`outputs` holds what each step stores, from the probe through the transcripts, the diff sheet,
+the language model's passes and the sound cues to the alignment and the review. `report` holds
+the quality check's result, kept in `outputs/qc` and rendered into `report.md`.
+`src/README.md` describes each module.
 
 Every public data type also derives rkyv's `Archive`, `Serialize` and `Deserialize` beside its
 serde derives, so the job database can store it as a binary record and read it in place. The

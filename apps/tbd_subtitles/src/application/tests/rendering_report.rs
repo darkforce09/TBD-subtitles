@@ -28,8 +28,8 @@ fn finished(root: &Path, name: &str) -> (TbdSubtitlesApp, PathBuf) {
     (app, video)
 }
 
-/// What the pipeline leaves in `video`'s work directory under `root`: `job.json`, `qc.json`, and
-/// the owner's `review.json` when there are `corrections`.
+/// What the pipeline leaves in the database of `video`'s job under `root`: the job record, the
+/// quality check, and the owner's corrections when there are `corrections`.
 pub(super) fn write_job(
     root: &Path,
     video: &Path,
@@ -50,17 +50,15 @@ pub(super) fn write_job(
         },
         models_dir: None,
         corrections: None,
-        steps: Default::default(),
     };
-    std::fs::write(job.join("job.json"), json(&record)).expect("job.json");
-    std::fs::write(job.join("qc.json"), json(qc)).expect("qc.json");
+    let store = pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(&job))
+        .expect("the store");
+    store.put_job_record(&record).expect("the record");
+    store.put_output(StepName::Qc, None, qc).expect("qc");
     if let Some(corrections) = corrections {
-        std::fs::write(job.join("review.json"), json(corrections)).expect("review.json");
+        pipeline::work_dir::update_corrections(&store, |c| *c = corrections.clone())
+            .expect("the corrections");
     }
-}
-
-fn json(value: &impl serde::Serialize) -> String {
-    serde_json::to_string(value).expect("json")
 }
 
 pub(super) fn finding(check: QcCheck, time_s: f64, line: Option<&str>) -> QcFinding {
@@ -236,18 +234,16 @@ fn show_nearby_lines_opens_every_line_at_the_one_nearest_the_speech_with_no_subt
     let job = root.join("work").join(pipeline::work_dir::job_id(
         &std::fs::canonicalize(&video).expect("c"),
     ));
-    let line = |id: &str, start: f64| {
-        format!(
-            r#"{{"id":"{id}","start_s":{start},"end_s":{},"words":[],"locked":[],"line":"{id}","hypotheses":[["P",["hey"]]]}}"#,
-            start + 1.0
-        )
+    let line = |id, start_s, settled| job_fixtures::Heard {
+        id,
+        start_s,
+        length_s: 1.0,
+        parakeet: "hey",
+        whisper: "hey",
+        settled,
+        flags: &[],
     };
-    let sheet = format!("[{},{}]", line("U1", 10.0), line("U2", 25.0));
-    let adjudicated = r#"{"lines":[{"id":"U1","t":"Hey.","f":[]},{"id":"U2","t":"Hey!","f":[]}],
-        "findings":{"missing_ids":[],"duplicate_ids":[],"unknown_ids":[],"novel":[],"removed_locked":[],"too_fast":[]},
-        "calls":1,"input_tokens":0,"output_tokens":0,"cost_usd":0.0}"#;
-    std::fs::write(job.join("sheet.json"), sheet).expect("sheet");
-    std::fs::write(job.join("adjudicated.json"), adjudicated).expect("adjudicated");
+    job_fixtures::put_lines(&job, &[line("U1", 10.0, "Hey."), line("U2", 25.0, "Hey!")]);
     let id = app.queue.items[0].id;
     app.apply(vec![Action::from(JobQueueEvent::Select(id))]);
     let (text, _) = render(&app);
@@ -284,22 +280,28 @@ fn a_job_with_a_localized_video_shows_its_card_and_what_it_replaced() {
     let job = root.join("work").join(pipeline::work_dir::job_id(
         &std::fs::canonicalize(&video).expect("c"),
     ));
-    let mut record: job_model::job::JobRecord =
-        serde_json::from_slice(&std::fs::read(job.join("job.json")).expect("job")).expect("json");
+    let store = pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(&job))
+        .expect("the store");
+    let mut record = pipeline::work_dir::load_job_record(&store)
+        .expect("read")
+        .expect("the record");
     record.settings.onscreen_text.enabled = true;
     record.settings.onscreen_text.localized_video = true;
-    record.steps.insert(
-        StepName::LocalizedVideo,
-        job_model::job::StepRecord {
-            fingerprint: String::new(),
-            finished_ns: 0,
-            measure: Default::default(),
-        },
-    );
-    std::fs::write(job.join("job.json"), json(&record)).expect("job.json");
-    std::fs::create_dir_all(job.join("visual")).expect("visual");
+    store.put_job_record(&record).expect("the record");
+    store
+        .put_step_record(
+            StepName::LocalizedVideo,
+            &job_model::job::StepRecord {
+                fingerprint: String::new(),
+                finished_ns: 0,
+                measure: Default::default(),
+            },
+        )
+        .expect("the step");
     let document = job_model::onscreen::TextDocument::default();
-    std::fs::write(job.join("visual/text_typeset.json"), json(&document)).expect("text");
+    store
+        .put_output(StepName::TextTypeset, None, &document)
+        .expect("text");
     let folder = std::fs::canonicalize(&root).expect("root");
     let mkv = folder.join("Dressrosa 16.localized.mkv");
     let ass = folder.join("Dressrosa 16.localized.ass");
@@ -311,13 +313,17 @@ fn a_job_with_a_localized_video_shows_its_card_and_what_it_replaced() {
         replaced: 4,
         ..Default::default()
     };
-    std::fs::write(job.join("visual/localized_video.json"), json(&written)).expect("record");
+    store
+        .put_output(StepName::LocalizedVideo, None, &written)
+        .expect("record");
     let output = job_model::outputs::OutputRecord {
         path: folder.join("Dressrosa 16.ass").display().to_string(),
         localized: Some(ass.display().to_string()),
         ..Default::default()
     };
-    std::fs::write(job.join("output.json"), json(&output)).expect("output");
+    store
+        .put_output(StepName::Output, None, &output)
+        .expect("output");
     let id = app.queue.items[0].id;
     app.apply(vec![Action::from(JobQueueEvent::Select(id))]);
     let (text, actions) = render(&app);
@@ -342,4 +348,22 @@ fn a_job_with_a_localized_video_shows_its_card_and_what_it_replaced() {
         "no card without the file: {text}"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The line corrections the job database in `job` holds.
+pub(super) fn stored_corrections(job: &std::path::Path) -> job_model::outputs::Corrections {
+    let store = pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(job))
+        .expect("the store");
+    pipeline::work_dir::read_corrections(&store).expect("the corrections")
+}
+
+/// Store `corrections` as the line corrections of the job in `job`.
+pub(super) fn put_corrections(
+    job: &std::path::Path,
+    corrections: &job_model::outputs::Corrections,
+) {
+    let store = pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(job))
+        .expect("the store");
+    pipeline::work_dir::update_corrections(&store, |c| *c = corrections.clone())
+        .expect("the corrections");
 }

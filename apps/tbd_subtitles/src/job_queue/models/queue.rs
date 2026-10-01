@@ -54,7 +54,7 @@ pub(crate) struct Failure {
     /// lists, once it is known.
     pub(crate) kept_steps: usize,
     /// The steps that had finished, in run order; empty for a failure an older window kept until
-    /// it is read from the job's `job.json`.
+    /// it is read from the job's step records.
     pub(crate) finished: Vec<(StepName, FinishedStep)>,
 }
 
@@ -126,10 +126,10 @@ pub(crate) struct QueueItem {
     pub(crate) kind: JobKind,
     pub(crate) state: JobState,
     /// Whether the job has started, so every later run of it takes the settings in its own
-    /// `job.json` rather than the ones saved now.
+    /// job record rather than the ones saved now.
     pub(crate) keep_settings: bool,
     /// Steps the next run does again even when their output is valid; the steps after them
-    /// follow. Emptied once the pipeline has recorded them in the job's `job.json`; kept when a
+    /// follow. Emptied once the pipeline has recorded them in the job's database; kept when a
     /// run fails before that.
     pub(crate) rerun: Vec<StepName>,
     /// How many corrections the owner saved or took back for this review run; none for a full

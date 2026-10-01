@@ -2,7 +2,8 @@
 //!
 //! **Role:** measure coverage, timing and tracking separately from model confidence.
 //! **Position:** validation harness only; never changes production artifacts.
-//! **Signals and state:** annotation JSON and a machine-readable verdict, including invalid inputs.
+//! **Signals and state:** reads a pilot job's typeset text from its database and the annotation
+//! JSON; writes a machine-readable verdict, including for invalid inputs.
 //! **Invariants:** each readable annotation needs its own actual occurrence; unresolved geometry
 //! needs an explicit nearby fallback, and malformed input never leaves a stale passing verdict.
 
@@ -10,6 +11,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use anyhow::{Context, Result, ensure};
+use job_model::StepName;
 use job_model::onscreen::{Point, Quad, TextDocument, TextOccurrence, TextTreatment};
 use serde::{Deserialize, Serialize};
 
@@ -45,9 +47,11 @@ struct Verdict {
     failures: Vec<String>,
 }
 
-pub(super) fn run(actual: &Path, annotations: &Path, output: &Path) -> Result<()> {
+/// Evaluate the typeset text of the pilot job in `work` against `annotations` and write the
+/// verdict to `output`.
+pub(super) fn run(work: &Path, annotations: &Path, output: &Path) -> Result<()> {
     let evaluated = (|| {
-        let document: TextDocument = serde_json::from_slice(&std::fs::read(actual)?)
+        let document = crate::job_rows::text(work, StepName::TextTypeset)
             .context("invalid actual visual document")?;
         let expected: Annotations =
             serde_json::from_slice(&std::fs::read(annotations)?).context("invalid annotations")?;

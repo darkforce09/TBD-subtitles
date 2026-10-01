@@ -26,15 +26,19 @@ impl Fixture {
     }
 
     fn write(&self, document: &TextDocument, expected: &Annotations) {
-        pipeline::work_dir::write_json(&self.root.join("actual.json"), document)
-            .expect("actual document");
+        pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(
+            self.root.join("work"),
+        ))
+        .expect("the pilot's store")
+        .put_output(StepName::TextTypeset, None, document)
+        .expect("actual document");
         pipeline::work_dir::write_json(&self.root.join("annotations.json"), expected)
             .expect("annotations");
     }
 
     fn run(&self) -> (bool, Verdict) {
         let result = run(
-            &self.root.join("actual.json"),
+            &self.root.join("work"),
             &self.root.join("annotations.json"),
             &self.root.join("verdict.json"),
         );

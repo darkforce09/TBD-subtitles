@@ -1,14 +1,15 @@
 //! The time a running job has left: each step's measured seconds per second of video, from the
 //! jobs already in the work folder, applied to the steps still to run.
 //!
-//! **Role:** learn how long each step takes per second of video from earlier jobs' `job.json`
-//! and `probe.json`, fall back to the Dressrosa 11 pilot's rates for a step never measured, and
+//! **Role:** learn how long each step takes per second of video from earlier jobs' step records
+//! and probes in their databases, fall back to the Dressrosa 11 pilot's rates for a step never measured, and
 //! estimate a running job's seconds left and its share done.
 //!
 //! **Position:** called by the application when the window opens and after each job; read by
 //! the queue panel and the progress view.
 //!
-//! **Signals and state:** `from_history` reads the work folder; the rest is pure.
+//! **Signals and state:** `from_history` opens each job database of the work folder for one
+//! read, skipping a job another process runs; the rest is pure.
 //!
 //! **Invariants:** the shot scan, which runs alongside the other steps, never adds to the time
 //! left, and neither does a step the job's settings leave idle (the on-screen text steps with
@@ -20,7 +21,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::time::Instant;
 
-use job_model::job::{JobRecord, JobSettings};
+use job_model::job::JobSettings;
 use job_model::outputs::ProbeDecoded;
 use job_model::{StageName, StepName};
 
@@ -62,15 +63,17 @@ pub(crate) fn from_history(work_root: &Path) -> Rates {
         .filter_map(Result::ok)
         .map(|entry| entry.path());
     for job in jobs {
-        let record = read::<JobRecord>(&job.join("job.json"));
-        let probe = read::<ProbeDecoded>(&job.join("probe.json"));
-        let (Some(record), Some(probe)) = (record, probe) else {
+        let stored = pipeline::work_dir::read_stored(&job, |read| {
+            let probe = read.output::<ProbeDecoded>(StepName::ProbeDecode, None)?;
+            Ok((read.job_record()?, read.step_records()?, probe))
+        });
+        let Ok(Some((Some(record), steps, Some(probe)))) = stored else {
             continue;
         };
         if probe.probe.duration_s <= 0.0 {
             continue;
         }
-        for (step, done) in &record.steps {
+        for (step, done) in &steps {
             if !works_in(*step, &record.settings) {
                 continue;
             }
@@ -108,10 +111,6 @@ pub(crate) fn idle_steps(settings: &JobSettings) -> Vec<StepName> {
         .into_iter()
         .filter(|step| !works_in(*step, settings))
         .collect()
-}
-
-fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
-    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
 }
 
 /// Seconds `step` is expected to take on `duration_s` of video.

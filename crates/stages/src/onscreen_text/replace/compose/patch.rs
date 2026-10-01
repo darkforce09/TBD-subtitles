@@ -6,7 +6,7 @@
 //! **Signals and state:** one plate, its mask and the warped lettering in; one RGBA image out.
 //! **Invariants:** RGB is the lettering over the inpainted plate everywhere, so a transparent
 //! pixel shows the plate's own colour; alpha covers the feathered mask and the lettering and is
-//! zero elsewhere; files appear only through a rename.
+//! zero elsewhere; files appear only synced, through a rename.
 
 use std::path::Path;
 
@@ -67,15 +67,9 @@ pub(crate) fn preview(patch: &RgbaImage, source: &RgbImage) -> RgbImage {
     output
 }
 
-/// Write a PNG beside its final name, then rename it into place.
+/// Write a PNG beside its final name, sync it and rename it into place.
 pub(crate) fn write_png(path: &Path, image: &image::DynamicImage) -> TextResult<()> {
-    let temporary = path.with_extension("png.tmp");
-    image
-        .save_with_format(&temporary, ImageFormat::Png)
-        .map_err(|e| format!("Cannot write {}: {e}", temporary.display()))?;
-    std::fs::rename(&temporary, path)
-        .map_err(|e| format!("Cannot move {} into place: {e}", path.display()))?;
-    Ok(())
+    crate::onscreen_text::png::write(path, |out| image.write_to(out, ImageFormat::Png))
 }
 
 #[cfg(test)]

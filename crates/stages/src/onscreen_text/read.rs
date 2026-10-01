@@ -2,7 +2,8 @@
 //!
 //! **Role:** retain readable Japanese and explicitly unresolved observations.
 //! **Position:** second visual stage, between detection and tracking.
-//! **Signals and state:** crop files and one local OCR reader.
+//! **Signals and state:** crop files, the shot changes the caller passes, one local OCR reader and
+//! the reading cache under `visual/readings/`.
 //! **Invariants:** a confident non-Japanese reading is excluded; uncertain readings stay flagged.
 
 use super::{TextResult, furigana};
@@ -33,6 +34,7 @@ pub fn read(
     root: &Path,
     reader: &mut OcrReader,
     corrections: &TextCorrections,
+    cuts: &ShotChanges,
     progress: &(dyn Fn(usize, usize) + Sync),
 ) -> TextResult<()> {
     let total = document.occurrences.len();
@@ -87,18 +89,9 @@ pub fn read(
     document.occurrences.retain(|item| {
         japanese(&item.japanese) || item.confidence < 0.88 || item.japanese.is_empty()
     });
-    let cuts = load_cuts(root)?;
-    consolidate_readings(document, &cuts);
+    consolidate_readings(document, cuts);
     furigana::group_furigana(document);
     Ok(())
-}
-
-pub(super) fn load_cuts(root: &Path) -> TextResult<ShotChanges> {
-    match std::fs::read(root.join("shots.json")) {
-        Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(ShotChanges::default()),
-        Err(error) => Err(error.into()),
-    }
 }
 
 fn reading_key(bytes: &[u8], revision: u32) -> String {

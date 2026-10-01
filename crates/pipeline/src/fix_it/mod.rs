@@ -3,21 +3,24 @@
 //!
 //! **Role:** read the job (refusing one that is not ready), run `stages::fix_it` with a `claude`
 //! backend that the cancel token stops and whose calls take a slot at the shared call gate, keep
-//! every answered call so a stopped run resumes without paying again, write `fix.json` with this run's lines and the earlier runs' answers it did not
-//! ask again, and put this run's kept changes into `review.json` without touching a line the
-//! owner settled.
+//! every answered call so a stopped run resumes without paying again, store its record
+//! (`corrections/fix`) with this run's lines and the earlier runs' answers it did not ask again,
+//! and put this run's kept changes into the line corrections without touching a line the owner
+//! settled.
 //!
 //! **Position:** called by the window's Fix It and the `fix` subcommand; uses `inputs.rs`,
 //! `cache.rs` and `merge.rs`. The caller queues the correction run that times the changes.
 //!
-//! **Signals and state:** holds the job's `JobStore` while it runs; reads the work directory; writes `fix.json`,
-//! `fix/calls/` and `review.json`; starts `claude` processes in `claude-cwd/`.
+//! **Signals and state:** holds the job's `JobStore` while it runs and reads the job from it;
+//! writes the line corrections and its record in one write transaction of the store, and its
+//! cache of answered calls in `fix/calls/`; starts `claude` processes in `claude-cwd/`.
 //!
 //! **Invariants:** each model is `CachedModel(Gated(ClaudeCli))`, so an answer kept on disk never
-//! takes a slot at the gate; a stopped or failed run changes no correction; the owner's corrections always
-//! win; only this run's lines are merged; `fix.json` keeps the problems before the first run and
-//! the calls and cost of every run since the job was last adjudicated, and a record from before
-//! that counts for nothing; `fix/calls/` goes once a run has written its corrections.
+//! takes a slot at the gate; a stopped or failed run changes no correction; the corrections and
+//! the record listing them commit together; the owner's corrections always win; only this run's
+//! lines are merged; its record keeps the problems before the first run and the calls and cost of
+//! every run since the job was last adjudicated, and a record from before that counts for nothing;
+//! `fix/calls/` goes once a run has written its corrections.
 
 mod cache;
 mod inputs;
@@ -32,11 +35,13 @@ use inference::llm::LanguageModel;
 use inference::llm::call_gate::{CallSeat, Gated};
 use inference::llm::claude_cli::ClaudeCli;
 use job_model::StepName;
-use job_model::outputs::{FixBefore, FixFamily, FixRecord, LineFix};
+use job_model::outputs::{Corrections, FixBefore, FixFamily, FixRecord, LineFix};
 use stages::fix_it::{self, FixFailure, Make, Pass};
+use worker_channel::address::Table;
 
 use crate::cancel::CancelToken;
 use crate::error::{Context, PipelineError, Result};
+use crate::work_dir::store::keys;
 use crate::work_dir::{self, JobStore, WorkDir};
 
 pub use merge::{Merged, merge};
@@ -95,7 +100,7 @@ pub struct FixProgress {
 pub struct FixOutcome {
     pub work_dir: PathBuf,
     pub record: FixRecord,
-    /// The lines whose Fix It correction went into `review.json`.
+    /// The lines whose Fix It correction went into the line corrections.
     pub changed: Vec<String>,
     /// The lines Fix It would have changed that the owner corrected meanwhile.
     pub kept_yours: Vec<String>,
@@ -131,8 +136,8 @@ pub fn fix_job(
     progress: &(dyn Fn(FixProgress) + Sync),
 ) -> Result<FixOutcome> {
     // Shares the window's handle when a job of this video runs in this process.
-    let _store = JobStore::open(work)?;
-    let inputs = inputs::load(work, video, &options.glossary_name)?;
+    let store = JobStore::open(work)?;
+    let inputs = inputs::load(&store, video, &options.glossary_name)?;
     let glossary = inputs.glossary();
     let episode = inputs.episode(&glossary);
     let hits = Arc::new(AtomicUsize::new(0));
@@ -166,7 +171,7 @@ pub fn fix_job(
     };
     let usage = run.usage;
     let earlier = inputs.earlier.as_ref();
-    let mut this_run = FixRecord {
+    let this_run = FixRecord {
         model: options.model.clone(),
         video: inputs.video_name.clone(),
         brief: run.brief,
@@ -178,7 +183,6 @@ pub fn fix_job(
         cost_usd: usage.cost_usd,
         failed_calls: usage.failed,
         adjudication: inputs
-            .record
             .steps
             .get(&StepName::Readjudicate)
             .map(|step| step.fingerprint.clone())
@@ -194,12 +198,7 @@ pub fn fix_job(
         done: 0,
         total: 1,
     });
-    work_dir::write_json(&work.fix_record(), &carried(this_run.clone(), earlier))?;
-    let (_, merged) = work_dir::update_corrections(work, |corrections| {
-        merge(corrections, &mut this_run.lines, &options.model)
-    })?;
-    let record = carried(this_run, earlier);
-    work_dir::write_json(&work.fix_record(), &record)?;
+    let (record, merged) = save(&store, this_run, earlier, &options.model)?;
     let _ = std::fs::remove_dir_all(work.fix_calls());
     progress(FixProgress {
         stage: FixStage::Saving,
@@ -212,6 +211,35 @@ pub fn fix_job(
         changed: merged.applied,
         kept_yours: merged.kept_yours,
     })
+}
+
+/// Merge `run`'s kept changes into the line corrections and keep its record carried over
+/// `earlier`, in one write transaction: the corrections and the record that lists them commit
+/// together or not at all.
+fn save(
+    store: &JobStore,
+    mut run: FixRecord,
+    earlier: Option<&FixRecord>,
+    model: &str,
+) -> Result<(FixRecord, Merged)> {
+    let lines_key = keys::named(keys::LINE_CORRECTIONS);
+    let mut write = store.write()?;
+    let before: Corrections = write
+        .get(Table::Corrections, &lines_key)?
+        .unwrap_or_default();
+    let mut corrections = before.clone();
+    let merged = merge(&mut corrections, &mut run.lines, model);
+    if corrections != before {
+        if corrections == Corrections::default() {
+            write.remove(Table::Corrections, &lines_key)?;
+        } else {
+            write.put(Table::Corrections, &lines_key, &corrections)?;
+        }
+    }
+    let record = carried(run, earlier);
+    write.put(Table::Corrections, &keys::named(keys::FIX_RECORD), &record)?;
+    write.commit()?;
+    Ok((record, merged))
 }
 
 /// `run` with the lines `earlier` holds that `run` did not ask about, every line by id, and the

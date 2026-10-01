@@ -7,9 +7,9 @@
 //! **Position:** called by `tasks::run` inside a worker of the main binary; uses
 //! `stages::adjudication` and `inference::llm::claude_cli`.
 //!
-//! **Signals and state:** reads `sheet.json`, `adjudication/first.json` and the re-decodes; writes
-//! `adjudication/first.json` and `adjudicated.json`; `claude` runs in the job's empty
-//! `claude-cwd/`.
+//! **Signals and state:** reads the sheet, the first pass and the re-decodes through the step's
+//! `StepIo`; stores the first pass (`outputs/adjudicate`) and the merged pass
+//! (`outputs/readjudicate`); `claude` runs in the job's empty `claude-cwd/`.
 //!
 //! **Invariants:** a first pass with no answer at all is an error; the second pass replaces only
 //! the unsure lines, and the checks run on the merged answer.
@@ -18,12 +18,12 @@ use std::time::Instant;
 
 use inference::llm::LanguageModel;
 use inference::llm::claude_cli::ClaudeCli;
+use job_model::StepName;
 use job_model::outputs::{AdjudicationPass, Redecode, Utterance};
 use stages::adjudication::{self, Adjudication, checks, redecode};
 
-use super::{Job, StepProgress, TaskReport, since};
+use super::{Job, StepIo, StepProgress, TaskReport, since};
 use crate::error::Result;
-use crate::work_dir;
 
 /// A factory of `claude -p` backends for this job, one per concurrent process.
 pub(super) fn claude(job: &Job) -> impl Fn() -> Box<dyn LanguageModel + Send> + Sync + use<> {
@@ -32,8 +32,8 @@ pub(super) fn claude(job: &Job) -> impl Fn() -> Box<dyn LanguageModel + Send> + 
     move || Box::new(ClaudeCli::new(&model, cwd.clone())) as Box<dyn LanguageModel + Send>
 }
 
-pub(super) fn adjudicate(job: &Job, progress: StepProgress) -> Result<TaskReport> {
-    let sheet: Vec<Utterance> = work_dir::read_json(&job.work.sheet())?;
+pub(super) fn adjudicate(job: &Job, io: &mut StepIo, progress: StepProgress) -> Result<TaskReport> {
+    let sheet: Vec<Utterance> = io.get(StepName::DiffSheet, None)?;
     let glossary = job.glossary();
     let started = Instant::now();
     let make = claude(job);
@@ -57,15 +57,19 @@ pub(super) fn adjudicate(job: &Job, progress: StepProgress) -> Result<TaskReport
             format!("no answer: {:?}", pass.failed_calls),
         ));
     }
-    work_dir::write_json(&job.work.first_pass(), &pass)?;
+    io.put(StepName::Adjudicate, None, &pass)?;
     Ok(report)
 }
 
-pub(super) fn readjudicate(job: &Job, progress: StepProgress) -> Result<TaskReport> {
-    let sheet: Vec<Utterance> = work_dir::read_json(&job.work.sheet())?;
-    let first: AdjudicationPass = work_dir::read_json(&job.work.first_pass())?;
-    let parakeet: Redecode = work_dir::read_json(&job.work.redecode("parakeet"))?;
-    let whisper: Redecode = work_dir::read_json(&job.work.redecode("whisper"))?;
+pub(super) fn readjudicate(
+    job: &Job,
+    io: &mut StepIo,
+    progress: StepProgress,
+) -> Result<TaskReport> {
+    let sheet: Vec<Utterance> = io.get(StepName::DiffSheet, None)?;
+    let first: AdjudicationPass = io.get(StepName::Adjudicate, None)?;
+    let parakeet: Redecode = io.get(StepName::RedecodeParakeet, None)?;
+    let whisper: Redecode = io.get(StepName::RedecodeWhisper, None)?;
     let glossary = job.glossary();
     let started = Instant::now();
     let ids = redecode::unsure_ids(&first.lines);
@@ -97,7 +101,7 @@ pub(super) fn readjudicate(job: &Job, progress: StepProgress) -> Result<TaskRepo
     };
     notes(&mut report, &pass);
     report.note("redecoded", pass.redecoded.len());
-    work_dir::write_json(&job.work.adjudicated(), &pass)?;
+    io.put(StepName::Readjudicate, None, &pass)?;
     Ok(report)
 }
 

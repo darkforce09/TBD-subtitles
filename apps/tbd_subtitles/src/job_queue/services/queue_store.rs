@@ -3,13 +3,14 @@
 //!
 //! **Role:** write each job's video, kind, coarse state, whether it keeps its own settings, the
 //! steps it runs again, its corrections and how it failed with the steps it had finished, and read
-//! them back as a queue; give a failure an older window kept its finished steps from `job.json`.
+//! them back as a queue; give a failure an older window kept its finished steps from its job's
+//! step records.
 //!
 //! **Position:** called by the application after every change of the queue and when the window
 //! opens.
 //!
 //! **Signals and state:** reads and writes `queue.json` (through a part file); reads a failed
-//! job's `job.json` in the work folder.
+//! job's step records from its database in the work folder.
 //!
 //! **Invariants:** a job running or busy when the window closed waits again; a loaded queue does
 //! not run until the owner presses Start; a file written before a field existed still loads, the
@@ -18,7 +19,6 @@
 use std::path::{Path, PathBuf};
 
 use job_model::StepName;
-use job_model::job::JobRecord;
 use serde::{Deserialize, Serialize};
 
 use crate::job_queue::models::progress::FinishedStep;
@@ -151,7 +151,7 @@ pub(crate) fn load(path: &Path) -> Result<Queue, String> {
 }
 
 /// Give each failure an older window kept, which knows only how many steps it kept, its finished
-/// steps: the steps before the failed one that its job's `job.json` under `work_root` records,
+/// steps: the steps before the failed one that its job's database under `work_root` records,
 /// with their seconds, else the first of them it kept, done in a time not known; it then keeps as
 /// many as it lists.
 pub(crate) fn read_finished_steps(queue: &mut Queue, work_root: &Path) {
@@ -167,20 +167,15 @@ pub(crate) fn read_finished_steps(queue: &mut Queue, work_root: &Path) {
             .and_then(|failed| StepName::ALL.iter().position(|&step| step == failed))
             .unwrap_or(StepName::ALL.len());
         let before = &StepName::ALL[..at];
-        let record = std::fs::canonicalize(&item.video)
+        let job = std::fs::canonicalize(&item.video)
             .ok()
-            .map(|video| {
-                work_root
-                    .join(pipeline::work_dir::job_id(&video))
-                    .join("job.json")
-            })
-            .and_then(|path| std::fs::read_to_string(path).ok())
-            .and_then(|text| serde_json::from_str::<JobRecord>(&text).ok());
-        failure.finished = match record {
-            Some(record) => before
+            .map(|video| work_root.join(pipeline::work_dir::job_id(&video)))
+            .and_then(|dir| pipeline::work_dir::read_job(&dir).ok().flatten());
+        failure.finished = match job {
+            Some(job) => before
                 .iter()
                 .filter_map(|step| {
-                    let done = record.steps.get(step)?;
+                    let done = job.steps.get(step)?;
                     Some((*step, FinishedStep::Done(Some(done.measure.wall_s))))
                 })
                 .collect(),

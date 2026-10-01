@@ -1,24 +1,28 @@
 //! The job runner: one video through every step, skipping what is still valid, the shot scan
 //! alongside the GPU steps, each step's measure recorded, and the report written at the end.
 //!
-//! **Role:** open or create the job's work directory and record, own its database, walk
-//! `StepName::ALL`, run each stale step in process or in its worker, and record it.
+//! **Role:** open or create the job's work directory and database, put this run's job record and
+//! clear the steps asked to run again, walk `StepName::ALL`, run each stale step in process or in
+//! its worker, and commit its outputs with its record.
 //!
 //! **Position:** called by the app's `process` subcommand and its window; uses `resume`,
-//! `workers`, `tasks` and `report`.
+//! `workers`, `tasks`, `report` and `rerun`.
 //!
 //! **Signals and state:** holds the job's `JobStore` (and so `job.redb` and `job.lock`) until the
-//! run returns, and hands it to every worker; commits the outputs a worker sent with its step's
-//! record, in one transaction; reads the owner's corrections for their digest; writes `job.json`
-//! after every finished step; emits progress events.
+//! run returns; sends each worker the stored values its step reads; commits the outputs a step
+//! wrote with its step record, in one transaction, for in-process and worker steps alike; emits
+//! progress events.
 //!
-//! **Invariants:** `job.json` always describes finished steps only, so a killed job resumes from
-//! the last one; one worker loads the GPU at a time (the shot scan uses none); a step starts only
-//! after every step it reads has finished.
+//! **Invariants:** a step record exists only beside the outputs it was committed with, and a step
+//! about to run again loses its record first, so a killed job resumes from the last finished step;
+//! one worker loads the GPU at a time (the shot scan uses none); a step starts only after every
+//! step it reads has finished.
+
+pub mod rerun;
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use inference::cuda_runtime::CudaRuntime;
@@ -26,12 +30,14 @@ use job_model::StepName;
 use job_model::job::{JobRecord, JobSettings, StepMeasure, StepRecord};
 use job_model::outputs::ProbeDecoded;
 use job_model::report::QcReport;
+use worker_channel::address::Address;
 
 use crate::cancel::CancelToken;
 use crate::error::{Context, PipelineError, Result};
 use crate::graph::{self, Placement};
 use crate::progress::{Progress, ProgressSink};
-use crate::tasks::{self, Job};
+use crate::tasks::{self, Job, StepIo};
+use crate::work_dir::store::StoreRead;
 use crate::work_dir::{self, JobStore, WorkDir};
 use crate::workers::{self, Binaries, StepWrite, WorkerData};
 use crate::{report, resume};
@@ -83,36 +89,26 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
     let work = WorkDir::new(options.work_root.join(work_dir::job_id(&video)));
     // Another process running this job makes the open fail with the busy kind.
     let store = JobStore::open(&work)?;
-    let video_text = video.to_string_lossy().into_owned();
-    let mut record = match work_dir::read_json::<JobRecord>(&work.job_json()) {
-        Ok(r) if r.video == video_text => r,
-        _ => JobRecord {
-            video: video_text,
-            video_size: 0,
-            video_modified_s: 0,
-            settings: options.settings.clone(),
-            models_dir: None,
-            corrections: None,
-            steps: Default::default(),
-        },
+    let record = JobRecord {
+        video: video.to_string_lossy().into_owned(),
+        video_size: meta.len(),
+        video_modified_s: modified_s,
+        settings: options.settings.clone(),
+        models_dir: Some(options.models_dir.to_string_lossy().into_owned()),
+        corrections: work_dir::corrections_digest(&store)?,
     };
-    record.video_size = meta.len();
-    record.video_modified_s = modified_s;
-    record.settings = options.settings.clone();
-    record.models_dir = Some(options.models_dir.to_string_lossy().into_owned());
-    record.corrections = work_dir::corrections_digest(&work);
     tracing::debug!("job {} for {}", work.root().display(), video.display());
-    for step in &options.rerun {
-        record.steps.remove(step);
-    }
+    let cleared = rerun::start(&store, &record, &options.rerun)?;
     if !options.rerun.is_empty() {
-        tracing::debug!("rerunning on request: {:?}", options.rerun);
+        tracing::debug!(
+            "rerunning on request: {:?}, clearing {cleared:?}",
+            options.rerun
+        );
     }
-    work_dir::write_json(&work.job_json(), &record)?;
     progress(Progress::JobStarted {
         video: video.clone(),
         work_dir: work.root().to_path_buf(),
-        stale: resume::stale_steps(&record, &work),
+        stale: resume::stale_steps(&record, &store.read()?, &work),
     });
 
     let cuda_env: OnceLock<std::result::Result<Vec<(String, String)>, String>> = OnceLock::new();
@@ -149,10 +145,11 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                         work: work.clone(),
                         record: record.clone(),
                     };
-                    let measure = tasks::in_process(step, &job, &|done, total| {
+                    let mut io = StepIo::in_process(&store)?;
+                    let measure = tasks::in_process(step, &job, &mut io, &|done, total| {
                         progress(Progress::StepAdvanced { step, done, total })
                     })?;
-                    Ok((measure, None))
+                    Ok((measure, io.into_outputs()))
                 }
                 Placement::Worker(binary) => {
                     tracing::debug!(
@@ -160,10 +157,10 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                         options.binaries.path(binary).display()
                     );
                     let env = env_for(step)?;
-                    // No step reads its inputs from the job database yet.
+                    let inputs = worker_inputs(step, &store.read()?)?;
                     let data = WorkerData {
                         store: &store,
-                        inputs: &[],
+                        inputs: &inputs,
                     };
                     let run = workers::run_worker(
                         options.binaries.path(binary),
@@ -194,45 +191,50 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
                     && let Some(handle) = shots.take()
                 {
                     let scanned = join(handle)?;
-                    finish(&mut record, &work, StepName::ShotScan, scanned, progress)?;
+                    finish(StepName::ShotScan, scanned, progress);
                 }
-                if resume::is_valid(step, &record, &work) {
+                let read = store.read()?;
+                if resume::is_valid(step, &record, &read, &work) {
                     skipped.push(step);
                     progress(Progress::StepSkipped(step));
-                    announce_duration(step, &work, progress);
+                    announce_duration(step, &read, progress);
                     continue;
                 }
-                record.steps.remove(&step);
+                let fingerprint = resume::fingerprint(step, &record, &read)?;
+                drop(read);
+                rerun::forget(&store, step)?;
                 ran.push(step);
                 progress(Progress::StepStarted(step));
-                let fingerprint = resume::fingerprint_in_work(step, &record, &work);
                 if step == StepName::ShotScan {
                     let snapshot = record.clone();
                     let run_step = &run_step;
+                    let store = &store;
                     let span = step_span.clone();
                     // The scan commits its own outputs, so a later step's outputs never wait on
                     // a transaction only this thread's join would end.
                     shots = Some(scope.spawn(move || {
                         let _in_step = span.enter();
                         let (measure, outputs) = run_step(StepName::ShotScan, &snapshot)?;
-                        stamp(StepName::ShotScan, fingerprint, measure, outputs)
+                        stamp(store, StepName::ShotScan, fingerprint, measure, outputs)
                     }));
                     continue;
                 }
                 let stamped = run_step(step, &record)
-                    .and_then(|(measure, outputs)| stamp(step, fingerprint, measure, outputs))
+                    .and_then(|(measure, outputs)| {
+                        stamp(&store, step, fingerprint, measure, outputs)
+                    })
                     .inspect_err(|error| {
                         progress(Progress::StepFailed {
                             step,
                             message: error.to_string(),
                         })
                     })?;
-                finish(&mut record, &work, step, stamped, progress)?;
-                announce_duration(step, &work, progress);
+                finish(step, stamped, progress);
+                announce_duration(step, &store.read()?, progress);
             }
             if let Some(handle) = shots.take() {
                 let scanned = join(handle)?;
-                finish(&mut record, &work, StepName::ShotScan, scanned, progress)?;
+                finish(StepName::ShotScan, scanned, progress);
             }
             Ok(())
         })();
@@ -243,7 +245,8 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
         walked
     })?;
 
-    let qc = report::write(&work, &record)?;
+    let steps = store.read()?.step_records()?;
+    let qc = report::write(&work, &record, &steps)?;
     tracing::info!("the report is written to {}", work.report().display());
     Ok(JobOutcome {
         work_dir: work.root().to_path_buf(),
@@ -256,12 +259,29 @@ pub fn run_job(video: &Path, options: &JobOptions, progress: ProgressSink) -> Re
 }
 
 /// Tell the listener the video's length once the probe is there.
-fn announce_duration(step: StepName, work: &WorkDir, progress: ProgressSink) {
+fn announce_duration(step: StepName, read: &StoreRead, progress: ProgressSink) {
     if step == StepName::ProbeDecode
-        && let Ok(probe) = work_dir::read_json::<ProbeDecoded>(&work.probe())
+        && let Ok(Some(probe)) = read.output::<ProbeDecoded>(StepName::ProbeDecode, None)
     {
         progress(Progress::JobDuration(probe.probe.duration_s));
     }
+}
+
+/// The stored values `step`'s worker receives: every value it reads, less the optional ones the
+/// job does not have.
+pub fn worker_inputs(step: StepName, read: &StoreRead) -> Result<Vec<Address>> {
+    let mut inputs = Vec::new();
+    for address in graph::reads(step) {
+        if graph::is_optional_read(step, &address)
+            && read
+                .with_bytes(address.table, &address.key, |_| Ok(()))?
+                .is_none()
+        {
+            continue;
+        }
+        inputs.push(address);
+    }
+    Ok(inputs)
 }
 
 /// The CUDA runtime's environment for ONNX Runtime and Whisper workers, packaged beside the
@@ -281,8 +301,9 @@ fn join(handle: std::thread::ScopedJoinHandle<'_, Result<StepRecord>>) -> Result
 }
 
 /// `step`'s record, with the fingerprint captured before it ran, so concurrent edits remain stale;
-/// the outputs its worker sent are committed with it, in one transaction.
+/// the outputs the step wrote are committed with it, in one transaction.
 fn stamp(
+    store: &Arc<JobStore>,
     step: StepName,
     fingerprint: String,
     measure: StepMeasure,
@@ -296,23 +317,16 @@ fn stamp(
         finished_ns,
         measure,
     };
-    if let Some(outputs) = outputs {
-        outputs.commit(step, &stamped)?;
-    }
+    outputs
+        .unwrap_or_else(|| StepWrite::new(store.clone()))
+        .commit(step, &stamped)?;
     Ok(stamped)
 }
 
-/// Record the finished `step` in `job.json`.
-fn finish(
-    record: &mut JobRecord,
-    work: &WorkDir,
-    step: StepName,
-    stamped: StepRecord,
-    progress: ProgressSink,
-) -> Result<()> {
-    let measure = stamped.measure.clone();
-    record.steps.insert(step, stamped);
-    work_dir::write_json(&work.job_json(), record)?;
-    progress(Progress::StepFinished { step, measure });
-    Ok(())
+/// Tell the listener `step` finished, with its measure; its record is already committed.
+fn finish(step: StepName, stamped: StepRecord, progress: ProgressSink) {
+    progress(Progress::StepFinished {
+        step,
+        measure: stamped.measure,
+    });
 }

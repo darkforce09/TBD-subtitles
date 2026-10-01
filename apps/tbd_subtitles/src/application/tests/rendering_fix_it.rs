@@ -10,7 +10,7 @@ use job_model::outputs::{Correction, Corrections, FixBefore, FixRecord, FixVerdi
 use job_model::report::QcCheck;
 use pipeline::fix_it::{FixOutcome, FixProgress, FixStage};
 
-use super::rendering_report::{check, finding, scratch, write_job};
+use super::rendering_report::{check, finding, put_corrections, scratch, write_job};
 use super::rendering_review::{work_dir, write_lines};
 use super::*;
 use crate::application::environment::NOTIFIED;
@@ -134,8 +134,7 @@ fn correcting() -> RunJob {
     Arc::new(|video, options, progress| {
         let job = job_dir(&options.work_root, video);
         if job.is_dir() {
-            let passing = serde_json::to_string(&check(Vec::new())).expect("json");
-            std::fs::write(job.join("qc.json"), passing).expect("qc.json");
+            super::job_fixtures::put_qc(&job, &check(Vec::new()));
         }
         stand_in()(video, options, progress)
     })
@@ -170,8 +169,8 @@ fn fix_line(id: &str, before: &str, after: &str, verdict: FixVerdict) -> LineFix
 }
 
 /// A Fix It over the three lines of `flagged` that reads the video until `go` is set, then, when
-/// `changes`, changes U1 and U3 and leaves U2, writing `review.json` and `fix.json` as the
-/// pipeline does; otherwise it leaves every line as it was.
+/// `changes`, changes U1 and U3 and leaves U2, keeping its corrections and its record in the
+/// job's database as the pipeline does; otherwise it leaves every line as it was.
 fn fixing(go: Arc<AtomicBool>, changes: bool) -> FixVideo {
     Arc::new(move |video, options, progress| {
         progress(FixProgress {
@@ -183,8 +182,7 @@ fn fixing(go: Arc<AtomicBool>, changes: bool) -> FixVideo {
             std::thread::sleep(Duration::from_millis(2));
         }
         let job = job_dir(&options.work_root, video);
-        let qc = std::fs::read_to_string(job.join("qc.json")).expect("qc.json");
-        let qc: QcReport = serde_json::from_str(&qc).expect("qc.json parses");
+        let qc: QcReport = super::job_fixtures::stored_qc(&job);
         let accepted = || FixVerdict::Accepted {
             why: "Both engines heard it.".into(),
         };
@@ -227,11 +225,11 @@ fn fixing(go: Arc<AtomicBool>, changes: bool) -> FixVideo {
             ..FixRecord::default()
         };
         if changes {
-            let json = serde_json::to_string(&corrections).expect("json");
-            std::fs::write(job.join("review.json"), json).expect("review.json");
+            put_corrections(&job, &corrections);
         }
-        let json = serde_json::to_string(&record).expect("json");
-        std::fs::write(job.join("fix.json"), json).expect("fix.json");
+        let store = pipeline::work_dir::JobStore::open(&pipeline::work_dir::WorkDir::new(&job))
+            .expect("the store");
+        pipeline::work_dir::put_fix_record(&store, &record).expect("the Fix It record");
         Ok(FixOutcome {
             work_dir: job,
             record,
