@@ -38,6 +38,10 @@ struct Track {
     /// Whether the first frame is the bisected entry frame rather than a sample.
     entered: bool,
     keyframe: Option<(usize, u64)>,
+    /// Whether this occurrence has been observed on at least 2 samples or touched a cut.
+    persistent: bool,
+    /// The entry transition, deferred until the occurrence is confirmed persistent.
+    pending_entry: Option<Transition>,
 }
 
 /// The region-following state of one scan.
@@ -78,7 +82,6 @@ impl<'a> Tracker<'a> {
     /// start and end is recorded for bisection.
     pub(crate) fn observe(
         &mut self,
-        position: usize,
         sample: &HeldSample,
         screened: Option<Regions>,
         transitions: &mut Vec<Transition>,
@@ -95,7 +98,12 @@ impl<'a> Tracker<'a> {
         };
         if crosses_cut(self.cuts, self.previous_time, frame.time_s) {
             for ended in std::mem::take(&mut self.active) {
-                transitions.push(Transition::exit(position, previous, frame.index, ended));
+                let track = &mut self.tracks[ended.occurrence];
+                track.persistent = true;
+                if let Some(entry) = track.pending_entry.take() {
+                    transitions.push(entry);
+                }
+                transitions.push(Transition::exit(previous, frame.index, ended));
             }
         }
         self.previous_time = frame.time_s;
@@ -135,23 +143,35 @@ impl<'a> Tracker<'a> {
             let state = match matched.and_then(|index| unmatched[index].take()) {
                 Some(mut state) => {
                     state.quad = observation.quad;
+                    let track = &mut self.tracks[state.occurrence];
+                    if !track.persistent {
+                        track.persistent = true;
+                        if let Some(entry) = track.pending_entry.take() {
+                            transitions.push(entry);
+                        }
+                    }
                     state
                 }
                 None => {
                     check_limits(self.observations, self.document.occurrences.len(), true)?;
                     let occurrence =
                         start_occurrence(&mut self.document, frame.time_s, observation.confidence);
-                    self.tracks.push(Track::default());
                     let anchor = timed(&mut stats.signature, || {
                         picture_at(&picture, &colour, observation.quad)
                     });
-                    transitions.push(Transition {
+                    let entry = Transition {
                         occurrence,
-                        sample: position,
                         search: Search::new(previous, frame.index, Seek::Entry),
                         quad: observation.quad,
                         anchor_box: observation.quad,
                         signature: anchor.clone(),
+                    };
+                    self.tracks.push(Track {
+                        indices: Vec::new(),
+                        entered: false,
+                        keyframe: None,
+                        persistent: false,
+                        pending_entry: Some(entry),
                     });
                     // The anchor is immutable: a later picture cannot erase the reading evidence.
                     Active {
@@ -173,7 +193,12 @@ impl<'a> Tracker<'a> {
             self.active.push(state);
         }
         for ended in unmatched.into_iter().flatten() {
-            transitions.push(Transition::exit(position, previous, frame.index, ended));
+            let track = &mut self.tracks[ended.occurrence];
+            if track.persistent {
+                transitions.push(Transition::exit(previous, frame.index, ended));
+            } else {
+                track.pending_entry = None;
+            }
         }
         Ok(())
     }
@@ -189,7 +214,7 @@ impl<'a> Tracker<'a> {
     ) -> TextResult<()> {
         let mut exits = Vec::new();
         for (change, &index) in transitions.iter().zip(answers) {
-            let frame = group.samples[change.sample]
+            let frame = group
                 .frame(index)
                 .ok_or("A text transition lies outside its sample gap")?;
             match change.search.seek {
@@ -279,11 +304,14 @@ impl<'a> Tracker<'a> {
     /// held in memory.
     pub(crate) fn close(mut self) -> Closed {
         for state in std::mem::take(&mut self.active) {
-            let item = &mut self.document.occurrences[state.occurrence];
-            if let Some(end_s) = item.frames.last().map(|frame| frame.end_s) {
-                item.end_s = end_s;
+            let track = &mut self.tracks[state.occurrence];
+            if track.persistent {
+                let item = &mut self.document.occurrences[state.occurrence];
+                if let Some(end_s) = item.frames.last().map(|frame| frame.end_s) {
+                    item.end_s = end_s;
+                }
+                self.choose_keyframe(state.occurrence);
             }
-            self.choose_keyframe(state.occurrence);
         }
         let frame_area = f64::from(self.document.width) * f64::from(self.document.height);
         let mut keyframes = Vec::new();
@@ -291,7 +319,7 @@ impl<'a> Tracker<'a> {
         let kept = occurrences
             .into_iter()
             .zip(&self.tracks)
-            .filter(|(item, _)| plausible(item, frame_area))
+            .filter(|(item, track)| track.persistent && plausible(item, frame_area))
             .map(|(item, track)| {
                 keyframes.push(track.keyframe);
                 item

@@ -435,3 +435,20 @@ fn the_stats_carry_the_sessions_start_up_and_notes() {
     assert_eq!(run.stats.frames_decoded, 80);
     assert_eq!(run.stats.frames_screened, run.pool.screened as u64);
 }
+
+#[test]
+fn single_sample_transient_noise_runs_zero_probes_and_is_not_confirmed() {
+    let run = Run::new(vec![writing(24..=24, 20, 240)], 80, ShotChanges::default());
+    assert!(
+        run.document.occurrences.is_empty(),
+        "transient 1-frame noise is dropped"
+    );
+    assert_eq!(
+        run.stats.frames_probed, 0,
+        "lazy bisection runs zero probes on transient noise"
+    );
+    assert!(
+        run.pool.confirmations.is_empty(),
+        "transient noise never reaches server confirmation"
+    );
+}

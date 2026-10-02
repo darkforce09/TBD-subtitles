@@ -96,9 +96,34 @@ fn a_group_finds_any_frame_it_holds() {
     }
     let (samples, pictures) = gathering.close();
     assert!(pictures.is_empty());
-    let group = Group { samples, job: None };
+    let group = Group {
+        prior: None,
+        samples,
+        job: None,
+    };
     for index in 0..25 {
         assert_eq!(group.frame(index).unwrap().index, index);
     }
     assert!(group.frame(25).is_none());
+}
+
+#[test]
+fn a_group_finds_frames_in_its_prior_sample_and_gap() {
+    let frames = timeline(24);
+    let prior_frame = yuv_frame(&[], 11, false, &frames);
+    let gap: Vec<_> = (0..11).map(|i| yuv_frame(&[], i, false, &frames)).collect();
+    let prior = HeldSample {
+        frame: std::sync::Arc::new(prior_frame),
+        gap,
+        screened: true,
+    };
+    let group = Group {
+        prior: Some(prior),
+        samples: Vec::new(),
+        job: None,
+    };
+    for index in 0..=11 {
+        assert_eq!(group.frame(index).unwrap().index, index);
+    }
+    assert!(group.frame(12).is_none());
 }

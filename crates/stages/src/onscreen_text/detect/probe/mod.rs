@@ -38,8 +38,6 @@ pub(crate) type ProbeScreen<'a> =
 /// box for overlap, its anchor box and the anchor's signature.
 pub(crate) struct Transition {
     pub(crate) occurrence: usize,
-    /// The group position of the sample whose gap holds the change.
-    pub(crate) sample: usize,
     pub(crate) search: Search,
     pub(crate) quad: Quad,
     pub(crate) anchor_box: Quad,
@@ -48,10 +46,9 @@ pub(crate) struct Transition {
 
 impl Transition {
     /// The region `ended` leaves somewhere after sample `previous` and by sample `index`.
-    pub(crate) fn exit(sample: usize, previous: u64, index: u64, ended: Active) -> Self {
+    pub(crate) fn exit(previous: u64, index: u64, ended: Active) -> Self {
         Self {
             occurrence: ended.occurrence,
-            sample,
             search: Search::new(previous, index, Seek::Exit),
             quad: ended.quad,
             anchor_box: ended.anchor_box,
@@ -124,16 +121,14 @@ pub(crate) fn narrow(
         },
         |probed, change, index| {
             let change = &transitions[change];
-            group.samples[change.sample]
-                .frame(index)
-                .is_some_and(|frame| {
-                    present(
-                        change,
-                        frame,
-                        probed.regions.get(&index).map(Vec::as_slice),
-                        colour,
-                    )
-                })
+            group.frame(index).is_some_and(|frame| {
+                present(
+                    change,
+                    frame,
+                    probed.regions.get(&index).map(Vec::as_slice),
+                    colour,
+                )
+            })
         },
     )?;
     stats.probe += cache.spent;

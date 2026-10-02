@@ -80,6 +80,7 @@ pub(crate) fn run(
         colour,
         batch,
         waiting: VecDeque::new(),
+        prior_sample: None,
     };
     let samples = Samples::new(source.timeline(), cuts, step);
     let frame_count = source.timeline().len() as u64;
@@ -165,6 +166,7 @@ struct Screening<'a, 'p> {
     colour: Coefficients,
     batch: usize,
     waiting: VecDeque<Group>,
+    prior_sample: Option<HeldSample>,
 }
 
 impl Screening<'_, '_> {
@@ -184,7 +186,11 @@ impl Screening<'_, '_> {
             stats.frames_screened += pictures.len() as u64;
             Some(self.flight.submit(Priority::Screen, pictures)?)
         };
-        self.waiting.push_back(Group { samples, job });
+        self.waiting.push_back(Group {
+            prior: None,
+            samples,
+            job,
+        });
         Ok(())
     }
 
@@ -219,7 +225,8 @@ impl Screening<'_, '_> {
 
     /// Observes a group's samples in order, then bisects its transitions through probes that
     /// run ahead of the waiting screening jobs.
-    fn observe(&mut self, group: Group, stats: &mut ScanStats) -> TextResult<()> {
+    fn observe(&mut self, mut group: Group, stats: &mut ScanStats) -> TextResult<()> {
+        group.prior = self.prior_sample.take();
         let mut screens = match group.job {
             Some(seq) => self
                 .flight
@@ -229,14 +236,14 @@ impl Screening<'_, '_> {
         }
         .into_iter();
         let mut transitions: Vec<Transition> = Vec::new();
-        for (position, sample) in group.samples.iter().enumerate() {
+        for sample in &group.samples {
             let screened = if sample.screened {
                 Some(screens.next().ok_or("A screened sample has no result")?)
             } else {
                 None
             };
             self.tracker
-                .observe(position, sample, screened, &mut transitions, stats)?;
+                .observe(sample, screened, &mut transitions, stats)?;
         }
         let (flight, batch) = (&mut self.flight, self.batch);
         let mut screen_probes = |pictures: Vec<PaddedFrame>| -> TextResult<Vec<Regions>> {
@@ -259,7 +266,9 @@ impl Screening<'_, '_> {
             &mut screen_probes,
             stats,
         )?;
-        self.tracker.settle(&group, &transitions, &answers)
+        self.tracker.settle(&group, &transitions, &answers)?;
+        self.prior_sample = group.samples.pop();
+        Ok(())
     }
 }
 

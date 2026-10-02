@@ -17,6 +17,7 @@ fn group(writings: &[crate::onscreen_text::detect::fixtures::Writing]) -> Group 
         screened: true,
     };
     Group {
+        prior: None,
         samples: vec![sample(24), sample(36)],
         job: None,
     }
@@ -37,7 +38,6 @@ fn an_entry_and_an_exit_narrow_to_their_exact_frames_through_one_screen_per_step
     let transitions = [
         Transition {
             occurrence: 0,
-            sample: 0,
             search: Search::new(12, 24, Seek::Entry),
             quad: anchor_box,
             anchor_box,
@@ -45,7 +45,6 @@ fn an_entry_and_an_exit_narrow_to_their_exact_frames_through_one_screen_per_step
         },
         Transition {
             occurrence: 0,
-            sample: 1,
             search: Search::new(24, 36, Seek::Exit),
             quad: anchor_box,
             anchor_box,
@@ -90,7 +89,6 @@ fn a_changed_picture_under_an_overlapping_box_is_absent() {
     let shown = group.samples[1].frame(26).unwrap().picture().unwrap();
     let transitions = [Transition {
         occurrence: 0,
-        sample: 1,
         search: Search::new(24, 36, Seek::Exit),
         quad: anchor_box,
         anchor_box,
@@ -118,7 +116,6 @@ fn a_probe_outside_the_held_frames_is_an_error() {
     let quad = region(&writing(0..=0, 20, 240), 0.0);
     let transitions = [Transition {
         occurrence: 0,
-        sample: 0,
         search: Search::new(0, 12, Seek::Entry),
         quad,
         anchor_box: quad,

@@ -58,15 +58,19 @@ impl HeldSample {
 
 /// Consecutive samples and the screening job that answers their screened ones, if any.
 pub(crate) struct Group {
+    pub(crate) prior: Option<HeldSample>,
     pub(crate) samples: Vec<HeldSample>,
     /// The job's sequence number; `None` when every sample repeats an earlier screen.
     pub(crate) job: Option<u64>,
 }
 
 impl Group {
-    /// The frame at `index` among the group's samples and gaps.
+    /// The frame at `index` among the group's samples, gaps and boundary sample.
     pub(crate) fn frame(&self, index: u64) -> Option<&YuvFrame> {
-        self.samples.iter().find_map(|sample| sample.frame(index))
+        self.prior
+            .as_ref()
+            .and_then(|sample| sample.frame(index))
+            .or_else(|| self.samples.iter().find_map(|sample| sample.frame(index)))
     }
 }
 

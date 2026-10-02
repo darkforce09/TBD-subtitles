@@ -14,9 +14,9 @@ crates/stages/src/onscreen_text/detect/probe/
 
 ## How it works
 
-Each `Transition` carries the occurrence, the group position of the sample whose gap holds the
-change, the search interval, the region's box, its fixed anchor box and the anchor's signature.
-`narrow` runs `bisect` over all of a group's transitions: every step takes the distinct probe
+Each `Transition` carries the occurrence, the search interval, the region's box, its fixed anchor
+box and the anchor's signature. `narrow` runs `bisect` over all of a group's transitions: every step
+takes the distinct probe
 frames not yet screened, converts them from the group's held frames to padded pictures side by
 side, and hands them to the caller's screen, which submits them as probe jobs and waits for their
 answers. Each open search's probe is then answered in parallel: present when a screened box
