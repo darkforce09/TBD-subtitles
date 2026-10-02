@@ -71,6 +71,7 @@ pub(crate) fn run(
         cuts,
         colour,
         Candidates::new(limits.candidate_budget),
+        limits.min_bisection_samples,
     );
     let batch = pool.shape().batch.max(1);
     let most_waiting = GROUPS_PER_SESSION * pool.sessions().max(1);
@@ -245,6 +246,7 @@ impl Screening<'_, '_> {
             self.tracker
                 .observe(sample, screened, &mut transitions, stats)?;
         }
+        self.tracker.forget_unqualified_entries();
         let (flight, batch) = (&mut self.flight, self.batch);
         let mut screen_probes = |pictures: Vec<PaddedFrame>| -> TextResult<Vec<Regions>> {
             let mut jobs = Vec::new();

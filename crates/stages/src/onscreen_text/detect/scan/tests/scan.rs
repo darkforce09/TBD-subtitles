@@ -19,6 +19,7 @@ struct Setup {
     flicker: bool,
     min_confirm_frames: usize,
     min_confirm_confidence: f64,
+    min_bisection_samples: usize,
 }
 
 impl Default for Setup {
@@ -30,6 +31,7 @@ impl Default for Setup {
             flicker: false,
             min_confirm_frames: 1,
             min_confirm_confidence: 0.0,
+            min_bisection_samples: 2,
         }
     }
 }
@@ -60,6 +62,7 @@ impl Run {
             candidate_budget: setup.budget,
             min_confirm_frames: setup.min_confirm_frames,
             min_confirm_confidence: setup.min_confirm_confidence,
+            min_bisection_samples: setup.min_bisection_samples,
         };
         let (document, stats) = run(
             &mut source,
@@ -512,5 +515,76 @@ fn low_contrast_observations_do_not_start_occurrences() {
     assert!(
         run.document.occurrences.is_empty(),
         "flat surface without text contrast is discarded before starting an occurrence"
+    );
+}
+
+#[test]
+fn two_sample_transient_noise_does_not_probe_bisection() {
+    let run = Run::with(
+        vec![writing(17..=41, 20, 240)],
+        80,
+        ShotChanges::default(),
+        Setup {
+            min_bisection_samples: 3,
+            ..Setup::default()
+        },
+    );
+    assert!(
+        run.document.occurrences.is_empty(),
+        "transient 2-sample text does not qualify when min_bisection_samples is 3"
+    );
+    assert_eq!(
+        run.stats.frames_probed, 0,
+        "zero bisection probe frames are executed for unqualified transient noise"
+    );
+}
+
+#[test]
+fn three_sample_text_dispatches_entry_and_exit_bisection() {
+    let run = Run::with(
+        vec![writing(17..=55, 20, 240)],
+        80,
+        ShotChanges::default(),
+        Setup {
+            min_bisection_samples: 3,
+            ..Setup::default()
+        },
+    );
+    assert_eq!(
+        run.document.occurrences.len(),
+        1,
+        "text persisting across 3 samples qualifies for persistence"
+    );
+    assert!(
+        run.stats.frames_probed > 0,
+        "entry and exit bisections are dispatched for persistent text"
+    );
+}
+
+#[test]
+fn cut_adjacent_two_sample_text_is_bisected() {
+    let cuts = ShotChanges {
+        cuts: vec![ShotCut {
+            time_s: 15.0 / 24.0,
+            score: 50.0,
+        }],
+    };
+    let run = Run::with(
+        vec![writing(15..=30, 20, 240)],
+        80,
+        cuts,
+        Setup {
+            min_bisection_samples: 3,
+            ..Setup::default()
+        },
+    );
+    assert_eq!(
+        run.document.occurrences.len(),
+        1,
+        "cut-adjacent 2-sample text qualifies for bisection via touches_cut"
+    );
+    assert!(
+        run.stats.frames_probed > 0,
+        "bisections are dispatched for cut-adjacent text"
     );
 }

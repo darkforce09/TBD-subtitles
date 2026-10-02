@@ -50,6 +50,10 @@ pub(crate) const MIN_CONFIRM_FRAMES: usize = 5;
 /// below 0.55.
 pub(crate) const MIN_CONFIRM_CONFIDENCE: f64 = 0.55;
 
+/// Minimum consecutive screening samples for an isolated candidate to qualify for bisection.
+/// Standalone 2-sample flickers (< 1.0s) are transient noise; real signs persist >= 1.33s.
+pub(crate) const MIN_BISECTION_SAMPLES: usize = 3;
+
 /// The bounds a scan runs within.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct ScanLimits {
@@ -59,6 +63,8 @@ pub(crate) struct ScanLimits {
     pub(crate) min_confirm_frames: usize,
     /// Minimum confidence for an occurrence to qualify its keyframe for server confirmation.
     pub(crate) min_confirm_confidence: f64,
+    /// Minimum samples for an occurrence to qualify for entry and exit bisection.
+    pub(crate) min_bisection_samples: usize,
 }
 
 impl Default for ScanLimits {
@@ -67,6 +73,7 @@ impl Default for ScanLimits {
             candidate_budget: window::CANDIDATE_BUDGET,
             min_confirm_frames: MIN_CONFIRM_FRAMES,
             min_confirm_confidence: MIN_CONFIRM_CONFIDENCE,
+            min_bisection_samples: MIN_BISECTION_SAMPLES,
         }
     }
 }

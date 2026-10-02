@@ -38,10 +38,12 @@ struct Track {
     /// Whether the first frame is the bisected entry frame rather than a sample.
     entered: bool,
     keyframe: Option<(usize, u64)>,
-    /// Whether this occurrence has been observed on at least 2 samples or touched a cut.
+    /// Whether this occurrence has qualified for bisection.
     persistent: bool,
     /// The entry transition, deferred until the occurrence is confirmed persistent.
     pending_entry: Option<Transition>,
+    /// Whether this occurrence entered or exited at a camera shot cut.
+    touches_cut: bool,
 }
 
 /// The region-following state of one scan.
@@ -55,6 +57,7 @@ pub(crate) struct Tracker<'a> {
     observations: usize,
     last_regions: Regions,
     candidates: Candidates,
+    min_bisection_samples: usize,
 }
 
 impl<'a> Tracker<'a> {
@@ -63,6 +66,7 @@ impl<'a> Tracker<'a> {
         cuts: &'a ShotChanges,
         colour: Coefficients,
         candidates: Candidates,
+        min_bisection_samples: usize,
     ) -> Self {
         Self {
             document,
@@ -74,6 +78,7 @@ impl<'a> Tracker<'a> {
             observations: 0,
             last_regions: Vec::new(),
             candidates,
+            min_bisection_samples,
         }
     }
 
@@ -96,9 +101,14 @@ impl<'a> Tracker<'a> {
             }
             None => self.last_regions.clone(),
         };
-        if crosses_cut(self.cuts, self.previous_time, frame.time_s) {
+        let cut_in_gap = crosses_cut(self.cuts, self.previous_time, frame.time_s);
+        if cut_in_gap {
             for ended in std::mem::take(&mut self.active) {
                 let track = &mut self.tracks[ended.occurrence];
+                track.touches_cut = true;
+                if !track.persistent && track.indices.len() >= 2 {
+                    track.persistent = true;
+                }
                 if track.persistent {
                     if let Some(entry) = track.pending_entry.take() {
                         transitions.push(entry);
@@ -167,7 +177,10 @@ impl<'a> Tracker<'a> {
                 Some(mut state) => {
                     state.quad = observation.quad;
                     let track = &mut self.tracks[state.occurrence];
-                    if !track.persistent {
+                    if !track.persistent
+                        && (track.indices.len() + 1 >= self.min_bisection_samples
+                            || track.touches_cut)
+                    {
                         track.persistent = true;
                         if let Some(entry) = track.pending_entry.take() {
                             transitions.push(entry);
@@ -195,6 +208,7 @@ impl<'a> Tracker<'a> {
                         keyframe: None,
                         persistent: false,
                         pending_entry: Some(entry),
+                        touches_cut: cut_in_gap,
                     });
                     // The anchor is immutable: a later picture cannot erase the reading evidence.
                     Active {
@@ -224,6 +238,17 @@ impl<'a> Tracker<'a> {
             }
         }
         Ok(())
+    }
+
+    /// Drops pending entry transitions for tracks that have not qualified before the group
+    /// closes, because the group's entry gap frames are about to be released.
+    pub(crate) fn forget_unqualified_entries(&mut self) {
+        for state in &self.active {
+            let track = &mut self.tracks[state.occurrence];
+            if !track.persistent {
+                track.pending_entry = None;
+            }
+        }
     }
 
     /// Starts each entering occurrence of `group` at its first present frame and ends each
