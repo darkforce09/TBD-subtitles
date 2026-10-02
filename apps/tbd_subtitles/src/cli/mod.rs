@@ -99,8 +99,11 @@ fn window_request(cli: &Cli) -> Option<window_command::WindowRequest> {
     }
 }
 
-/// Run a subcommand that never opens the window.
+/// Run a subcommand that never opens the window; a worker refuses a terminal's stdin.
 fn dispatch(cli: Cli) -> anyhow::Result<ExitCode> {
+    if let Some(Command::Worker { step, .. }) = &cli.command {
+        pipeline::tasks::refuse_terminal_stdin(*step)?;
+    }
     dispatch_with(cli, std::io::stdin())
 }
 

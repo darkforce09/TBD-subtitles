@@ -48,7 +48,7 @@ tbd-subtitles [COMMAND] ──▶ Cli::parse
    process <PATHS>... [OPTIONS]      ──▶ dispatch ──▶ process_command::run ──▶ pipeline::run_job, per video
    fix <VIDEO> [OPTIONS]             ──▶ dispatch ──▶ fix_command::run ──▶ pipeline::fix_it::fix_video, run_job
    dump <JOB> <TABLE> [KEY]          ──▶ dispatch ──▶ dump_command::run ──▶ JobStore::open_existing, kinds
-   worker <STEP> <JOB_DIR>           ──▶ dispatch ──▶ worker_command::run ──▶ pipeline::tasks::worker_main
+   worker <STEP> <JOB_DIR>           ──▶ dispatch ──▶ worker_command::run ──▶ pipeline::tasks::worker_main_from
 ```
 
 `process_command::merged` puts the options over the settings file (`--settings`, else
@@ -157,16 +157,18 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
 
 - Synopsis: `tbd-subtitles worker <STEP> <JOB_DIR>`.
 - Does: runs `<STEP>` over the job in `<JOB_DIR>` in this process through
-  `pipeline::tasks::worker_main`, reading the job record and the step's inputs from the runner's
-  frames on stdin and sending the step's output, its progress, model calls, measure and end or
+  `pipeline::tasks::worker_main_from`, after refusing a terminal on stdin
+  (`pipeline::tasks::refuse_terminal_stdin`), reading the job record and the step's inputs from
+  the runner's frames on stdin and sending the step's output, its progress, model calls, measure and end or
   failure to the job runner as frames of the worker channel on stdout; it never opens the job's
   database, and anything else printed to stdout goes to stderr. Every step is accepted but
   `asr_whisper` and `redecode_whisper`, which are refused as belonging to `tbd-subtitles-ggml`;
   `text_translate` parses but fails as a step of `tbd-subtitles-llm`.
-- Exit codes: 0 the step finished; 1 the job cannot be loaded, the step belongs to
-  `tbd-subtitles-llm`, or the step failed; 2 on a usage error, including a Whisper step or a name
-  that is no step.
-- Example: `target/release/tbd-subtitles worker separation ~/.local/share/tbd-subtitles/work/<job>`
+- Exit codes: 0 the step finished; 1 stdin is a terminal, the job cannot be loaded, the step
+  belongs to `tbd-subtitles-llm`, or the step failed; 2 on a usage error, including a Whisper
+  step or a name that is no step.
+- Example: the job runner starts `tbd-subtitles worker separation <job dir>` with the step's
+  inputs on a pipe; started from a shell, it stops at once with exit code 1.
 
 ## Boundaries
 
@@ -174,7 +176,7 @@ Each runs as `cargo run -p tbd_subtitles -- <arguments>` from the repository roo
   `crate::core::single_instance` (the claim, the serving thread, the hand-off);
   `crate::job_queue::services::video_files` (a folder's videos); `pipeline` (`run_job`, `JobOptions`,
   `progress::Progress`, `workers::Binaries`, `work_dir::default_root`, `graph::placement`,
-  `tasks::worker_main`, `fix_it::fix_video`, `work_dir::{JobStore, WorkDir, job_id}`,
+  `tasks::{refuse_terminal_stdin, worker_main_from}`, `fix_it::fix_video`, `work_dir::{JobStore, WorkDir, job_id}`,
   `work_dir::store::{kind, kinds}`) from `crates/pipeline/`; `worker_channel::address::{Table,
   Key}`; `serde_json`; `job_model::StepName` and `job_model::job` from
   `crates/job_model/`; `crate::settings::{models, services}` (the settings file and the job

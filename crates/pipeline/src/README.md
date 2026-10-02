@@ -78,8 +78,9 @@ replacements `text_verify` approved.
 
 - `run_job`, `JobOptions`, `JobOutcome`, `CancelToken`, `PipelineError` and `Result`, re-exported
   at the crate root for the app's `process` subcommand and its window.
-- `tasks::worker_main` and `graph::{placement, Placement, Binary}`: the `worker` subcommands of
-  `apps/tbd_subtitles/` and `apps/tbd_subtitles_ggml/`.
+- `tasks::{worker_main, worker_main_from, refuse_terminal_stdin}` and
+  `graph::{placement, Placement, Binary}`: the `worker` subcommands of `apps/tbd_subtitles/`,
+  `apps/tbd_subtitles_ggml/` and `apps/tbd_subtitles_llm/`.
 - `progress::Progress`, `workers::Binaries`, `work_dir::default_root` and
   `work_dir::gpu_lock_path`: what the app shows, the binaries it passes, its default work root and
   the GPU lock file.

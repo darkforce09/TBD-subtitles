@@ -59,9 +59,13 @@ A `Job` is the work directory and its record; in a worker `Job::received` takes 
 the `meta/job_record` input. `Job::models` is the models folder the record names, else the
 default. `run` sends each step to its task, which returns a `TaskReport` of load time, processing
 time and notes. `in_process` resets this process's peak RAM, runs the task on its `StepIo` and
-returns its `StepMeasure`. `worker_main` first installs the worker channel
-(`worker_channel::worker`), which keeps a private copy of the stdout pipe for frames and points
-descriptor 1 at stderr before any native library loads, then reads the step's inputs from stdin.
+returns its `StepMeasure`. `worker_main` refuses a terminal on stdin (`refuse_terminal_stdin`: a
+worker waits for the runner's frames, which a terminal never sends) and runs `worker_main_from`
+over stdin; the main binary checks the terminal itself and passes its stdin to
+`worker_main_from`, which tests call with a reader of their own. `worker_main_from` first installs
+the worker channel (`worker_channel::worker`), which keeps a private copy of the stdout pipe for
+frames and points descriptor 1 at stderr before any native library loads, then reads the step's
+inputs from its reader.
 It refuses a step placed in the other binary, sends each advance as
 a `Progress` frame, and at the end sends the load time, processing time, peak RAM, peak child RAM
 and notes as an rkyv archive of `WorkerMeasure` in a `Measure` frame, then `Done`; any error,
@@ -103,7 +107,8 @@ in batches.
 - Used by: `crate::runner` (`in_process`, `StepIo`); `tools/visual_validation/` (the same); the
   `worker` subcommands in
   `apps/tbd_subtitles/src/cli/worker_command.rs`, `apps/tbd_subtitles_ggml/src/main.rs` and
-  `apps/tbd_subtitles_llm/src/main.rs` (`worker_main`).
+  `apps/tbd_subtitles_llm/src/main.rs` (`worker_main`; the main binary calls
+  `refuse_terminal_stdin` and `worker_main_from`).
 - Rules:
   - a task's stored outputs are committed with its step's record or not at all, and nothing it
     puts is visible before (`an_in_process_step_reads_the_store_and_commits_its_output_with_its_record`

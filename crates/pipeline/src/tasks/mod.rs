@@ -193,13 +193,20 @@ pub fn in_process(
 /// read the step's inputs from stdin, run the step, and send its outputs, progress and measure,
 /// then its end; any error is sent as a `Failed` frame and returned.
 pub fn worker_main(step: StepName, job_dir: &Path, binary: Binary) -> Result<()> {
+    refuse_terminal_stdin(step)?;
+    worker_main_from(step, job_dir, binary, std::io::stdin())
+}
+
+/// Refuses to run `step`'s worker on a terminal's stdin: a worker receives its inputs on a pipe
+/// from the runner, and on a terminal it would wait for them forever.
+pub fn refuse_terminal_stdin(step: StepName) -> Result<()> {
     if std::io::stdin().is_terminal() {
         return Err(PipelineError::new(
             format!("worker {step}"),
             "a worker receives inputs on a pipe from the runner, not a terminal",
         ));
     }
-    worker_main_from(step, job_dir, binary, std::io::stdin())
+    Ok(())
 }
 
 /// What a worker binary executes for `step` in `job_dir`, reading runner inputs from `stdin`.

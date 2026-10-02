@@ -44,7 +44,7 @@ toasts every feature draws).
 ```text
 main.rs ──▶ cli ──▶ application ──▶ job_queue, job_report, line_review, log_console, settings,
              │                        text_review (models, services, ui, events)
-             └──▶ pipeline (run_job, tasks::worker_main), job_model (StepName, JobSettings),
+             └──▶ pipeline (run_job, tasks::worker_main_from), job_model (StepName, JobSettings),
                   stages::adjudication::glossary
 
 any module ──▶ core (logging, log_buffer, background, portal, color_scheme, format, ui)

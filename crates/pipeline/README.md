@@ -99,9 +99,10 @@ passes in `JobOptions`, recorded in the job record (`crates/job_model/src/job/se
 - `tasks::{in_process, StepIo, Job}`: one step's task on its stored inputs and outputs, for the
   runner and `tools/visual_validation/`; `resume::{fingerprint, is_valid, stale_steps}` and
   `runner::worker_inputs` for the same tool.
-- `tasks::worker_main`: the body of the `worker` subcommand of all three binaries
-  (`apps/tbd_subtitles/src/cli/worker_command.rs`, `apps/tbd_subtitles_ggml/src/main.rs`,
-  `apps/tbd_subtitles_llm/src/main.rs`).
+- `tasks::worker_main`, `tasks::worker_main_from` and `tasks::refuse_terminal_stdin`: the body of
+  the `worker` subcommand of all three binaries, which refuses a terminal on stdin
+  (`apps/tbd_subtitles/src/cli/worker_command.rs` through `worker_main_from`,
+  `apps/tbd_subtitles_ggml/src/main.rs`, `apps/tbd_subtitles_llm/src/main.rs`).
 - `graph::{placement, Placement, Binary}`: which binary a step's worker runs in, which the
   `worker` subcommands check before they start.
 - `progress::{Progress, ProgressSink}`, `workers::Binaries`, `work_dir::default_root` and
