@@ -108,12 +108,14 @@ how it runs: [video inpainting pipeline](/documentation/architecture/video_inpai
   with a Kalman filter or a similar smoother over the `frames` rows, so the lettering does not
   jitter where the correlation peak wobbles; a frame the smoother moves too far from its match
   stays as matched.
-- **Fragments:** the scan keeps short fragments apart from their occurrence, such as the two-frame
-  start of the Rebecca cards at their fade-in on Dressrosa 11
-  ([visual scan](/documentation/research/visual_scan_dressrosa_11.md)); a fragment adjacent to an
-  occurrence of the same writing joins it.
+- **Fragments:** the scan drops writing seen on fewer than three samples (two at a cut), so a
+  short fade-in fragment, such as the two-frame start of the Rebecca cards on Dressrosa 11
+  ([visual scan](/documentation/research/visual_scan_dressrosa_11.md)), no longer becomes an
+  occurrence of its own; a longer fragment adjacent to an occurrence of the same writing should
+  join it.
 - **Cuts already bound occurrences:** the scan screens both frames around every shot cut and
-  bisects to the exact entry and exit frame, so no occurrence crosses a cut.
+  bisects writing that persists to the exact entry and exit frame, so no occurrence crosses a
+  cut.
 - **Measured:** jitter of the lettering on the moving signs of Dressrosa 11 and 28 (the frame to
   frame movement of its quad against the follow), the fragments left, and the owner's review.
 

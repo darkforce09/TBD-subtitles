@@ -1,8 +1,8 @@
 # Text detection
 
-The first visual stage. It screens the video at full resolution for visible writing, finds each
-region's exact first and last frame, and confirms every occurrence once on its keyframe, which
-yields its crop and its keyframe image.
+The first visual stage. It screens the video at full resolution for visible writing, keeps the
+writing that persists, finds its exact first and last frame, and confirms the persistent,
+confident occurrences on their keyframes, which yields each one's crop and keyframe image.
 
 ## Contents
 
@@ -48,29 +48,41 @@ A group closes when its pictures fill the sessions' batch, or when it holds twic
 samples; its pictures go to the sessions as one screening job at once, and decoding goes on while
 at most six groups per session wait. Results come back in any order and are kept by sequence
 number; the groups are observed strictly in order, each only once its job is answered, so one or
-two sessions and any order of answers give the same document. Regions are followed from sample to
+two sessions and any order of answers give the same document. A region smaller than 12 pixels on
+its longer side or 8 on either side, or whose grey crop spans fewer than 35 levels or varies by a
+standard deviation under 8, is dropped before it is followed. Regions are followed from sample to
 sample: a match needs more than 0.45 box overlap and an unchanged picture at the region's fixed
-anchor box, unique in both directions, and a cut clears every match. The signatures read the
-anchor box from the luma plane as full-range grey, a perspective quad rectified in grey, and the
-regions are compared side by side. A new region entered somewhere after the previous sample, and
-an unmatched one left somewhere before this one. Bisection over the group's held frames finds the
-first present or first absent frame in at most ceil(log2(k)) probes; all searches of a group
-advance together, each step's probes converted from the held frames and screened as probe jobs
-that the sessions run ahead of the waiting screening jobs. A group's bisection ends before the
-next group is observed, and its frames are then released. An occurrence keeps its entry frame and
-one frame per matched sample; each frame ends where the next begins and the last ends at the first
-absent frame, so the timing is exact. Quads are in source pixels.
+anchor box, unique in both directions, and a cut clears every match; the signature is compared
+only for regions that overlap a current box. The signatures read the anchor box from the luma
+plane as full-range grey, a perspective quad rectified in grey, and the regions are compared side
+by side. A new region entered somewhere after the previous sample, and an unmatched one left
+somewhere before this one. Writing is bisected only once it persists: matched on three samples
+(`MIN_BISECTION_SAMPLES`), or on two when it begins or ends at a cut. Writing that ends sooner is
+screening noise: it is never bisected, its keyframe candidates go at once, and it leaves the
+document. Bisection over the held frames finds the first present or first absent frame in at most
+ceil(log2(k)) probes; all searches of a group advance together. In each step, a probe frame whose
+anchor box no open search's signature matches is answered absent without the detector; the rest
+are converted from the held frames and screened as probe jobs, at full resolution only, which
+the sessions run ahead of the waiting screening jobs. A group's bisection ends before the next
+group is observed, and its frames are then released, except the last two samples observed, which
+the next group carries with their gaps: writing first seen there and persisting in the next group
+is bisected to its exact entry. An occurrence keeps its entry frame and one frame per matched
+sample; each frame ends where the next begins and the last ends at the first absent frame, so the
+timing is exact. Quads are in source pixels.
 
 Each occurrence's keyframe is the sample nearest the middle of its interval. While it is active,
 the keyframe candidates hold, shared and counted once, every sample from the last one at or before
-the middle of its start and its latest sample; when it ends, only the chosen sample stays. Past a
-budget of 16 GiB the active window holding the most samples gives up its frames, and that
-occurrence's keyframe is decoded from the video instead. After the stream, confirmation takes the
-distinct keyframes in the order occurrences first need them, eight at a time: held ones are
-converted from memory, the others decoded as stills while the previous chunk is confirmed. The
-server detector confirms each keyframe once, and the best overlapping region replaces that frame's
-quad; an occurrence the server detector does not confirm is dropped as screening noise, as is one
-shorter than 0.15 s or wider than half the frame. The keyframe gives the occurrence's surface
+the middle of its start and its latest sample; when it ends, only the chosen sample stays, and
+when it ends without persisting, none does. Past a budget of 16 GiB the active window holding the
+most samples gives up its frames, and that occurrence's keyframe is decoded from the video
+instead. After the stream, confirmation takes the distinct keyframes of the occurrences with at
+least five frames (`MIN_CONFIRM_FRAMES`) and a first-sample score of at least 0.55
+(`MIN_CONFIRM_CONFIDENCE`), in the order occurrences first need them, eight at a time: held ones
+are converted from memory, the others decoded as stills while the previous chunk is confirmed.
+The server detector confirms each of those keyframes once, for every occurrence that shares it,
+and the best overlapping region replaces that frame's quad. An occurrence the server detector does
+not confirm, or whose keyframe is not taken, is dropped as screening noise, as is one shorter
+than 0.15 s, wider than half the frame or under the region size above. The keyframe gives the occurrence's surface
 colour for all its frames, its rectified crop in `visual/crops/` and its keyframe image, at most
 1280 pixels wide, in `visual/keyframes/`, both written by one PNG thread that the scan joins
 before it returns. Both folders are emptied when confirmation starts, so a rerun never leaves

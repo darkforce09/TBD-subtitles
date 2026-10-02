@@ -18,14 +18,17 @@ crates/stages/src/onscreen_text/detect/window/
 gap with it as a `HeldSample`, with its padded picture when it is screened. The group closes once
 its pictures fill a screening batch or it holds twice a batch of samples; the gap after its last
 sample stays for the next group, so every frame belongs to exactly one group and a transition seen
-at a sample is bisected inside that sample's own gap. The samples are shared (`Arc`), so the
-candidates can keep one after its group is gone.
+at a sample is bisected inside that sample's own gap. A `Group` also holds, as `prior`, the last
+samples observed before it, which the coordinator carries in with their gaps; `Group::frame`
+finds a frame among them and the group's own. The samples are shared (`Arc`), so the candidates
+can keep one after its group is gone.
 
 `Candidates` keeps one window of `(index, time)` entries per occurrence and every held frame once,
 with how many windows hold it. Offering adds a sample; pruning drops the samples before the last
 one at or before the middle of the occurrence's start and its latest sample, which can no longer
 be nearest its final middle; choosing keeps only the keyframe, or marks the occurrence for a still
-from the video when its window no longer holds it. Past the budget, the active window holding the
+from the video when its window no longer holds it; abandoning, for writing that ends without
+persisting, releases every sample of its window. Past the budget, the active window holding the
 most samples falls back and releases its frames; kept keyframes stay, since choosing and pruning
 only release frames. `into_frames` hands confirmation the held keyframes by index.
 

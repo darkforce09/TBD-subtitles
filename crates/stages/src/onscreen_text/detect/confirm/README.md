@@ -1,7 +1,8 @@
 # Keyframe confirmation
 
-The scan's last phase: each occurrence is confirmed once on its keyframe by the server detector,
-and the confirmed ones get their crop and keyframe image.
+The scan's last phase: the keyframes of the persistent, confident occurrences are confirmed once
+by the server detector, for every occurrence that shares them, and the confirmed ones get their
+crop and keyframe image.
 
 ## Contents
 
@@ -13,8 +14,11 @@ crates/stages/src/onscreen_text/detect/confirm/
 
 ## How it works
 
-The crop and keyframe folders are emptied first. The distinct keyframes are taken in the order
-occurrences first need them, eight at a time. For each chunk, a keyframe the scan still holds is
+The crop and keyframe folders are emptied first. The distinct keyframes of the occurrences with
+at least `min_confirm_frames` frames and a first-sample score of at least
+`min_confirm_confidence` (five and 0.55 in production) are taken in the order occurrences first
+need them, eight at a time; an occurrence whose keyframe no such occurrence shares is never
+confirmed and leaves the document. For each chunk, a keyframe the scan still holds is
 converted from its yuv420p frame; the others come from `FrameSource::stills`, decoded for the next
 chunk on a thread while the current chunk is confirmed. Every picture is padded as the screening
 pictures are and sent in one `TextScreening::confirm` call, which answers in the order asked. For

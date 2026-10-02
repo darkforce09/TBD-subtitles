@@ -42,19 +42,23 @@ host and accepted it (2026-09-29) ([automation](/documentation/features/automati
 M4 adds Detect → Read → Track → Translate → Review → Typeset between cue construction and final
 QC/output. Detection decodes every frame at full resolution as YUV (CPU, or NVDEC as a setting)
 and screens two samples per second plus shot boundaries, padded to 1088 lines, with the mobile
-PP-OCRv5 detector on two sessions of one pool (CUDA, or TensorRT FP16 as a setting), bisects the
-frames between samples to the exact entry and exit frame, and confirms each occurrence on the
-screened sample nearest its middle, kept in memory, with the server detector; tracking checks the sampled geometry without decoding; translation asks
+PP-OCRv5 detector on two sessions of one pool (TensorRT by default, or CUDA as a setting), drops
+small, flat and short-lived regions, bisects the frames between samples to the exact entry and
+exit frame of writing that persists for three samples (two at a cut), and confirms the keyframes
+of persistent, confident occurrences, the screened sample nearest each one's middle, kept in
+memory, with the server detector; tracking checks the sampled geometry without decoding; translation asks
 tool-disabled Claude (the run's Sonnet) once per keyframe with the whole-frame still and its
 crops, and loads local Qwen3.5-4B only for what Claude leaves; manga-ocr and validated reference
 wording remain. Settings, queue progress, Overview, Check Text,
 actual ASS comparison previews, corrections and logs are integrated into the existing window and
-job. Visual corrections reuse valid audio stages. The episode benchmark is measured: detection
-takes 3.9 minutes per 50,000 frames on Dressrosa 11 against the six-minute target
-([visual scan](/documentation/research/visual_scan_dressrosa_11.md)). Annotated pilot coverage,
-complete GUI/VLC checks and owner acceptance remain outstanding; do not call M4 complete. The AppImage
-builds and passes the host startup smoke check. The owner accepts missed faint text, false
-detections and writing shorter than the half-second sample step that no sample or cut lands on. See
+job. Visual corrections reuse valid audio stages. The episode benchmark is measured:
+full-resolution detection takes about two minutes for Dressrosa 11's 44,489 frames on TensorRT,
+against the six-minute target
+([measurement](/documentation/research/m6_text_detect_speedup_dressrosa_11.md)). Annotated pilot
+coverage, complete GUI/VLC checks and owner acceptance remain outstanding; do not call M4 complete.
+The AppImage builds and passes the host startup smoke check. The owner accepts missed faint text,
+false detections and writing shown for less than about two seconds unless it shares a keyframe
+with longer writing; the 海 wall on Dressrosa 11, lost since those filters, is open. See
 [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md) and the
 [roadmap](/documentation/roadmap.md).
 
@@ -83,9 +87,17 @@ archived with rkyv) that one process owns; workers stream their outputs to the r
 pipes (`crates/worker_channel`), `tbd-subtitles dump` prints any row as JSON, and approved signs
 are shared between episodes in `library.redb`
 ([binary storage](/documentation/architecture/binary_storage_plan.md)). M6, the 24 GB
-workstation scaling, is built and awaits the host's measurement: full-resolution screening on two
-detector sessions with TensorRT bundled, 6.5 GB per GPU worker with a memory wait, audio-first GPU
-priority, the segment encode of the localized video, and YUV decoding throughout
+workstation scaling, is built:
+- full-resolution screening on two detector sessions with TensorRT bundled and the default;
+- 6.5 GB per GPU worker with a memory wait;
+- audio-first GPU priority;
+- the segment encode of the localized video;
+- YUV decoding throughout.
+
+Its benches, determinism check and encode presets are done, and `text_detect` on Dressrosa 11 is
+measured at about two minutes and under 10 GiB of RAM
+([measurement](/documentation/research/m6_text_detect_speedup_dressrosa_11.md)). Fresh runs of
+Dressrosa 11 and 28 against the baseline, and playback across the segment encode's joins, remain
 ([runbook](/documentation/runbooks/measuring_full_resolution_screening.md),
 [roadmap](/documentation/roadmap.md)).
 

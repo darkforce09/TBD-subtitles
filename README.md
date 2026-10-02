@@ -9,7 +9,8 @@ of the video, `<name>.localized.mkv`, with its own `<name>.localized.ass`.
 **Status:** the subtitle pipeline, the desktop window and automation are done (M0 to M3);
 on-screen translation (M4) and the localized video (M5) are built and under validation; every job
 keeps its data in one `job.redb` database, and approved signs are shared between episodes; the
-24 GB workstation scaling (M6) is next (see the [roadmap](/documentation/roadmap.md)).
+24 GB workstation scaling (M6) is built, with its whole-episode comparison against the baseline
+still to run (see the [roadmap](/documentation/roadmap.md)).
 
 ## Layout
 

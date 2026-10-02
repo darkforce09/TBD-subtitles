@@ -17,7 +17,7 @@ fn group(writings: &[crate::onscreen_text::detect::fixtures::Writing]) -> Group 
         screened: true,
     };
     Group {
-        prior: None,
+        prior: Vec::new(),
         samples: vec![sample(24), sample(36)],
         job: None,
     }

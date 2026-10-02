@@ -11,13 +11,23 @@ its own with the dialogue and sound cues. That part is M5, implemented and under
 source video is only read. Pilot coverage, full-episode quality, resource limits, packaged
 playback and owner acceptance are not yet established by this document.
 
-The owner accepts missed faint text and false detections as current limitations. The AppImage
-is built and passes its host startup smoke check. Detection screens sampled frames at full
-resolution and bisects the exact boundaries, and Claude reads each text event once from its
-keyframe; the host measurement of full-resolution screening and of the segment encode of the
-localized video
-([runbook](/documentation/runbooks/measuring_full_resolution_screening.md)), full GUI correction
-acceptance and VLC playback remain open.
+The owner accepts as current limitations:
+- missed faint text and false detections;
+- writing shown for less than about two seconds, unless it shares a keyframe with longer
+  writing.
+
+The AppImage is built and passes its host startup smoke check. Detection screens sampled frames
+at full resolution, keeps the writing that persists and bisects its exact boundaries, and Claude
+reads each text event once from its keyframe. Full-resolution screening is measured: on Dressrosa
+11, `text_detect` takes about two minutes
+([measurement](/documentation/research/m6_text_detect_speedup_dressrosa_11.md)).
+
+Still open:
+- fresh runs of Dressrosa 11 and 28 against the M6 baseline;
+- playback across the segment encode's joins
+  ([runbook](/documentation/runbooks/measuring_full_resolution_screening.md));
+- full GUI correction acceptance;
+- VLC playback.
 
 ## Where it lives
 
@@ -67,11 +77,13 @@ Settings → On-screen Text provides:
   limit with structured replies; local OCR and Qwen answer whatever it leaves. Off, or with the
   CLI unavailable, the local models supply the result and compatible reference wording can
   improve it. There is no paid API backend or automatic billing fallback.
-- **Detector engine: TensorRT / CUDA**, CUDA by default until the host bench confirms TensorRT.
-  It runs both the screening and the confirming detector; TensorRT builds an FP16 engine the first
-  time for each GPU, driver, TensorRT version, model and input shape, and reuses it from the app
-  data folder after. The detection step's fingerprint covers the choice, since the results differ
-  between engines.
+- **Detector engine: TensorRT / CUDA**, TensorRT by default.
+  - The engine runs both the screening and the confirming detector.
+  - TensorRT builds an FP16 screening engine and an FP32 confirming engine the first time for each
+    GPU, driver, TensorRT version, model and input shape, then reuses them from the app data
+    folder.
+  - TensorRT confirms on two sessions, CUDA on one.
+  - The detection step's fingerprint covers the choice, since the results differ between engines.
 - **Decode video on the GPU (NVDEC)**, off by default, so the CPU decodes. It changes only how the
   screen's frames are decoded, which is bit-exact either way, so switching it reruns nothing.
 - **Video encoder**, x264 (the default) or NVENC, for the segments the localized video
@@ -103,7 +115,7 @@ that they are off and do nothing.
 
 | Step | Work and retained result |
 |---|---|
-| Detect | Streams every frame at full resolution as 8-bit YUV through FFmpeg with packet presentation timestamps. Screens every `round(fps / 2)`-th frame plus the first and last frame of each shot with the mobile PP-OCRv5 detector on two sessions, and bisects the frames between two samples to the exact frame where writing appears or vanishes. Keeps one observed frame per sample or boundary, a keyframe for each occurrence (the screened sample nearest its middle), confirmed by the server PP-OCRv5 detector at full resolution, and a perspective-corrected crop from that keyframe; cuts or changed writing start new occurrences. Screening noise is dropped: writing shorter than 0.15 s, wider than half the frame, or absent from its keyframe. |
+| Detect | Streams every frame at full resolution as 8-bit YUV through FFmpeg with packet presentation timestamps. Screens every `round(fps / 2)`-th frame plus the first and last frame of each shot with the mobile PP-OCRv5 detector on two sessions, drops regions that are small or flat, and bisects the frames between two samples to the exact frame where writing that persists for three samples (two at a cut) appears or vanishes. Keeps one observed frame per sample or boundary, a keyframe for each occurrence (the screened sample nearest its middle), confirmed by the server PP-OCRv5 detector at full resolution when the occurrence has at least five frames and a first-sample score of 0.55 or shares such a keyframe, and a perspective-corrected crop from that keyframe; cuts or changed writing start new occurrences. Screening noise is dropped: writing that does not persist, shorter than 0.15 s, wider than half the frame, not confirmed, or absent from its keyframe. |
 | Read | Reads Japanese with PP-OCRv5 through oar-ocr, using manga-ocr for difficult crops. Consolidates compatible adjacent readings and folds furigana into the kanji line they annotate; uncertain readings remain flagged. |
 | Track | Checks that every sampled box keeps its centre (within a fifth of the keyframe box height) and half its overlap with the keyframe quad, without decoding video; a detector box that only grows or shrinks around unmoved writing passes. A moving or unverified surface gains a review warning and nearby placement. |
 | Translate | Asks Claude first, one call per keyframe frame with the whole-frame still and the crops of its regions, for each region's Japanese, English, confidence and box plus any other writing on the frame. Qwen3.5-4B, with short dialogue context and the glossary, loads only for occurrences Claude leaves unanswered; compatible corrected occurrences consolidate, and occurrences that show one sign join into one, before review. |
@@ -124,7 +136,19 @@ builds from the detector exports when that engine is chosen.
 
 Detection samples the full-resolution stream at two frames per second and at every shot
 boundary, so writing visible for fewer frames than the sample step that falls between two samples
-and touches no cut is missed. Each sample is screened twice: at full resolution, so small or
+and touches no cut is missed. Writing must also persist to be kept:
+- regions under 12 pixels on the longer side or 8 on either side are dropped before they are
+  followed, as are regions whose grey crop spans fewer than 35 levels or varies by a standard
+  deviation under 8;
+- writing seen on fewer than three samples (two when it begins or ends at a cut) is dropped as
+  noise;
+- writing with fewer than five frames, or with a first-sample score under 0.55, is confirmed only
+  on a keyframe it shares with writing that qualifies.
+
+In practice, writing shown for less than about two seconds is dropped
+([decision](/documentation/decisions/onscreen_detection.md#2026-10-02--screening-drops-small-flat-and-short-lived-writing-and-confirms-only-persistent-confident-keyframes)).
+
+Each screened sample is screened twice: at full resolution, so small or
 faint writing has the source's pixels (the owner accepts the extra noise that brings), and shrunk
 to 640 wide, where writing too large for the mobile detector at full resolution (a single glyph a
 third of the frame tall) is found; a 640-wide box is kept only where the full-resolution boxes
@@ -133,8 +157,9 @@ cover less than half of it
 32 × 32 blocks, matches the last screened sample's within a mean difference of 4 reuses its
 detections. The rest are converted to RGB, padded with black rows to a multiple of 32 lines
 (1,088 for a 1080p source, never stretched), and screened in batches on two detector sessions in
-the one worker, each on its own thread; bisection probes go ahead of waiting batches, and results
-are applied in sample order, so the document is the same with one session or two. The batch and
+the one worker, each on its own thread; bisection probes, at full resolution only, go ahead of
+waiting batches, a probe frame whose anchor matches no open search answered without the detector,
+and results are applied in sample order, so the document is the same with one session or two. The batch and
 each session's GPU memory pool are one measured pair, set by the host sweep
 ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-detector-screens-full-resolution-frames-padded-to-a-multiple-of-32-on-two-sessions)).
 Detection compares each candidate with the occurrence's fixed first signature, read from the
@@ -148,9 +173,12 @@ that correction cannot turn an unsafe background into permission to cover it.
 
 Each occurrence's keyframe is the screened sample nearest its middle, so at 24 fps it lies within
 six frames of the exact middle. While writing is on screen, the scan keeps the samples that can
-still be its middle in memory, within a budget of 16 GiB; after the scan, the server detector
-confirms every occurrence on its keyframe at full resolution, spread over both sessions. A
-keyframe let go to keep the budget is decoded again by FFmpeg as a still, eight at a time
+still be its middle in memory, within a budget of 16 GiB, and lets go of them as soon as writing
+ends without persisting. After the scan, the server detector confirms at full resolution the
+keyframes of the occurrences with at least five frames and a first-sample score of at least
+0.55, for every occurrence sharing them, on two TensorRT sessions or one CUDA session; the other
+occurrences are dropped. A keyframe let go to keep the budget is decoded again by FFmpeg as a
+still, eight at a time
 ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-server-detector-confirms-each-occurrence-at-full-resolution-on-the-sample-nearest-its-middle)).
 The step's notes in the report time the warm-up, decode wait, conversion, screening, probes,
 signatures and confirmation, and count stills from memory against stills from FFmpeg.
@@ -193,9 +221,11 @@ independent image verification: its local confidence is capped at 0.84. This con
 helps catch shortened compound names and qualifiers. Without available Claude verification it
 stays flagged and unrendered until reviewed; the check does not establish translation completeness.
 
-Frame buffers, thumbnails and preview streams are bounded: the scan holds a decode queue of about
-four seconds of frames from a recycled pool, the gap frames between samples until every
-transition that could land on them is resolved, the keyframe candidates within 16 GiB, the
+Frame buffers, thumbnails and preview streams are bounded: the scan holds a decode queue of up
+to 45 seconds of frames within 3.5 GiB from a recycled pool, the gap frames between samples until
+every transition that could land on them is resolved (the last two samples carried into the next
+screening group), up to six screening groups per session waiting for their results, the keyframe
+candidates within 16 GiB, the
 batches in flight on the two sessions, and the packet table; the step waits, before it starts,
 for the GPU memory its sessions need within the 6.5 GB worker cap. The scan fails
 explicitly beyond one million geometry observations or one hundred thousand occurrences, and when
@@ -425,12 +455,16 @@ a smeared guess. The localized video carries no subtitle stream, so a player sho
   localized video still needs a playback check in VLC and mpv, an AppImage rebuild with its host
   smoke test, and the owner's acceptance.
 - [M6](/documentation/roadmap.md#m6--24-gb-workstation-throughput) and
-  [M8](/documentation/roadmap.md#m8--visual-tracking-and-video-acceleration): full-resolution
-  screening, the detector engine, NVDEC and the segment encode are built and await the host
-  measurement in the
-  [runbook](/documentation/runbooks/measuring_full_resolution_screening.md): the pool and batch
-  sweep, the determinism check, the encode presets, fresh runs of Dressrosa 11 and 28 against the
-  [M6 baseline](/documentation/research/m6_baseline.md), and playback across every join.
+  [M8](/documentation/roadmap.md#m8--visual-tracking-and-video-acceleration): the pool and batch
+  sweep, the determinism check and the encode presets of the
+  [runbook](/documentation/runbooks/measuring_full_resolution_screening.md) are done.
+  `text_detect` is measured on Dressrosa 11
+  ([measurement](/documentation/research/m6_text_detect_speedup_dressrosa_11.md)). Still open:
+  - fresh runs of Dressrosa 11 and 28 against the
+    [M6 baseline](/documentation/research/m6_baseline.md);
+  - playback across every join;
+  - the 海 wall on Dressrosa 11, which only the 640-wide pass finds and which has not been found
+    since the noise filters.
 
 ## Decisions
 

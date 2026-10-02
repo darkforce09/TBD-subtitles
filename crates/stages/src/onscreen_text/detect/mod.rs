@@ -1,8 +1,9 @@
 //! Coarse-to-fine detection of visible writing on the full-resolution video.
 //!
 //! **Role:** screen half-second samples of every frame decoded at full resolution, follow text
-//! regions between samples, narrow each region's first and last frame exactly by bisecting the
-//! frames between samples, then confirm every occurrence once on its keyframe.
+//! regions between samples, narrow the first and last frame of writing that persists exactly by
+//! bisecting the frames between samples, then confirm the keyframes of persistent, confident
+//! occurrences once each.
 //! **Position:** first visual stage; reads a `FrameSource` and screens through a `TextScreening`
 //! pool of detector sessions, and writes crops and keyframe stills under the job's `visual/`
 //! folder.
@@ -13,9 +14,10 @@
 //! current frame's luma at the region's anchor box, so detector jitter never splits static
 //! writing; an occurrence's frames tile from its entry frame to its first absent frame; a gap
 //! never crosses a shot cut; results are applied in sample order whatever order they arrive in;
-//! writing shorter than `MIN_OCCURRENCE_S`, wider than `MAX_REGION_SHARE` of the frame or
-//! unconfirmed on its keyframe is dropped as screening noise; the limits fail explicitly instead
-//! of dropping text; no full-video image extraction occurs.
+//! writing that does not persist for `MIN_BISECTION_SAMPLES`, shorter than `MIN_OCCURRENCE_S`,
+//! wider than `MAX_REGION_SHARE` of the frame or unconfirmed on its keyframe is dropped as
+//! screening noise; the limits fail explicitly instead of dropping text; no full-video image
+//! extraction occurs.
 
 mod confirm;
 mod crops;

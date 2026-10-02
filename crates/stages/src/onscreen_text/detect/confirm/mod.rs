@@ -1,10 +1,12 @@
-//! Confirmation of every occurrence on the full-resolution picture of its keyframe, after the
-//! scan, in a fixed order.
+//! Confirmation of occurrences on the full-resolution picture of their keyframe, after the scan,
+//! in a fixed order.
 //!
-//! **Role:** take each distinct keyframe in the order occurrences first need it, from memory when
-//! the scan kept it and from a still decoded from the video otherwise, have the server detector
-//! confirm the keyframes a chunk at a time, keep the occurrences it confirms with their crop and
-//! keyframe image, and drop the rest as screening noise.
+//! **Role:** take each distinct keyframe of a persistent, confident occurrence (at least
+//! `min_confirm_frames` frames and a first-sample score of at least `min_confirm_confidence`) in
+//! the order occurrences first need it, from memory when the scan kept it and from a still
+//! decoded from the video otherwise, have the server detector confirm the keyframes a chunk at a
+//! time, keep the occurrences it confirms with their crop and keyframe image, whether or not they
+//! qualify themselves, and drop the rest as screening noise.
 //! **Position:** the scan's last phase; reads the source's stills, the sessions' `confirm` and
 //! the sibling `crops` module, and hands its PNGs to the writer thread.
 //! **Signals and state:** one chunk of at most `CONFIRM_CHUNK` keyframes at a time, the next
@@ -45,9 +47,10 @@ pub(crate) struct Closed {
     pub(crate) min_confirm_confidence: f64,
 }
 
-/// Confirms every occurrence of `closed` on its keyframe and returns the document of the
-/// confirmed ones. An occurrence without a keyframe, or whose keyframe shows no matching
-/// full-resolution region, is screening noise and leaves the document.
+/// Confirms the occurrences of `closed` on the keyframes of the qualifying ones and returns the
+/// document of the confirmed ones. An occurrence without a keyframe, whose keyframe no qualifying
+/// occurrence shares, or whose keyframe shows no matching full-resolution region, is screening
+/// noise and leaves the document.
 pub(crate) fn confirm_keyframes(
     closed: Closed,
     colour: &Coefficients,

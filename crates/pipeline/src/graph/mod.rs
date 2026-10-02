@@ -226,9 +226,11 @@ const REVISIONS: &[(StepName, u32)] = &[
     // dialogue and sound cues alone, moved above English lettered into the picture.
     // The lettered writing it keeps subtitles clear of is what the read-back check approved.
     (StepName::Output, 5),
-    // Full-resolution frames screened in padded batches on two sessions, each occurrence confirmed
-    // on the screened sample nearest its middle.
-    (StepName::TextDetect, 5),
+    // Full-resolution frames screened in padded batches on two sessions; small, flat and
+    // short-lived regions are dropped before they are tracked, writing is bisected once it
+    // persists, also across screening groups, and only persistent, confident keyframes are
+    // confirmed.
+    (StepName::TextDetect, 6),
     (StepName::TextRead, 3),
     // Sampled geometry replaces per-frame optical flow.
     (StepName::TextTrack, 3),

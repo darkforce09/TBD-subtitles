@@ -5,14 +5,18 @@
 The host steps that fix the measured constants of full-resolution screening, the detector engine,
 the localized video's segment encode and the 6.5 GB VRAM cap, then compare fresh runs of
 Dressrosa 11 and 28 with the [M6 baseline](/documentation/research/m6_baseline.md), check the
-localized videos in VLC and mpv, ship the AppImage and merge the branch to `main`. Run it once,
-in order, on the owner's machine with nothing else using the GPU; it takes most of a day, mostly
-the two benches and four whole jobs.
+localized videos in VLC and mpv, and ship the AppImage. Run it once, in order, on the owner's
+machine with nothing else using the GPU; it takes most of a day, mostly the two benches and four
+whole jobs.
+
+Steps 1–13 (the benches, the constants, the determinism check, the TensorRT default and the
+encode presets) and 21–22 (the AppImage) are done, and `text_detect` is measured on Dressrosa 11
+([measurement](/documentation/research/m6_text_detect_speedup_dressrosa_11.md)). Steps 14–20
+(the fresh runs against the baseline and playback across every join), 23 and 24 remain.
 
 ## Prerequisites
 
-- The branch `claude/yuv-decoding-detector-vv3grn` checked out, with every commit of the work
-  merged into it and the four checks passing (`cargo fmt --all --check`,
+- `main` checked out with the four checks passing (`cargo fmt --all --check`,
   `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`,
   `cargo gates`).
 - The app's three release binaries built as in step 12 of the
@@ -33,7 +37,8 @@ the two benches and four whole jobs.
 | Dressrosa 28 | `[Muhn Pace] Dressrosa 28.mp4` (named as Dressrosa 11 is): 38,177 frames |
 | Measurement folders | `$HOME/tbd-fullres/`: `bench/`, `determinism/`, `fresh/` |
 | Constants the benches fix | `ScreenShape::INITIAL` (screening batch and pool) and `CONFIRM_POOL_MIB` in `crates/inference/src/ocr/pool/mod.rs`; `TEXT_DETECT_VRAM_MIB` in `crates/pipeline/src/graph/gpu.rs`; the segment presets in `crates/media_io/src/encode/segments/args.rs` and the whole-video HEVC preset in `crates/media_io/src/encode/mod.rs` |
-| Defaults the checks may flip | the CUDA search mode (`SearchMode`'s default, `Fast` or `Deterministic`) in `crates/inference/src/ocr/detector_pool/`; the detector engine (`DetectorEngine`'s default) in `crates/job_model/src/onscreen/settings.rs` |
+| Defaults the checks may flip | the CUDA search mode (`SearchMode`'s default, `Fast` or `Deterministic`) in `crates/inference/src/ocr/detector_pool/`; the detector engine (`DetectorEngine`'s default, TensorRT since the determinism check) in `crates/job_model/src/onscreen/settings.rs` |
+| Constants the Dressrosa 11 measurements set | `SCREEN_SCORE` in `crates/inference/src/ocr/mod.rs`; `confirm_sessions` in `crates/inference/src/ocr/pool/mod.rs`; `MIN_CONFIRM_FRAMES`, `MIN_CONFIRM_CONFIDENCE` and `MIN_BISECTION_SAMPLES` in `crates/stages/src/onscreen_text/detect/mod.rs`; `MIN_BOX_SPAN` in `crates/stages/src/onscreen_text/detect/regions.rs`; `SCAN_QUEUE_SECONDS` and `SCAN_QUEUE_MAX_BYTES` in `crates/stages/src/onscreen_text/detect/source.rs`; `GROUPS_PER_SESSION` in `crates/stages/src/onscreen_text/detect/scan/mod.rs`; `CANDIDATE_BUDGET` in `crates/stages/src/onscreen_text/detect/window/candidates.rs` |
 | Limits | whole-job peak RAM within 24 GB; every GPU worker within 6.5 GB (6,656 MiB) of VRAM |
 
 The storage layout of this work is new, so every existing job runs all its steps once more:
@@ -102,8 +107,8 @@ each run in a new work root the episode's localized video is moved aside, as ste
    **Expected:** every test passes. Rebuild the three release binaries as in step 12 of the
    development environment runbook.
 
-5. Choose the TensorRT engine: open the window on the host, set Settings, On-screen Text,
-   Detector engine to TensorRT, and close the window.
+5. Check the TensorRT engine, the default: open the window on the host, see that Settings,
+   On-screen Text, Detector engine shows TensorRT (choose it if not), and close the window.
 
    ```bash
    distrobox-host-exec target/release/tbd-subtitles gui
@@ -302,16 +307,6 @@ each run in a new work root the episode's localized video is moved aside, as ste
 
     **Expected:** every gate ends with `OK — N check(s), all held` and the command exits 0.
 
-25. Merge the branch to `main`, from the repository root on `main`; it is not left standing.
-
-    ```bash
-    git merge --ff-only claude/yuv-decoding-detector-vv3grn
-    ```
-
-    **Expected:** a fast-forward to the branch's last commit. If `main` has moved, rebase the
-    branch onto it, run the four checks again and merge once more; then push `main` and delete
-    the branch.
-
 ## Verify
 
 ```bash
@@ -319,7 +314,7 @@ git log --oneline -1 origin/main
 ```
 
 **Expected:** the commit that adds the research record and ticks the roadmap items, on
-`origin/main`, with the branch merged.
+`origin/main`.
 
 ## Troubleshooting
 

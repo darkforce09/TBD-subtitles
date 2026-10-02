@@ -44,6 +44,39 @@ fn an_active_window_keeps_every_sample_that_can_still_be_nearest_its_middle() {
 }
 
 #[test]
+fn an_abandoned_window_lets_go_of_the_frames_only_it_held() {
+    let mut candidates = Candidates::new(usize::MAX);
+    let (shared, own, later) = (sample(12), sample(24), sample(36));
+    candidates.offer(0, &shared);
+    candidates.offer(1, &shared);
+    candidates.offer(1, &own);
+    assert_eq!(candidates.bytes, 2 * frame_bytes());
+    candidates.abandon(1);
+    assert_eq!(
+        candidates.bytes,
+        frame_bytes(),
+        "the shared frame stays for the window still holding it"
+    );
+    assert_eq!(candidates.windows[1].state, State::Fallback);
+    candidates.offer(1, &later);
+    assert_eq!(
+        candidates.bytes,
+        frame_bytes(),
+        "an abandoned window takes no more samples"
+    );
+    candidates.abandon(1);
+    candidates.choose(0, 12);
+    candidates.abandon(0);
+    assert_eq!(
+        candidates.windows[0].state,
+        State::Chosen(12),
+        "a chosen keyframe is never abandoned"
+    );
+    assert_eq!(candidates.peak_bytes(), 2 * frame_bytes());
+    assert_eq!(held(candidates, &[12, 24]), [12]);
+}
+
+#[test]
 fn windows_share_frames_and_release_each_only_when_no_window_holds_it() {
     let mut candidates = Candidates::new(usize::MAX);
     let (a, b) = (sample(12), sample(24));

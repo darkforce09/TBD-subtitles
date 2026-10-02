@@ -116,7 +116,7 @@ are already in memory, and the 24 GB of RAM leaves room to keep some of them.
 
 **Decision:** The keyframe is the screened sample nearest the occurrence's middle. While an
 occurrence is active, its window keeps the samples that can still be its middle, from
-`(start + now) / 2 − step` to now, as shared YUV frames; a budget of 16 GiB bounds the candidates
+`(start + now) / 2 − step` to now, as shared YUV frames; a budget of 4 GiB bounds the candidates
 held, and an occurrence whose candidate was let go falls back to an FFmpeg still. Confirmation
 runs after the scan, so its order is fixed: the server detector, at full resolution with the same
 padding, batch 1 and box score 0.5, on both sessions, each opening its confirmation session the
@@ -215,3 +215,124 @@ during confirmation is ~3.8 GB, safely below the 6.5 GB worker limit.
 
 **Supersedes:** "One session confirms (`CONFIRM_SESSIONS`)" in the entry of
 2026-10-01 — One server-detector session confirms; the rest of that entry holds.
+
+### 2026-10-02 — Screening drops small, flat and short-lived writing, and confirms only persistent, confident keyframes
+
+**Context:** On 2026-10-01, full-resolution screening at the 0.3 box score made `text_detect` take
+548.9 s on Dressrosa 11 on TensorRT. It kept 725 occurrences, and Claude found no writing in
+most of the ones it was shown: eyes, studs, hatching and textures. Bisecting and confirming them
+took most of the step's time.
+
+**Decision:**
+- The mobile detector keeps boxes at 0.45 when screening (`SCREEN_SCORE`); confirmation stays
+  at 0.5.
+- A region is followed only when it is at least 12 pixels on its longer side and 8 on each side
+  (`MIN_BOX_SPAN`), and when its grey crop spans at least 35 levels with a standard deviation of
+  at least 8.
+- An active region's signature is compared only when a current box overlaps it, and the
+  comparison stops early when the unshifted picture is already far off.
+- Writing is bisected only once it persists: matched on three samples (`MIN_BISECTION_SAMPLES`),
+  or on two when it begins or ends at a cut. Writing that ends sooner is dropped as screening
+  noise and never bisected.
+- Confirmation takes only the keyframes of occurrences with at least five frames
+  (`MIN_CONFIRM_FRAMES`) and a first-sample score of at least 0.55 (`MIN_CONFIRM_CONFIDENCE`).
+  An occurrence sharing such a keyframe is confirmed with it; every other occurrence is dropped.
+- Bisection probes run at full resolution only, without the 640-wide pass. A probe frame whose
+  anchor box matches no open search's signature is answered absent without the detector, and each
+  frame's signature checks are kept for the rest of the group.
+
+**Consequences:** `text_detect` took 124.3 s on Dressrosa 11 in the owner's job at commit
+`2ec84f0`, which kept 103 occurrences
+([measurement](/documentation/research/m6_text_detect_speedup_dressrosa_11.md)). The owner accepts
+that writing shown for less than about two seconds is dropped unless it shares a keyframe with
+longer writing, and so is writing whose first sample scores under 0.55. On Dressrosa 11 that drops
+the 正義 flashes, the "One Piece" card (1.4 s) and short number boards. The 海 painted on a wall
+(4 s), which only the 640-wide pass finds, has not been found since these changes; that loss is
+open. The detection step is at revision 6.
+
+**Supersedes:**
+- "at the 0.3 box score" in the entry of 2026-09-29 — The mobile PP-OCRv5 detector screens
+  proxies; the server detector confirms keyframes. Its other noise drops stand beside the new
+  ones.
+- "probes included" in the entry of 2026-10-01 — Screening adds a 640-wide pass for writing too
+  large at full resolution; screening batches keep that pass.
+- "confirms each occurrence" in the entry of 2026-10-01 — The server detector confirms each
+  occurrence at full resolution on the sample nearest its middle. Only the keyframes of
+  persistent, confident occurrences are confirmed; the rest of that entry holds.
+- "a sign shorter than half a second is found only when a sample or cut lands on it" in the
+  entry of 2026-09-29 — On-screen text is found by sampled screening with bisected boundaries and
+  read once per event by Claude vision. Writing under about two seconds is dropped.
+- "The detection step is at revision 5" in the entry of 2026-10-01 — The detector screens
+  full-resolution frames, padded to a multiple of 32, on two sessions.
+
+### 2026-10-02 — The scan reads 45 seconds ahead, six groups wait per session, and noise lets go of its keyframe candidates
+
+**Context:** The scan waited on the decoder, and the 4 GiB of keyframe candidates sent keyframes
+back to FFmpeg seeks on Dressrosa 11, about 75 s of them. Once writing that ends without
+persisting was dropped, its candidate windows stayed open and held their samples until the scan
+ended. On Dressrosa 11 the candidates peaked at 14,339 MiB and the step at 19,471 MiB of RAM.
+
+**Decision:**
+- The scan's decode queue holds up to 45 seconds of frames within 3.5 GiB (`SCAN_QUEUE_SECONDS`,
+  `SCAN_QUEUE_MAX_BYTES`); other streams keep the four-second, 512 MiB default.
+- Six closed groups per screening session may wait for their results (`GROUPS_PER_SESSION`).
+- The keyframe candidates may hold 16 GiB (`CANDIDATE_BUDGET`).
+- Writing that ends without persisting gives up its candidate window at once
+  (`Candidates::abandon`).
+
+**Consequences:** On Dressrosa 11 every keyframe came from memory, and with the release the
+candidates peaked at 3,070 MiB and the step at 9,875 MiB, with a byte-identical document. The
+worst case sums the queue, the full budget and twelve waiting groups of about 285 MiB each at
+1080p, close to 23 GiB (24.7 GB), above the 24 GB the job may use. So the budget holds only while the
+measured candidates stay far below it.
+
+**Supersedes:**
+- "a budget of 4 GiB" in the entry of 2026-10-01 — The server detector confirms each occurrence
+  at full resolution on the sample nearest its middle.
+- "a bounded queue of about four seconds of frames" in the entry of 2026-10-01 — The detector
+  screens full-resolution frames, padded to a multiple of 32, on two sessions.
+
+The rest of those entries holds.
+
+### 2026-10-02 — On CUDA one server-detector session still confirms
+
+**Context:** The entry of 2026-10-02 set `CONFIRM_SESSIONS` to two for every engine, while its
+measurement was on TensorRT. On CUDA, two confirming sessions had run out of memory in every
+pool the host's sweep tried (entry of 2026-10-01).
+
+**Decision:** The confirming sessions depend on the engine (`pool::confirm_sessions`): two on
+TensorRT and one on CUDA.
+
+**Consequences:** TensorRT runs are unchanged. A CUDA run confirms as it did before 2026-10-02,
+within the worker's VRAM cap.
+
+**Supersedes:** "Set `CONFIRM_SESSIONS = 2`" for CUDA in the entry of 2026-10-02 — Two
+server-detector sessions confirm under TensorRT; the rest of that entry holds.
+
+### 2026-10-02 — Writing that persists in the next screening group keeps its exact entry
+
+**Context:** Once writing had to persist for three samples before its entry was bisected, an entry
+pending at the end of a screening group was dropped, because the group's gap frames were about to
+be released. Writing first seen at one of a group's last two samples then started at that sample,
+up to one sample step late. On a localized video, that shows the Japanese for up to half a second
+before the English. Its frame count, which the confirmation gate reads, also depended on where
+batching cut the groups.
+
+**Decision:** The scan carries the last `max(MIN_BISECTION_SAMPLES − 1, 1)` observed samples (two)
+into the next group with their gaps, and a pending entry is dropped only when its sample is no
+longer carried. Writing qualifies at most that many samples after it is first seen, so every
+pending entry is bisected in the group where its writing qualifies, with the same frames an entry
+inside one group has. The detection step is at revision 6.
+
+**Consequences:** About 37 MB more of held frames.
+
+On Dressrosa 11, compared with the same build without the carry:
+- 12 occurrences start on their exact first frame, 0.04–0.46 s earlier (median 0.21 s); the
+  keyframes of 4 of them move one sample earlier with their middle;
+- 17 occurrences are added under the unchanged gates, among them the "SOL" sign and a
+  "Colosseum" banner, and none is removed; the other 119 are byte-identical;
+- probes go from 1,416 to 1,950 frames and confirmations from 179 to 196, about 10 s more of
+  probing
+  ([measurement](/documentation/research/m6_text_detect_speedup_dressrosa_11.md)).
+
+**Supersedes:** none. The dropped entries came with commit `896884e`, and no entry recorded them.

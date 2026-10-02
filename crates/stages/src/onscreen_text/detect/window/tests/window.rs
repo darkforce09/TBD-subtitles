@@ -97,7 +97,7 @@ fn a_group_finds_any_frame_it_holds() {
     let (samples, pictures) = gathering.close();
     assert!(pictures.is_empty());
     let group = Group {
-        prior: None,
+        prior: Vec::new(),
         samples,
         job: None,
     };
@@ -108,7 +108,7 @@ fn a_group_finds_any_frame_it_holds() {
 }
 
 #[test]
-fn a_group_finds_frames_in_its_prior_sample_and_gap() {
+fn a_group_finds_frames_in_its_carried_samples_and_their_gaps() {
     let frames = timeline(24);
     let prior_frame = yuv_frame(&[], 11, false, &frames);
     let gap: Vec<_> = (0..11).map(|i| yuv_frame(&[], i, false, &frames)).collect();
@@ -118,7 +118,7 @@ fn a_group_finds_frames_in_its_prior_sample_and_gap() {
         screened: true,
     };
     let group = Group {
-        prior: Some(prior),
+        prior: vec![prior],
         samples: Vec::new(),
         job: None,
     };

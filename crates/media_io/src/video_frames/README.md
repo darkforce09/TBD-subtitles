@@ -50,7 +50,8 @@ seek drops everything earlier and the first frame out is exactly that index, byt
 frame a run from the start yields; a segment can therefore be decoded from its keyframe.
 `YuvOptions::count` stops after that many frames and `YuvOptions::crop` has FFmpeg crop each
 frame to an even-aligned rectangle. `pipe::enlarge` raises the stdout pipe to 1 MiB, never past
-`/proc/sys/fs/pipe-max-size`, so a frame crosses in few reads. Each frame is read into a buffer
+`/proc/sys/fs/pipe-max-size`, so a frame crosses in few reads; when the user's pipe pages are
+used up (`EPERM`), the pipe keeps the size it has. Each frame is read into a buffer
 from a `BufferPool` and handed out as a `yuv::YuvFrame` with its index and times from the
 timeline; dropping the frame returns the buffer, so a warm stream allocates nothing per frame.
 `YuvStream` is a `frame_queue::Producer`: `spawn` runs it on a decode thread through a

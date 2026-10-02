@@ -6,7 +6,8 @@
 //! **Position:** called by `detect::scan_measured`; owns the flight of screening jobs, the group
 //! being gathered, the closed groups waiting for their results, and the region tracker.
 //! **Signals and state:** at most `GROUPS_PER_SESSION` closed groups per screening session wait
-//! with their frames; the last screened sample's thumbnail; the stats.
+//! with their frames; the last observed samples carried into the next group; the last screened
+//! sample's thumbnail; the stats.
 //! **Invariants:** every frame of the timeline is decoded once, in order, at the video's size;
 //! groups are observed strictly in order and only once their job is answered, so one and two
 //! sessions, or results arriving in any order, give the same document; held frames are bounded
@@ -81,7 +82,8 @@ pub(crate) fn run(
         colour,
         batch,
         waiting: VecDeque::new(),
-        prior_sample: None,
+        carried: Vec::new(),
+        carry: limits.min_bisection_samples.saturating_sub(1).max(1),
     };
     let samples = Samples::new(source.timeline(), cuts, step);
     let frame_count = source.timeline().len() as u64;
@@ -167,7 +169,11 @@ struct Screening<'a, 'p> {
     colour: Coefficients,
     batch: usize,
     waiting: VecDeque<Group>,
-    prior_sample: Option<HeldSample>,
+    /// The last samples observed, with their gaps, carried into the next group.
+    carried: Vec<HeldSample>,
+    /// How many samples are carried: as many as writing first seen on one can be behind the
+    /// sample where it qualifies for bisection.
+    carry: usize,
 }
 
 impl Screening<'_, '_> {
@@ -188,7 +194,7 @@ impl Screening<'_, '_> {
             Some(self.flight.submit(Priority::Screen, pictures)?)
         };
         self.waiting.push_back(Group {
-            prior: None,
+            prior: Vec::new(),
             samples,
             job,
         });
@@ -225,9 +231,10 @@ impl Screening<'_, '_> {
     }
 
     /// Observes a group's samples in order, then bisects its transitions through probes that
-    /// run ahead of the waiting screening jobs.
+    /// run ahead of the waiting screening jobs; the last samples observed are carried into the
+    /// next group.
     fn observe(&mut self, mut group: Group, stats: &mut ScanStats) -> TextResult<()> {
-        group.prior = self.prior_sample.take();
+        group.prior = std::mem::take(&mut self.carried);
         let mut screens = match group.job {
             Some(seq) => self
                 .flight
@@ -246,7 +253,15 @@ impl Screening<'_, '_> {
             self.tracker
                 .observe(sample, screened, &mut transitions, stats)?;
         }
-        self.tracker.forget_unqualified_entries();
+        let kept_from = (group.prior.len() + group.samples.len()).saturating_sub(self.carry);
+        let carried: Vec<u64> = group
+            .prior
+            .iter()
+            .chain(&group.samples)
+            .skip(kept_from)
+            .map(|sample| sample.frame.index)
+            .collect();
+        self.tracker.forget_entries_outside(&carried);
         let (flight, batch) = (&mut self.flight, self.batch);
         let mut screen_probes = |pictures: Vec<PaddedFrame>| -> TextResult<Vec<Regions>> {
             let mut jobs = Vec::new();
@@ -269,7 +284,9 @@ impl Screening<'_, '_> {
             stats,
         )?;
         self.tracker.settle(&group, &transitions, &answers)?;
-        self.prior_sample = group.samples.pop();
+        let mut observed = std::mem::take(&mut group.prior);
+        observed.append(&mut group.samples);
+        self.carried = observed.split_off(kept_from);
         Ok(())
     }
 }

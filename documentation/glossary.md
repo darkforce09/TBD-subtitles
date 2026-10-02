@@ -111,9 +111,11 @@ See: [automation](/documentation/features/automation.md#one-window)
 
 ### Keyframe
 
-The one observed frame that stands for a text occurrence: the sampled frame nearest its midpoint,
-fetched at full resolution for its exact quad and crop, and saved as a 1280-wide whole-frame
-still that Claude sees with the crops. See: [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md).
+The one observed frame that stands for a text occurrence: the screened sample nearest its
+midpoint, held in memory at full resolution (or decoded again when the memory budget let it go),
+where the server detector confirms its exact quad and crop, and saved as a 1280-wide whole-frame
+still that Claude sees with the crops. Only the keyframes of persistent, confident occurrences are
+confirmed. See: [Japanese on-screen text](/documentation/features/japanese_onscreen_text.md).
 
 ### Hypothesis
 
@@ -205,8 +207,9 @@ See: [Stroke mask](#stroke-mask), [Patch](#patch)
 ### Sample step
 
 The number of frames between two screened sample frames, `round(fps / 2)`; the first and last
-frame of every shot are screened as well, each at the source's full resolution, and writing
-shorter than the step that no sample or cut lands on is missed.
+frame of every shot are screened as well, each at the source's full resolution. Writing shorter
+than the step that no sample or cut lands on is missed, and writing seen on fewer than three
+samples (two at a cut) is dropped as noise.
 
 ### SDH
 

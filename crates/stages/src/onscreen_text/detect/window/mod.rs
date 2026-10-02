@@ -8,7 +8,8 @@
 //! **Signals and state:** the group being gathered: its samples, the frames after its last sample
 //! and its padded pictures awaiting submission.
 //! **Invariants:** every frame passes through exactly one group; a sample's gap holds the frames
-//! since the previous sample, so a transition seen at a sample is bisected inside its own group;
+//! since the previous sample, so a transition seen at a sample is bisected inside its own group,
+//! or inside a later group that carries the sample;
 //! a group closes once its padded pictures fill a screening batch or it holds twice a batch of
 //! samples, so repeated samples never pile up unbounded; a stream that stops between samples is
 //! an error.
@@ -58,19 +59,21 @@ impl HeldSample {
 
 /// Consecutive samples and the screening job that answers their screened ones, if any.
 pub(crate) struct Group {
-    pub(crate) prior: Option<HeldSample>,
+    /// The last samples observed before this group, with their gaps, carried in so writing first
+    /// seen there and qualifying here is bisected to its exact entry.
+    pub(crate) prior: Vec<HeldSample>,
     pub(crate) samples: Vec<HeldSample>,
     /// The job's sequence number; `None` when every sample repeats an earlier screen.
     pub(crate) job: Option<u64>,
 }
 
 impl Group {
-    /// The frame at `index` among the group's samples, gaps and boundary sample.
+    /// The frame at `index` among the carried samples, the group's samples and their gaps.
     pub(crate) fn frame(&self, index: u64) -> Option<&YuvFrame> {
         self.prior
-            .as_ref()
-            .and_then(|sample| sample.frame(index))
-            .or_else(|| self.samples.iter().find_map(|sample| sample.frame(index)))
+            .iter()
+            .chain(&self.samples)
+            .find_map(|sample| sample.frame(index))
     }
 }
 

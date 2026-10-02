@@ -30,9 +30,11 @@ that machine directly, with no stepping stones at 8 or 16 GB. Two things do not 
 ```
 
 **The memory wait.** Each GPU step has a VRAM need: its measured peak in the
-[M6 baseline](/documentation/research/m6_baseline.md) plus 256 MiB, never the cap itself;
+[M6 baseline](/documentation/research/m6_baseline.md) plus 256 MiB, never the cap itself.
 `text_detect`'s, 4,343 MiB, is its measured screening peak plus 256 MiB from the host sweep of the
-[runbook](/documentation/runbooks/measuring_full_resolution_screening.md). After taking the
+[runbook](/documentation/runbooks/measuring_full_resolution_screening.md). `text_verify`'s peak
+was raised from 2,894 to 3,800 MiB when the OCR workers' arena limit went from 3 to 5 GiB; the
+Dressrosa 11 job of 2026-10-02 measured 1,948 MiB. After taking the
 GPU lock, the worker polls NVML's free memory every second until it covers the need, telling the
 window "waiting for GPU memory: N MiB free, M needed"; it honours cancel, and after ten minutes it
 fails the step with the free memory, the need and "close other GPU programs and retry". Without
@@ -69,39 +71,48 @@ scratch ([runbook](/documentation/runbooks/measuring_full_resolution_screening.m
 
 ## 2. Full-resolution visual screening
 
-Built, awaiting the host measurement
-([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-detector-screens-full-resolution-frames-padded-to-a-multiple-of-32-on-two-sessions)).
-Detection screens the frames at the source's resolution, with no downscaled proxy, so small or
-faint writing a downscale would lose can be found; the owner accepts the extra noise.
+Measured on Dressrosa 11: `text_detect` takes about two minutes on TensorRT
+([measurement](/documentation/research/m6_text_detect_speedup_dressrosa_11.md),
+[decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-detector-screens-full-resolution-frames-padded-to-a-multiple-of-32-on-two-sessions)).
+Detection screens the frames at the source's resolution, beside a 640-wide pass for writing too
+large at full resolution, so small or faint writing a downscale would lose can be found; regions
+that are small, flat or do not persist are dropped before they cost a bisection or a
+confirmation
+([decision](/documentation/decisions/onscreen_detection.md#2026-10-02--screening-drops-small-flat-and-short-lived-writing-and-confirms-only-persistent-confident-keyframes)).
 
 - **Frames:** FFmpeg decodes every frame at full resolution as 8-bit `yuv420p` through a pipe
-  enlarged to 1 MiB; a decode thread fills a bounded queue of about four seconds of frames from a
-  recycled buffer pool, so FFmpeg never waits on the detector and no frame is allocated anew.
-  Gap frames between samples stay as YUV until every transition that could land on them is
-  resolved.
+  enlarged to 1 MiB; a decode thread fills a bounded queue of up to 45 seconds of frames within
+  3.5 GiB from a recycled buffer pool, so FFmpeg never waits on the detector. Gap frames between
+  samples stay as YUV until every transition that could land on them is resolved, the last two
+  samples carried into the next group, and up to six closed groups per session wait for their
+  results.
 - **Screening:** the samples are unchanged (every `round(fps / 2)`-th frame and both frames around
   each cut). A sample whose Y-plane 32 × 32 block means differ from the last screened sample's by
   at most 4 reuses its detections; the others are converted in Rust with rayon to RGB padded with
   black to 1,088 lines and screened by the mobile PP-OCRv5 detector on two sessions, each on its
   own thread and CUDA stream in the one worker. Batch and arena pool are one measured pair,
   batch 4 per session in a 1,536 MiB pool; each thread also screens the batch shrunk to 640 wide
-  on a 512 MiB proxy session. Bisection probes are converted from held YUV and go ahead of
-  the queued batches; results apply in sample order, so one and two sessions give one document.
+  on a 512 MiB proxy session. Bisection probes are converted from held YUV, screened at full
+  resolution only, and go ahead of the queued batches; results apply in sample order, so one and
+  two sessions give one document.
 - **Keyframes from RAM:** the keyframe is the screened sample nearest the occurrence's middle,
-  held as YUV within a 16 GiB budget; the server detector confirms it at full resolution on one
-  session in a 3,072 MiB pool after the scan, and an evicted candidate falls back to an FFmpeg still, eight decoding
-  at once
+  held as YUV within a 16 GiB budget, and writing that ends without persisting lets go of its
+  candidates at once. After the scan the server detector confirms the keyframes of persistent,
+  confident occurrences at full resolution, on two TensorRT sessions or one CUDA session in a
+  3,072 MiB pool, and an evicted candidate falls back to an FFmpeg still, eight decoding at once.
+  On Dressrosa 11 the candidates peaked at 3,070 MiB and the step at 9,875 MiB of RAM
   ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-server-detector-confirms-each-occurrence-at-full-resolution-on-the-sample-nearest-its-middle)).
-- **Detector engine:** CUDA by default, with TF32, NHWC and a CUDA graph, searching cuDNN's
-  algorithms exhaustively
-  ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-cuda-path-searches-cudnn-algorithms-exhaustively-unless-a-repeat-run-disagrees));
-  or TensorRT engines built once and cached (FP16 screening, FP32 confirming), a setting until
-  the host check confirms it
-  ([decision](/documentation/decisions/inference_engines.md#2026-10-01--tensorrt-runs-the-pp-ocrv5-detectors)).
-- **What the host measures:** the pool × batch sweep that fixes the batch, the screening and
-  confirmation pools and `text_detect`'s VRAM need within 6.5 GB; the overlap of the two sessions;
-  the determinism of two runs; occurrences found against the baseline, detection wall time, peak
-  VRAM of the detector worker and peak RAM.
+- **Detector engine:** TensorRT by default, its engines built once and cached (FP16 screening,
+  FP32 confirming)
+  ([decision](/documentation/decisions/inference_engines.md#2026-10-02--tensorrt-is-the-default-detector-engine));
+  or CUDA, with TF32, NHWC and a CUDA graph, searching cuDNN's algorithms exhaustively
+  ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-cuda-path-searches-cudnn-algorithms-exhaustively-unless-a-repeat-run-disagrees)).
+  The engines are in the
+  [TensorRT decision](/documentation/decisions/inference_engines.md#2026-10-01--tensorrt-runs-the-pp-ocrv5-detectors).
+- **Measured:** the pool × batch sweep fixed the batch, the screening and confirmation pools
+  and `text_detect`'s VRAM need within 6.5 GB; two runs on each engine gave identical documents;
+  on Dressrosa 11 the step peaks at 3,222 MiB of VRAM. Still open: fresh runs of Dressrosa 11
+  and 28 against the baseline.
 
 ## 3. Faster decoding and encoding
 

@@ -1,8 +1,9 @@
 //! The screened samples kept in memory because they may still become an occurrence's keyframe.
 //!
 //! **Role:** keep, for every occurrence, the samples that can still be the one nearest its
-//! middle, keep only the chosen one once it ends, and bound everything held by a byte budget so
-//! confirmation reads most keyframes from memory instead of seeking the video again.
+//! middle, keep only the chosen one once it ends, let go of every sample of one that ends without
+//! qualifying, and bound everything held by a byte budget so confirmation reads most keyframes
+//! from memory instead of seeking the video again.
 //! **Position:** fed by the coordinator as it observes samples in order; read by confirmation
 //! after the scan.
 //! **Signals and state:** one window of `(frame index, time)` entries per occurrence, the shared
@@ -139,6 +140,18 @@ impl Candidates {
         window.entries.extend(kept);
     }
 
+    /// Gives up `occurrence`'s window when it ends without qualifying: it can never be kept, so
+    /// none of its samples can become a keyframe, and the frames no other window holds go.
+    pub(crate) fn abandon(&mut self, occurrence: usize) {
+        if self
+            .windows
+            .get(occurrence)
+            .is_some_and(|window| window.state == State::Open)
+        {
+            self.give_up(occurrence);
+        }
+    }
+
     /// The held frames among `wanted`, by index; everything else is released.
     pub(crate) fn into_frames(self, wanted: &[u64]) -> BTreeMap<u64, Arc<YuvFrame>> {
         let mut held = self.held;
@@ -171,12 +184,17 @@ impl Candidates {
             else {
                 return;
             };
-            let window = &mut self.windows[victim];
-            window.state = State::Fallback;
-            let entries = std::mem::take(&mut window.entries);
-            for (index, _) in entries {
-                self.release(index);
-            }
+            self.give_up(victim);
+        }
+    }
+
+    /// Ends `occurrence`'s window without a held keyframe and releases every sample it holds.
+    fn give_up(&mut self, occurrence: usize) {
+        let window = &mut self.windows[occurrence];
+        window.state = State::Fallback;
+        let entries = std::mem::take(&mut window.entries);
+        for (index, _) in entries {
+            self.release(index);
         }
     }
 }

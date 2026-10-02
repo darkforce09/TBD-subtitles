@@ -588,3 +588,66 @@ fn cut_adjacent_two_sample_text_is_bisected() {
         "bisections are dispatched for cut-adjacent text"
     );
 }
+
+#[test]
+fn noise_that_never_qualifies_lets_go_of_its_keyframe_candidates_when_it_ends() {
+    let setup = Setup {
+        min_bisection_samples: 3,
+        ..Setup::default()
+    };
+    let once = Run::with(
+        vec![writing(17..=41, 20, 240)],
+        80,
+        ShotChanges::default(),
+        setup,
+    );
+    // Five separate two-sample flickers, each gone a sample before the next appears.
+    let flickers = (0..5u64)
+        .map(|n| writing(17 + 48 * n..=41 + 48 * n, 20, 240))
+        .collect();
+    let five = Run::with(flickers, 260, ShotChanges::default(), setup);
+    assert!(once.document.occurrences.is_empty());
+    assert!(five.document.occurrences.is_empty());
+    assert!(once.stats.keyframes_held_peak_bytes > 0);
+    assert_eq!(
+        five.stats.keyframes_held_peak_bytes, once.stats.keyframes_held_peak_bytes,
+        "each flicker's samples go when it ends, so they never pile up"
+    );
+}
+
+/// Writing first seen at one of the last samples of a screening group and qualifying for
+/// bisection in the next group, with three samples required.
+fn qualifying_in_the_next_group(first: u64) -> Run {
+    // Blank samples repeat the first, so the first group closes with eight samples, 0 to 84.
+    Run::with(
+        vec![writing(first..=200, 20, 240)],
+        240,
+        ShotChanges::default(),
+        Setup {
+            min_bisection_samples: 3,
+            ..Setup::default()
+        },
+    )
+}
+
+#[test]
+fn writing_first_seen_at_a_groups_last_sample_keeps_its_exact_entry() {
+    let run = qualifying_in_the_next_group(80);
+    let [item] = run.document.occurrences.as_slice() else {
+        panic!("one occurrence: {:?}", run.document.occurrences.len());
+    };
+    assert_eq!(item.start_s, run.time(80), "bisected in the next group");
+    assert_eq!(item.end_s, run.time(201));
+    assert_complete(&run, item);
+}
+
+#[test]
+fn writing_first_seen_at_a_groups_second_to_last_sample_keeps_its_exact_entry() {
+    let run = qualifying_in_the_next_group(68);
+    let [item] = run.document.occurrences.as_slice() else {
+        panic!("one occurrence: {:?}", run.document.occurrences.len());
+    };
+    assert_eq!(item.start_s, run.time(68), "bisected in the next group");
+    assert_eq!(item.end_s, run.time(201));
+    assert_complete(&run, item);
+}

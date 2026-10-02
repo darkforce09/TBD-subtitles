@@ -21,10 +21,15 @@ closes, `Flight` submits its pictures as one `Priority::Screen` job and the grou
 of at most six groups per session; while it is full, the coordinator waits for the front group's
 result, keeping any other result that arrives first. Whenever the front group's job is answered
 (or it has none, every sample repeating), `Tracker::observe` follows its samples' regions in order,
-then `probe::narrow` bisects the transitions found, its probe pictures submitted as
-`Priority::Probe` jobs and waited for by number, and `Tracker::settle` applies the entry and exit
-frames, chooses keyframes and prunes the active occurrences' candidates. After the last frame the
-remaining groups drain in order, the tracker closes and confirmation runs on the same sessions.
+recording the entries and exits of writing that persists and letting go of the keyframe candidates
+of writing that ends sooner. `Tracker::forget_entries_outside` then keeps every pending entry
+whose first sample the next group carries; the last `max(MIN_BISECTION_SAMPLES − 1, 1)` samples
+observed (two) are carried with their gaps, as many as writing can be seen before it persists.
+`probe::narrow` bisects the transitions found, over the carried samples and the group's own, its
+probe pictures submitted as `Priority::Probe` jobs and waited for by number, and
+`Tracker::settle` applies the entry and exit frames, chooses keyframes and prunes the active
+occurrences' candidates. After the last frame the remaining groups drain in order, the tracker
+closes and confirmation runs on the same sessions.
 
 ## Boundaries
 

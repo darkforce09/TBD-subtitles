@@ -2,8 +2,9 @@
 //! each occurrence's exact first and last frame once its group is bisected.
 //!
 //! **Role:** observe every sample's regions in frame order, start and extend occurrences, record
-//! each entry and exit for bisection, apply the bisected frames, choose each occurrence's keyframe
-//! and keep its candidates, then drop screening noise when the scan closes.
+//! the entry and exit of each one that persists for bisection, let go of the keyframe candidates
+//! of the rest as they end, apply the bisected frames, choose each occurrence's keyframe and keep
+//! its candidates, then drop screening noise when the scan closes.
 //! **Position:** owned by the coordinator, which feeds it the samples of one group at a time in
 //! order and the bisected answers of that group before the next.
 //! **Signals and state:** the document being built, the active regions with their anchors, the
@@ -83,8 +84,8 @@ impl<'a> Tracker<'a> {
     }
 
     /// Follows one sample's regions, `screened` or, for a repeat, the last screened ones:
-    /// matched regions continue, new ones start occurrences and unmatched active ones end; every
-    /// start and end is recorded for bisection.
+    /// matched regions continue, new ones start occurrences and unmatched active ones end; the
+    /// start and end of writing that persists are recorded for bisection.
     pub(crate) fn observe(
         &mut self,
         sample: &HeldSample,
@@ -116,6 +117,7 @@ impl<'a> Tracker<'a> {
                     transitions.push(Transition::exit(previous, frame.index, ended));
                 } else {
                     track.pending_entry = None;
+                    self.candidates.abandon(ended.occurrence);
                 }
             }
         }
@@ -235,17 +237,25 @@ impl<'a> Tracker<'a> {
                 transitions.push(Transition::exit(previous, frame.index, ended));
             } else {
                 track.pending_entry = None;
+                self.candidates.abandon(ended.occurrence);
             }
         }
         Ok(())
     }
 
-    /// Drops pending entry transitions for tracks that have not qualified before the group
-    /// closes, because the group's entry gap frames are about to be released.
-    pub(crate) fn forget_unqualified_entries(&mut self) {
+    /// Drops the pending entry of every unqualified track whose first sample is not among
+    /// `carried`, the samples the next group holds, since that sample's gap frames are about to
+    /// be released. Writing qualifies within as many samples as the scan carries, so this keeps
+    /// every entry that can still be bisected.
+    pub(crate) fn forget_entries_outside(&mut self, carried: &[u64]) {
         for state in &self.active {
             let track = &mut self.tracks[state.occurrence];
-            if !track.persistent {
+            if !track.persistent
+                && track
+                    .pending_entry
+                    .as_ref()
+                    .is_some_and(|entry| !carried.contains(&entry.search.hi))
+            {
                 track.pending_entry = None;
             }
         }

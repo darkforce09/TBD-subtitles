@@ -34,7 +34,9 @@ crates/stages/src/onscreen_text/
 Detection streams every frame at full resolution as yuv420p with packet presentation timestamps,
 screens the samples (every `round(fps / 2)`-th frame plus both frames around each cut) through
 the local detector sessions, several batches in flight and the results applied in sample order,
-and bisects the frames between two samples to the exact frame where writing appears or vanishes.
+drops small and flat regions and writing that does not persist for three samples, and bisects
+the frames between two samples to the exact frame where the remaining writing appears or
+vanishes; only persistent, confident occurrences are confirmed on their keyframes.
 Fixed anchor signatures read from the luma plane, local signature cells and mutually unique
 matches separate changed writing; each occurrence keeps one frame per sample, a keyframe nearest
 its midpoint, held in memory or decoded again as a still, and a perspective-corrected crop from

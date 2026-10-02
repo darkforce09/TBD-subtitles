@@ -136,10 +136,11 @@ Details: [Japanese on-screen text](/documentation/features/japanese_onscreen_tex
 within one source frame and accepted tracks stay within two pixels at 1080p. The owner accepts
 translated Dressrosa signs in VLC and the complete desktop review workflow. The owner selects a
 single full episode for the memory/time benchmark; a two-hour visual benchmark is not required.
-Missed faint text and false detections are accepted limitations, as is writing shorter than the
-half-second sample step that no sample or cut lands on. The sampled scan with bisected boundaries
-and one Claude call per keyframe is built; on Dressrosa 11 its detection comes to 3.9 minutes per
-50,000 frames, within the six-minute target.
+Missed faint text and false detections are accepted limitations, as is writing shown for less
+than about two seconds unless it shares a keyframe with longer writing. The sampled scan with
+bisected boundaries and one Claude call per keyframe is built; on Dressrosa 11 its full-resolution
+detection takes about two minutes for 44,489 frames, within the six-minute target
+([measurement](/documentation/research/m6_text_detect_speedup_dressrosa_11.md)).
 
 ## M5 — In-place on-screen text
 
@@ -205,30 +206,46 @@ held or a step waits on something other than the GPU. The owner picks which item
       ([M6 baseline](/documentation/research/m6_baseline.md)). Every later target in M6, M7 and
       M8 is stated against it; an item is compared by resuming a copy of the baseline job from
       the first step it changes, since Claude's answers differ between runs from scratch.
-- [x] Separation within the VRAM cap: every ONNX Runtime CUDA session caps its arena at 4.5 GiB;
+- [x] Separation within the VRAM cap: every ONNX Runtime CUDA session outside the OCR workers
+      caps its arena at 4.5 GiB (the OCR workers' strict environment at 5 GiB);
       the separation worker went from 7.3 GB to 4.2 GB with byte-identical stems and the same
       wall time ([measurement](/documentation/research/m6_separation_limit_and_overlap.md)).
 - [ ] The VRAM cap at 6.5 GB per GPU worker: after taking the GPU lock, each GPU step waits until
       the free memory covers its measured need, saying how much is free and needed, and fails
       after ten minutes with a message to close other GPU programs. Built, awaiting the host
       measurement in the [runbook](/documentation/runbooks/measuring_full_resolution_screening.md).
-- [ ] Full-resolution visual screening: samples and bisection probes screened at the source's
-      resolution as 8-bit YUV, converted in Rust and padded to 1,088 lines, on two detector
-      sessions in one worker, batch and pool one measured pair; duplicates and signatures read
-      from luma; each occurrence confirmed by the server detector at full resolution on the
-      screened sample nearest its middle, held in RAM within 16 GiB
-      ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-detector-screens-full-resolution-frames-padded-to-a-multiple-of-32-on-two-sessions)).
-      Built, awaiting the host measurement in the
-      [runbook](/documentation/runbooks/measuring_full_resolution_screening.md).
-- [ ] The TensorRT detector engine: Settings, On-screen Text, "Detector engine: TensorRT / CUDA"
-      for the screening and confirmation sessions; FP16 engines built inside the runtime from the
-      exported ONNX files and cached by GPU, driver, TensorRT version, model and input shape;
-      TensorRT bundled in the AppImage. The default stays CUDA until the host bench confirms
-      TensorRT
+- [x] Full-resolution visual screening:
+      - samples screened at the source's resolution as 8-bit YUV, converted in Rust and padded to
+        1,088 lines, on two detector sessions in one worker, batch and pool one measured pair;
+      - duplicates and signatures read from luma;
+      - the keyframes of persistent, confident occurrences confirmed by the server detector at
+        full resolution on the screened sample nearest their middle, held in RAM within 16 GiB
+        ([decision](/documentation/decisions/onscreen_detection.md#2026-10-01--the-detector-screens-full-resolution-frames-padded-to-a-multiple-of-32-on-two-sessions)).
+- [x] A faster screen:
+      - small, flat and short-lived regions dropped before they are followed, bisected or
+        confirmed;
+      - probes at full resolution only, answered from the anchor signature where they can be;
+      - a 45-second decode queue and six waiting groups per session;
+      - noise lets go of its keyframe candidates as it ends;
+      - entries bisected across screening groups.
+
+      On Dressrosa 11 on TensorRT, `text_detect` went from 549 s to about two minutes, and the
+      step's peak RAM to 9,875 MiB. Writing shown for less than about two seconds is dropped, which
+      the owner accepts
+      ([decision](/documentation/decisions/onscreen_detection.md#2026-10-02--screening-drops-small-flat-and-short-lived-writing-and-confirms-only-persistent-confident-keyframes),
+      [measurement](/documentation/research/m6_text_detect_speedup_dressrosa_11.md)).
+- [x] The TensorRT detector engine:
+      - Settings, On-screen Text, "Detector engine: TensorRT / CUDA" for the screening and
+        confirmation sessions;
+      - FP16 screening and FP32 confirming engines built inside the runtime from the exported
+        ONNX files and cached by GPU, driver, TensorRT version, model and input shape;
+      - TensorRT bundled in the AppImage;
+      - TensorRT the default since the determinism check, confirming on two sessions while CUDA
+        confirms on one
+
       ([decision](/documentation/decisions/inference_engines.md#2026-10-01--tensorrt-runs-the-pp-ocrv5-detectors),
-      [conversion](/documentation/decisions/inference_engines.md#2026-10-01--models-may-be-converted-or-compiled-when-a-measurement-shows-it-pays)).
-      Built, awaiting the host measurement in the
-      [runbook](/documentation/runbooks/measuring_full_resolution_screening.md).
+      [conversion](/documentation/decisions/inference_engines.md#2026-10-01--models-may-be-converted-or-compiled-when-a-measurement-shows-it-pays),
+      [default](/documentation/decisions/inference_engines.md#2026-10-02--tensorrt-is-the-default-detector-engine)).
 - [ ] Hardware decoding (NVDEC): an optional CPU or GPU decode setting for the screen, Settings,
       On-screen Text, "Decode video on the GPU (NVDEC)", CPU by default and outside every
       fingerprint; on the RTX 3070 the detect-bench measured NVDEC at about 770 frames per second

@@ -15,6 +15,7 @@ documentation/research/
 ├── per_frame_tables.md             frozen record, 2026-10-01: per-frame tables on Dressrosa 11, 28 and a 60 fps copy
 ├── m6_baseline.md                  frozen record, 2026-10-01: Dressrosa 11 and 28 from scratch, time, CPU, GPU and memory per step
 ├── m6_separation_limit_and_overlap.md  frozen record, 2026-10-01: the VRAM cap and the visual lane beside adjudication
+├── m6_text_detect_speedup_dressrosa_11.md  frozen record, 2026-10-02: text_detect from 549 s to about two minutes, noise's candidates released, entries across groups
 ├── long_video_120min.md             frozen record, 2026-09-26: a 128.9-minute video, time and memory
 ├── pilot_dressrosa_11.md            frozen record, 2026-09-26: the first end-to-end run, its fixes, resume
 ├── redb_large_transaction_memory.md  frozen record, 2026-09-30: redb memory and commit time for a 432,000-row transaction
