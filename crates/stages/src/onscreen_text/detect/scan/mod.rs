@@ -131,7 +131,7 @@ pub(crate) fn run(
     stats.keyframes_held_peak_bytes = tracker.keyframes_peak_bytes() as u64;
     let pool = flight.into_pool();
     let document = confirm_keyframes(
-        tracker.close(limits.min_confirm_frames),
+        tracker.close(limits.min_confirm_frames, limits.min_confirm_confidence),
         &colour,
         source,
         pool,
@@ -141,7 +141,7 @@ pub(crate) fn run(
     )?;
     stats.warmup_s = pool.warmup_s();
     stats.engine_build_s = pool.engine_build_s();
-    stats.notes = pool.notes();
+    stats.notes.extend(pool.notes());
     Ok((document, stats))
 }
 

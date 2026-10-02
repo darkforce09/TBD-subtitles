@@ -18,6 +18,7 @@ struct Setup {
     budget: usize,
     flicker: bool,
     min_confirm_frames: usize,
+    min_confirm_confidence: f64,
 }
 
 impl Default for Setup {
@@ -28,6 +29,7 @@ impl Default for Setup {
             budget: ScanLimits::default().candidate_budget,
             flicker: false,
             min_confirm_frames: 1,
+            min_confirm_confidence: 0.0,
         }
     }
 }
@@ -57,6 +59,7 @@ impl Run {
         let limits = ScanLimits {
             candidate_budget: setup.budget,
             min_confirm_frames: setup.min_confirm_frames,
+            min_confirm_confidence: setup.min_confirm_confidence,
         };
         let (document, stats) = run(
             &mut source,
@@ -474,5 +477,40 @@ fn occurrences_under_min_confirm_frames_are_not_confirmed() {
     assert!(
         run.pool.confirmations.is_empty(),
         "server confirmation was never invoked for non-targeted keyframes"
+    );
+}
+
+#[test]
+fn occurrences_under_min_confirm_confidence_are_not_confirmed() {
+    let run = Run::with(
+        vec![writing(17..=85, 20, 240)],
+        100,
+        ShotChanges::default(),
+        Setup {
+            min_confirm_frames: 1,
+            min_confirm_confidence: 0.95,
+            ..Setup::default()
+        },
+    );
+    assert!(
+        run.document.occurrences.is_empty(),
+        "occurrence with lower confidence than threshold leaves without confirmation"
+    );
+    assert!(
+        run.pool.confirmations.is_empty(),
+        "server confirmation was never invoked for keyframe under confidence threshold"
+    );
+}
+
+#[test]
+fn low_contrast_observations_do_not_start_occurrences() {
+    let run = Run::new(
+        vec![writing(17..=85, 100, 100)],
+        100,
+        ShotChanges::default(),
+    );
+    assert!(
+        run.document.occurrences.is_empty(),
+        "flat surface without text contrast is discarded before starting an occurrence"
     );
 }

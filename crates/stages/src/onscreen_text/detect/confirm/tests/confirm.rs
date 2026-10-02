@@ -81,6 +81,7 @@ fn closed(writings: &[Writing]) -> Closed {
             .collect(),
         frames: held,
         min_confirm_frames: 1,
+        min_confirm_confidence: 0.0,
     }
 }
 
@@ -270,6 +271,7 @@ fn non_persistent_keyframes_are_not_confirmed_unless_shared_with_persistent_occu
         keyframes: vec![Some((0, 20)), Some((0, 20)), Some((0, 40))],
         frames: held,
         min_confirm_frames: 5,
+        min_confirm_confidence: 0.55,
     };
     let result = confirm_keyframes(
         closed,
@@ -291,4 +293,61 @@ fn non_persistent_keyframes_are_not_confirmed_unless_shared_with_persistent_occu
     // Server detector only received 1 keyframe (index 20), never index 40
     assert_eq!(pool.confirmations.len(), 1);
     assert_eq!(pool.confirmations[0].len(), 1);
+}
+
+#[test]
+fn flat_surface_keyframes_are_not_confirmed() {
+    let writings = writings();
+    let root = Temporary::new("flat-surface");
+    let frames = timeline(120);
+    let mut source = Source::new(writings.clone(), 120);
+    source.finished = true;
+    let mut pool = Pool::new(writings.clone(), 2, Answer::Oldest);
+    let mut document = TextDocument {
+        width: SIZE.0,
+        height: SIZE.1,
+        decoded_frames: 120,
+        ..TextDocument::default()
+    };
+    let quad = region(&writings[0], 0.0);
+    let occ = start_occurrence(&mut document, frames[20].0, 0.9);
+    for &(time_s, end_s) in &frames[20..26] {
+        append_observation(
+            &mut document.occurrences[occ],
+            &Observation {
+                quad,
+                confidence: 0.9,
+                surface_rgb: None,
+            },
+            time_s,
+            end_s,
+        );
+    }
+    // Create a flat frame without text contrast (empty writing list)
+    let flat_frame = Arc::new(yuv_frame(&[], 20, false, &frames));
+    let closed = Closed {
+        document,
+        keyframes: vec![Some((0, 20))],
+        frames: [(20u64, flat_frame)].into_iter().collect(),
+        min_confirm_frames: 5,
+        min_confirm_confidence: 0.55,
+    };
+    let result = confirm_keyframes(
+        closed,
+        &colour(&stream()),
+        &mut source,
+        &mut pool,
+        &root.0,
+        &mut ScanStats::default(),
+        &|_, _| {},
+    )
+    .unwrap();
+    assert!(
+        result.occurrences.is_empty(),
+        "flat surface candidate is dropped"
+    );
+    assert!(
+        pool.confirmations.is_empty(),
+        "server detector was not invoked for flat surface"
+    );
 }

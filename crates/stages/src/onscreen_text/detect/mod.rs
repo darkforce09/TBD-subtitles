@@ -45,13 +45,20 @@ pub use timing::ScanStats;
 /// signs and title cards. Shorter co-occurring text sharing these keyframes is confirmed for free.
 pub(crate) const MIN_CONFIRM_FRAMES: usize = 5;
 
+/// The default minimum confidence for an occurrence to qualify its keyframe for server confirmation.
+/// Real on-screen signs in animation score >= 0.60, while persistent background noise scores
+/// below 0.55.
+pub(crate) const MIN_CONFIRM_CONFIDENCE: f64 = 0.55;
+
 /// The bounds a scan runs within.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct ScanLimits {
     /// The bytes the keyframe candidates may hold in memory.
     pub(crate) candidate_budget: usize,
     /// Minimum frames for an occurrence to qualify its keyframe for server confirmation.
     pub(crate) min_confirm_frames: usize,
+    /// Minimum confidence for an occurrence to qualify its keyframe for server confirmation.
+    pub(crate) min_confirm_confidence: f64,
 }
 
 impl Default for ScanLimits {
@@ -59,6 +66,7 @@ impl Default for ScanLimits {
         Self {
             candidate_budget: window::CANDIDATE_BUDGET,
             min_confirm_frames: MIN_CONFIRM_FRAMES,
+            min_confirm_confidence: MIN_CONFIRM_CONFIDENCE,
         }
     }
 }

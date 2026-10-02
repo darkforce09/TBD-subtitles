@@ -138,10 +138,10 @@ fn bounds_rect(quad: Quad, width: usize, height: usize, margin: usize) -> Rect {
 /// quad is axis-aligned, degenerate or too large, and is cropped by its bounds instead.
 fn rectification(quad: Quad) -> Option<(u32, u32, Projection)> {
     let p = quad.0;
-    let axis_aligned = (p[0].y - p[1].y).abs() < 0.1
-        && (p[2].y - p[3].y).abs() < 0.1
-        && (p[0].x - p[3].x).abs() < 0.1
-        && (p[1].x - p[2].x).abs() < 0.1;
+    let axis_aligned = (p[0].y - p[1].y).abs() < 1.5
+        && (p[2].y - p[3].y).abs() < 1.5
+        && (p[0].x - p[3].x).abs() < 1.5
+        && (p[1].x - p[2].x).abs() < 1.5;
     if axis_aligned {
         return None;
     }
@@ -216,6 +216,35 @@ pub(crate) fn simple_surface(image: &RgbImage) -> Option<[u8; 3]> {
     let share = image.pixels().filter(|pixel| similar(pixel)).count() as f64
         / f64::from(image.width() * image.height());
     (share > 0.8).then_some(color)
+}
+
+/// Whether `quad` on `picture` has sufficient contrast to be readable text. Flat surfaces
+/// (stone walls, sky, smooth skin) lack the variance and dynamic range of real lettering.
+pub(crate) fn has_text_contrast(picture: &Yuv420<'_>, colour: &Coefficients, quad: Quad) -> bool {
+    let rect = bounds_rect(quad, picture.width, picture.height, 0);
+    let mut grey = Vec::with_capacity(rect.width * rect.height);
+    if !crop_grey(picture, colour, rect, &mut grey) || grey.is_empty() {
+        return false;
+    }
+    let (mut min, mut max, mut sum) = (u8::MAX, 0u8, 0u64);
+    for &sample in &grey {
+        min = min.min(sample);
+        max = max.max(sample);
+        sum += u64::from(sample);
+    }
+    if max.saturating_sub(min) < 35 {
+        return false;
+    }
+    let mean = sum / grey.len() as u64;
+    let variance: u64 = grey
+        .iter()
+        .map(|&s| {
+            let diff = s as i64 - mean as i64;
+            (diff * diff) as u64
+        })
+        .sum::<u64>()
+        / grey.len() as u64;
+    variance >= 64 // std dev >= 8.0
 }
 
 #[cfg(test)]

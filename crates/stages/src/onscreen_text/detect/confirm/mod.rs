@@ -25,7 +25,7 @@ use inference::ocr::pool::{ConfirmJob, PaddedFrame, TextScreening};
 use job_model::onscreen::TextDocument;
 use media_io::yuv::{Coefficients, YuvFrame};
 
-use super::crops::confirm;
+use super::crops::{confirm, has_text_contrast};
 use super::screen::padded;
 use super::source::{FrameSource, STILL_DECODERS};
 use super::timing::{ScanStats, timed};
@@ -35,11 +35,6 @@ use crate::onscreen_text::TextResult;
 /// Keyframes confirmed per call to the sessions, as many as the stills decoded at once.
 const CONFIRM_CHUNK: usize = STILL_DECODERS;
 
-/// Minimum confidence for an occurrence to qualify its keyframe for server confirmation.
-/// Real on-screen signs in animation score >= 0.60, while persistent background noise scores
-/// below 0.50.
-pub(crate) const MIN_CONFIRM_CONFIDENCE: f64 = 0.50;
-
 /// The scan's document with each occurrence's keyframe, `(frame position, frame index)`, and
 /// the keyframes held in memory by frame index.
 pub(crate) struct Closed {
@@ -47,6 +42,7 @@ pub(crate) struct Closed {
     pub(crate) keyframes: Vec<Option<(usize, u64)>>,
     pub(crate) frames: BTreeMap<u64, Arc<YuvFrame>>,
     pub(crate) min_confirm_frames: usize,
+    pub(crate) min_confirm_confidence: f64,
 }
 
 /// Confirms every occurrence of `closed` on its keyframe and returns the document of the
@@ -77,6 +73,7 @@ pub(crate) fn confirm_keyframes(
         keyframes,
         frames,
         min_confirm_frames,
+        min_confirm_confidence,
     } = closed;
     let mut order = Vec::new();
     let mut users: HashMap<u64, Vec<usize>> = HashMap::new();
@@ -87,13 +84,22 @@ pub(crate) fn confirm_keyframes(
     }
     let mut seen = std::collections::HashSet::new();
     for (occurrence, keyframe) in keyframes.iter().enumerate() {
-        if let Some((_, index)) = *keyframe {
+        if let Some((position, index)) = *keyframe {
             let item = &document.occurrences[occurrence];
             if item.frames.len() >= min_confirm_frames
-                && item.confidence >= MIN_CONFIRM_CONFIDENCE
+                && item.confidence >= min_confirm_confidence
                 && seen.insert(index)
             {
-                order.push(index);
+                let contrast = frames.get(&index).is_none_or(|frame| {
+                    frame.picture().is_none_or(|picture| {
+                        item.frames
+                            .get(position)
+                            .is_none_or(|f| has_text_contrast(&picture, colour, f.quad))
+                    })
+                });
+                if contrast {
+                    order.push(index);
+                }
             }
         }
     }

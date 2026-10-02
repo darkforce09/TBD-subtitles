@@ -270,3 +270,32 @@ fn overlap_is_intersection_over_union_of_the_bounds() {
     assert!((overlap(a, rectangle(50.0, 0.0, 100.0, 20.0)) - 1.0 / 3.0).abs() < 1e-9);
     assert_eq!(overlap(a, rectangle(200.0, 0.0, 100.0, 20.0)), 0.0);
 }
+
+#[test]
+fn same_signature_early_rejects_vastly_different_images() {
+    let black = GrayImage::from_pixel(100, 30, image::Luma([10]));
+    let white = GrayImage::from_pixel(100, 30, image::Luma([240]));
+    assert!(!same_signature(&black, &white));
+}
+
+#[test]
+fn associate_with_prefiltered_candidates_gives_identical_matches() {
+    let image = lettering(256, 40);
+    let quad_a = rectangle(0.0, 0.0, 256.0, 40.0);
+    let quad_b = rectangle(500.0, 500.0, 256.0, 40.0);
+    let priors = [active(&image, quad_a, 1), active(&image, quad_b, 2)];
+    let obs = [observation(quad_a)];
+    let needed: Vec<bool> = priors
+        .iter()
+        .map(|p| obs.iter().any(|o| overlap(p.quad, o.quad) > SAME_REGION))
+        .collect();
+    assert_eq!(needed, vec![true, false]);
+    let prefiltered: Vec<bool> = priors
+        .iter()
+        .zip(&needed)
+        .map(|(p, &is_needed)| is_needed && same_signature(&p.anchor, &signature(&grey(&image))))
+        .collect();
+    assert_eq!(prefiltered, vec![true, false]);
+    let matches = associate(&priors, &obs, &prefiltered);
+    assert_eq!(matches, [Some(0)]);
+}

@@ -176,6 +176,9 @@ pub(crate) fn signature(image: &GrayImage) -> GrayImage {
     let scale = (48.0 / f64::from(w.min(h)))
         .min(768.0 / f64::from(w.max(h)))
         .min(1.0);
+    if (scale - 1.0).abs() < 1e-6 {
+        return image.clone();
+    }
     imageops::resize(
         image,
         (f64::from(w) * scale).round().max(1.0) as u32,
@@ -220,8 +223,15 @@ pub(crate) fn same_signature(anchor: &GrayImage, current: &GrayImage) -> bool {
             .sum::<u64>()
     };
     let (mut shift, mut best) = ((0, 0), cost(0, 0));
+    let samples = anchor.height().div_ceil(4) * anchor.width().div_ceil(4);
+    if best > u64::from(samples) * 80 {
+        return false;
+    }
     for dy in -2..=2 {
         for dx in -2..=2 {
+            if dx == 0 && dy == 0 {
+                continue;
+            }
             let score = cost(dx, dy);
             if score < best {
                 best = score;
@@ -256,7 +266,9 @@ pub(crate) fn same_signature(anchor: &GrayImage, current: &GrayImage) -> bool {
 fn delta(a: &GrayImage, b: &GrayImage, x: u32, y: u32, dx: i64, dy: i64) -> u8 {
     let bx = (i64::from(x) + dx).clamp(0, i64::from(b.width()) - 1) as u32;
     let by = (i64::from(y) + dy).clamp(0, i64::from(b.height()) - 1) as u32;
-    a.get_pixel(x, y).0[0].abs_diff(b.get_pixel(bx, by).0[0])
+    let a_pixel = a.as_raw()[(y * a.width() + x) as usize];
+    let b_pixel = b.as_raw()[(by * b.width() + bx) as usize];
+    a_pixel.abs_diff(b_pixel)
 }
 
 /// Intersection over union of the two quads' bounding boxes.

@@ -21,12 +21,12 @@ use rayon::prelude::*;
 
 use super::flight::Regions;
 use crate::onscreen_text::TextResult;
-use crate::onscreen_text::detect::confirm::{Closed, MIN_CONFIRM_CONFIDENCE};
-use crate::onscreen_text::detect::crops::picture_at;
+use crate::onscreen_text::detect::confirm::Closed;
+use crate::onscreen_text::detect::crops::{has_text_contrast, picture_at};
 use crate::onscreen_text::detect::probe::{Search, Seek, Transition};
 use crate::onscreen_text::detect::regions::{
-    Active, Observation, append_observation, associate, check_limits, crosses_cut, is_legible_size,
-    plausible, same_signature, start_occurrence,
+    Active, Observation, SAME_REGION, append_observation, associate, check_limits, crosses_cut,
+    is_legible_size, overlap, plausible, same_signature, start_occurrence,
 };
 use crate::onscreen_text::detect::timing::{ScanStats, timed};
 use crate::onscreen_text::detect::window::{Candidates, Group, HeldSample};
@@ -110,10 +110,16 @@ impl<'a> Tracker<'a> {
             }
         }
         self.previous_time = frame.time_s;
+        let picture = frame
+            .picture()
+            .ok_or("A decoded frame does not hold its picture")?;
+        let colour = self.colour;
         let current: Vec<Observation> = regions
             .iter()
             .copied()
-            .filter(|&(quad, _)| is_legible_size(quad))
+            .filter(|&(quad, _)| {
+                is_legible_size(quad) && has_text_contrast(&picture, &colour, quad)
+            })
             .map(|(quad, confidence)| Observation {
                 quad,
                 confidence,
@@ -122,21 +128,35 @@ impl<'a> Tracker<'a> {
             .collect();
         self.observations += current.len();
         check_limits(self.observations, self.document.occurrences.len(), false)?;
-        let picture = frame
-            .picture()
-            .ok_or("A decoded frame does not hold its picture")?;
-        let colour = self.colour;
-        let unchanged: Vec<bool> = timed(&mut stats.signature, || {
+        let needed: Vec<bool> = if current.is_empty() {
+            vec![false; self.active.len()]
+        } else {
             self.active
-                .par_iter()
+                .iter()
                 .map(|prior| {
-                    same_signature(
-                        &prior.anchor,
-                        &picture_at(&picture, &colour, prior.anchor_box),
-                    )
+                    current
+                        .iter()
+                        .any(|obs| overlap(prior.quad, obs.quad) > SAME_REGION)
                 })
                 .collect()
-        });
+        };
+        let unchanged: Vec<bool> = if self.active.is_empty() || current.is_empty() {
+            vec![false; self.active.len()]
+        } else {
+            timed(&mut stats.signature, || {
+                self.active
+                    .par_iter()
+                    .zip(&needed)
+                    .map(|(prior, &candidate)| {
+                        candidate
+                            && same_signature(
+                                &prior.anchor,
+                                &picture_at(&picture, &colour, prior.anchor_box),
+                            )
+                    })
+                    .collect()
+            })
+        };
         let matches = associate(&self.active, &current, &unchanged);
         let mut unmatched: Vec<Option<Active>> = std::mem::take(&mut self.active)
             .into_iter()
@@ -305,7 +325,11 @@ impl<'a> Tracker<'a> {
     /// Ends the regions still shown on the final frame at its end, drops screening noise and
     /// hands out the document with each remaining occurrence's keyframe and the keyframes still
     /// held in memory.
-    pub(crate) fn close(mut self, min_confirm_frames: usize) -> Closed {
+    pub(crate) fn close(
+        mut self,
+        min_confirm_frames: usize,
+        min_confirm_confidence: f64,
+    ) -> Closed {
         for state in std::mem::take(&mut self.active) {
             let track = &mut self.tracks[state.occurrence];
             if track.persistent {
@@ -335,7 +359,7 @@ impl<'a> Tracker<'a> {
             .iter()
             .zip(&keyframes)
             .filter(|(item, _)| {
-                item.frames.len() >= min_confirm_frames && item.confidence >= MIN_CONFIRM_CONFIDENCE
+                item.frames.len() >= min_confirm_frames && item.confidence >= min_confirm_confidence
             })
             .filter_map(|(_, kf)| kf.map(|(_, index)| index))
             .collect();
@@ -344,6 +368,7 @@ impl<'a> Tracker<'a> {
             keyframes,
             frames: self.candidates.into_frames(&wanted),
             min_confirm_frames,
+            min_confirm_confidence,
         }
     }
 }
