@@ -17,8 +17,8 @@
 //! 2. A deadline kills the tree, not only the direct child. FFmpeg, `cargo` and the GPU workers
 //!    may fork; every child runs in its own process group via `setsid`, and a timeout kills the
 //!    group.
-//! 3. A full pipe never deadlocks a captured child. Both streams are drained by dedicated threads
-//!    for the child's whole life.
+//! 3. A full pipe never deadlocks a captured child. Stdin is fed and both output streams are
+//!    drained by dedicated threads for the child's whole life.
 //! 4. A child never outlives the thread that started it: the kernel kills it (`PR_SET_PDEATHSIG`)
 //!    when that thread ends, so a killed app leaves no worker holding GPU memory. Start a child
 //!    only from a thread that stays alive until the child is reaped.

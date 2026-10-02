@@ -15,6 +15,7 @@
 
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use crate::RunError;
@@ -38,24 +39,30 @@ impl Run {
         // `setsid` made the child a group leader, so its pgid equals its pid.
         let pgid = child.id() as i32;
         let tag = Tag::started(&self, child.id());
-        feed_stdin(&mut child, &self.stdin);
-
-        // Drain both pipes for the child's whole life. See the crate documentation, invariant 3.
+        // Drain both output pipes for the child's whole life, and feed stdin on a thread.
         let drains = SeparateDrains::start(&mut child, &tag);
+        let stdin_feeder = spawn_stdin_feeder(&mut child, self.stdin);
 
         let status = match wait_within(&mut child, pgid, self.timeout, &label) {
             Ok(status) => status,
-            // A timed-out group is dead, so both pipes are at EOF and the drains end at once.
-            // Any other cause leaves a live child whose pipes nobody may block on.
+            // A timed-out group is dead, so its pipes are closed and the drains and the stdin
+            // feeder end at once. Any other cause leaves a live child whose pipes nobody may
+            // block on.
             Err(cause) => {
                 if matches!(cause, RunError::Timeout { .. }) {
                     drains.join();
+                    if let Some(feeder) = stdin_feeder {
+                        let _ = feeder.join();
+                    }
                 }
                 tag.failed(&cause);
                 return Err(cause);
             }
         };
         let (stdout, stderr) = drains.join();
+        if let Some(feeder) = stdin_feeder {
+            let _ = feeder.join();
+        }
 
         // A signal is NOT an exit code. See the crate documentation, invariant 1.
         if let Some(signal) = status.signal() {
@@ -106,26 +113,32 @@ impl Run {
         let mut child = spawn(&mut cmd, &self.program, &label)?;
         let pgid = child.id() as i32;
         let tag = Tag::started(&self, child.id());
-        feed_stdin(&mut child, &self.stdin);
-
         // Drop OUR copies of the write end. Without this the read below never sees EOF, because
         // the pipe stays open on handles this process still holds. `cmd` owns both.
         drop(cmd);
 
         // One reader thread, so a timeout can still fire while the pipe fills.
         let reader_thread = start_merged_drain(reader, &tag);
+        let stdin_feeder = spawn_stdin_feeder(&mut child, self.stdin);
 
         let status = match wait_within(&mut child, pgid, self.timeout, &label) {
             Ok(status) => status,
+            // As in `output`: only a timed-out, dead group is safe to wait on.
             Err(cause) => {
                 if matches!(cause, RunError::Timeout { .. }) {
                     let _ = reader_thread.join();
+                    if let Some(feeder) = stdin_feeder {
+                        let _ = feeder.join();
+                    }
                 }
                 tag.failed(&cause);
                 return Err(cause);
             }
         };
         let text = reader_thread.join().unwrap_or_default();
+        if let Some(feeder) = stdin_feeder {
+            let _ = feeder.join();
+        }
 
         // A signal is NOT an exit code. See the crate documentation, invariant 1.
         if let Some(signal) = status.signal() {
@@ -226,16 +239,22 @@ pub(crate) fn spawn(cmd: &mut Command, program: &str, label: &str) -> Result<Chi
     started
 }
 
-/// Write the body, if the run carries one, to the child's stdin and close it; a piped stdin
-/// closes unwritten.
+/// Write `stdin`'s body to the child's stdin on a dedicated background thread and close the pipe;
+/// a piped stdin closes unwritten so the child sees EOF immediately.
 ///
-/// A closed stdin (the child exited early) is the child's business, not an error here.
-pub(crate) fn feed_stdin(child: &mut Child, stdin: &Stdin) {
-    if let Some(mut sink) = child.stdin.take()
-        && let Stdin::Body(body) = stdin
-    {
-        use std::io::Write;
-        let _ = sink.write_all(body.as_bytes());
+/// Running the write on a thread ensures that a body larger than the OS pipe buffer (about 64 KiB)
+/// cannot deadlock a child that begins emitting output before consuming all input.
+pub(crate) fn spawn_stdin_feeder(child: &mut Child, stdin: Stdin) -> Option<JoinHandle<()>> {
+    let mut sink = child.stdin.take()?;
+    match stdin {
+        Stdin::Body(body) => Some(std::thread::spawn(move || {
+            use std::io::Write;
+            let _ = sink.write_all(body.as_bytes());
+        })),
+        Stdin::Piped | Stdin::Null => {
+            drop(sink);
+            None
+        }
     }
 }
 

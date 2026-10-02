@@ -256,3 +256,20 @@ fn a_cancelled_child_stays_cancelled_when_its_caller_kills_it() {
         "{result:?}"
     );
 }
+
+#[test]
+fn large_stdin_with_spawn_does_not_deadlock() {
+    let payload = "C".repeat(256 * 1024);
+    let mut running = Run::new("cat")
+        .stdin(&payload)
+        .timeout(Duration::from_secs(10))
+        .spawn()
+        .unwrap();
+    let mut stdout = String::new();
+    if let Some(mut pipe) = running.take_stdout() {
+        pipe.read_to_string(&mut stdout).unwrap();
+    }
+    let finished = running.wait().unwrap();
+    assert_eq!(finished.code, 0);
+    assert_eq!(stdout.len(), payload.len());
+}

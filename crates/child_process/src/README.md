@@ -29,8 +29,8 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..) | .stdin_piped()
         │
         ├─ command()      pre_exec: setsid (or setpgid(0, 0)), then PR_SET_PDEATHSIG=SIGKILL
         ├─ spawn()        NotFound ──▶ ProgramAbsent; any other error ──▶ Failed
-        ├─ feed_stdin()   write the body once and close the pipe (a piped stdin stays open
-        │                 for `spawn`'s caller; the collecting runs close it unwritten)
+        ├─ spawn_stdin_feeder()  a thread writes the body once and closes the pipe (a piped
+        │                 stdin stays open for `spawn`'s caller; otherwise it closes unwritten)
         ├─ wait_within()  no deadline: wait; a deadline: try_wait every 20 ms,
         │                 then killpg(SIGKILL), reap ──▶ Timeout
         └─ signal check   status.signal() ──▶ Signalled; otherwise the raw code
@@ -46,12 +46,14 @@ Run::new(program).arg(..).cwd(..).env(..).timeout(..).stdin(..) | .stdin_piped()
   so a caller starts a child only from a thread that lives until the child is reaped. Because
   `setsid` makes the child a group leader, its pid is its process-group id, which `wait_within`
   hands to `killpg`. Stdin is a pipe only when the run carries a body or is piped; otherwise it is `/dev/null`,
-  so a child that reads stdin sees EOF instead of this process's terminal. A closed stdin, when the
-  child exits early, is not an error.
+  so a child that reads stdin sees EOF instead of this process's terminal. A body is written by a
+  thread of its own, started after the drains, so a child that writes before it has read a body
+  larger than the 64 KiB pipe buffer never deadlocks against the parent. A closed stdin, when the
+  child exits early, is not an error: the feeder's write fails with a broken pipe and it ends.
 - `stream.rs` starts the drains before the wait and reads each pipe to EOF, so a child that fills
   one 64 KiB pipe buffer never blocks while the parent waits on the other. After a timeout the group
-  is dead, both pipes are at EOF, and the drains join at once; after any other wait error the runner
-  returns without joining, since a live child may still hold the pipes. Text decodes as lossy UTF-8,
+  is dead, both pipes are at EOF, and the drains and the stdin feeder join at once; after any other
+  wait error the runner returns without joining, since a live child may still hold the pipes. Text decodes as lossy UTF-8,
   and a panicked drain yields an empty string, so captured text never costs the exit status.
   Stderr, and the shared pipe, is read line by line so each line is logged as it arrives; the
   text handed back is still every byte, and stdout is never logged.

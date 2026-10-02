@@ -9,10 +9,11 @@
 //! **Signals and state:** one thread per pipe; no state once the pipe ends.
 //!
 //! **Invariants:** a full pipe never deadlocks a child. A pipe buffer is about 64 KiB, and a parent
-//! that reads stdout to the end before touching stderr deadlocks the moment the child fills the
-//! stderr buffer, so every drain starts before the parent waits on the child. Decoding is lossy
-//! on purpose: a stray non-UTF-8 byte in a diagnostic or a file name must not lose the exit status
-//! of the run that printed it. The text handed back is every byte read, logged or not.
+//! that reads stdout to the end before touching stderr—or that blocks writing stdin before starting
+//! drains—deadlocks the moment the child fills its pipe buffer, so every drain and feeder starts
+//! before the parent waits on the child. Decoding is lossy on purpose: a stray non-UTF-8 byte in a
+//! diagnostic or a file name must not lose the exit status of the run that printed it. The text
+//! handed back is every byte read, logged or not.
 
 use std::io::{BufRead, BufReader, PipeReader, Read};
 use std::process::Child;

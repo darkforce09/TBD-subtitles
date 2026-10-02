@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use crate::runner::{feed_stdin, spawn};
+use crate::runner::{spawn, spawn_stdin_feeder};
 use crate::stream::start_stderr_drain;
 use crate::trace::Tag;
 use crate::{Run, RunError, Stdin};
@@ -52,6 +52,7 @@ pub struct Running {
     started: Instant,
     limit: Option<Duration>,
     stderr: Option<JoinHandle<String>>,
+    stdin_feeder: Option<JoinHandle<()>>,
     finished: Arc<AtomicBool>,
     timed_out: Arc<AtomicBool>,
     cancelled: Arc<AtomicBool>,
@@ -66,13 +67,15 @@ impl Run {
         let mut child = spawn(&mut cmd, &self.program, &label)?;
         let pgid = child.id() as i32;
         let tag = Tag::started(&self, child.id());
-        if self.stdin != Stdin::Piped {
-            feed_stdin(&mut child, &self.stdin);
-        }
         let stderr = child
             .stderr
             .take()
             .map(|pipe| start_stderr_drain(pipe, &tag));
+        let stdin_feeder = if self.stdin != Stdin::Piped {
+            spawn_stdin_feeder(&mut child, self.stdin)
+        } else {
+            None
+        };
         let finished = Arc::new(AtomicBool::new(false));
         let timed_out = Arc::new(AtomicBool::new(false));
         let cancelled = Arc::new(AtomicBool::new(false));
@@ -96,6 +99,7 @@ impl Run {
             started: Instant::now(),
             limit: self.timeout,
             stderr,
+            stdin_feeder,
             finished,
             timed_out,
             cancelled,
@@ -175,6 +179,9 @@ impl Running {
             .take()
             .and_then(|h| h.join().ok())
             .unwrap_or_default();
+        if let Some(feeder) = self.stdin_feeder.take() {
+            let _ = feeder.join();
+        }
         Ok((status?, stderr))
     }
 
@@ -218,6 +225,9 @@ impl Drop for Running {
             let _ = self.child.wait();
             self.finished.store(true, Ordering::SeqCst);
             self.tag.abandoned();
+            if let Some(feeder) = self.stdin_feeder.take() {
+                let _ = feeder.join();
+            }
         }
     }
 }

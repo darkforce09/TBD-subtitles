@@ -175,6 +175,36 @@ fn the_last_stdin_choice_wins() {
 }
 
 #[test]
+fn large_stdin_does_not_deadlock() {
+    // A body well past a 64 KiB pipe buffer sent through `cat`, which reads and writes
+    // concurrently. If stdin were fed synchronously before pipe drains started, the child
+    // would fill its stdout pipe buffer and block, while the parent blocked writing stdin.
+    let payload = "A".repeat(256 * 1024);
+    let out = Run::new("cat")
+        .stdin(&payload)
+        .timeout(Duration::from_secs(10))
+        .output()
+        .unwrap();
+    assert_eq!(out.code, 0);
+    assert_eq!(out.stdout.len(), payload.len());
+}
+
+#[test]
+fn early_exiting_child_does_not_hang_stdin_feeder() {
+    // The child exits immediately without reading all of the large stdin. The feeder thread must
+    // receive EPIPE (BrokenPipe) and terminate cleanly without blocking or panicking.
+    let payload = "B".repeat(256 * 1024);
+    let out = Run::new("sh")
+        .arg("-c")
+        .arg("exit 42")
+        .stdin(&payload)
+        .timeout(Duration::from_secs(10))
+        .output()
+        .unwrap();
+    assert_eq!(out.code, 42);
+}
+
+#[test]
 fn env_and_cwd_apply() {
     let out = Run::new("sh")
         .arg("-c")
