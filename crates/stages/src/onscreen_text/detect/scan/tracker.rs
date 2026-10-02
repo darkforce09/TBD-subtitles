@@ -21,7 +21,7 @@ use rayon::prelude::*;
 
 use super::flight::Regions;
 use crate::onscreen_text::TextResult;
-use crate::onscreen_text::detect::confirm::Closed;
+use crate::onscreen_text::detect::confirm::{Closed, MIN_CONFIRM_CONFIDENCE};
 use crate::onscreen_text::detect::crops::picture_at;
 use crate::onscreen_text::detect::probe::{Search, Seek, Transition};
 use crate::onscreen_text::detect::regions::{
@@ -99,11 +99,14 @@ impl<'a> Tracker<'a> {
         if crosses_cut(self.cuts, self.previous_time, frame.time_s) {
             for ended in std::mem::take(&mut self.active) {
                 let track = &mut self.tracks[ended.occurrence];
-                track.persistent = true;
-                if let Some(entry) = track.pending_entry.take() {
-                    transitions.push(entry);
+                if track.persistent {
+                    if let Some(entry) = track.pending_entry.take() {
+                        transitions.push(entry);
+                    }
+                    transitions.push(Transition::exit(previous, frame.index, ended));
+                } else {
+                    track.pending_entry = None;
                 }
-                transitions.push(Transition::exit(previous, frame.index, ended));
             }
         }
         self.previous_time = frame.time_s;
@@ -302,7 +305,7 @@ impl<'a> Tracker<'a> {
     /// Ends the regions still shown on the final frame at its end, drops screening noise and
     /// hands out the document with each remaining occurrence's keyframe and the keyframes still
     /// held in memory.
-    pub(crate) fn close(mut self) -> Closed {
+    pub(crate) fn close(mut self, min_confirm_frames: usize) -> Closed {
         for state in std::mem::take(&mut self.active) {
             let track = &mut self.tracks[state.occurrence];
             if track.persistent {
@@ -326,15 +329,21 @@ impl<'a> Tracker<'a> {
             })
             .collect();
         self.document.occurrences = kept;
-        let wanted: Vec<u64> = keyframes
+        let wanted: Vec<u64> = self
+            .document
+            .occurrences
             .iter()
-            .flatten()
-            .map(|&(_, index)| index)
+            .zip(&keyframes)
+            .filter(|(item, _)| {
+                item.frames.len() >= min_confirm_frames && item.confidence >= MIN_CONFIRM_CONFIDENCE
+            })
+            .filter_map(|(_, kf)| kf.map(|(_, index)| index))
             .collect();
         Closed {
             document: self.document,
             keyframes,
             frames: self.candidates.into_frames(&wanted),
+            min_confirm_frames,
         }
     }
 }

@@ -40,17 +40,25 @@ pub use crops::crop;
 pub use source::{FfmpegSource, FrameSource};
 pub use timing::ScanStats;
 
+/// The default minimum frames for an occurrence to qualify its keyframe for server confirmation.
+/// Occurrences on screen for >= 2.0s (>= 5 sampled/bisected frames) represent persistent
+/// signs and title cards. Shorter co-occurring text sharing these keyframes is confirmed for free.
+pub(crate) const MIN_CONFIRM_FRAMES: usize = 5;
+
 /// The bounds a scan runs within.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ScanLimits {
     /// The bytes the keyframe candidates may hold in memory.
     pub(crate) candidate_budget: usize,
+    /// Minimum frames for an occurrence to qualify its keyframe for server confirmation.
+    pub(crate) min_confirm_frames: usize,
 }
 
 impl Default for ScanLimits {
     fn default() -> Self {
         Self {
             candidate_budget: window::CANDIDATE_BUDGET,
+            min_confirm_frames: MIN_CONFIRM_FRAMES,
         }
     }
 }

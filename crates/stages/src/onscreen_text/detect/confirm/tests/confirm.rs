@@ -80,6 +80,7 @@ fn closed(writings: &[Writing]) -> Closed {
             .map(|keyframe| keyframe.map(|index| (0, index)))
             .collect(),
         frames: held,
+        min_confirm_frames: 1,
     }
 }
 
@@ -203,4 +204,91 @@ fn a_keyframe_from_memory_and_from_the_video_give_the_same_files() {
         (document, files)
     };
     assert_eq!(run(true), run(false));
+}
+
+#[test]
+fn non_persistent_keyframes_are_not_confirmed_unless_shared_with_persistent_occurrence() {
+    let writings = writings();
+    let root = Temporary::new("confirm-targeted");
+    let mut source = Source::new(writings.clone(), 120);
+    source.finished = true;
+    let mut pool = Pool::new(writings.clone(), 1, Answer::Oldest);
+    let frames = timeline(120);
+    let mut document = TextDocument {
+        width: SIZE.0,
+        height: SIZE.1,
+        decoded_frames: 120,
+        ..TextDocument::default()
+    };
+    let quad = region(&writings[0], 0.0);
+    // Occurrence 0: persistent (5 frames), keyframe at index 20
+    let occ0 = start_occurrence(&mut document, frames[20].0, 0.9);
+    for &(time_s, end_s) in &frames[18..=22] {
+        append_observation(
+            &mut document.occurrences[occ0],
+            &Observation {
+                quad,
+                confidence: 0.9,
+                surface_rgb: None,
+            },
+            time_s,
+            end_s,
+        );
+    }
+    // Occurrence 1: short (1 frame), shares keyframe at index 20
+    let occ1 = start_occurrence(&mut document, frames[20].0, 0.9);
+    append_observation(
+        &mut document.occurrences[occ1],
+        &Observation {
+            quad,
+            confidence: 0.9,
+            surface_rgb: None,
+        },
+        frames[20].0,
+        frames[20].1,
+    );
+    // Occurrence 2: short (1 frame), isolated keyframe at index 40 (non-persistent)
+    let occ2 = start_occurrence(&mut document, frames[40].0, 0.9);
+    append_observation(
+        &mut document.occurrences[occ2],
+        &Observation {
+            quad,
+            confidence: 0.9,
+            surface_rgb: None,
+        },
+        frames[40].0,
+        frames[40].1,
+    );
+    let held = [
+        (20u64, Arc::new(yuv_frame(&writings, 20, false, &frames))),
+        (40u64, Arc::new(yuv_frame(&writings, 40, false, &frames))),
+    ]
+    .into_iter()
+    .collect();
+    let closed = Closed {
+        document,
+        keyframes: vec![Some((0, 20)), Some((0, 20)), Some((0, 40))],
+        frames: held,
+        min_confirm_frames: 5,
+    };
+    let result = confirm_keyframes(
+        closed,
+        &colour(&stream()),
+        &mut source,
+        &mut pool,
+        &root.0,
+        &mut ScanStats::default(),
+        &|_, _| {},
+    )
+    .unwrap();
+    // Only keyframe 20 was confirmed; occurrence 0 and co-occurring 1 survived, isolated 2 left
+    let kept_ids: Vec<&str> = result
+        .occurrences
+        .iter()
+        .map(|item| item.id.as_str())
+        .collect();
+    assert_eq!(kept_ids, ["text-000001", "text-000002"]);
+    // Server detector only received 1 keyframe (index 20), never index 40
+    assert_eq!(pool.confirmations.len(), 1);
+    assert_eq!(pool.confirmations[0].len(), 1);
 }

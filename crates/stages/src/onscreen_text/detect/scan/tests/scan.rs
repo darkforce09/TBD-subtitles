@@ -17,6 +17,7 @@ struct Setup {
     answer: Answer,
     budget: usize,
     flicker: bool,
+    min_confirm_frames: usize,
 }
 
 impl Default for Setup {
@@ -26,6 +27,7 @@ impl Default for Setup {
             answer: Answer::Oldest,
             budget: ScanLimits::default().candidate_budget,
             flicker: false,
+            min_confirm_frames: 1,
         }
     }
 }
@@ -54,6 +56,7 @@ impl Run {
         let progress = |done: usize, total: usize| calls.lock().unwrap().push((done, total));
         let limits = ScanLimits {
             candidate_budget: setup.budget,
+            min_confirm_frames: setup.min_confirm_frames,
         };
         let (document, stats) = run(
             &mut source,
@@ -450,5 +453,26 @@ fn single_sample_transient_noise_runs_zero_probes_and_is_not_confirmed() {
     assert!(
         run.pool.confirmations.is_empty(),
         "transient noise never reaches server confirmation"
+    );
+}
+
+#[test]
+fn occurrences_under_min_confirm_frames_are_not_confirmed() {
+    let run = Run::with(
+        vec![writing(17..=41, 20, 240)],
+        80,
+        ShotChanges::default(),
+        Setup {
+            min_confirm_frames: 5,
+            ..Setup::default()
+        },
+    );
+    assert!(
+        run.document.occurrences.is_empty(),
+        "3-frame occurrence is under 5 frames and leaves without server confirmation"
+    );
+    assert!(
+        run.pool.confirmations.is_empty(),
+        "server confirmation was never invoked for non-targeted keyframes"
     );
 }

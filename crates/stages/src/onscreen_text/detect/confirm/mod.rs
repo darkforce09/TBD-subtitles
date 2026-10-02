@@ -35,12 +35,18 @@ use crate::onscreen_text::TextResult;
 /// Keyframes confirmed per call to the sessions, as many as the stills decoded at once.
 const CONFIRM_CHUNK: usize = STILL_DECODERS;
 
+/// Minimum confidence for an occurrence to qualify its keyframe for server confirmation.
+/// Real on-screen signs in animation score >= 0.60, while persistent background noise scores
+/// below 0.50.
+pub(crate) const MIN_CONFIRM_CONFIDENCE: f64 = 0.50;
+
 /// The scan's document with each occurrence's keyframe, `(frame position, frame index)`, and
 /// the keyframes held in memory by frame index.
 pub(crate) struct Closed {
     pub(crate) document: TextDocument,
     pub(crate) keyframes: Vec<Option<(usize, u64)>>,
     pub(crate) frames: BTreeMap<u64, Arc<YuvFrame>>,
+    pub(crate) min_confirm_frames: usize,
 }
 
 /// Confirms every occurrence of `closed` on its keyframe and returns the document of the
@@ -70,16 +76,25 @@ pub(crate) fn confirm_keyframes(
         document,
         keyframes,
         frames,
+        min_confirm_frames,
     } = closed;
     let mut order = Vec::new();
     let mut users: HashMap<u64, Vec<usize>> = HashMap::new();
     for (occurrence, keyframe) in keyframes.iter().enumerate() {
         if let Some((_, index)) = *keyframe {
-            let sharing = users.entry(index).or_default();
-            if sharing.is_empty() {
+            users.entry(index).or_default().push(occurrence);
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    for (occurrence, keyframe) in keyframes.iter().enumerate() {
+        if let Some((_, index)) = *keyframe {
+            let item = &document.occurrences[occurrence];
+            if item.frames.len() >= min_confirm_frames
+                && item.confidence >= MIN_CONFIRM_CONFIDENCE
+                && seen.insert(index)
+            {
                 order.push(index);
             }
-            sharing.push(occurrence);
         }
     }
     let decoded = usize::try_from(document.decoded_frames).unwrap_or(usize::MAX);

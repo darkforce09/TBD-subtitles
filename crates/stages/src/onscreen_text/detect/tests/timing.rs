@@ -6,12 +6,12 @@ use crate::onscreen_text::detect::{scan, scan_measured};
 
 #[test]
 fn a_measured_scan_returns_the_plain_scan_s_document_and_counts_its_frames() {
-    let writings = vec![writing(17..=41, 20, 240)];
+    let writings = vec![writing(17..=85, 20, 240)];
     let cuts = ShotChanges::default();
     let folder = Temporary::new("timing");
     let mut plain_pool = Pool::new(writings.clone(), 2, Answer::Oldest);
     let plain = scan(
-        &mut Source::new(writings.clone(), 50),
+        &mut Source::new(writings.clone(), 100),
         &stream(),
         &cuts,
         &folder.0,
@@ -21,7 +21,7 @@ fn a_measured_scan_returns_the_plain_scan_s_document_and_counts_its_frames() {
     .unwrap();
     let mut pool = Pool::new(writings.clone(), 2, Answer::Oldest);
     let (document, stats) = scan_measured(
-        &mut Source::new(writings, 50),
+        &mut Source::new(writings, 100),
         &stream(),
         &cuts,
         &folder.0,
@@ -30,7 +30,7 @@ fn a_measured_scan_returns_the_plain_scan_s_document_and_counts_its_frames() {
     )
     .unwrap();
     assert_eq!(document, plain);
-    assert_eq!(stats.frames_decoded, 50);
+    assert_eq!(stats.frames_decoded, 100);
     assert_eq!(stats.frames_screened, pool.screened as u64);
     assert_eq!(pool.screened, plain_pool.screened);
     assert_eq!(stats.keyframes_from_ram, 1);
