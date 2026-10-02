@@ -42,7 +42,7 @@ const DEADLINE_PER_FRAME_S: f64 = 0.25;
 const WHOLE_VIDEO_DEADLINE_S: u64 = 24 * 3600;
 
 /// Which frames a [`YuvStream`] decodes, where, and what part of each.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct YuvOptions {
     /// The presentation index of the first frame.
     pub first: u64,
@@ -52,6 +52,10 @@ pub struct YuvOptions {
     pub hardware: bool,
     /// The rectangle (x, y, width, height) FFmpeg crops each frame to, every value even.
     pub crop: Option<(u32, u32, u32, u32)>,
+    /// How many seconds of frames a queue holds ahead of its reader, defaulting to [`QUEUE_SECONDS`].
+    pub queue_seconds: Option<f64>,
+    /// The most frame bytes a decode queue holds, defaulting to [`QUEUE_MAX_BYTES`].
+    pub queue_max_bytes: Option<usize>,
 }
 
 /// Whether NVDEC's nv12 download suits `stream`: an 8-bit 4:2:0 source, whose surfaces download
@@ -71,7 +75,7 @@ pub struct YuvStream {
     timeline: Arc<[(f64, f64)]>,
     size: (u32, u32),
     layout: ChromaLayout,
-    fps: f64,
+    depth: usize,
     next: u64,
     end: u64,
     program: String,
@@ -119,7 +123,12 @@ impl YuvStream {
             .ok_or_else(|| MediaError::Parse("no video pipe".into()))?;
         // A pipe that cannot grow keeps its default size: slower, never wrong.
         let _ = pipe::enlarge(&pixels);
-        let depth = queue_depth(fps, bytes);
+        let depth = queue_depth_with(
+            fps,
+            bytes,
+            options.queue_seconds.unwrap_or(QUEUE_SECONDS),
+            options.queue_max_bytes.unwrap_or(QUEUE_MAX_BYTES),
+        );
         Ok(Self {
             decoder: Some(decoder),
             pixels,
@@ -131,7 +140,7 @@ impl YuvStream {
             } else {
                 ChromaLayout::Planar
             },
-            fps,
+            depth,
             next: options.first,
             end,
             program: programs.ffmpeg.clone(),
@@ -148,10 +157,11 @@ impl YuvStream {
         self.size
     }
 
-    /// How many frames a queue around this stream holds: [`QUEUE_SECONDS`] of frames, within
-    /// [`QUEUE_MAX_BYTES`], and at least two.
+    /// How many frames a queue around this stream holds: [`QUEUE_SECONDS`] of frames (or
+    /// the custom seconds asked for), within [`QUEUE_MAX_BYTES`] (or the custom byte limit),
+    /// and at least two.
     pub fn queue_depth(&self) -> usize {
-        queue_depth(self.fps, self.pool.bytes())
+        self.depth
     }
 
     /// Run the stream on a decode thread, [`YuvStream::queue_depth`] frames ahead of the reader.
@@ -310,9 +320,15 @@ fn seek_time(timeline: &[(f64, f64)], first: u64, fps: f64) -> Option<f64> {
 
 /// Frames a queue holds: [`QUEUE_SECONDS`] at `fps`, within [`QUEUE_MAX_BYTES`] of `bytes`-long
 /// frames, at least two.
+#[cfg(test)]
 fn queue_depth(fps: f64, bytes: usize) -> usize {
-    let by_time = (QUEUE_SECONDS * fps).round().max(0.0) as usize;
-    let by_bytes = QUEUE_MAX_BYTES / bytes.max(1);
+    queue_depth_with(fps, bytes, QUEUE_SECONDS, QUEUE_MAX_BYTES)
+}
+
+/// Frames a queue holds: `seconds` at `fps`, within `max_bytes` of `bytes`-long frames, at least two.
+fn queue_depth_with(fps: f64, bytes: usize, seconds: f64, max_bytes: usize) -> usize {
+    let by_time = (seconds * fps).round().max(0.0) as usize;
+    let by_bytes = max_bytes / bytes.max(1);
     by_time.min(by_bytes).max(2)
 }
 

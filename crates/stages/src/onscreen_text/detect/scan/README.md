@@ -18,7 +18,7 @@ crates/stages/src/onscreen_text/detect/scan/
 `run` checks each frame against the timeline and the video's size, keeps the sample choice and the
 luma repeat check, converts the samples it screens and gathers them into groups. When a group
 closes, `Flight` submits its pictures as one `Priority::Screen` job and the group waits in a queue
-of at most two groups per session; while it is full, the coordinator waits for the front group's
+of at most six groups per session; while it is full, the coordinator waits for the front group's
 result, keeping any other result that arrives first. Whenever the front group's job is answered
 (or it has none, every sample repeating), `Tracker::observe` follows its samples' regions in order,
 then `probe::narrow` bisects the transitions found, its probe pictures submitted as

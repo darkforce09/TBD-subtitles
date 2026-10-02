@@ -8,7 +8,7 @@ in a few lockstep steps, ahead of the screening batches that wait.
 ```text
 crates/stages/src/onscreen_text/detect/probe/
 ├── mod.rs     `Transition`, `narrow`: probe pictures from held frames, their screens, presence
-├── search.rs  `Search`, `Seek` and `bisect`: lockstep interval searches, answers side by side
+├── search.rs  `Probe`, `Search`, `Seek` and `bisect`: lockstep interval searches, answers side by side
 └── tests/     bisection bounds, lockstep steps, exact entries and exits, and probes outside a group
 ```
 
@@ -16,12 +16,14 @@ crates/stages/src/onscreen_text/detect/probe/
 
 Each `Transition` carries the occurrence, the search interval, the region's box, its fixed anchor
 box and the anchor's signature. `narrow` runs `bisect` over all of a group's transitions: every step
-takes the distinct probe
-frames not yet screened, converts them from the group's held frames to padded pictures side by
-side, and hands them to the caller's screen, which submits them as probe jobs and waits for their
-answers. Each open search's probe is then answered in parallel: present when a screened box
-overlaps the region by more than 0.45 and the frame's luma at the anchor box still matches the
-anchor. The answers are applied in search order, so the result never depends on thread timing.
+checks candidate anchor signatures on the held frames first in parallel across CPU threads, memoizes
+their matches, and fast-rejects probe frames whose active searches all reject the signature,
+skipping detector screening. Remaining distinct probe frames not yet screened are converted from the
+group's held frames to padded pictures side by side, and handed to the caller's screen, which
+submits them as probe jobs and waits for their answers. Each open search's probe is then answered in
+parallel: present when a screened box overlaps the region by more than 0.45 and the frame's luma at
+the anchor box matches the anchor (retrieved from the memoized signature cache). The answers are
+applied in search order, so the result never depends on thread timing.
 
 ## Boundaries
 

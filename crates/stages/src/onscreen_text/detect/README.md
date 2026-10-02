@@ -25,7 +25,7 @@ crates/stages/src/onscreen_text/detect/
 ## How it works
 
 ```text
-FfmpegSource ── yuv420p frames, ~4 s ahead ──▶ scan coordinator ──▶ ScreenJob (Screen) ──▶ sessions
+FfmpegSource ── yuv420p frames, up to 45 s ahead ──▶ scan coordinator ──▶ ScreenJob (Screen) ──▶ sessions
                                                 │   ▲                                          │
                                    groups wait  │   └──── ScreenResult, any order ◀────────────┘
                                                 ▼
@@ -35,18 +35,18 @@ FfmpegSource ── yuv420p frames, ~4 s ahead ──▶ scan coordinator ──
 ```
 
 `FfmpegSource` decodes every frame at the video's own size as yuv420p, exactly as encoded, on a
-thread of its own through a `FrameQueue` about four seconds deep, and reads full-resolution stills
-by frame index through accurate seeks, eight at a time. The scan treats every `k`-th frame as a
-sample, where `k` is half the frame rate rounded, together with both frames around every shot cut
-and the final frame, so the frames between two samples never cross a cut. A sample whose luma, in
-32 by 32 blocks, stays within a mean of 4 levels of the last screened sample repeats that sample's
-regions; every other sample is converted in the stream's own matrix and range to rgb24, padded
-below with black rows to a multiple of 32, and joins the group being gathered with the frames since
-the previous sample.
+thread of its own through a `FrameQueue` up to forty-five seconds deep (up to 3.5 GiB), and reads
+full-resolution stills by frame index through accurate seeks, eight at a time. The scan treats
+every `k`-th frame as a sample, where `k` is half the frame rate rounded, together with both
+frames around every shot cut and the final frame, so the frames between two samples never cross a cut.
+A sample whose luma, in 32 by 32 blocks, stays within a mean of 4 levels of the last screened
+sample repeats that sample's regions; every other sample is converted in the stream's own matrix
+and range to rgb24, padded below with black rows to a multiple of 32, and joins the group being
+gathered with the frames since the previous sample.
 
 A group closes when its pictures fill the sessions' batch, or when it holds twice a batch of
 samples; its pictures go to the sessions as one screening job at once, and decoding goes on while
-at most two groups per session wait. Results come back in any order and are kept by sequence
+at most six groups per session wait. Results come back in any order and are kept by sequence
 number; the groups are observed strictly in order, each only once its job is answered, so one or
 two sessions and any order of answers give the same document. Regions are followed from sample to
 sample: a match needs more than 0.45 box overlap and an unchanged picture at the region's fixed

@@ -19,3 +19,8 @@ fn probes_come_before_screening_batches() {
 fn the_initial_shape_keeps_eight_frames_in_flight_on_two_sessions() {
     assert_eq!(ScreenShape::INITIAL.batch * SCREEN_SESSIONS, 8);
 }
+
+#[test]
+fn confirming_sessions_match_screening_sessions() {
+    assert_eq!(CONFIRM_SESSIONS, 2);
+}

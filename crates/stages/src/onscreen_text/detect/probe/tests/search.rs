@@ -15,12 +15,12 @@ fn bisection_finds_every_entry_and_exit_within_ceil_log2_k_probes() {
             for change in 1..=k {
                 let base = 10 * k;
                 let mut searches = [Search::new(base, base + k, seek)];
-                let probes = std::cell::Cell::new(0usize);
+                let probe_count = std::cell::Cell::new(0usize);
                 bisect(
                     &mut searches,
                     &mut (),
-                    |_, indices| {
-                        probes.set(probes.get() + indices.len());
+                    |_, probes| {
+                        probe_count.set(probe_count.get() + probes.len());
                         Ok(())
                     },
                     |_, _, index| match seek {
@@ -31,9 +31,9 @@ fn bisection_finds_every_entry_and_exit_within_ceil_log2_k_probes() {
                 .unwrap();
                 assert_eq!(searches[0].hi, base + change, "k {k}, {seek:?} at {change}");
                 assert!(
-                    probes.get() <= ceil_log2(k),
+                    probe_count.get() <= ceil_log2(k),
                     "k {k}: {} probes",
-                    probes.get()
+                    probe_count.get()
                 );
             }
         }
@@ -53,8 +53,8 @@ fn transitions_in_different_gaps_advance_in_lockstep_with_one_screen_per_step() 
     bisect(
         &mut searches,
         &mut calls,
-        |calls, indices| {
-            calls.push(indices.to_vec());
+        |calls, probes| {
+            calls.push(probes.iter().map(|probe| probe.index).collect());
             Ok(())
         },
         |calls, search, index| {

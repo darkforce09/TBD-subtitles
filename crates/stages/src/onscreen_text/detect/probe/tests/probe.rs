@@ -71,11 +71,11 @@ fn an_entry_and_an_exit_narrow_to_their_exact_frames_through_one_screen_per_step
     assert_eq!(answers, [17, 31]);
     assert_eq!(
         calls,
-        [2, 2, 2, 1],
-        "one call per bisection step, distinct probes"
+        [2, 1],
+        "signature match fast-rejects absent frames from detector screening"
     );
-    assert_eq!(stats.frames_probed, 7);
-    assert_eq!(stats.frames_screened, 7);
+    assert_eq!(stats.frames_probed, 3);
+    assert_eq!(stats.frames_screened, 3);
 }
 
 #[test]
@@ -110,6 +110,48 @@ fn a_changed_picture_under_an_overlapping_box_is_absent() {
 }
 
 #[test]
+fn fast_reject_skips_gpu_screening_when_all_active_signatures_reject() {
+    let first = writing(10..=30, 20, 240);
+    let writings = [first.clone()];
+    let group = group(&writings);
+    let colour = colour();
+    let anchor_box = region(&first, 0.0);
+    let shown = group.samples[0].frame(20).unwrap().picture().unwrap();
+    let signature = picture_at(&shown, &colour, anchor_box);
+
+    let transitions = [
+        Transition {
+            occurrence: 0,
+            search: Search::new(30, 36, Seek::Exit),
+            quad: anchor_box,
+            anchor_box,
+            signature: signature.clone(),
+        },
+        Transition {
+            occurrence: 1,
+            search: Search::new(30, 36, Seek::Exit),
+            quad: anchor_box,
+            anchor_box,
+            signature: GrayImage::new(10, 10),
+        },
+    ];
+    let mut screened = false;
+    let mut screen = |pictures: Vec<PaddedFrame>| -> TextResult<Vec<Vec<(Quad, f64)>>> {
+        screened = true;
+        Ok(vec![vec![(anchor_box, 0.9)]; pictures.len()])
+    };
+    let mut stats = ScanStats::default();
+    let answers = narrow(&transitions, &group, &colour, &mut screen, &mut stats).unwrap();
+    assert_eq!(answers, [31, 31]);
+    assert!(
+        !screened,
+        "all active searches rejected, so GPU screening was skipped"
+    );
+    assert_eq!(stats.frames_screened, 0);
+    assert_eq!(stats.frames_probed, 0);
+}
+
+#[test]
 fn a_probe_outside_the_held_frames_is_an_error() {
     let group = group(&[]);
     let colour = colour();
@@ -134,4 +176,42 @@ fn a_probe_outside_the_held_frames_is_an_error() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn memoized_signatures_match_and_narrow_multiple_transitions_in_parallel() {
+    let writings = [writing(15..=25, 20, 240), writing(20..=32, 20, 240)];
+    let group = group(&writings);
+    let colour = colour();
+    let anchor_1 = region(&writings[0], 0.0);
+    let anchor_2 = region(&writings[1], 0.0);
+    let shown_1 = group.samples[0].frame(20).unwrap().picture().unwrap();
+    let shown_2 = group.samples[0].frame(24).unwrap().picture().unwrap();
+    let sig_1 = picture_at(&shown_1, &colour, anchor_1);
+    let sig_2 = picture_at(&shown_2, &colour, anchor_2);
+    let transitions = [
+        Transition {
+            occurrence: 0,
+            search: Search::new(12, 24, Seek::Entry),
+            quad: anchor_1,
+            anchor_box: anchor_1,
+            signature: sig_1,
+        },
+        Transition {
+            occurrence: 1,
+            search: Search::new(24, 36, Seek::Exit),
+            quad: anchor_2,
+            anchor_box: anchor_2,
+            signature: sig_2,
+        },
+    ];
+    let mut screen = |pictures: Vec<PaddedFrame>| -> TextResult<Vec<Vec<(Quad, f64)>>> {
+        Ok(pictures
+            .iter()
+            .map(|_| vec![(anchor_1, 0.9), (anchor_2, 0.9)])
+            .collect())
+    };
+    let mut stats = ScanStats::default();
+    let answers = narrow(&transitions, &group, &colour, &mut screen, &mut stats).unwrap();
+    assert_eq!(answers, [15, 33]);
 }

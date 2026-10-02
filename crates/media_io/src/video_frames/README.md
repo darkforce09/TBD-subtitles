@@ -54,7 +54,8 @@ frame to an even-aligned rectangle. `pipe::enlarge` raises the stdout pipe to 1 
 from a `BufferPool` and handed out as a `yuv::YuvFrame` with its index and times from the
 timeline; dropping the frame returns the buffer, so a warm stream allocates nothing per frame.
 `YuvStream` is a `frame_queue::Producer`: `spawn` runs it on a decode thread through a
-`FrameQueue` about four seconds of frames deep (at most 512 MiB). The checks are
+`FrameQueue` about four seconds of frames deep (at most 512 MiB), or the custom depth asked for
+in `YuvOptions`. The checks are
 `FrameStream`'s: a missing, partial or surplus frame is an error, a decoder that ends early
 reports its own exit, and `finish` fails unless FFmpeg exited cleanly after every frame asked for.
 

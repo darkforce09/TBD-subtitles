@@ -238,6 +238,26 @@ fn confirmations_answer_in_the_order_given_after_screening_closes() {
 }
 
 #[test]
+fn dual_session_confirmation_opens_and_runs_on_both_threads() {
+    let opener = FakeOpener::default();
+    let events = Arc::clone(&opener.events);
+    let mut opts = options(2, 2);
+    opts.confirm_sessions = 2;
+    let mut pool = open(opener, opts).unwrap();
+    let jobs = (0..4)
+        .map(|seq| ConfirmJob {
+            seq,
+            frame: frame(Some([8, 8, 28, 28]), false),
+        })
+        .collect();
+    let confirmed = pool.confirm(jobs).unwrap();
+    assert_eq!(confirmed.len(), 4);
+    let events = events.lock().unwrap().clone();
+    assert_eq!(events.iter().filter(|e| *e == "close screen").count(), 2);
+    assert_eq!(events.iter().filter(|e| *e == "open confirm").count(), 2);
+}
+
+#[test]
 fn confirmation_waits_for_every_screening_result() {
     let mut pool = open(FakeOpener::default(), options(1, 1)).unwrap();
     pool.submit(job(0, Priority::Screen, vec![frame(None, false)]))

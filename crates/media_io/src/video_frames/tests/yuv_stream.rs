@@ -92,6 +92,7 @@ fn a_start_seeks_before_the_input_and_a_count_and_crop_follow_the_map() {
         count: Some(7),
         hardware: false,
         crop: Some((4, 2, 20, 10)),
+        ..YuvOptions::default()
     };
     let args = yuv_args(Path::new("v.mkv"), Some(0.98), options).join(" ");
     assert_eq!(
@@ -244,6 +245,18 @@ fn the_queue_holds_four_seconds_within_its_byte_bound() {
     );
     assert_eq!(queue_depth(0.1, 100), 2, "at least two");
     assert_eq!(queue_depth(24.0, usize::MAX), 2);
+}
+
+#[test]
+fn the_queue_depth_accepts_custom_seconds_and_byte_bounds() {
+    assert_eq!(
+        queue_depth_with(24.0, 3_110_400, 20.0, 1536 * 1024 * 1024),
+        480
+    );
+    assert_eq!(
+        queue_depth_with(60.0, 12_441_600, 20.0, 1536 * 1024 * 1024),
+        129
+    );
 }
 
 #[test]
@@ -423,6 +436,7 @@ fn planar_frames(
         count: Some(count),
         hardware,
         crop: None,
+        ..YuvOptions::default()
     };
     let mut stream =
         YuvStream::open(&Programs::default(), video, size, 0.0, 24.0, options).unwrap();

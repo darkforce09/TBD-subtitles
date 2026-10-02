@@ -64,9 +64,9 @@ pub fn proxy_size(width: u32, height: u32) -> (u32, u32) {
     (PROXY_WIDTH, (scaled & !1).max(2))
 }
 
-/// The confirming sessions: one, since a single server detector on a full-resolution frame keeps
-/// the GPU busy and a second does not fit beside it within the worker's VRAM cap.
-pub const CONFIRM_SESSIONS: usize = 1;
+/// The confirming sessions: two, so both session threads confirm keyframes concurrently
+/// across two TensorRT sessions on the GPU, taking ~3.8 GB of VRAM (well within the 6.5 GB cap).
+pub const CONFIRM_SESSIONS: usize = 2;
 
 /// One frame converted to rgb24 and padded below with black rows to a multiple of 32.
 #[derive(Debug, Clone, PartialEq, Eq)]

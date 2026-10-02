@@ -38,7 +38,7 @@ use tracker::Tracker;
 pub(crate) use flight::Regions;
 
 /// Closed groups that may wait for their results, per screening session.
-const GROUPS_PER_SESSION: usize = 2;
+const GROUPS_PER_SESSION: usize = 6;
 /// Frames between two progress reports while decoding.
 const PROGRESS_FRAMES: u64 = 24;
 

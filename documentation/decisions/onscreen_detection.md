@@ -200,3 +200,18 @@ second, TensorRT FP16 164 to 141) and each screening thread holds one more small
 
 **Supersedes:** "there is no downscaled proxy" in the entry of 2026-10-01 — The detector screens
 full-resolution frames, padded to a multiple of 32, on two sessions; the rest of that entry holds.
+
+### 2026-10-02 — Two server-detector sessions confirm under TensorRT
+
+**Context:** Previously, confirmation was restricted to one session (`CONFIRM_SESSIONS = 1`) because
+two sessions under the ONNX Runtime CUDA provider arena failed to fit within the RTX 3070's 8 GB VRAM.
+Under TensorRT, a batch-1 server detector session occupies only ~1.9 GB of VRAM.
+
+**Decision:** Set `CONFIRM_SESSIONS = 2`. Both pool worker threads confirm keyframes concurrently on
+TensorRT FP32 sessions once screening sessions close.
+
+**Consequences:** Confirmation wall time is cut by ~50% (~10 s saved on a 30-minute episode). Peak VRAM
+during confirmation is ~3.8 GB, safely below the 6.5 GB worker limit.
+
+**Supersedes:** "One session confirms (`CONFIRM_SESSIONS`)" in the entry of
+2026-10-01 — One server-detector session confirms; the rest of that entry holds.

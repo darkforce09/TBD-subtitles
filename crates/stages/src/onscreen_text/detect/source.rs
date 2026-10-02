@@ -6,7 +6,7 @@
 //! keyframe the scan released.
 //! **Position:** between `media_io::video_frames` and the scan; tests substitute scripted sources.
 //! **Signals and state:** one `YuvStream` (yuv420p, or nv12 through NVDEC) running in a
-//! `FrameQueue` about four seconds of frames ahead until `finish`, a copy of the video's
+//! `FrameQueue` up to forty-five seconds of frames ahead until `finish`, a copy of the video's
 //! timeline, and at most eight concurrent still decoders.
 //! **Invariants:** frames arrive in presentation order, one per timeline entry, at the video's
 //! own size; a still is the source frame at its timeline time, at source size; an unknown index
@@ -27,6 +27,10 @@ use crate::onscreen_text::TextResult;
 
 /// Still decoders running at once.
 pub(crate) const STILL_DECODERS: usize = 8;
+/// How many seconds of frames the scan queue holds ahead of its reader.
+const SCAN_QUEUE_SECONDS: f64 = 45.0;
+/// The most frame bytes the scan queue holds, keeping within the workstation RAM budget.
+const SCAN_QUEUE_MAX_BYTES: usize = 3584 * 1024 * 1024;
 
 /// The frames a scan reads: every frame in order, then full-resolution stills of chosen frames.
 pub trait FrameSource: Send {
@@ -53,9 +57,9 @@ pub struct FfmpegSource {
 }
 
 impl FfmpegSource {
-    /// Reads the video's timeline and starts decoding every frame at its own size, about four
-    /// seconds ahead of the scan: yuv420p on the CPU, or nv12 through NVDEC when `hardware` is
-    /// asked for and the stream's pixel format suits it.
+    /// Reads the video's timeline and starts decoding every frame at its own size, up to
+    /// forty-five seconds ahead of the scan: yuv420p on the CPU, or nv12 through NVDEC when
+    /// `hardware` is asked for and the stream's pixel format suits it.
     pub fn open(
         programs: &Programs,
         video: &Path,
@@ -66,6 +70,8 @@ impl FfmpegSource {
         let size = (stream.width, stream.height);
         let options = YuvOptions {
             hardware: hardware && hardware_suits(stream),
+            queue_seconds: Some(SCAN_QUEUE_SECONDS),
+            queue_max_bytes: Some(SCAN_QUEUE_MAX_BYTES),
             ..YuvOptions::default()
         };
         let frames = YuvStream::open(programs, video, size, stream.start_time_s, fps, options)?;

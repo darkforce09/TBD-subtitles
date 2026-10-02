@@ -117,6 +117,7 @@ impl RegionStream {
             count: Some(request.count),
             hardware: false,
             crop: Some(crop.decoded),
+            ..YuvOptions::default()
         };
         let frames = YuvStream::over(
             programs,

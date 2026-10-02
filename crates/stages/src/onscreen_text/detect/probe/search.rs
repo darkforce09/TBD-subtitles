@@ -60,26 +60,44 @@ impl Search {
     }
 }
 
+/// One probe index in a bisection step, and which searches are probing it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Probe {
+    pub(crate) index: u64,
+    pub(crate) searches: Vec<usize>,
+}
+
 /// Advances every search one probe per step: `screen` receives the step's distinct probe
-/// indices in one call, then `present(cache, search, index)` answers each open search's probe,
-/// the searches side by side.
+/// indices with their active search indices in one call, then `present(cache, search, index)`
+/// answers each open search's probe, the searches side by side.
 pub(crate) fn bisect<C: Sync>(
     searches: &mut [Search],
     cache: &mut C,
-    mut screen: impl FnMut(&mut C, &[u64]) -> TextResult<()>,
+    mut screen: impl FnMut(&mut C, &[Probe]) -> TextResult<()>,
     present: impl Fn(&C, usize, u64) -> bool + Sync,
 ) -> TextResult<()> {
     loop {
-        let mut probes: Vec<u64> = searches
+        let mut active: Vec<(u64, usize)> = searches
             .iter()
-            .filter(|search| search.open())
-            .map(Search::probe)
+            .enumerate()
+            .filter(|(_, search)| search.open())
+            .map(|(index, search)| (search.probe(), index))
             .collect();
-        if probes.is_empty() {
+        if active.is_empty() {
             return Ok(());
         }
-        probes.sort_unstable();
-        probes.dedup();
+        active.sort_unstable();
+        let mut probes: Vec<Probe> = Vec::new();
+        for (index, search) in active {
+            if let Some(last) = probes.last_mut().filter(|probe| probe.index == index) {
+                last.searches.push(search);
+            } else {
+                probes.push(Probe {
+                    index,
+                    searches: vec![search],
+                });
+            }
+        }
         screen(cache, &probes)?;
         let shared: &C = cache;
         let answers: Vec<Option<bool>> = searches
