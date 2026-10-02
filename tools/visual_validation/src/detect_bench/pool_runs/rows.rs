@@ -12,7 +12,7 @@
 
 use std::collections::BTreeMap;
 
-use inference::ocr::pool::CONFIRM_SESSIONS;
+use inference::ocr::pool::confirm_sessions;
 use pipeline::measure::gpu_monitor::VramPeaks;
 
 use super::super::table::optional;
@@ -93,7 +93,11 @@ pub fn row(
 ) -> Vec<String> {
     let (sessions, batch, pool_mib) = match phase {
         Phase::Screen => (run.sessions, run.shape.batch, run.shape.pool_mib),
-        Phase::Confirm => (CONFIRM_SESSIONS.min(run.sessions), 1, run.confirm_pool_mib),
+        Phase::Confirm => (
+            confirm_sessions(run.engine).min(run.sessions),
+            1,
+            run.confirm_pool_mib,
+        ),
     };
     let mut cells = vec![
         run.engine_label().to_string(),

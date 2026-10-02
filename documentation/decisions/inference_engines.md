@@ -93,3 +93,29 @@ CUDA's recall at a third faster; screening keeps FP16's speed.
 
 **Supersedes:** the single FP16 switch for both roles in the entry of 2026-10-01 — TensorRT runs
 the PP-OCRv5 detectors; the rest of that entry holds.
+
+### 2026-10-02 — TensorRT is the default detector engine
+
+**Context:** The measuring runbook's determinism check ran `text_detect` twice on each engine on
+Dressrosa 11 on 2026-10-01. The two TensorRT runs on the cached engines gave identical
+documents, as did the two CUDA runs. TensorRT took 549 s against CUDA's 1,355 s. Every later
+measurement ran on TensorRT, and the owner chose it as the default.
+
+**Decision:** `DetectorEngine::TensorRt` is the default. CUDA remains a setting. Saved settings
+that name an engine keep it, and a job keeps the engine it was created with.
+
+**Consequences:**
+- Settings without an engine, and new installs, screen on FP16 and confirm on FP32 TensorRT
+  engines.
+- The first run on a new GPU, driver or TensorRT build spends the engine build time.
+- A runtime without TensorRT fails the detection step on the default and needs CUDA chosen in
+  Settings.
+
+**Supersedes:**
+- "CUDA stays the default until the host bench confirms TensorRT" in the entry of 2026-10-01 —
+  TensorRT runs the PP-OCRv5 detectors.
+- "Whether TensorRT becomes the default engine waits on the determinism check of the measuring
+  runbook" in the entry of 2026-10-01 — On TensorRT, screening runs at FP16 and confirmation at
+  FP32.
+
+The rest of those entries holds.

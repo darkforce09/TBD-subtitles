@@ -38,8 +38,8 @@ use job_model::onscreen::DetectorEngine;
 
 use super::OcrError;
 use super::pool::{
-    CONFIRM_POOL_MIB, CONFIRM_SESSIONS, ConfirmJob, ConfirmResult, EngineIdentity, PROXY_POOL_MIB,
-    SCREEN_SESSIONS, ScreenJob, ScreenResult, ScreenShape, TextScreening, proxy_size,
+    CONFIRM_POOL_MIB, ConfirmJob, ConfirmResult, EngineIdentity, PROXY_POOL_MIB, SCREEN_SESSIONS,
+    ScreenJob, ScreenResult, ScreenShape, TextScreening, confirm_sessions, proxy_size,
 };
 use batch::InputShape;
 use queue::Queue;
@@ -109,8 +109,9 @@ pub struct PoolOptions {
 
 impl PoolOptions {
     /// The production options for frames of `width` × `height` on `engine`: the initial shape,
-    /// two sessions screening at full resolution and at the proxy width, the fast search, FP16
-    /// screening and FP32 confirming engines cached under the app's data folder.
+    /// two sessions screening at full resolution and at the proxy width, the engine's confirming
+    /// sessions, the fast search, FP16 screening and FP32 confirming engines cached under the
+    /// app's data folder.
     pub fn new(
         engine: DetectorEngine,
         identity: EngineIdentity,
@@ -124,7 +125,7 @@ impl PoolOptions {
             identity,
             shape: ScreenShape::INITIAL,
             sessions: SCREEN_SESSIONS,
-            confirm_sessions: CONFIRM_SESSIONS,
+            confirm_sessions: confirm_sessions(engine),
             confirm_pool_mib: CONFIRM_POOL_MIB,
             cache_dir: data.join(TENSORRT_FOLDER),
             frame_width: width,

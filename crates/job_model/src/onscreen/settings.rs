@@ -29,9 +29,10 @@ use std::path::PathBuf;
 #[rkyv(compare(PartialEq), derive(Debug, PartialEq, Eq))]
 pub enum DetectorEngine {
     /// The CUDA provider: cuDNN convolutions on the session's own stream.
-    #[default]
     Cuda,
-    /// The TensorRT provider: an FP16 engine built and cached per GPU, driver and model.
+    /// The TensorRT provider: engines built and cached per GPU, driver and model, FP16 for
+    /// screening and FP32 for confirming.
+    #[default]
     TensorRt,
 }
 

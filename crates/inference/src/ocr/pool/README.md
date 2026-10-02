@@ -18,12 +18,13 @@ A `PaddedFrame` is one frame converted to rgb24 and padded below with black rows
 `ScreenShape::batch` frames, each with a sequence number and a `Priority`: bisection probes run
 before screening batches that wait. Results come back as `ScreenResult`s in whatever order the
 sessions finish, and the scan applies them in its own order. `confirm` runs the server detector on
-one frame per occurrence on `CONFIRM_SESSIONS` sessions, and answers in the order asked.
-`ScreenShape::INITIAL` (batch 4, 1,536 MiB) and `CONFIRM_POOL_MIB` (3,072 MiB) come from the
-host's pool-by-batch sweep on Dressrosa 11 and 28, with `SCREEN_SESSIONS` two; `CONFIRM_SESSIONS`
-is two, so both session threads confirm keyframes concurrently on TensorRT server detector engines.
+each keyframe the scan asks for, on `confirm_sessions(engine)` sessions, and answers in the order
+asked. `ScreenShape::INITIAL` (batch 4, 1,536 MiB) and `CONFIRM_POOL_MIB` (3,072 MiB) come from
+the host's pool-by-batch sweep on Dressrosa 11 and 28, with `SCREEN_SESSIONS` two;
+`confirm_sessions` is two on TensorRT, whose batch-1 server detector engines confirm side by
+side, and one on CUDA, where a second session ran out of memory beside the first.
 `PROXY_WIDTH`, `PROXY_POOL_MIB` and `proxy_size` give the size and memory of the proxy
-pass that screens every batch again shrunk to 640 wide. `EngineIdentity` names the card, driver and TensorRT build a
+pass that screens every screening batch again shrunk to 640 wide. `EngineIdentity` names the card, driver and TensorRT build a
 cached engine was made for; the caller reads it from the driver.
 
 ## Boundaries

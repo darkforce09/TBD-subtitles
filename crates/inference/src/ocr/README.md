@@ -26,9 +26,9 @@ Vertical and uncertain crops receive a second manga-ocr reading. Disagreement re
 read-back check of lettered English, which the Japanese-only manga-ocr must not read. All files
 come from the pinned model store. The decoder has bounded beam width and sequence length.
 
-Every detector keeps boxes at the 0.3 box score when screening and 0.5 when confirming. The
+Every detector keeps boxes at the 0.45 box score when screening and 0.5 when confirming. The
 stock predictors and the reader run on the process's strict CUDA environment, with heuristic
-convolution selection, a 3 GB arena limit and bounded convolution workspace; a stock screening
+convolution selection, a 5 GiB arena limit and bounded convolution workspace; a stock screening
 batch holds images of one size, runs as one predictor call and returns one region list per image
 in input order, in the input image's own pixels. The pool's sessions set their own providers and
 options instead.

@@ -14,17 +14,17 @@ fn old_settings_do_not_enable_work_but_new_jobs_do() {
 }
 
 #[test]
-fn saved_settings_without_engine_choices_decode_on_the_cpu_with_cuda_and_x264() {
+fn saved_settings_without_engine_choices_decode_on_the_cpu_with_tensorrt_and_x264() {
     let saved: TextSettings = serde_json::from_str(r#"{"enabled": true}"#).unwrap();
     assert!(!saved.hardware_decode);
-    assert_eq!(saved.detector_engine, DetectorEngine::Cuda);
+    assert_eq!(saved.detector_engine, DetectorEngine::TensorRt);
     assert_eq!(saved.localized_encoder, LocalizedEncoder::X264);
     let chosen: TextSettings = serde_json::from_str(
-        r#"{"hardware_decode": true, "detector_engine": "tensor_rt", "localized_encoder": "nvenc"}"#,
+        r#"{"hardware_decode": true, "detector_engine": "cuda", "localized_encoder": "nvenc"}"#,
     )
     .unwrap();
     assert!(chosen.hardware_decode);
-    assert_eq!(chosen.detector_engine, DetectorEngine::TensorRt);
+    assert_eq!(chosen.detector_engine, DetectorEngine::Cuda);
     assert_eq!(chosen.localized_encoder, LocalizedEncoder::Nvenc);
 }
 

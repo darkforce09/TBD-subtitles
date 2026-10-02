@@ -19,7 +19,7 @@ mod sections;
 use std::path::PathBuf;
 
 use inference::ocr::PoolOptions;
-use inference::ocr::pool::{CONFIRM_SESSIONS, EngineIdentity, PaddedFrame, Priority, ScreenJob};
+use inference::ocr::pool::{EngineIdentity, PaddedFrame, Priority, ScreenJob, confirm_sessions};
 use media_io::yuv::{self, Coefficients, Yuv420};
 use pipeline::measure::gpu_monitor::DeviceInfo;
 
@@ -52,7 +52,7 @@ impl Setup {
             identity: self.identity.clone(),
             shape: run.shape,
             sessions: run.sessions,
-            confirm_sessions: CONFIRM_SESSIONS.min(run.sessions),
+            confirm_sessions: confirm_sessions(run.engine).min(run.sessions),
             confirm_pool_mib: run.confirm_pool_mib,
             cache_dir: self.cache_dir.clone(),
             frame_width: self.frame.0,

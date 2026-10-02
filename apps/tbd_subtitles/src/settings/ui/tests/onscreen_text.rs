@@ -113,7 +113,7 @@ fn an_empty_or_unmeasured_library_offers_nothing_to_clear() {
 fn the_engine_encoder_and_decoder_choices_each_send_one_edit() {
     let page = page(SignLibrary::default());
     let mut harness = harness(&page);
-    harness.get_by_label("TensorRT").click();
+    harness.get_by_label("CUDA").click();
     harness.run();
     harness.get_by_label("NVENC (GPU)").click();
     harness.run();
@@ -134,9 +134,9 @@ fn the_engine_encoder_and_decoder_choices_each_send_one_edit() {
     assert_eq!(
         edits,
         [
-            (DetectorEngine::TensorRt, LocalizedEncoder::X264, false),
-            (DetectorEngine::Cuda, LocalizedEncoder::Nvenc, false),
-            (DetectorEngine::Cuda, LocalizedEncoder::X264, true),
+            (DetectorEngine::Cuda, LocalizedEncoder::X264, false),
+            (DetectorEngine::TensorRt, LocalizedEncoder::Nvenc, false),
+            (DetectorEngine::TensorRt, LocalizedEncoder::X264, true),
         ]
     );
 }

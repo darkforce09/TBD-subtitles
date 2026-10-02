@@ -21,6 +21,7 @@ fn the_initial_shape_keeps_eight_frames_in_flight_on_two_sessions() {
 }
 
 #[test]
-fn confirming_sessions_match_screening_sessions() {
-    assert_eq!(CONFIRM_SESSIONS, 2);
+fn tensorrt_confirms_on_every_screening_session_and_cuda_on_one() {
+    assert_eq!(confirm_sessions(DetectorEngine::TensorRt), SCREEN_SESSIONS);
+    assert_eq!(confirm_sessions(DetectorEngine::Cuda), 1);
 }

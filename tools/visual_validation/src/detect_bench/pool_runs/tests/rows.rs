@@ -93,7 +93,7 @@ fn a_confirm_row_shows_its_sessions_batch_one_and_the_confirm_pool() {
     confirmed.vram = None;
     confirmed.usage.gpu_pct = None;
     let cells = row(&run, Phase::Confirm, &Ok(confirmed), None);
-    assert_eq!(cells[2], inference::ocr::pool::CONFIRM_SESSIONS.to_string());
+    assert_eq!(cells[2], "1", "CUDA confirms on one session");
     assert_eq!(cells[3], "1");
     assert_eq!(cells[4], inference::ocr::pool::CONFIRM_POOL_MIB.to_string());
     assert_eq!(cells[8], "n/a");

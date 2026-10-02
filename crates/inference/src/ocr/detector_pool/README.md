@@ -28,7 +28,8 @@ scan ──submit(ScreenJob)──▶ queue (Probe before Screen, then by seq)
   thread 1: screen + proxy sessions                 thread 2: screen + proxy sessions
   normalise frames (+ black slots) → staging        (the same)
   run → probability maps → regions per image (rayon)
-  shrink to 640 wide → proxy run → regions scaled up, merged where not covered
+  screening batches only: shrink to 640 wide → proxy run → regions scaled up, merged
+  where not covered
   → ScreenResult{seq} ──▶ recv() in finishing order ──▶ InOrder
 scan ──confirm(jobs)──▶ every thread closes its screen session
                         then opens a confirm session on its first confirmation
@@ -43,21 +44,23 @@ engine the first one built. Every frame has the size given in `PoolOptions`; `ba
 slots with black frames, and writes the values oar-ocr's DB normalisation gives (scale 1/255,
 ImageNet mean and standard deviation, BGR, CHW) straight into the session's pinned staging buffer,
 one rayon task per row. `regions.rs` copies each image's map once into the array
-`DBPostProcess::apply` takes, keeps boxes at 0.3 when screening and 0.5 when confirming, and
+`DBPostProcess::apply` takes, keeps boxes at 0.45 when screening and 0.5 when confirming, and
 clips every corner into the frame, which drops boxes found only in the padding.
 
 `confirm` refuses to start while screening results are still due; it then closes every screening
 session before any confirming session opens (`queue.rs` holds the barrier), so peak GPU memory is
-the larger of the two phases, never their sum. The first `confirm_sessions` threads
-(`CONFIRM_SESSIONS`, two) take confirmations; any remaining threads wait for the pool to close. A confirming
+the larger of the two phases, never their sum. The first `confirm_sessions` threads take
+confirmations (`pool::confirm_sessions`: both on TensorRT, one on CUDA, where a second session
+does not fit beside the first); any remaining threads wait for the pool to close. A confirming
 session opens on its thread's first confirmation, with batch 1 and `confirm_pool_mib`
 (`CONFIRM_POOL_MIB`). Every task taken from the queue gets one
 answer, an error included, so neither `recv` nor `confirm` waits forever.
 
 With `proxy` on (production), each screening thread also opens a proxy session of the mobile
 detector at `proxy_size` (640 wide, the height in proportion, padded to a multiple of 32) with
-`PROXY_POOL_MIB`. Every batch screened at full resolution is shrunk there (`proxy.rs`: each proxy
-pixel the mean of the source pixels it covers) and screened again; the proxy regions are scaled
+`PROXY_POOL_MIB`. Every screening batch is shrunk there (`proxy.rs`: each proxy pixel the mean
+of the source pixels it covers) and screened again, while bisection probes (`Priority::Probe`)
+run at full resolution alone; the proxy regions are scaled
 back to frame pixels and added to the image's regions only where the full-resolution regions
 cover less than half of their bounding box (`COVERED_SHARE`), so writing too large for the
 detector at full resolution is found and writing found at both sizes is not doubled. The proxy

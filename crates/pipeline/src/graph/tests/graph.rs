@@ -289,13 +289,13 @@ fn the_engine_and_encoder_reach_their_steps_and_the_decoder_reaches_none() {
             "{step}"
         );
     }
-    let mut tensor_rt = base.clone();
-    tensor_rt.onscreen_text.detector_engine = DetectorEngine::TensorRt;
+    let mut cuda = base.clone();
+    cuda.onscreen_text.detector_engine = DetectorEngine::Cuda;
     let mut nvenc = base.clone();
     nvenc.onscreen_text.localized_encoder = LocalizedEncoder::Nvenc;
     for step in StepName::ALL {
         assert_eq!(
-            settings(step, &base) != settings(step, &tensor_rt),
+            settings(step, &base) != settings(step, &cuda),
             step == StepName::TextDetect,
             "{step}"
         );

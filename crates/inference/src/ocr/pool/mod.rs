@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 
-use job_model::onscreen::Quad;
+use job_model::onscreen::{DetectorEngine, Quad};
 
 use super::OcrError;
 
@@ -64,9 +64,15 @@ pub fn proxy_size(width: u32, height: u32) -> (u32, u32) {
     (PROXY_WIDTH, (scaled & !1).max(2))
 }
 
-/// The confirming sessions: two, so both session threads confirm keyframes concurrently
-/// across two TensorRT sessions on the GPU, taking ~3.8 GB of VRAM (well within the 6.5 GB cap).
-pub const CONFIRM_SESSIONS: usize = 2;
+/// The confirming sessions on `engine`: two on TensorRT, whose batch-1 server detector engines
+/// confirm side by side within the worker's VRAM cap; one on CUDA, where a second session beside
+/// the first ran out of memory in every pool the host's sweep tried.
+pub fn confirm_sessions(engine: DetectorEngine) -> usize {
+    match engine {
+        DetectorEngine::TensorRt => 2,
+        DetectorEngine::Cuda => 1,
+    }
+}
 
 /// One frame converted to rgb24 and padded below with black rows to a multiple of 32.
 #[derive(Debug, Clone, PartialEq, Eq)]
